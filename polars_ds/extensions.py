@@ -1,5 +1,5 @@
 import polars as pl
-# from typing import Union
+from typing import Union
 from polars.utils.udfs import _get_shared_lib_location
 
 lib = _get_shared_lib_location(__file__)
@@ -63,66 +63,47 @@ class NumExt:
         '''
         return self._expr.mod(1.0)
     
-    # def gcd(self, other:Union[int, pl.Expr]) -> pl.Expr:
-    #     '''
-    #     Computes GCD of two integer columns.
+    def gcd(self, other:Union[int, pl.Expr]) -> pl.Expr:
+        '''
+        Computes GCD of two integer columns.
 
-    #     Parameters
-    #     ----------
-    #     other
-    #         Either an int or a Polars expression
-    #     '''
-    #     if isinstance(other, int):
-    #         other_ = pl.lit(other, dtype=pl.Int64)
-    #     else:
-    #         other_ = other.cast(pl.Int64)
+        Parameters
+        ----------
+        other
+            Either an int or a Polars expression
+        '''
+        if isinstance(other, int):
+            other_ = pl.lit(other, dtype=pl.Int64)
+        else:
+            other_ = other.cast(pl.Int64)
         
-    #     return self._expr.cast(pl.Int64)._register_plugin(
-    #         lib=lib,
-    #         symbol="pl_gcd",
-    #         args = [other_],
-    #         is_elementwise=True,
-    #     )
+        return self._expr.cast(pl.Int64).register_plugin(
+            lib=lib,
+            symbol="pl_gcd",
+            args = [other_],
+            is_elementwise=True,
+        )
     
-    # def lcm(self, other:Union[int, pl.Expr]) -> pl.Expr:
-    #     '''
-    #     Computes LCM of two integer columns.
+    def lcm(self, other:Union[int, pl.Expr]) -> pl.Expr:
+        '''
+        Computes LCM of two integer columns.
 
-    #     Parameters
-    #     ----------
-    #     other
-    #         Either an int or a Polars expression
-    #     '''
-    #     if isinstance(other, int):
-    #         other_ = pl.lit(other, dtype=pl.Int64)
-    #     else:
-    #         other_ = other.cast(pl.Int64)
+        Parameters
+        ----------
+        other
+            Either an int or a Polars expression
+        '''
+        if isinstance(other, int):
+            other_ = pl.lit(other, dtype=pl.Int64)
+        else:
+            other_ = other.cast(pl.Int64)
         
-    #     return self._expr.cast(pl.Int64)._register_plugin(
-    #         lib=lib,
-    #         symbol="pl_lcm",
-    #         args = [other_],
-    #         is_elementwise=True,
-    #     )
-    
-    # def lempel_ziv_complexity(self, as_ratio:bool=False) -> pl.Expr:
-    #     '''
-    #     Computes the Lempel Ziv Complexity. Input must be a boolean column.
-
-    #     Parameters
-    #     ----------
-    #     as_ratio
-    #         If true, will return the complexity / the length of the column
-    #     '''
-    #     out = self._expr.register_plugin(
-    #         lib=lib,
-    #         symbol="pl_lempel_ziv_complexity",
-    #         is_elementwise=False,
-    #         returns_scalar=True
-    #     )
-    #     if as_ratio:
-    #         return out / self._expr.len()
-    #     return out
+        return self._expr.cast(pl.Int64).register_plugin(
+            lib=lib,
+            symbol="pl_lcm",
+            args = [other_],
+            is_elementwise=True,
+        )
 
     
 @pl.api.register_expr_namespace("str_ext")

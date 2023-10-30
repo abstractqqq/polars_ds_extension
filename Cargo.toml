@@ -10,11 +10,11 @@ crate-type = ["cdylib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-pyo3 = {version = "*", features = ["extension-module"]}
-pyo3-polars = {version = "*", features = ["derive"]}
-polars = {version = "*", features = ["fmt", "performant", "chunked_ids", "lazy", "zip_with", "random"]}
-polars-core = "*"
-polars-lazy = "*"
+pyo3 = {version = "0.20", features = ["extension-module"]}
+pyo3-polars = {version = "0.8", features = ["derive"]}
+polars = {version = "0.34", features = ["fmt", "performant", "chunked_ids", "lazy","random"]}
+polars-core = "0.34"
+polars-lazy = "0.34"
 num = "0.4.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
