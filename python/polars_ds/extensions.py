@@ -4,8 +4,6 @@ from polars.utils.udfs import _get_shared_lib_location
 
 lib = _get_shared_lib_location(__file__)
 
-# _BENFORD_DIST_SERIES = (1 + 1 / pl.int_range(1, 10, eager=True)).log10()
-
 @pl.api.register_expr_namespace("num_ext")
 class NumExt:
     def __init__(self, expr: pl.Expr):
@@ -217,8 +215,8 @@ class StrExt:
         pattern
             The word pattern to extract
         stem
-            If we want to stem the words and keep only the unique ones. Stop words will
-            be removed. (Common words like `he`, `she`, etc., will be removed.)
+            If true, then this will stem the words and keep only the unique ones. Stop words 
+            will be removed. (Common words like `he`, `she`, etc., will be removed.)
         '''
         out = self._expr.str.extract_all(pattern)
         if stem:
