@@ -115,6 +115,134 @@ class NumExt:
             is_elementwise=True,
         )
 
+    def hubor_loss(self, other:pl.Expr, delta:float) -> pl.Expr:
+        ''' 
+        Computes huber loss between this and the other expression
+
+        Parameters
+        ----------
+        other
+            Either an int or a Polars expression
+        '''
+        temp = (self._expr - other).abs()
+        return pl.when(temp <= delta).then(
+            0.5 * temp.pow(2)
+        ).otherwise(
+            delta * (temp - 0.5 * delta)
+        ) / self._expr.count()
+
+    def l1_loss(self, other: pl.Expr, normalize:bool=True) -> pl.Expr:
+        ''' 
+        Computes L1 loss (normalized L1 distance) between this and the other expression
+
+        Parameters
+        ----------
+        other
+            Either an int or a Polars expression
+        normalize
+            If true, divide the result by length of the series
+        '''
+        temp = (self._expr - other).abs().sum()
+        if normalize:
+            return temp / self._expr.count()
+        return temp
+
+    def l2_loss(self, other: pl.Expr, normalize:bool=True) -> pl.Expr:
+        ''' 
+        Computes L2 loss (normalized L2 distance) between this and the other expression
+        
+        Parameters
+        ----------
+        other
+            Either an int or a Polars expression
+        normalize
+            If true, divide the result by length of the series
+        '''
+        temp = self._expr - other
+        temp = temp.dot(temp)
+        if normalize:
+            return temp / self._expr.count()
+        return temp
+
+    def lp_loss(self, other: pl.Expr, p:float, normalize:bool=True) -> pl.Expr:
+        ''' 
+        Computes LP loss (normalized LP distance) between this and the other expression 
+        for p finite.
+
+        Parameters
+        ----------
+        other
+            Either an int or a Polars expression
+        normalize
+            If true, divide the result by length of the series
+        '''
+        if p <= 0:
+            raise ValueError(f"Input `p` must be > 0, not {p}")
+
+        temp = (self._expr - other).abs().pow(p)
+        if normalize:
+            return temp / self._expr.count()
+        return temp
+
+    def chebyshev_loss(self, other:pl.Expr, normalize:bool=True) -> pl.Expr:
+        ''' 
+        Alias for l_inf_loss.
+        '''
+        return self.l_inf_dist(other, normalize)
+
+    def l_inf_loss(self, other: pl.Expr, normalize:bool=True) -> pl.Expr:
+        ''' 
+        Computes L^infinity loss between this and the other expression
+
+        Parameters
+        ----------
+        other
+            Either an int or a Polars expression
+        normalize
+            If true, divide the result by length of the series
+        '''
+        temp = (self._expr - other)
+        out = pl.max_horizontal(temp.min().abs(), temp.max().abs())
+        if normalize:
+            return out/self._expr.count()
+        return out
+
+    def mape(self, other:pl.Expr, weighted:bool=False) -> pl.Expr:
+        ''' 
+        Computes mean absolute percentage error between self and other. Self is actual.
+        If weighted, it will compute the weighted version as defined here:
+         
+        https://en.wikipedia.org/wiki/Mean_absolute_percentage_error
+
+        Parameters
+        ----------
+        other
+            Either an int or a Polars expression
+        weighted
+            If true, computes wMAPE in the wikipedia article
+        '''
+        if weighted:
+            return (self._expr - other).abs().sum() / self._expr.abs().sum()
+        else:
+            return (1 - other/self._expr).abs().mean()
+
+    def smape(self, other:pl.Expr) -> pl.Expr:
+        ''' 
+        Computes symmetric mean absolute percentage error between self and other. Self is actual.
+        The value is always between 0 and 1. This is the third version in the wikipedia without 
+        the 100 factor.
+
+        https://en.wikipedia.org/wiki/Symmetric_mean_absolute_percentage_error
+
+        Parameters
+        ----------
+        other
+            Either an int or a Polars expression
+        '''
+        numerator = (self._expr - other).abs()
+        denominator = 1.0 / (self._expr.abs() + other.abs())
+        return (1.0 / self._expr.count()) * numerator.dot(denominator)
+
     
 @pl.api.register_expr_namespace("str_ext")
 class StrExt:

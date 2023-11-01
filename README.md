@@ -10,8 +10,8 @@ Feel free to submit feature requests in the issues section of the repo.
 ### Existing Features
 
 1. GCD, LCM for integers
-2. harmonic mean, geometric mean...
-3. Other simple metrics used in industry...
+2. harmonic mean, geometric mean, other common, simple metrics used in industry.
+3. Lp, L infinity loss (normalized Lp dist), huber loss, MAPE, SMAPE, wMAPE, etc.
 
 ### Todo list
 
@@ -34,7 +34,7 @@ Feel free to submit feature requests in the issues section of the repo.
 
 ## Other Extension ?
 
-E.g. stats_ext, list_ext, dist_ext (L^p distance, etc.) etc.
+E.g. stats_ext, list_ext, dist_ext (L^p distance for vectors (scalar version is implemented) etc.) etc.
 
 
 # Disclaimer
