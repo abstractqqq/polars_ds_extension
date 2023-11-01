@@ -12,10 +12,12 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = {version = "0.20", features = ["extension-module"]}
 pyo3-polars = {version = "0.8", features = ["derive"]}
-polars = {version = "0.34", features = ["fmt", "performant", "chunked_ids", "lazy","random"]}
+polars = {version = "0.34", features = ["fmt", "performant", "chunked_ids", "lazy","random", "dtype-struct", "ndarray"]}
 polars-core = "0.34"
 polars-lazy = "0.34"
 num = "0.4.1"
+faer = {version = "0.14.1", features = ["ndarray"]}
+ndarray = "0.15.6"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }
