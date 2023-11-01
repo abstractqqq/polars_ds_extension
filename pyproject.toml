@@ -20,10 +20,10 @@ dependencies = [
 
 keywords = ["polars-extension", "scientific-computing"]
 
-# [tool.maturin]
-# python-source = "python"
-# features = ["pyo3/extension-module"]
-# module-name = "polars_ds._polars_ds"
+[tool.maturin]
+python-source = "python"
+features = ["pyo3/extension-module"]
+module-name = "polars_ds._polars_ds"
 
 [project.optional-dependencies]
 dev = [
