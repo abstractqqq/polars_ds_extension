@@ -25,6 +25,7 @@ pub fn snowball_stem(word:Option<&str>, no_stopwords:bool) -> Option<String> {
     }
 }
 
+
 #[inline]
 pub fn hamming_dist(s1:&str, s2:&str) -> Option<u32> {
     if s1.len() != s2.len() {
@@ -36,6 +37,7 @@ pub fn hamming_dist(s1:&str, s2:&str) -> Option<u32> {
         .fold(0, |a, (b, c)| a + (b != c) as u32)
     )
 }
+
 
 #[inline]
 pub fn levenshtein_dist(s1:&str, s2:&str) -> u32 {
@@ -69,8 +71,8 @@ pub fn levenshtein_dist(s1:&str, s2:&str) -> u32 {
     dp[len1][len2]
 }
 
-// Wrapper for Polars Extension
 
+// Wrapper for Polars Extension
 #[polars_expr(output_type=Utf8)]
 fn pl_snowball_stem(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].utf8()?;
@@ -109,6 +111,7 @@ fn pl_levenshtein_dist(inputs: &[Series]) -> PolarsResult<Series> {
         Err(PolarsError::ComputeError("Inputs must have the same length.".into()))
     }
 }
+
 
 #[polars_expr(output_type=Float64)]
 fn pl_str_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
@@ -177,6 +180,7 @@ fn pl_str_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
         Err(PolarsError::ComputeError("Inputs must have the same length.".into()))
     }
 }
+
 
 #[polars_expr(output_type=UInt32)]
 fn pl_hamming_dist(inputs: &[Series]) -> PolarsResult<Series> {

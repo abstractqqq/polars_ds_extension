@@ -250,11 +250,27 @@ class NumExt:
         Parameters
         ----------
         other
-            Either an int or a Polars expression
+            List of Polars expressions
         """
-        return self._expr._register_plugin(
+        return self._expr.register_plugin(
             lib=lib,
-            symbol="lstsq",
+            symbol="pl_lstsq",
+            args=list(other),
+            is_elementwise=False,
+        )
+
+    def lstsq2(self, *other: pl.Expr) -> pl.Expr:
+        """
+        Computes least squares solution to a linear matrix equation.
+
+        Parameters
+        ----------
+        other
+            List of Polars expressions
+        """
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_lstsq2",
             args=list(other),
             is_elementwise=False,
         )
