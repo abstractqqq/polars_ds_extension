@@ -133,7 +133,8 @@ class NumExt:
 
     def l1_loss(self, other: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
-        Computes L1 loss (normalized L1 distance) between this and the other expression
+        Computes L1 loss (normalized L1 distance) between this and the other expression. This
+        is the norm without 1/p power.
 
         Parameters
         ----------
@@ -149,7 +150,9 @@ class NumExt:
 
     def l2_loss(self, other: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
-        Computes L2 loss (normalized L2 distance) between this and the other expression
+        Computes L2 loss (normalized L2 distance) between this and the other expression. This
+        is the norm without 1/p power.
+
 
         Parameters
         ----------
@@ -166,7 +169,9 @@ class NumExt:
 
     def lp_loss(self, other: pl.Expr, p: float, normalize: bool = True) -> pl.Expr:
         """
-        Computes LP loss (normalized LP distance) between this and the other expression
+        Computes LP loss (normalized LP distance) between this and the other expression. This
+        is the norm without 1/p power.
+
         for p finite.
 
         Parameters
@@ -179,9 +184,9 @@ class NumExt:
         if p <= 0:
             raise ValueError(f"Input `p` must be > 0, not {p}")
 
-        temp = (self._expr - other).abs().pow(p)
+        temp = (self._expr - other).abs().pow(p).sum()
         if normalize:
-            return temp / self._expr.count()
+            return (temp / self._expr.count())
         return temp
 
     def chebyshev_loss(self, other: pl.Expr, normalize: bool = True) -> pl.Expr:
@@ -243,20 +248,30 @@ class NumExt:
         denominator = 1.0 / (self._expr.abs() + other.abs())
         return (1.0 / self._expr.count()) * numerator.dot(denominator)
 
-    def lstsq(self, *other: pl.Expr) -> pl.Expr:
+    def lstsq(self, other: list[pl.Expr], add_bias:bool=False) -> pl.Expr:
         """
-        Computes least squares solution to a linear matrix equation.
+        Computes least squares solution to a linear matrix equation. If columns are
+        not linearly independent, some numerical issue or error may occur. Unrealistic 
+        coefficient values is an indication of `silent` numerical problem during the 
+        computation. 
+        
+        If add_bias is true, it will be the last coefficient in the output
+        and output will have length |other| + 1
 
         Parameters
         ----------
         other
-            Either an int or a Polars expression
+            List of Polars expressions. They should have the same size.
+        add_bias
+            Whether to add a bias term
         """
-        return self._expr._register_plugin(
+
+        return self._expr.register_plugin(
             lib=lib,
-            symbol="lstsq",
-            args=list(other),
+            symbol="pl_lstsq",
+            args=[pl.lit(add_bias, dtype=pl.Boolean)] + other,
             is_elementwise=False,
+            returns_scalar=True
         )
 
 

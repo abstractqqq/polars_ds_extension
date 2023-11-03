@@ -1,4 +1,6 @@
 use polars::prelude::*;
+use hashbrown::HashSet;
+// use polars::chunked_array::ops::arity::binary_elementwise;
 use polars_core::utils::rayon::prelude::{ParallelIterator, IndexedParallelIterator};
 use crate::str_ext::consts::EN_STOPWORDS;
 use pyo3_polars::derive::polars_expr;
@@ -25,6 +27,7 @@ pub fn snowball_stem(word:Option<&str>, no_stopwords:bool) -> Option<String> {
     }
 }
 
+
 #[inline]
 pub fn hamming_dist(s1:&str, s2:&str) -> Option<u32> {
     if s1.len() != s2.len() {
@@ -36,6 +39,7 @@ pub fn hamming_dist(s1:&str, s2:&str) -> Option<u32> {
         .fold(0, |a, (b, c)| a + (b != c) as u32)
     )
 }
+
 
 #[inline]
 pub fn levenshtein_dist(s1:&str, s2:&str) -> u32 {
@@ -69,8 +73,8 @@ pub fn levenshtein_dist(s1:&str, s2:&str) -> u32 {
     dp[len1][len2]
 }
 
-// Wrapper for Polars Extension
 
+// Wrapper for Polars Extension
 #[polars_expr(output_type=Utf8)]
 fn pl_snowball_stem(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].utf8()?;
@@ -79,6 +83,7 @@ fn pl_snowball_stem(inputs: &[Series]) -> PolarsResult<Series> {
     Ok(out.into_series())
 }
 
+
 #[polars_expr(output_type=UInt32)]
 fn pl_levenshtein_dist(inputs: &[Series]) -> PolarsResult<Series> {
     let ca1 = inputs[0].utf8()?;
@@ -86,15 +91,18 @@ fn pl_levenshtein_dist(inputs: &[Series]) -> PolarsResult<Series> {
 
     if ca2.len() == 1 {
         let r = ca2.get(0).unwrap();
-        let out: UInt32Chunked = ca1.par_iter().map(|op_s| {
-            if let Some(s) = op_s {
-                Some(levenshtein_dist(s, r))
-            } else {
-                None
+        let out: UInt32Chunked = ca1.par_iter().map(
+            |op_s| {
+                if let Some(s) = op_s {
+                    Some(levenshtein_dist(s, r))
+                } else {
+                    None
+                }
             }
-        }).collect();
+        ).collect();
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
+
         let out: UInt32Chunked = ca1.par_iter_indexed()
             .zip(ca2.par_iter_indexed())
             .map(|(op_w1, op_w2)| {
@@ -110,6 +118,46 @@ fn pl_levenshtein_dist(inputs: &[Series]) -> PolarsResult<Series> {
     }
 }
 
+// #[polars_expr(output_type=UInt32)]
+// fn pl_levenshtein_dist2(inputs: &[Series]) -> PolarsResult<Series> {
+//     let ca1 = inputs[0].utf8()?;
+//     let ca2 = inputs[1].utf8()?;
+
+//     if ca2.len() == 1 {
+//         let r = ca2.get(0).unwrap();
+//         let op = |x:Option<&str>| {
+//             if let Some(s) = x {
+//                 Some(levenshtein_dist(s, r))
+//             } else {
+//                 None
+//             }
+//         };
+//         // ca1.apply_generic(op)
+//         let out: UInt32Chunked = ca1.apply_generic(op);
+//         Ok(out.into_series())
+//     } else if ca1.len() == ca2.len() {
+
+//         let op = |x:Option<&str>,y:Option<&str>| {
+//             if let (Some(s1), Some(s2)) = (x,y) {
+//                 Some(levenshtein_dist(s1, s2))
+//             } else {
+//                 None
+//             }
+//         };
+//         let out:UInt32Chunked = binary_elementwise(
+//             ca1,
+//             ca2,
+//             op
+//         );
+//         Ok(out.into_series())
+//     } else {
+//         Err(PolarsError::ComputeError("Inputs must have the same length.".into()))
+//     }
+// }
+
+
+//         binary_elementwise()
+
 #[polars_expr(output_type=Float64)]
 fn pl_str_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
     let ca1 = inputs[0].utf8()?;
@@ -121,21 +169,21 @@ fn pl_str_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
     if ca2.len() == 1 {
 
         let r = ca2.get(0).unwrap();
-        let s2 = if r.len() > n {
-            PlHashSet::from_iter(
+        let s2: HashSet<&str> = if r.len() > n {
+            HashSet::from_iter(
                 r.as_bytes().windows(n).map(|sl| str::from_utf8(sl).unwrap()
             )
         )} else {
-            PlHashSet::from_iter([r])
+            HashSet::from_iter([r])
         };
         let out: Float64Chunked = ca1.par_iter().map(|op_s| {
             if let Some(s) = op_s {
-                let s1 = if s.len() > n {
-                    PlHashSet::from_iter(
+                let s1: HashSet<&str> = if s.len() > n {
+                    HashSet::from_iter(
                         s.as_bytes().windows(n).map(|sl| str::from_utf8(sl).unwrap())
                     )
                 } else {
-                    PlHashSet::from_iter([s])
+                    HashSet::from_iter([s])
                 };
                 let intersection = s1.intersection(&s2).count();
                 Some(
@@ -153,10 +201,10 @@ fn pl_str_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
             .map(|(op_w1, op_w2)| {
                 if let (Some(w1), Some(w2)) = (op_w1, op_w2) {
                     if (w1.len() >= n) & (w2.len() >= n) {
-                        let s1 = PlHashSet::from_iter(
+                        let s1: HashSet<&str> = HashSet::from_iter(
                             w1.as_bytes().windows(n).map(|sl| str::from_utf8(sl).unwrap())
                         );
-                        let s2 = PlHashSet::from_iter(
+                        let s2: HashSet<&str> = HashSet::from_iter(
                             w2.as_bytes().windows(n).map(|sl| str::from_utf8(sl).unwrap())
                         );
                         let intersection = s1.intersection(&s2).count();
@@ -177,6 +225,7 @@ fn pl_str_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
         Err(PolarsError::ComputeError("Inputs must have the same length.".into()))
     }
 }
+
 
 #[polars_expr(output_type=UInt32)]
 fn pl_hamming_dist(inputs: &[Series]) -> PolarsResult<Series> {

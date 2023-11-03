@@ -1449,6 +1449,7 @@ name = "polars_ds"
 version = "0.1.0"
 dependencies = [
  "faer",
+ "hashbrown",
  "jemallocator",
  "ndarray",
  "num",
