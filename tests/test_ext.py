@@ -126,6 +126,37 @@ def test_cond_entropy(df, res):
         res
     )
 
+# Hard to write generic tests because ncols can vary in X
+def test_lstsq():
+
+    df = pl.DataFrame({
+        "y":[1,2,3,4,5],
+        "a": [2,3,4,5,6],
+        "b": [-1,-1,-1,-1,-1]
+    })
+    res = pl.DataFrame({
+        "y": [[1.0, 1.0]]
+    })
+    assert_frame_equal(
+        df.select(
+            pl.col("y").num_ext.lstsq(pl.col("a"), pl.col("b"), add_bias = False)
+        ),
+        res
+    )
+
+    df = pl.DataFrame({
+        "y":[1,2,3,4,5],
+        "a": [2,3,4,5,6],
+    })
+    res = pl.DataFrame({
+        "y": [[1.0, -1.0]]
+    })
+    assert_frame_equal(
+        df.select(
+            pl.col("y").num_ext.lstsq(pl.col("a"), add_bias = True)
+        ),
+        res
+    )
 
 @pytest.mark.parametrize(
     "df, res",

@@ -117,7 +117,10 @@ fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
     let mut vec_series: Vec<Series> = inputs[2..]
         .iter()
         .enumerate()
-        .map(|(i, s)| s.clone().with_name(&i.to_string()))
+        .map(|(i, s)| 
+            s.clone().cast(&DataType::Float64)
+            .unwrap().with_name(&i.to_string())
+        )
         .collect();
     if add_bias {
         let one = Series::new_empty("cst", &DataType::Float64);

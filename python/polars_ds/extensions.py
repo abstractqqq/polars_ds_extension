@@ -303,8 +303,8 @@ class NumExt:
         add_bias
             Whether to add a bias term
         """
-
-        return self._expr.register_plugin(
+        y = self._expr.cast(pl.Float64)
+        return y.register_plugin(
             lib=lib,
             symbol="pl_lstsq",
             args=[pl.lit(add_bias, dtype=pl.Boolean)] + list(others),
