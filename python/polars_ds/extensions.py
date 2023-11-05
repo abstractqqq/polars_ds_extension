@@ -167,27 +167,27 @@ class NumExt:
             return temp / self._expr.count()
         return temp
 
-    def lp_loss(self, other: pl.Expr, p: float, normalize: bool = True) -> pl.Expr:
-        """
-        Computes LP loss (normalized LP distance) between this and the other expression. This
-        is the norm without 1/p power.
+    # def lp_loss(self, other: pl.Expr, p: float, normalize: bool = True) -> pl.Expr:
+    #     """
+    #     Computes LP loss (normalized LP distance) between this and the other expression. This
+    #     is the norm without 1/p power.
 
-        for p finite.
+    #     for p finite.
 
-        Parameters
-        ----------
-        other
-            Either an int or a Polars expression
-        normalize
-            If true, divide the result by length of the series
-        """
-        if p <= 0:
-            raise ValueError(f"Input `p` must be > 0, not {p}")
+    #     Parameters
+    #     ----------
+    #     other
+    #         Either an int or a Polars expression
+    #     normalize
+    #         If true, divide the result by length of the series
+    #     """
+    #     if p <= 0:
+    #         raise ValueError(f"Input `p` must be > 0, not {p}")
 
-        temp = (self._expr - other).abs().pow(p).sum()
-        if normalize:
-            return (temp / self._expr.count())
-        return temp
+    #     temp = (self._expr - other).abs().pow(p).sum()
+    #     if normalize:
+    #         return (temp / self._expr.count())
+    #     return temp
 
     def chebyshev_loss(self, other: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
@@ -248,12 +248,50 @@ class NumExt:
         denominator = 1.0 / (self._expr.abs() + other.abs())
         return (1.0 / self._expr.count()) * numerator.dot(denominator)
 
-    def lstsq(self, other: list[pl.Expr], add_bias:bool=False) -> pl.Expr:
+    def bce(self, actual: pl.Expr, normalize:bool=True) -> pl.Expr:
+        """
+        Treats self as the prediction. and computes Binary Cross Entropy loss.
+
+        Parameters
+        ----------
+        actual
+            The actual binary lable. Note: if this column is not binary, then the result
+            will be nonsense.
+        normalize
+            Whether to divide by N.
+        """
+        out = actual.dot(self._expr.log()) + (1 - actual).dot((1 - self._expr).log())
+        if normalize:
+            return -(out / self._expr.count())
+        return -out
+
+    def cond_entropy(self, other: pl.Expr) -> pl.Expr:
+        """
+        Computes the conditional entropy of self(y) given other. H(y|other).
+
+        Parameters
+        ----------
+        other
+            A Polars expression
+        """
+
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_conditional_entropy",
+            args=[other],
+            is_elementwise=False,
+            returns_scalar=True
+        )
+
+    def lstsq(self, *others: pl.Expr, add_bias:bool=False) -> pl.Expr:
         """
         Computes least squares solution to a linear matrix equation. If columns are
-        not linearly independent, some numerical issue or error may occur. Unrealistic 
-        coefficient values is an indication of `silent` numerical problem during the 
-        computation. 
+        not linearly independent, some numerical issue may occur. E.g you may see
+        unrealistic coefficient in the output. This is a `silent` numerical issue during the 
+        computation.
+
+        All positional arguments should be expressions representing individual columns. This does
+        not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
         
         If add_bias is true, it will be the last coefficient in the output
         and output will have length |other| + 1
@@ -261,7 +299,7 @@ class NumExt:
         Parameters
         ----------
         other
-            List of Polars expressions. They should have the same size.
+            Polars expressions.
         add_bias
             Whether to add a bias term
         """
@@ -269,7 +307,7 @@ class NumExt:
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_lstsq",
-            args=[pl.lit(add_bias, dtype=pl.Boolean)] + other,
+            args=[pl.lit(add_bias, dtype=pl.Boolean)] + list(others),
             is_elementwise=False,
             returns_scalar=True
         )
@@ -280,7 +318,12 @@ class StrExt:
     def __init__(self, expr: pl.Expr):
         self._expr: pl.Expr = expr
 
-    def str_jaccard(self, other: Union[str, pl.Expr], substr_size: int = 2) -> pl.Expr:
+    def str_jaccard(
+        self
+        , other: Union[str, pl.Expr]
+        , substr_size: int = 2
+        , parallel: bool = False
+    ) -> pl.Expr:
         """
         Treats substrings of size `substr_size` as a set. And computes the jaccard similarity between
         this word and the other.
@@ -294,22 +337,26 @@ class StrExt:
         substr_size
             The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
             the set ('ap', 'pp', 'pl', 'le') before being compared.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
         """
         if isinstance(other, str):
-            other_ = pl.lit(other)
+            other_ = pl.lit(other, dtype=pl.Utf8)
         else:
             other_ = other
 
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_str_jaccard",
-            args=[other_, pl.lit(substr_size, dtype=pl.UInt32)],
+            args=[other_, pl.lit(substr_size, dtype=pl.UInt32), pl.lit(parallel, dtype=pl.Boolean)],
             is_elementwise=True,
         )
 
     def levenshtein_dist(
-        self,
-        other: Union[str, pl.Expr],
+        self
+        , other: Union[str, pl.Expr]
+        , parallel: bool = False
     ) -> pl.Expr:
         """
         Computes the levenshtein distance between this each value in the column with the str other.
@@ -320,22 +367,26 @@ class StrExt:
             If this is a string, then the entire column will be compared with this string. If this
             is an expression, then an element-wise Levenshtein distance computation between this column
             and the other (given by the expression) will be performed.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
         """
         if isinstance(other, str):
-            other_ = pl.lit(other)
+            other_ = pl.lit(other, dtype=pl.Utf8)
         else:
             other_ = other
 
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_levenshtein_dist",
-            args=[other_],
+            args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
             is_elementwise=True,
         )
 
     def hamming_dist(
-        self,
-        other: Union[str, pl.Expr],
+        self
+        , other: Union[str, pl.Expr]
+        , parallel: bool = False
     ) -> pl.Expr:
         """
         Computes the hamming distance between two strings. If they do not have the same length, null will
@@ -347,6 +398,9 @@ class StrExt:
             If this is a string, then the entire column will be compared with this string. If this
             is an expression, then an element-wise hamming distance computation between this column
             and the other (given by the expression) will be performed.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
         """
         if isinstance(other, str):
             other_ = pl.lit(other)
@@ -356,7 +410,7 @@ class StrExt:
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_hamming_dist",
-            args=[other_],
+            args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
             is_elementwise=True,
         )
 
@@ -386,12 +440,25 @@ class StrExt:
             ).list.unique()
         return out
 
-    def snowball(self) -> pl.Expr:
+    def snowball(
+        self
+        , no_stopwords:bool=True
+        , parallel:bool=False
+    ) -> pl.Expr:
         """
         Applies the snowball stemmer for the column. The column is supposed to be a column of single words.
+
+        Parameters
+        ----------
+        no_stopwords
+            If true, stopwords will be mapped to None. If false, stopwords will be stemmed.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
         """
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_snowball_stem",
+            args=[pl.lit(no_stopwords, dtype=pl.Boolean), pl.lit(parallel, dtype=pl.Boolean)],
             is_elementwise=True,
         )

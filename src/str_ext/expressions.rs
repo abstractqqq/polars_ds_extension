@@ -3,10 +3,7 @@ use crate::str_ext::consts::EN_STOPWORDS;
 use hashbrown::HashSet;
 use polars::chunked_array::ops::arity::binary_elementwise;
 use polars::prelude::*;
-use polars_core::utils::{
-    arrow::compute::comparison::binary,
-    rayon::prelude::{IndexedParallelIterator, ParallelIterator},
-};
+use polars_core::utils::rayon::prelude::{IndexedParallelIterator, ParallelIterator};
 use pyo3_polars::derive::polars_expr;
 use std::str;
 
@@ -98,11 +95,12 @@ fn optional_levenshtein(op_w1: Option<&str>, op_w2: Option<&str>) -> Option<u32>
 
 #[polars_expr(output_type=UInt32)]
 fn pl_levenshtein_dist(inputs: &[Series]) -> PolarsResult<Series> {
-    if inputs.len() > 3 {
-        return Err(PolarsError::InvalidOperation(
-            "Levenshtein distance takes in only two columns and optionally a parallel flag.".into(),
-        ));
-    }
+    
+    // if inputs.len() > 3 {
+    //     return Err(PolarsError::InvalidOperation(
+    //         "Levenshtein distance takes in only two columns and optionally a parallel flag.".into(),
+    //     ));
+    // }
     let ca1 = inputs[0].utf8()?;
     let ca2 = inputs[1].utf8()?;
     let parallel = inputs[2].bool()?;
@@ -133,7 +131,7 @@ fn pl_levenshtein_dist(inputs: &[Series]) -> PolarsResult<Series> {
         };
         Ok(out.into_series())
     } else {
-        Err(PolarsError::ComputeError(
+        Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length.".into(),
         ))
     }
@@ -228,7 +226,7 @@ fn pl_str_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
         };
         Ok(out.into_series())
     } else {
-        Err(PolarsError::ComputeError(
+        Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length.".into(),
         ))
     }
@@ -275,7 +273,7 @@ fn pl_hamming_dist(inputs: &[Series]) -> PolarsResult<Series> {
         };
         Ok(out.into_series())
     } else {
-        Err(PolarsError::ComputeError(
+        Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length.".into(),
         ))
     }

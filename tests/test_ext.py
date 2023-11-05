@@ -87,6 +87,45 @@ def test_lcm(df, other, res):
         res
     )
 
+@pytest.mark.parametrize(
+    "df, res",
+    [
+        (
+            pl.DataFrame({
+                "y":[1,0,1,1,1,0,0,1],
+                "a": ["a", "b", "c", "a", "b", "c", "a", "a"]
+            }),
+            pl.DataFrame({
+                "y": [0.6277411625893767]
+            })
+        ),
+        (
+            pl.DataFrame({
+                "y":[1] * 8,
+                "a": ["a", "b", "c", "a", "b", "c", "a", "a"]
+            }),
+            pl.DataFrame({
+                "y": [-0.0]
+            })
+        ),
+    ]
+)
+def test_cond_entropy(df, res):
+    
+    assert_frame_equal(
+        df.select(
+            pl.col("y").num_ext.cond_entropy(pl.col("a"))
+        ),
+        res
+    )
+
+    assert_frame_equal(
+        df.lazy().select(
+            pl.col("y").num_ext.cond_entropy(pl.col("a"))
+        ).collect(),
+        res
+    )
+
 
 @pytest.mark.parametrize(
     "df, res",
@@ -114,6 +153,13 @@ def test_snowball(df, res):
     assert_frame_equal(
         df.select(
             pl.col("a").str_ext.snowball()
+        ),
+        res
+    )
+
+    assert_frame_equal(
+        df.select(
+            pl.col("a").str_ext.snowball(parallel=True)
         ),
         res
     )
@@ -148,6 +194,12 @@ def test_hamming_dist(df, res):
         , res
     )
     assert_frame_equal(
+        df.select(
+            pl.col("a").str_ext.hamming_dist(pl.col("b"), parallel=True)
+        )
+        , res
+    )
+    assert_frame_equal(
         df.lazy().select(
             pl.col("a").str_ext.hamming_dist(pl.col("b"))
         ).collect()
@@ -173,6 +225,13 @@ def test_levenshtein_dist(df, res):
     assert_frame_equal(
         df.select(
             pl.col("a").str_ext.levenshtein_dist(pl.col("b"))
+        )
+        , res
+    )
+
+    assert_frame_equal(
+        df.select(
+            pl.col("a").str_ext.levenshtein_dist(pl.col("b"), parallel=True)
         )
         , res
     )
@@ -222,5 +281,17 @@ def test_str_jaccard(df, size, res):
         df.select(
             pl.col("a").str_ext.str_jaccard(pl.col("b"), substr_size=size)
         )
+        , res
+    )
+    assert_frame_equal(
+        df.select(
+            pl.col("a").str_ext.str_jaccard(pl.col("b"), substr_size=size, parallel=True)
+        )
+        , res
+    )
+    assert_frame_equal(
+        df.lazy().select(
+            pl.col("a").str_ext.str_jaccard(pl.col("b"), substr_size=size, parallel=True)
+        ).collect()
         , res
     )
