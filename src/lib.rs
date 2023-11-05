@@ -1,6 +1,6 @@
 mod num_ext;
 mod str_ext;
-use pyo3::{pymodule, Python, types::PyModule, PyResult};
+use pyo3::{pymodule, types::PyModule, PyResult, Python};
 
 #[cfg(target_os = "linux")]
 use jemallocator::Jemalloc;
@@ -10,7 +10,7 @@ use jemallocator::Jemalloc;
 static ALLOC: Jemalloc = Jemalloc;
 
 #[pymodule]
-#[pyo3(name="_polars_ds")]
+#[pyo3(name = "_polars_ds")]
 fn _polars_ds(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     Ok(())
 }

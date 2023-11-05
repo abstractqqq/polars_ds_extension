@@ -5,8 +5,8 @@
 #![allow(unused_mut)]
 #![allow(unused_parens)]
 #![allow(unused_variables)]
-use crate::str_ext::snowball::SnowballEnv;
 use crate::str_ext::snowball::Among;
+use crate::str_ext::snowball::SnowballEnv;
 
 static A_0: &'static [Among<Context>; 3] = &[
     Among("arsen", -1, -1, None),
@@ -114,10 +114,7 @@ static A_7: &'static [Among<Context>; 18] = &[
     Among("ement", 16, 1, None),
 ];
 
-static A_8: &'static [Among<Context>; 2] = &[
-    Among("e", -1, 1, None),
-    Among("l", -1, 2, None),
-];
+static A_8: &'static [Among<Context>; 2] = &[Among("e", -1, 1, None), Among("l", -1, 2, None)];
 
 static A_9: &'static [Among<Context>; 8] = &[
     Among("succeed", -1, -1, None),
@@ -195,7 +192,7 @@ fn r_prelude(env: &mut SnowballEnv, context: &mut Context) -> bool {
     env.cursor = v_2;
     let v_3 = env.cursor;
     'lab2: loop {
-        'replab3: loop{
+        'replab3: loop {
             let v_4 = env.cursor;
             'lab4: for _ in 0..1 {
                 'golab5: loop {
@@ -336,14 +333,14 @@ fn r_shortv(env: &mut SnowballEnv, context: &mut Context) -> bool {
 }
 
 fn r_R1(env: &mut SnowballEnv, context: &mut Context) -> bool {
-    if !(context.i_p1 <= env.cursor){
+    if !(context.i_p1 <= env.cursor) {
         return false;
     }
     return true;
 }
 
 fn r_R2(env: &mut SnowballEnv, context: &mut Context) -> bool {
-    if !(context.i_p2 <= env.cursor){
+    if !(context.i_p2 <= env.cursor) {
         return false;
     }
     return true;
@@ -803,7 +800,7 @@ fn r_postlude(env: &mut SnowballEnv, context: &mut Context) -> bool {
     if !context.b_Y_found {
         return false;
     }
-    'replab0: loop{
+    'replab0: loop {
         let v_1 = env.cursor;
         'lab1: for _ in 0..1 {
             'golab2: loop {
