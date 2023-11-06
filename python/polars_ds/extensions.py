@@ -200,7 +200,7 @@ class NumExt:
         Computes L^infinity loss between this and the other expression
 
         Parameters
-        ----------
+        ---------- 
         other
             Either an int or a Polars expression
         normalize
@@ -312,6 +312,22 @@ class NumExt:
             returns_scalar=True
         )
 
+    def fft(self, forward:bool=True) -> pl.Expr:
+        """
+        Computes the DST transform of input series using FFT Algorithm. A series of equal length will
+        be returned, with elements being the real and complex part of the transformed values. 
+
+        Parameters
+        ----------
+        forward
+            If true, compute DFT. If false, compute inverse DFT.
+        """
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_fft",
+            args=[pl.lit(forward, dtype=pl.Boolean)],
+            is_elementwise=True,
+        )
 
 @pl.api.register_expr_namespace("str_ext")
 class StrExt:

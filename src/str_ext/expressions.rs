@@ -1,9 +1,11 @@
 use super::snowball::{algorithms, SnowballEnv};
 use crate::str_ext::consts::EN_STOPWORDS;
 use hashbrown::HashSet;
-use polars::chunked_array::ops::arity::binary_elementwise;
 use polars::prelude::*;
-use polars_core::utils::rayon::prelude::{IndexedParallelIterator, ParallelIterator};
+use polars_core::{
+    prelude::arity::binary_elementwise_values,
+    utils::rayon::prelude::{IndexedParallelIterator, ParallelIterator},
+};
 use pyo3_polars::derive::polars_expr;
 use std::str;
 
@@ -37,7 +39,6 @@ pub fn hamming_dist(s1: &str, s2: &str) -> Option<u32> {
     )
 }
 
-#[inline]
 pub fn levenshtein_dist(s1: &str, s2: &str) -> u32 {
     //
     // https://en.wikipedia.org/wiki/Wagner%E2%80%93Fischer_algorithm
@@ -80,6 +81,7 @@ fn pl_snowball_stem(inputs: &[Series]) -> PolarsResult<Series> {
             .map(|op_s| snowball_stem(op_s, no_stop))
             .collect()
     } else {
+        // have to do apply_generic, not apply_values because snowball may return None for string inputs.
         ca.apply_generic(|op_s| snowball_stem(op_s, no_stop))
     };
     Ok(out.into_series())
@@ -95,29 +97,23 @@ fn optional_levenshtein(op_w1: Option<&str>, op_w2: Option<&str>) -> Option<u32>
 
 #[polars_expr(output_type=UInt32)]
 fn pl_levenshtein_dist(inputs: &[Series]) -> PolarsResult<Series> {
-    
-    // if inputs.len() > 3 {
-    //     return Err(PolarsError::InvalidOperation(
-    //         "Levenshtein distance takes in only two columns and optionally a parallel flag.".into(),
-    //     ));
-    // }
     let ca1 = inputs[0].utf8()?;
     let ca2 = inputs[1].utf8()?;
     let parallel = inputs[2].bool()?;
     let parallel = parallel.get(0).unwrap();
     if ca2.len() == 1 {
         let r = ca2.get(0).unwrap();
-        let op = |op_s| {
-            if let Some(s) = op_s {
-                Some(levenshtein_dist(s, r))
-            } else {
-                None
-            }
-        };
         let out: UInt32Chunked = if parallel {
+            let op = |op_s| {
+                if let Some(s) = op_s {
+                    Some(levenshtein_dist(s, r))
+                } else {
+                    None
+                }
+            };
             ca1.par_iter().map(|op_s| op(op_s)).collect()
         } else {
-            ca1.apply_generic(op)
+            ca1.apply_nonnull_values_generic(DataType::UInt32, |x| levenshtein_dist(x, r))
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -127,7 +123,7 @@ fn pl_levenshtein_dist(inputs: &[Series]) -> PolarsResult<Series> {
                 .map(|(op_w1, op_w2)| optional_levenshtein(op_w1, op_w2))
                 .collect()
         } else {
-            binary_elementwise(ca1, ca2, optional_levenshtein)
+            binary_elementwise_values(ca1, ca2, levenshtein_dist)
         };
         Ok(out.into_series())
     } else {
@@ -137,30 +133,34 @@ fn pl_levenshtein_dist(inputs: &[Series]) -> PolarsResult<Series> {
     }
 }
 
+fn str_jaccard(w1: &str, w2: &str, n: usize) -> f64 {
+    let w1_len = w1.len();
+    let w2_len = w2.len();
+    let s1: HashSet<&str> = if w1_len < n {
+        HashSet::from_iter([w1])
+    } else {
+        HashSet::from_iter(
+            w1.as_bytes()
+                .windows(n)
+                .map(|sl| str::from_utf8(sl).unwrap()),
+        )
+    };
+    let s2: HashSet<&str> = if w2_len < n {
+        HashSet::from_iter([w2])
+    } else {
+        HashSet::from_iter(
+            w2.as_bytes()
+                .windows(n)
+                .map(|sl| str::from_utf8(sl).unwrap()),
+        )
+    };
+    let intersection = s1.intersection(&s2).count();
+    (intersection as f64) / ((s1.len() + s2.len() - intersection) as f64)
+}
+
 fn optional_str_jaccard(op_w1: Option<&str>, op_w2: Option<&str>, n: usize) -> Option<f64> {
     if let (Some(w1), Some(w2)) = (op_w1, op_w2) {
-        let w1_len = w1.len();
-        let w2_len = w2.len();
-        let s1: HashSet<&str> = if w1_len < n {
-            HashSet::from_iter([w1])
-        } else {
-            HashSet::from_iter(
-                w1.as_bytes()
-                    .windows(n)
-                    .map(|sl| str::from_utf8(sl).unwrap()),
-            )
-        };
-        let s2: HashSet<&str> = if w2_len < n {
-            HashSet::from_iter([w2])
-        } else {
-            HashSet::from_iter(
-                w2.as_bytes()
-                    .windows(n)
-                    .map(|sl| str::from_utf8(sl).unwrap()),
-            )
-        };
-        let intersection = s1.intersection(&s2).count();
-        Some((intersection as f64) / ((s1.len() + s2.len() - intersection) as f64))
+        Some(str_jaccard(w1, w2, n))
     } else {
         None
     }
@@ -220,9 +220,7 @@ fn pl_str_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
                 .map(|(op_w1, op_w2)| optional_str_jaccard(op_w1, op_w2, n))
                 .collect()
         } else {
-            binary_elementwise(ca1, ca2, |op_w1: Option<&str>, op_w2: Option<&str>| {
-                optional_str_jaccard(op_w1, op_w2, n)
-            })
+            binary_elementwise_values(ca1, ca2, |x, y| str_jaccard(x, y, n))
         };
         Ok(out.into_series())
     } else {
@@ -269,7 +267,7 @@ fn pl_hamming_dist(inputs: &[Series]) -> PolarsResult<Series> {
                 .map(|(op_w1, op_w2)| optional_hamming(op_w1, op_w2))
                 .collect()
         } else {
-            binary_elementwise(ca1, ca2, optional_hamming)
+            binary_elementwise_values(ca1, ca2, hamming_dist)
         };
         Ok(out.into_series())
     } else {

@@ -3,25 +3,23 @@ use faer::{IntoFaer, IntoNdarray};
 // use faer::polars::{polars_to_faer_f64, Frame};
 use ndarray::{Array1, Array2};
 use num;
-use polars::chunked_array::ops::arity::binary_elementwise;
 use polars::prelude::*;
-use polars_lazy::dsl::*;
+use polars_core::prelude::arity::binary_elementwise_values;
 use pyo3_polars::derive::polars_expr;
+use rustfft::FftPlanner;
 
-fn optional_gcd(op_a: Option<i64>, op_b: Option<i64>) -> Option<i64> {
-    if let (Some(a), Some(b)) = (op_a, op_b) {
-        Some(num::integer::gcd(a, b))
-    } else {
-        None
-    }
+fn complex_output(_: &[Field]) -> PolarsResult<Field> {
+    let real = Field::new("re", DataType::Float64);
+    let complex = Field::new("im", DataType::Float64);
+    let v: Vec<Field> = vec![real, complex];
+    Ok(Field::new("complex", DataType::Struct(v)))
 }
 
-fn optional_lcm(op_a: Option<i64>, op_b: Option<i64>) -> Option<i64> {
-    if let (Some(a), Some(b)) = (op_a, op_b) {
-        Some(num::integer::lcm(a, b))
-    } else {
-        None
-    }
+fn list_float_output(_: &[Field]) -> PolarsResult<Field> {
+    Ok(Field::new(
+        "list_float",
+        DataType::List(Box::new(DataType::Float64)),
+    ))
 }
 
 #[polars_expr(output_type=Int64)]
@@ -30,16 +28,10 @@ fn pl_gcd(inputs: &[Series]) -> PolarsResult<Series> {
     let ca2 = inputs[1].i64()?;
     if ca2.len() == 1 {
         let b = ca2.get(0).unwrap();
-        let out: Int64Chunked = ca1.apply_generic(|op_a: Option<i64>| {
-            if let Some(a) = op_a {
-                Some(num::integer::gcd(a, b))
-            } else {
-                None
-            }
-        });
+        let out: Int64Chunked = ca1.apply_values(|a| num::integer::gcd(a, b));
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
-        let out: Int64Chunked = binary_elementwise(ca1, ca2, optional_gcd);
+        let out: Int64Chunked = binary_elementwise_values(ca1, ca2, num::integer::gcd);
         Ok(out.into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
@@ -54,16 +46,10 @@ fn pl_lcm(inputs: &[Series]) -> PolarsResult<Series> {
     let ca2 = inputs[1].i64()?;
     if ca2.len() == 1 {
         let b = ca2.get(0).unwrap();
-        let out: Int64Chunked = ca1.apply_generic(|op_a: Option<i64>| {
-            if let Some(a) = op_a {
-                Some(num::integer::lcm(a, b))
-            } else {
-                None
-            }
-        });
+        let out: Int64Chunked = ca1.apply_values(|a| num::integer::lcm(a, b));
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
-        let out: Int64Chunked = binary_elementwise(ca1, ca2, optional_lcm);
+        let out: Int64Chunked = binary_elementwise_values(ca1, ca2, num::integer::lcm);
         Ok(out.into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
@@ -79,31 +65,21 @@ fn faer_lstsq_qr(x: MatRef<f64>, y: MatRef<f64>) -> Result<Array2<f64>, String> 
     Ok(betas.as_ref().into_ndarray().to_owned())
 }
 
-// Closed form.
-fn faer_lstsq_cf(x: MatRef<f64>, y: MatRef<f64>) -> Result<Array2<f64>, String> {
-    let xt = x.transpose();
-    let xtx = xt * x;
-    let decomp = xtx.cholesky(Side::Lower); // .unwrap();
-    if let Ok(cholesky) = decomp {
-        let xtx_inv = cholesky.inverse();
-        let betas = xtx_inv * xt * y;
-        Ok(betas.as_ref().into_ndarray().to_owned())
-    } else {
-        Err(
-            "Linear algebra error. Likely cause: column duplication or extremely high correlation."
-                .to_owned(),
-        )
-    }
-}
+// // Closed form. Likely don't need
+// fn faer_lstsq_cf(x: MatRef<f64>, y: MatRef<f64>) -> Result<Array2<f64>, String> {
+//     let xt = x.transpose();
+//     let xtx = xt * &x;
+//     let decomp = xtx.cholesky(Side::Lower);
+//     if let Ok(cholesky) = decomp {
+//         let xtx_inv = cholesky.inverse();
+//         let betas = xtx_inv * xt * y;
+//         Ok(betas.as_ref().into_ndarray().to_owned())
+//     } else {
+//         Err("Linear algebra error, likely caused by linear dependency".to_owned())
+//     }
+// }
 
-fn lstsq_beta_output(_: &[Field]) -> PolarsResult<Field> {
-    Ok(Field::new(
-        "betas",
-        DataType::List(Box::new(DataType::Float64)),
-    ))
-}
-
-#[polars_expr(output_type_func=lstsq_beta_output)]
+#[polars_expr(output_type_func=list_float_output)]
 fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
     let nrows = inputs[0].len();
     let add_bias = inputs[1].bool()?;
@@ -114,14 +90,17 @@ fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
     let y = y.view().into_faer();
 
     // X, Series is ref counted, so cheap
-    let mut vec_series: Vec<Series> = inputs[2..]
-        .iter()
-        .enumerate()
-        .map(|(i, s)| 
-            s.clone().cast(&DataType::Float64)
-            .unwrap().with_name(&i.to_string())
-        )
-        .collect();
+    let mut vec_series: Vec<Series> = Vec::with_capacity(inputs[2..].len() + 1);
+    for (i, s) in inputs[2..].iter().enumerate() {
+        let t: Series = match s.dtype() {
+            DataType::Float64 => s.clone().with_name(&i.to_string()),
+            _ => {
+                let t = s.clone().cast(&DataType::Float64)?;
+                t.with_name(&i.to_string())
+            }
+        };
+        vec_series.push(t);
+    }
     if add_bias {
         let one = Series::new_empty("cst", &DataType::Float64);
         vec_series.push(one.extend_constant(polars::prelude::AnyValue::Float64(1.), nrows)?)
@@ -158,24 +137,79 @@ fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=Float64)]
 fn pl_conditional_entropy(inputs: &[Series]) -> PolarsResult<Series> {
-
     let x = inputs[0].name();
     let y = inputs[1].name();
     let out_name = format!("H({x}|{y})");
     let out_name = out_name.as_str();
 
     let df = DataFrame::new(inputs.to_vec())?;
-    let mut out = df.lazy().group_by([col(x), col(y)])
+    let mut out = df
+        .lazy()
+        .group_by([col(x), col(y)])
         .agg([count()])
         .with_columns([
-            (col("count").sum().cast(DataType::Float64).over([col(y)]) / col("count").sum().cast(DataType::Float64)).alias("p(y)"),
-            (col("count").cast(DataType::Float64) / col("count").sum().cast(DataType::Float64)).alias("p(x,y)")
-        ]).select([
-            (lit(-1.0_f64) * (
-                (col("p(x,y)") / col("p(y)")).log(std::f64::consts::E).dot(col("p(x,y)")))
-            ).alias(out_name)
-        ]).collect()?;
+            (col("count").sum().cast(DataType::Float64).over([col(y)])
+                / col("count").sum().cast(DataType::Float64))
+            .alias("p(y)"),
+            (col("count").cast(DataType::Float64) / col("count").sum().cast(DataType::Float64))
+                .alias("p(x,y)"),
+        ])
+        .select([(lit(-1.0_f64)
+            * ((col("p(x,y)") / col("p(y)"))
+                .log(std::f64::consts::E)
+                .dot(col("p(x,y)"))))
+        .alias(out_name)])
+        .collect()?;
 
     out.drop_in_place(out_name)
+}
 
+#[polars_expr(output_type_func=complex_output)]
+fn pl_fft(inputs: &[Series]) -> PolarsResult<Series> {
+    let s = inputs[0].clone();
+    if s.null_count() > 0 {
+        return Err(PolarsError::ComputeError(
+            "FFT Input cannot have null values.".into(),
+        ));
+    }
+    let mut buf: Vec<num::complex::Complex64> = match s.dtype() {
+        DataType::Float64 => s.f64()?.into_no_null_iter().map(|x| x.into()).collect(),
+        DataType::Float32 => {
+            let temp = s.cast(&DataType::Float64)?;
+            temp.f64()?.into_no_null_iter().map(|x| x.into()).collect()
+        }
+        _ => {
+            return Err(PolarsError::ComputeError(
+                "FFT Input must be floats.".into(),
+            ))
+        }
+    };
+
+    let name = s.name();
+    let forward = inputs[1].bool()?;
+    let forward = forward.get(0).unwrap();
+
+    let mut planner: FftPlanner<f64> = FftPlanner::new();
+    let fft = if forward {
+        planner.plan_fft_forward(buf.len())
+    } else {
+        planner.plan_fft_inverse(buf.len())
+    };
+    fft.process(&mut buf);
+
+    let mut re: Vec<f64> = Vec::with_capacity(buf.len());
+    let mut im: Vec<f64> = Vec::with_capacity(buf.len());
+    for c in buf {
+        re.push(c.re);
+        im.push(c.im);
+    }
+
+    let fft_struct = df!(
+        "re" => re,
+        "im" => im,
+    )?
+    .into_struct(name)
+    .into_series();
+
+    Ok(fft_struct)
 }
