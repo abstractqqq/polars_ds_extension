@@ -1,4 +1,4 @@
-use faer::{prelude::*, MatRef, Side};
+use faer::{prelude::*, MatRef};
 use faer::{IntoFaer, IntoNdarray};
 // use faer::polars::{polars_to_faer_f64, Frame};
 use ndarray::{Array1, Array2};

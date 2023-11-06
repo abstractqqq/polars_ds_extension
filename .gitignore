@@ -1,4 +1,5 @@
-tests/*.ipynb
+test.ipynb
+.ipynb_checkpoints
 
 /target
 
@@ -72,7 +73,6 @@ docs/_build/
 
 # Pyenv
 .python-version
-
 
 # Polars Extension
 .so
