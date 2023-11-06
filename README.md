@@ -1,6 +1,6 @@
 # Polars Extension for General Data Science Use
 
-**Currently not published. We will publish once CI is built. Feel free to submit feature requests in the issues section of the repo.**
+**Currently in Alpha. Feel free to submit feature requests in the issues section of the repo.**
 
 The goal for this package is to provide data scientists/analysts/engineers/quants more tools to manipulate, transform, and make sense of data, without the need to leave DataFrame land (aka Wonderland).
 
