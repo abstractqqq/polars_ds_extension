@@ -8,7 +8,7 @@ Performance is a focus, but sometimes it's impossible to beat NumPy/SciPy perfor
 
 However, there are greater benefits for staying in DataFrame land:
 
-1. Works with Polars expression engine and more expressions can be executed in parallel. E.g. running fft for 1 series may be slower than NumPy, but if you are running fft for 5 series simulatneously, the story changes completely.
+1. Works with Polars expression engine and more expressions can be executed in parallel. E.g. running fft for 1 series may be slower than NumPy, but if you are running some fft, together with some other non-trivial operations, the story changes completely.
 2. Works in group_by context. E.g. run multiple linear regressions in parallel in a group_by context.
 3. Staying in DataFrame land typically keeps code cleaner and less confusing.
 
