@@ -123,7 +123,7 @@ fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
                             betas.len(),
                             DataType::Float64,
                         );
-
+                    
                     builder.append_slice(betas.as_slice().unwrap());
                     let out = builder.finish();
                     Ok(out.into_series())
