@@ -13,8 +13,6 @@ crate-type = ["cdylib"]
 pyo3 = {version = "0.20", features = ["extension-module"]}
 pyo3-polars = {version = "0.8", features = ["derive"]}
 polars = {version = "0.34", features = ["performant", "chunked_ids", "lazy", "dtype-struct", "ndarray", "log"]}
-polars-core = "0.34"
-polars-lazy = "0.34"
 num = "0.4.1"
 faer = {version = "0.14.1", features = ["ndarray"]}
 ndarray = "0.15.6"
