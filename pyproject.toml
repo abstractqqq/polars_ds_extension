@@ -17,6 +17,7 @@ classifiers = [
 version = "0.1.0"
 authors = [
     {name = "Tianren Qin", email = "tq9695@gmail.com"},
+    {name = "Nelson Griffiths", email = "nelsongriffiths123@gmail.com"}
 ]
 dependencies = [
     "polars >= 0.19.12",

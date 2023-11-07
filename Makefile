@@ -11,7 +11,7 @@ install: venv
 dev-release: venv
 	unset CONDA_PREFIX && \
 	source .venv/bin/activate && maturin develop --release -m Cargo.toml
-	.venv/bin/pip install .
+	.venv/bin/pip install -e .
 
 pre-commit: venv
 	cargo fmt --all --manifest-path Cargo.toml && cargo clippy --all-features --manifest-path Cargo.toml
