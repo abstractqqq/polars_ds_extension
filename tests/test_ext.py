@@ -117,7 +117,7 @@ def test_lcm(df, other, res):
 def test_powi(df, p):
     # The reason I picked 1 to 5001 is to avoid 0 
     # In polars 0^0 = 1, which is wrong. 
-    # In polars-ds, this will be mapped to NaN. (In the case when the exponent is an expression)
+    # In polars-ds, this will be mapped to NaN.
     assert_frame_equal(
         df.select(
             pl.col("a").num_ext.powi(p)

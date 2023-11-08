@@ -67,9 +67,8 @@ fn pl_lcm(inputs: &[Series]) -> PolarsResult<Series> {
 
 fn fast_exp_single(s:Series, n:i32) -> Series {
 
-    let mut ss = s.cast(&DataType::Float64).unwrap();
     if n == 0 {
-        let ss = ss.f64().unwrap();
+        let ss = s.f64().unwrap();
         let out:Float64Chunked = ss.apply_values(|x| {
             if x == 0. {
                 f64::NAN
@@ -85,6 +84,7 @@ fn fast_exp_single(s:Series, n:i32) -> Series {
         return fast_exp_single(ss, -n)
     }
 
+    let mut ss = s.clone();
     let mut m = n;
     let mut y = Series::from_vec("", vec![1_f64; s.len()]);
     while m > 1 {
@@ -96,7 +96,7 @@ fn fast_exp_single(s:Series, n:i32) -> Series {
         m = m >> 1;
     }
     ss * y
-}
+ }
 
 #[inline]
 fn fast_exp_pairwise(x:f64, n:i32) -> f64 {
@@ -118,17 +118,18 @@ fn fast_exp_pairwise(x:f64, n:i32) -> f64 {
     }
 
     let mut m = n;
-    let mut z = x;
+    let mut x = x;
     let mut y:f64 = 1.0;
     while m > 1 {
         if m % 2 == 1 {
             y *= x;
             m -= 1;
         }
-        z *= z;
-        m = m >> 1;
+
+        x *= x;
+        m >>= 1;
     } 
-    z * y
+    x * y
 }
 
 
@@ -140,32 +141,29 @@ fn pl_fast_exp(inputs: &[Series]) -> PolarsResult<Series> {
     if exp.len() == 1 {
         let n = exp.get(0).unwrap();
         if s.dtype().is_numeric() {
-            Ok(fast_exp_single(s, n))
+            let ss = s.cast(&DataType::Float64)?;
+            Ok(fast_exp_single(ss, n))
         } else {
             Err(PolarsError::ComputeError(
                 "Input column type must be numeric.".into(),
             ))
         }
     } else if s.len() == exp.len() {
-        match s.dtype() {
-            DataType::UInt8 | DataType::UInt16 | DataType::UInt32 | DataType::UInt64
-            | DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64
-            | DataType::Float32 => {
-                let s = s.cast(&DataType::Float64)?;
-                let s = s.f64()?;
-                let out:Float64Chunked = binary_elementwise_values(s, exp, fast_exp_pairwise);
+        if s.dtype().is_numeric() {
+            if s.dtype() == &DataType::Float64 {
+                let ca = s.f64()?;
+                let out:Float64Chunked = binary_elementwise_values(ca, exp, fast_exp_pairwise);
                 Ok(out.into_series())
-            },
-            DataType::Float64 => {
-                let s = s.f64()?;
-                let out:Float64Chunked = binary_elementwise_values(s, exp, fast_exp_pairwise);
+            } else {
+                let t = s.cast(&DataType::Float64)?;
+                let ca = t.f64()?;
+                let out:Float64Chunked = binary_elementwise_values(ca, exp, fast_exp_pairwise);
                 Ok(out.into_series())
-            },
-            _ => {
-                Err(PolarsError::ComputeError(
-                    "Input column type must be numeric.".into(),
-                ))
             }
+        } else {
+            Err(PolarsError::ComputeError(
+                "Input column type must be numeric.".into(),
+            ))
         }
     } else {
         Err(PolarsError::ShapeMismatch(
