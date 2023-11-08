@@ -3,10 +3,16 @@ use faer::{IntoFaer, IntoNdarray};
 // use faer::polars::{polars_to_faer_f64, Frame};
 use ndarray::{Array1, Array2};
 use num;
+use num::traits::Inv;
 use polars::prelude::*;
 use polars_core::prelude::arity::binary_elementwise_values;
 use pyo3_polars::derive::polars_expr;
 use rustfft::FftPlanner;
+
+// fn numeric_output(input_fields: &[Field]) -> PolarsResult<Field> {
+//     let field = input_fields[0].clone();
+//     Ok(field)
+// }
 
 fn complex_output(_: &[Field]) -> PolarsResult<Field> {
     let real = Field::new("re", DataType::Float64);
@@ -58,6 +64,117 @@ fn pl_lcm(inputs: &[Series]) -> PolarsResult<Series> {
     }
 }
 
+
+fn fast_exp_single(s:Series, n:i32) -> Series {
+
+    let mut ss = s.cast(&DataType::Float64).unwrap();
+    if n == 0 {
+        let ss = ss.f64().unwrap();
+        let out:Float64Chunked = ss.apply_values(|x| {
+            if x == 0. {
+                f64::NAN
+            } else if x.is_infinite() | x.is_nan() {
+                x
+            } else {
+                1.0
+            }
+        });
+        return out.into_series()
+    } else if n < 0 {
+        let ss = 1.div(&s);
+        return fast_exp_single(ss, -n)
+    }
+
+    let mut m = n;
+    let mut y = Series::from_vec("", vec![1_f64; s.len()]);
+    while m > 1 {
+        if m % 2 == 1 {
+            y = &y * &ss;
+            m -= 1;
+        }
+        ss = &ss * &ss;
+        m = m >> 1;
+    }
+    ss * y
+}
+
+#[inline]
+fn fast_exp_pairwise(x:f64, n:i32) -> f64 {
+
+    // The recursive impl is slow when we run lots and lots of recursions at scale.
+    // Use loop implementation.
+
+    if x.is_nan() | x.is_infinite() {
+        return x
+    }
+    if n == 0 {
+        if x == 0. { // 0^0 is NaN
+            return f64::NAN
+        } else {
+            return 1.
+        }
+    } else if n < 0 {
+        return fast_exp_pairwise(x.inv(), -n)
+    }
+
+    let mut m = n;
+    let mut z = x;
+    let mut y:f64 = 1.0;
+    while m > 1 {
+        if m % 2 == 1 {
+            y *= x;
+            m -= 1;
+        }
+        z *= z;
+        m = m >> 1;
+    } 
+    z * y
+}
+
+
+#[polars_expr(output_type=Float64)]
+fn pl_fast_exp(inputs: &[Series]) -> PolarsResult<Series> {
+
+    let s = inputs[0].clone();
+    let exp = inputs[1].i32()?;
+    if exp.len() == 1 {
+        let n = exp.get(0).unwrap();
+        if s.dtype().is_numeric() {
+            Ok(fast_exp_single(s, n))
+        } else {
+            Err(PolarsError::ComputeError(
+                "Input column type must be numeric.".into(),
+            ))
+        }
+    } else if s.len() == exp.len() {
+        match s.dtype() {
+            DataType::UInt8 | DataType::UInt16 | DataType::UInt32 | DataType::UInt64
+            | DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64
+            | DataType::Float32 => {
+                let s = s.cast(&DataType::Float64)?;
+                let s = s.f64()?;
+                let out:Float64Chunked = binary_elementwise_values(s, exp, fast_exp_pairwise);
+                Ok(out.into_series())
+            },
+            DataType::Float64 => {
+                let s = s.f64()?;
+                let out:Float64Chunked = binary_elementwise_values(s, exp, fast_exp_pairwise);
+                Ok(out.into_series())
+            },
+            _ => {
+                Err(PolarsError::ComputeError(
+                    "Input column type must be numeric.".into(),
+                ))
+            }
+        }
+    } else {
+        Err(PolarsError::ShapeMismatch(
+            "Inputs must have the same length.".into(),
+        ))
+    }
+
+}
+
 // Use QR to solve
 fn faer_lstsq_qr(x: MatRef<f64>, y: MatRef<f64>) -> Result<Array2<f64>, String> {
     let qr = x.qr();
@@ -85,7 +202,8 @@ fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
     let add_bias = inputs[1].bool()?;
     let add_bias: bool = add_bias.get(0).unwrap();
     // y
-    let y = inputs[0].f64()?;
+    let y = inputs[0].rechunk(); // if not contiguous, this will do work. Otherwise, just a clone
+    let y = y.f64()?;
     let y = y.to_ndarray()?.into_shape((nrows, 1)).unwrap();
     let y = y.view().into_faer();
 
@@ -93,9 +211,9 @@ fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
     let mut vec_series: Vec<Series> = Vec::with_capacity(inputs[2..].len() + 1);
     for (i, s) in inputs[2..].iter().enumerate() {
         let t: Series = match s.dtype() {
-            DataType::Float64 => s.clone().with_name(&i.to_string()),
+            DataType::Float64 => s.rechunk().with_name(&i.to_string()),
             _ => {
-                let t = s.clone().cast(&DataType::Float64)?;
+                let t = s.rechunk().cast(&DataType::Float64)?;
                 t.with_name(&i.to_string())
             }
         };

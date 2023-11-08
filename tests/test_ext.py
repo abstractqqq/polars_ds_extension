@@ -1,6 +1,7 @@
 import pytest
 import polars as pl
-from polars_ds.extensions import NumExt, StrExt  # noqa: F401
+import numpy as np
+from polars_ds import NumExt, StrExt  # noqa: F401
 from polars.testing import assert_frame_equal
 
 @pytest.mark.parametrize(
@@ -87,6 +88,46 @@ def test_lcm(df, other, res):
         res
     )
 
+
+@pytest.mark.parametrize(
+    "df, p",
+    [
+        (
+            pl.DataFrame({
+                "a": np.array(range(1, 5001)) / 1000,
+                "b": pl.Series(range(5000), dtype =  pl.Int32)
+            })
+            , pl.col("b")
+        ),
+        (
+            pl.DataFrame({
+                "a": np.array(range(1, 5001)) / 1000,
+                "b": pl.Series(range(5000), dtype =  pl.Int32)
+            })
+            , 10
+        ), 
+        (
+            pl.DataFrame({
+                "a": [np.inf, np.nan]
+            })
+            , 2
+        ), 
+    ]
+)
+def test_powi(df, p):
+    # The reason I picked 1 to 5001 is to avoid 0 
+    # In polars 0^0 = 1, which is wrong. 
+    # In polars-ds, this will be mapped to NaN. (In the case when the exponent is an expression)
+    assert_frame_equal(
+        df.select(
+            pl.col("a").num_ext.powi(p)
+        ),
+        df.select(
+            pl.col("a").pow(p)
+        )
+    )
+
+
 @pytest.mark.parametrize(
     "df, res",
     [
@@ -111,7 +152,7 @@ def test_lcm(df, other, res):
     ]
 )
 def test_cond_entropy(df, res):
-    
+
     assert_frame_equal(
         df.select(
             pl.col("y").num_ext.cond_entropy(pl.col("a"))

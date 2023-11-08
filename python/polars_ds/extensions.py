@@ -248,6 +248,7 @@ class NumExt:
         denominator = 1.0 / (self._expr.abs() + other.abs())
         return (1.0 / self._expr.count()) * numerator.dot(denominator)
 
+
     def bce(self, actual: pl.Expr, normalize:bool=True) -> pl.Expr:
         """
         Treats self as the prediction. and computes Binary Cross Entropy loss.
@@ -264,6 +265,32 @@ class NumExt:
         if normalize:
             return -(out / self._expr.count())
         return -out
+
+
+    def powi(self, n:Union[int, pl.Expr]) -> pl.Expr:
+        """
+        Computes positive integer power using the fast exponentiation algorithm.
+
+        Parameters
+        ----------
+        n
+            A single positive int or an expression representing a column of type i32. If type is
+            not i32, an error will occur.
+        """
+        
+        if isinstance(n, int):
+            n_ = pl.lit(n, pl.Int32)
+        else:
+            n_ = n
+
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_fast_exp",
+            args=[n_],
+            is_elementwise=True,
+            returns_scalar=False
+        )
+
 
     def cond_entropy(self, other: pl.Expr) -> pl.Expr:
         """

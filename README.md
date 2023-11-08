@@ -18,6 +18,8 @@ df.group_by("dummy").agg(
 )
 ```
 
+To avoid `Chunked array is not contiguous` error, try to rechunk your dataframe.
+
 The package right now contains two extensions:
 
 ## Numeric Extension
