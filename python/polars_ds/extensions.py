@@ -292,6 +292,43 @@ class NumExt:
         )
 
 
+    def t_2samp(self, other: pl.Expr) -> pl.Expr:
+        """
+        Computes the t statistics for an Independent two-sample t-test.
+
+        Parameters
+        ----------
+        other
+            Either an int or a Polars expression
+        """
+        numerator = self._expr.mean() - other.mean()
+        denom = ((self._expr.var() + other.var()) / self._expr.count()).sqrt()
+        return numerator / denom
+
+
+    def welch_t(self, other: pl.Expr, return_df:bool = True) -> pl.Expr:
+        """
+        Computes the statistics for Welch's t-test.
+
+        Parameters
+        ----------
+        other
+            Either an int or a Polars expression
+        return_df
+            Whether to return the degree of freedom or not.
+        """
+        numerator = self._expr.mean() - other.mean()
+        s1:pl.Expr = self._expr.var()/self._expr.count()
+        s2:pl.Expr = other.var()/other.count()
+        denom = (s1 + s2).sqrt()
+        if return_df:
+            df_num = (s1 + s2).pow(2)
+            df_denom = s1.pow(2)/(self._expr.count()-1) + s2.pow(2)/(self._expr.count()-1)
+            return pl.concat_list(numerator/denom, df_num/df_denom)
+        else:
+            return numerator / denom
+
+
     def cond_entropy(self, other: pl.Expr) -> pl.Expr:
         """
         Computes the conditional entropy of self(y) given other. H(y|other).

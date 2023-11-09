@@ -87,22 +87,18 @@ fn fast_exp_single(s:Series, n:i32) -> Series {
     let mut ss = s.clone();
     let mut m = n;
     let mut y = Series::from_vec("", vec![1_f64; s.len()]);
-    while m > 1 {
+    while m > 0 {
         if m % 2 == 1 {
             y = &y * &ss;
-            m -= 1;
         }
         ss = &ss * &ss;
-        m = m >> 1;
+        m >>= 1;
     }
-    ss * y
+    y
  }
 
 #[inline]
 fn fast_exp_pairwise(x:f64, n:i32) -> f64 {
-
-    // The recursive impl is slow when we run lots and lots of recursions at scale.
-    // Use loop implementation.
 
     if x.is_nan() | x.is_infinite() {
         return x
@@ -120,16 +116,14 @@ fn fast_exp_pairwise(x:f64, n:i32) -> f64 {
     let mut m = n;
     let mut x = x;
     let mut y:f64 = 1.0;
-    while m > 1 {
+    while m > 0 {
         if m % 2 == 1 {
             y *= x;
-            m -= 1;
         }
-
         x *= x;
         m >>= 1;
     } 
-    x * y
+    y
 }
 
 
@@ -143,7 +137,7 @@ fn pl_fast_exp(inputs: &[Series]) -> PolarsResult<Series> {
         if s.dtype().is_numeric() {
             let ss = s.cast(&DataType::Float64)?;
             Ok(fast_exp_single(ss, n))
-        } else {
+        } else {  
             Err(PolarsError::ComputeError(
                 "Input column type must be numeric.".into(),
             ))

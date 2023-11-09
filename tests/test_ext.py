@@ -1,6 +1,6 @@
 import pytest
 import polars as pl
-import numpy as np
+import math
 from polars_ds import NumExt, StrExt  # noqa: F401
 from polars.testing import assert_frame_equal
 
@@ -94,28 +94,28 @@ def test_lcm(df, other, res):
     [
         (
             pl.DataFrame({
-                "a": np.array(range(1, 5001)) / 1000,
-                "b": pl.Series(range(5000), dtype =  pl.Int32)
+                "a": [0.1 + x/1000 for x in range(1000)],
+                "b": pl.Series(range(1000), dtype =  pl.Int32)
             })
             , pl.col("b")
         ),
         (
             pl.DataFrame({
-                "a": np.array(range(1, 5001)) / 1000,
-                "b": pl.Series(range(5000), dtype =  pl.Int32)
+                "a": [0.1 + x/1000 for x in range(1000)],
+                "b": pl.Series(range(1000), dtype =  pl.Int32)
             })
             , 10
-        ), 
+        ),
         (
             pl.DataFrame({
-                "a": [np.inf, np.nan]
+                "a": [math.inf, math.nan],
             })
             , 2
-        ), 
+        ),
     ]
 )
 def test_powi(df, p):
-    # The reason I picked 1 to 5001 is to avoid 0 
+    # The reason I avoided 0 is that
     # In polars 0^0 = 1, which is wrong. 
     # In polars-ds, this will be mapped to NaN.
     assert_frame_equal(
