@@ -33,6 +33,7 @@ module-name = "polars_ds._polars_ds"
 [project.optional-dependencies]
 dev = [
     "pytest >= 7.4.1",
+    "pre-commit"
 ]
 
 [tool.ruff]
