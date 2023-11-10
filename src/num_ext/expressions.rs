@@ -80,8 +80,7 @@ fn fast_exp_single(s:Series, n:i32) -> Series {
         });
         return out.into_series()
     } else if n < 0 {
-        let ss = 1.div(&s);
-        return fast_exp_single(ss, -n)
+        return fast_exp_single(1.div(&s), -n)
     }
 
     let mut ss = s.clone();
@@ -95,23 +94,11 @@ fn fast_exp_single(s:Series, n:i32) -> Series {
         m >>= 1;
     }
     y
+
  }
 
-#[inline]
-fn fast_exp_pairwise(x:f64, n:i32) -> f64 {
-
-    if x.is_nan() | x.is_infinite() {
-        return x
-    }
-    if n == 0 {
-        if x == 0. { // 0^0 is NaN
-            return f64::NAN
-        } else {
-            return 1.
-        }
-    } else if n < 0 {
-        return fast_exp_pairwise(x.inv(), -n)
-    }
+ #[inline]
+ fn _fast_exp_pairwise(x:f64, n:u32) -> f64 {
 
     let mut m = n;
     let mut x = x;
@@ -124,6 +111,23 @@ fn fast_exp_pairwise(x:f64, n:i32) -> f64 {
         m >>= 1;
     } 
     y
+
+}
+
+#[inline]
+fn fast_exp_pairwise(x:f64, n:i32) -> f64 {
+
+    if n == 0 {
+        if x == 0. { // 0^0 is NaN
+            return f64::NAN
+        } else {
+            return 1.
+        }
+    } else if n < 0 {
+        return _fast_exp_pairwise(x.inv(), (-n) as u32)
+    }
+    _fast_exp_pairwise(x, n as u32)
+
 }
 
 
@@ -132,6 +136,7 @@ fn pl_fast_exp(inputs: &[Series]) -> PolarsResult<Series> {
 
     let s = inputs[0].clone();
     let exp = inputs[1].i32()?;
+
     if exp.len() == 1 {
         let n = exp.get(0).unwrap();
         if s.dtype().is_numeric() {

@@ -269,7 +269,9 @@ class NumExt:
 
     def powi(self, n:Union[int, pl.Expr]) -> pl.Expr:
         """
-        Computes positive integer power using the fast exponentiation algorithm.
+        Computes positive integer power using the fast exponentiation algorithm. This is the
+        fastest when n is an integer input. When n is an expression, it would depend on values
+        in the expression.
 
         Parameters
         ----------
@@ -499,7 +501,12 @@ class StrExt:
             is_elementwise=True,
         )
 
-    def tokenize(self, pattern: str = r"(?u)\b\w\w+\b", stem: bool = False) -> pl.Expr:
+    def tokenize(
+        self 
+        , pattern: str = r"(?u)\b\w\w+\b"
+        , stem: bool = False
+        , unique_only: bool = False
+    ) -> pl.Expr:
         """
         Tokenize the string according to the pattern. This will only extract the words
         satisfying the pattern.
@@ -511,6 +518,9 @@ class StrExt:
         stem
             If true, then this will stem the words and keep only the unique ones. Stop words
             will be removed. (Common words like `he`, `she`, etc., will be removed.)
+        unique_only
+            If true, only return unique words from each record. Note that this will make the
+            word count for each document 1.
         """
         out = self._expr.str.extract_all(pattern)
         if stem:
@@ -523,7 +533,9 @@ class StrExt:
                     is_elementwise=True,
                 ) # True to no stop word, False to Parallel
                 .drop_nulls()
-            ).list.unique()
+            )
+        if unique_only:
+            out = out.list.unique()
         return out
 
     def snowball(
