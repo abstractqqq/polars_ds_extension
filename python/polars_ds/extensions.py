@@ -1,6 +1,7 @@
 import polars as pl
 from typing import Union
 from polars.utils.udfs import _get_shared_lib_location
+# from polars.type_aliases import IntoExpr
 
 lib = _get_shared_lib_location(__file__)
 
@@ -373,6 +374,27 @@ class NumExt:
             return pl.concat_list(numerator / denom, df_num / df_denom)
         else:
             return numerator / denom
+
+    def jaccard(self, other: pl.Expr, include_null: bool = False) -> pl.Expr:
+        """
+        Computes jaccard similarity between this column and the other. This will hash entire
+        columns and compares the two hashsets. Note: only integer/str columns can be compared.
+        Input expressions must represent columns of the same dtype.
+
+        Parameters
+        ----------
+        other
+            Either an int or a Polars expression
+        include_null
+            Whether to include null as a distinct element.
+        """
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_jaccard",
+            args=[other, pl.lit(include_null, dtype=pl.Boolean)],
+            is_elementwise=False,
+            returns_scalar=True,
+        )
 
     def cond_entropy(self, other: pl.Expr) -> pl.Expr:
         """

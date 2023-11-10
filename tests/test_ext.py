@@ -99,6 +99,21 @@ def test_lstsq():
 @pytest.mark.parametrize(
     "df, res",
     [
+        (
+            pl.DataFrame({"a": [1, 2, 3, 4, 5], "b": [2, 3, 4, 5, 6]}),
+            pl.DataFrame({"j": [2 / 3]}),
+        ),
+    ],
+)
+def test_col_jaccard(df, res):
+    assert_frame_equal(df.select(pl.col("a").num_ext.jaccard(pl.col("b")).alias("j")), res)
+
+    assert_frame_equal(df.lazy().select(pl.col("a").num_ext.jaccard(pl.col("b")).alias("j")).collect(), res)
+
+
+@pytest.mark.parametrize(
+    "df, res",
+    [
         (pl.DataFrame({"a": ["thanks", "thank", "thankful"]}), pl.DataFrame({"a": ["thank", "thank", "thank"]})),
         (
             pl.DataFrame({"a": ["playful", "playing", "play", "played", "plays"]}),
