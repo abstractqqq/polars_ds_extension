@@ -1,12 +1,20 @@
 use faer::{prelude::*, MatRef};
 use faer::{IntoFaer, IntoNdarray};
-// use faer::polars::{polars_to_faer_f64, Frame};
 use ndarray::{Array1, Array2};
 use num;
+use num::traits::Inv;
 use polars::prelude::*;
 use polars_core::prelude::arity::binary_elementwise_values;
 use pyo3_polars::derive::polars_expr;
 use rustfft::FftPlanner;
+use hashbrown::HashSet;
+
+// use faer::polars::{polars_to_faer_f64, Frame};
+
+// fn numeric_output(input_fields: &[Field]) -> PolarsResult<Field> {
+//     let field = input_fields[0].clone();
+//     Ok(field)
+// }
 
 fn complex_output(_: &[Field]) -> PolarsResult<Field> {
     let real = Field::new("re", DataType::Float64);
@@ -58,6 +66,114 @@ fn pl_lcm(inputs: &[Series]) -> PolarsResult<Series> {
     }
 }
 
+
+fn fast_exp_single(s:Series, n:i32) -> Series {
+
+    if n == 0 {
+        let ss = s.f64().unwrap();
+        let out:Float64Chunked = ss.apply_values(|x| {
+            if x == 0. {
+                f64::NAN
+            } else if x.is_infinite() | x.is_nan() {
+                x
+            } else {
+                1.0
+            }
+        });
+        return out.into_series()
+    } else if n < 0 {
+        return fast_exp_single(1.div(&s), -n)
+    }
+
+    let mut ss = s.clone();
+    let mut m = n;
+    let mut y = Series::from_vec("", vec![1_f64; s.len()]);
+    while m > 0 {
+        if m % 2 == 1 {
+            y = &y * &ss;
+        }
+        ss = &ss * &ss;
+        m >>= 1;
+    }
+    y
+
+ }
+
+ #[inline]
+ fn _fast_exp_pairwise(x:f64, n:u32) -> f64 {
+
+    let mut m = n;
+    let mut x = x;
+    let mut y:f64 = 1.0;
+    while m > 0 {
+        if m % 2 == 1 {
+            y *= x;
+        }
+        x *= x;
+        m >>= 1;
+    } 
+    y
+
+}
+
+#[inline]
+fn fast_exp_pairwise(x:f64, n:i32) -> f64 {
+
+    if n == 0 {
+        if x == 0. { // 0^0 is NaN
+            return f64::NAN
+        } else {
+            return 1.
+        }
+    } else if n < 0 {
+        return _fast_exp_pairwise(x.inv(), (-n) as u32)
+    }
+    _fast_exp_pairwise(x, n as u32)
+
+}
+
+
+#[polars_expr(output_type=Float64)]
+fn pl_fast_exp(inputs: &[Series]) -> PolarsResult<Series> {
+
+    let s = inputs[0].clone();
+    let exp = inputs[1].i32()?;
+
+    if exp.len() == 1 {
+        let n = exp.get(0).unwrap();
+        if s.dtype().is_numeric() {
+            let ss = s.cast(&DataType::Float64)?;
+            Ok(fast_exp_single(ss, n))
+        } else {  
+            Err(PolarsError::ComputeError(
+                "Input column type must be numeric.".into(),
+            ))
+        }
+    } else if s.len() == exp.len() {
+        if s.dtype().is_numeric() {
+            if s.dtype() == &DataType::Float64 {
+                let ca = s.f64()?;
+                let out:Float64Chunked = binary_elementwise_values(ca, exp, fast_exp_pairwise);
+                Ok(out.into_series())
+            } else {
+                let t = s.cast(&DataType::Float64)?;
+                let ca = t.f64()?;
+                let out:Float64Chunked = binary_elementwise_values(ca, exp, fast_exp_pairwise);
+                Ok(out.into_series())
+            }
+        } else {
+            Err(PolarsError::ComputeError(
+                "Input column type must be numeric.".into(),
+            ))
+        }
+    } else {
+        Err(PolarsError::ShapeMismatch(
+            "Inputs must have the same length.".into(),
+        ))
+    }
+
+}
+
 // Use QR to solve
 fn faer_lstsq_qr(x: MatRef<f64>, y: MatRef<f64>) -> Result<Array2<f64>, String> {
     let qr = x.qr();
@@ -85,7 +201,8 @@ fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
     let add_bias = inputs[1].bool()?;
     let add_bias: bool = add_bias.get(0).unwrap();
     // y
-    let y = inputs[0].f64()?;
+    let y = inputs[0].rechunk(); // if not contiguous, this will do work. Otherwise, just a clone
+    let y = y.f64()?;
     let y = y.to_ndarray()?.into_shape((nrows, 1)).unwrap();
     let y = y.view().into_faer();
 
@@ -93,9 +210,9 @@ fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
     let mut vec_series: Vec<Series> = Vec::with_capacity(inputs[2..].len() + 1);
     for (i, s) in inputs[2..].iter().enumerate() {
         let t: Series = match s.dtype() {
-            DataType::Float64 => s.clone().with_name(&i.to_string()),
+            DataType::Float64 => s.rechunk().with_name(&i.to_string()),
             _ => {
-                let t = s.clone().cast(&DataType::Float64)?;
+                let t = s.rechunk().cast(&DataType::Float64)?;
                 t.with_name(&i.to_string())
             }
         };
@@ -212,4 +329,70 @@ fn pl_fft(inputs: &[Series]) -> PolarsResult<Series> {
     .into_series();
 
     Ok(fft_struct)
+}
+
+#[polars_expr(output_type=Float64)]
+fn pl_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
+
+    let include_null = inputs[2].bool()?;
+    let include_null = include_null.get(0).unwrap();
+    
+    let (s1, s2) = if include_null {
+        (inputs[0].clone(), inputs[1].clone())
+    } else {
+        let t1 = inputs[0].clone();
+        let t2 = inputs[1].clone();
+        (t1.drop_nulls(), t2.drop_nulls())
+    };
+
+    // let parallel = inputs[3].bool()?;
+    // let parallel = parallel.get(0).unwrap();
+
+    if s1.dtype() != s2.dtype() {
+        return Err(PolarsError::ComputeError(
+            "Input column must have the same type.".into(),
+        ))
+    }
+
+    let (n1, n2, intersection) = 
+    if s1.dtype().is_integer() {
+        let ca1 = s1.cast(&DataType::Int64)?;
+        let ca2 = s2.cast(&DataType::Int64)?;
+        let ca1 = ca1.i64()?;
+        let ca2 = ca2.i64()?;
+
+        let hs1: HashSet<Option<i64>> = HashSet::from_iter(ca1);
+        let hs2: HashSet<Option<i64>> = HashSet::from_iter(ca2);
+        let n1 = hs1.len();
+        let n2 = hs2.len();
+
+        let intersection = hs1.intersection(&hs2);
+
+        (n1, n2, intersection.count())
+
+    } else if s1.dtype() == &DataType::Utf8 {
+        let ca1 = s1.utf8()?;
+        let ca2 = s2.utf8()?;
+
+        let hs1: HashSet<Option<&str>> = HashSet::from_iter(ca1);
+        let hs2: HashSet<Option<&str>> = HashSet::from_iter(ca2);
+        let n1 = hs1.len();
+        let n2 = hs2.len();
+
+        let intersection = hs1.intersection(&hs2);
+
+        (n1, n2, intersection.count())
+        
+    } else {
+        return Err(PolarsError::ComputeError(
+            "Jaccard similarity can only be computed for integer/str columns.".into(),
+        ))
+    };
+
+    let out: Series = Series::from_iter([
+        intersection as f64 / (n1 + n2 - intersection) as f64
+    ]);
+
+    Ok(out)
+    
 }

@@ -1,5 +1,5 @@
-test.ipynb
 .ipynb_checkpoints
+tests/*.ipynb
 
 /target
 
