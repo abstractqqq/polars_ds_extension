@@ -12,7 +12,7 @@ class NumExt:
 
     def std_err(self, ddof: int = 1) -> pl.Expr:
         """
-        Returns the standard error of the variable.
+        Estimates the standard error for the mean of the expression.
         """
         return self._expr.std(ddof=ddof) / self._expr.count().sqrt()
 
