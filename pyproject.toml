@@ -20,7 +20,7 @@ authors = [
     {name = "Nelson Griffiths", email = "nelsongriffiths123@gmail.com"}
 ]
 dependencies = [
-    "polars >= 0.19.12",
+    "polars >= 0.19.13",
 ] 
 
 keywords = ["polars-extension", "scientific-computing", "data-science"]
@@ -33,7 +33,8 @@ module-name = "polars_ds._polars_ds"
 [project.optional-dependencies]
 dev = [
     "pytest >= 7.4.1",
-    "pre-commit"
+    "pre-commit",
+    "scikit-learn"
 ]
 
 [tool.ruff]
