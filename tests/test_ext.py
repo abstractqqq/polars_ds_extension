@@ -65,6 +65,20 @@ def test_powi(df, p):
 
 
 @pytest.mark.parametrize(
+    "df, x, res",
+    [
+        (
+            pl.DataFrame({"a": [1, 2, 3]}),
+            0.1,
+            pl.DataFrame({"a": [0.4]}),
+        ),
+    ],
+)
+def test_trapz(df, x, res):
+    assert_frame_equal(df.select(pl.col("a").num_ext.trapz(x=x)), res)
+
+
+@pytest.mark.parametrize(
     "df, res",
     [
         (

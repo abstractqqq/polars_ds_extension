@@ -274,10 +274,55 @@ class NumExt:
         normalize
             Whether to divide by N.
         """
-        out = pred.dot(self._expr.log()) + (1 - pred).dot((1 - self._expr).log())
+        out = self._expr.dot(pred.log()) + (1 - self._expr).dot((1 - pred).log())
         if normalize:
             return -(out / self._expr.count())
         return -out
+
+    def roc_auc(self, pred: pl.Expr) -> pl.Expr:
+        """
+        Computes ROC AUC with self (actual) and the predictions. Self must be binary and castable to
+        type UInt32. If self is not all 0s and 1s, the result will not make sense, or some error
+        may occur.
+
+        Parameters
+        ----------
+        pred
+            The predicted probability.
+        """
+        y = self._expr.cast(pl.UInt32)
+        return y.register_plugin(
+            lib=lib,
+            symbol="pl_roc_auc",
+            args=[pred],
+            is_elementwise=False,
+            returns_scalar=True,
+        )
+
+    def trapz(self, x: Union[float, pl.Expr]) -> pl.Expr:
+        """
+        Treats self as y axis, integrates along x using the trapezoidal rule.
+
+        Parameters
+        ----------
+        x
+            If it is a single float, it must be positive and it will represent a uniform
+            distance between points. If it is an expression, it must be sorted and have the
+            same length as self.
+        """
+        y = self._expr.cast(pl.Float64)
+        if isinstance(x, float):
+            x_ = pl.lit(abs(x), pl.Float64)
+        else:
+            x_ = x.cast(pl.Float64)
+
+        return y.register_plugin(
+            lib=lib,
+            symbol="pl_trapz",
+            args=[x_],
+            is_elementwise=False,
+            returns_scalar=True,
+        )
 
     def r2(self, pred: pl.Expr) -> pl.Expr:
         """
