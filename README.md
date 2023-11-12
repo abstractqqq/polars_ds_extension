@@ -4,7 +4,9 @@
 
 The goal for this package is to provide data scientists/analysts/engineers/quants more tools to manipulate, transform, and make sense of data, without the need to leave DataFrame land (aka Wonderland).
 
-Performance is a focus, but sometimes it's impossible to beat NumPy/SciPy performance for a single operation on a single array. There can be many reasons: Interop cost, null checks, lack of support for complex number (e.g We have to do multiple copies in the FFT implementation), or we haven't found the most optimized way to write some algorithm, etc.
+This package will also be a "lower level" backend for another package of mine called dsds. See [here](https://github.com/abstractqqq/dsds). This package will change the ways of how many functions work in dsds.
+
+Performance is a focus, but sometimes it's impossible to beat NumPy/SciPy performance for a single operation on a single array. There can be many reasons: Interop cost (sometimes copies needed), null checks, lack of support for complex number (e.g We have to do multiple copies in the FFT implementation), or we haven't found the most optimized way to write some algorithm, etc.
 
 However, there are greater benefits for staying in DataFrame land:
 
@@ -12,10 +14,38 @@ However, there are greater benefits for staying in DataFrame land:
 2. Works in group_by context. E.g. run multiple linear regressions in parallel in a group_by context.
 3. Staying in DataFrame land typically keeps code cleaner and less confusing.
 
+Some examples:
+
 ```Python
 df.group_by("dummy").agg(
     pl.col("y").num_ext.lstsq(pl.col("a"), pl.col("b"), add_bias = True)
 )
+
+shape: (2, 2)
+┌───────┬─────────────┐
+│ dummy ┆ list_float  │
+│ ---   ┆ ---         │
+│ str   ┆ list[f64]   │
+╞═══════╪═════════════╡
+│ b     ┆ [2.0, -1.0] │
+│ a     ┆ [2.0, -1.0] │
+└───────┴─────────────┘
+
+df.group_by("dummy_groups").agg(
+    pl.col("actual").num_ext.l2_loss(pl.col("predicted")).alias("l2"),
+    pl.col("actual").num_ext.bce(pl.col("predicted")).alias("log loss"),
+    pl.col("actual").num_ext.roc_auc(pl.col("predicted")).alias("roc_auc")
+)
+
+shape: (2, 4)
+┌──────────────┬──────────┬──────────┬──────────┐
+│ dummy_groups ┆ l2       ┆ log loss ┆ roc_auc  │
+│ ---          ┆ ---      ┆ ---      ┆ ---      │
+│ str          ┆ f64      ┆ f64      ┆ f64      │
+╞══════════════╪══════════╪══════════╪══════════╡
+│ b            ┆ 0.333887 ┆ 0.999602 ┆ 0.498913 │
+│ a            ┆ 0.332575 ┆ 0.997049 ┆ 0.501997 │
+└──────────────┴──────────┴──────────┴──────────┘
 ```
 
 To avoid `Chunked array is not contiguous` error, try to rechunk your dataframe.
