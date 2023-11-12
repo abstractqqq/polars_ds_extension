@@ -661,3 +661,13 @@ class StrExt:
             args=[pl.lit(no_stopwords, dtype=pl.Boolean), pl.lit(parallel, dtype=pl.Boolean)],
             is_elementwise=True,
         )
+
+
+class LintExtExpr(pl.Expr):
+    @property
+    def num_ext(self) -> NumExt:
+        return NumExt(self)
+
+    @property
+    def str_ext(self) -> StrExt:
+        return StrExt(self)
