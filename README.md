@@ -16,9 +16,9 @@ However, there are greater benefits for staying in DataFrame land:
 
 Some examples:
 
-```Python
+```Python 
 df.group_by("dummy").agg(
-    pl.col("y").num_ext.lstsq(pl.col("a"), pl.col("b"), add_bias = True)
+    pl.col("y").num_ext.lstsq(pl.col("a"), pl.col("b"), add_bias = True).alias("list_float")
 )
 
 shape: (2, 2)
