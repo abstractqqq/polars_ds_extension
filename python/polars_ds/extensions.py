@@ -1,5 +1,5 @@
 import polars as pl
-from typing import Union
+from typing import Union, Optional
 from polars.utils.udfs import _get_shared_lib_location
 # from polars.type_aliases import IntoExpr
 
@@ -10,6 +10,20 @@ lib = _get_shared_lib_location(__file__)
 class NumExt:
     def __init__(self, expr: pl.Expr):
         self._expr: pl.Expr = expr
+
+    def binarize(self, cond: Optional[pl.Expr]) -> pl.Expr:
+        """
+        Binarize the column.
+
+        Parameters
+        ----------
+        cond : Optional[pl.Expr]
+            If cond is none, this is equivalent to self._expr == self._expr.max(). If provided,
+            this will binarize by (self._expr >= cond).
+        """
+        if cond is None:
+            return (self._expr.eq(self._expr.max())).cast(pl.UInt8)
+        return (self._expr.ge(cond)).cast(pl.UInt8)
 
     def std_err(self, ddof: int = 1) -> pl.Expr:
         """
@@ -128,7 +142,8 @@ class NumExt:
         """
         temp = (self._expr - pred).abs()
         return (
-            pl.when(temp <= delta).then(0.5 * temp.pow(2)).otherwise(delta * (temp - 0.5 * delta)) / self._expr.count()
+            pl.when(temp <= delta).then(0.5 * temp.pow(2)).otherwise(delta * (temp - 0.5 * delta))
+            / self._expr.count()
         )
 
     def l1_loss(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
@@ -441,6 +456,26 @@ class NumExt:
             returns_scalar=True,
         )
 
+    def list_jaccard(self, other: pl.Expr) -> pl.Expr:
+        """
+        Computes jaccard similarity pairwise between this and the other column. The type of
+        each column must be list and the lists must have the same inner type. The inner type
+        must either be integer or string.
+
+        Parameters
+        ----------
+        other
+            Either an int or a Polars expression
+        include_null : to be added
+            Currently there are some technical issue with adding this parameter.
+        """
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_list_jaccard",
+            args=[other],
+            is_elementwise=True,
+        )
+
     def cond_entropy(self, other: pl.Expr) -> pl.Expr:
         """
         Computes the conditional entropy of self(y) given other. H(y|other).
@@ -452,7 +487,11 @@ class NumExt:
         """
 
         return self._expr.register_plugin(
-            lib=lib, symbol="pl_conditional_entropy", args=[other], is_elementwise=False, returns_scalar=True
+            lib=lib,
+            symbol="pl_conditional_entropy",
+            args=[other],
+            is_elementwise=False,
+            returns_scalar=True,
         )
 
     def lstsq(self, *others: pl.Expr, add_bias: bool = False) -> pl.Expr:
@@ -486,7 +525,7 @@ class NumExt:
 
     def fft(self, forward: bool = True) -> pl.Expr:
         """
-        Computes the DST transform of input series using FFT Algorithm. A series of equal length will
+        Computes the DFT transform of input series using FFT Algorithm. A series of equal length will
         be returned, with elements being the real and complex part of the transformed values.
 
         Parameters
@@ -507,7 +546,156 @@ class StrExt:
     def __init__(self, expr: pl.Expr):
         self._expr: pl.Expr = expr
 
-    def str_jaccard(self, other: Union[str, pl.Expr], substr_size: int = 2, parallel: bool = False) -> pl.Expr:
+    def extract_numbers(
+        self, ignore_comma: bool = False, join_by: str = "", dtype: pl.DataType = pl.Utf8
+    ) -> pl.Expr:
+        """
+        Extracts numbers from the string column, and stores them in a list.
+
+        Parameters
+        ----------
+        ignore_comma
+            Whether to remove all comma before matching for numbers
+        join_by
+            If dtype is pl.Utf8, join the list of strings using the value given here
+        dtype
+            The desired inner dtype for the extracted data. Should either be one of
+            pl.NUMERIC_DTYPES or pl.Utf8
+
+        Examples
+        --------
+        >>> df = pl.DataFrame({
+        ...     "survey":["0% of my time", "1% to 25% of my time", "75% to 99% of my time",
+        ...            "50% to 74% of my time", "75% to 99% of my time",
+        ...            "50% to 74% of my time"]
+        ... })
+        >>> df.select(pl.col("survey").str_ext.extract_numbers(dtype=pl.UInt32))
+        shape: (6, 1)
+        ┌───────────┐
+        │ survey    │
+        │ ---       │
+        │ list[u32] │
+        ╞═══════════╡
+        │ [0]       │
+        │ [1, 25]   │
+        │ [75, 99]  │
+        │ [50, 74]  │
+        │ [75, 99]  │
+        │ [50, 74]  │
+        └───────────┘
+        >>> df.select(pl.col("survey").str_ext.extract_numbers(join_by="-", dtype=pl.Utf8))
+        shape: (6, 1)
+        ┌────────┐
+        │ survey │
+        │ ---    │
+        │ str    │
+        ╞════════╡
+        │ 0      │
+        │ 1-25   │
+        │ 75-99  │
+        │ 50-74  │
+        │ 75-99  │
+        │ 50-74  │
+        └────────┘
+        """
+        expr = self._expr
+        if ignore_comma:
+            expr = expr.str.replace_all(",", "")
+
+        # Find all numbers
+        expr = expr.str.extract_all("(\d*\.?\d+)")
+        if dtype in pl.NUMERIC_DTYPES:
+            expr = expr.list.eval(pl.element().cast(dtype))
+        elif dtype == pl.Utf8:  # As a list of strings
+            if join_by != "":
+                expr = expr.list.join(join_by)
+
+        return expr
+
+    def infer_infreq(
+        self,
+        *,
+        min_count: Optional[int] = None,
+        min_frac: Optional[float] = None,
+        parallel: bool = False,
+    ) -> pl.Expr:
+        """
+        Infers infrequent categories (strings) by min_count or min_frac and return a list as output.
+
+        Parameters
+        ----------
+        min_count
+            If set, an infrequency category will be defined as a category with count < this.
+        min_frac
+            If set, an infrequency category will be defined as a category with pct < this. min_count
+            takes priority over this.
+        parallel
+            Whether to run value_counts in parallel. This may not provide much speed up and is not
+            recommended in a group_by context.
+        """
+        name = self._expr.meta.root_names()[0]
+        vc = self._expr.value_counts(parallel=parallel, sort=True)
+        if min_count is None and min_frac is None:
+            raise ValueError("Either min_count or min_frac must be provided.")
+        elif min_count is not None:
+            infreq: pl.Expr = vc.filter(vc.struct.field("counts") < min_count).struct.field(name)
+        elif min_frac is not None:
+            infreq: pl.Expr = vc.filter(
+                vc.struct.field("counts") / vc.struct.field("counts").sum() < min_frac
+            ).struct.field(name)
+
+        return infreq.implode()
+
+    def merge_infreq(
+        self,
+        *,
+        min_count: Optional[int] = None,
+        min_frac: Optional[float] = None,
+        separator: str = "|",
+        parallel: bool = False,
+    ) -> pl.Expr:
+        """
+        Merge infrequent categories (strings) in the column into one category (string) separated by a
+        separator. This is useful when you want to do one-hot-encoding but do not want too many distinct
+        values because of low count values. However, this does not mean that the categories are similar
+        with respect to the your modelling problem.
+
+        Parameters
+        ----------
+        min_count
+            If set, an infrequency category will be defined as a category with count < this.
+        min_frac
+            If set, an infrequency category will be defined as a category with pct < this. min_count
+            takes priority over this.
+        separator
+            What separator to use when joining the categories. E.g if "a" and "b" are rare categories,
+            and separator = "|", they will be mapped to "a|b"
+        parallel
+            Whether to run value_counts in parallel. This may not provide much speed up and is not
+            recommended in a group_by context.
+        """
+
+        # Will be fixed soon and sort will not be needed
+        name = self._expr.meta.root_names()[0]
+        vc = self._expr.value_counts(parallel=parallel, sort=True)
+        if min_count is None and min_frac is None:
+            raise ValueError("Either min_count or min_frac must be provided.")
+        elif min_count is not None:
+            to_merge: pl.Expr = vc.filter(vc.struct.field("counts") < min_count).struct.field(name)
+        elif min_frac is not None:
+            to_merge: pl.Expr = vc.filter(
+                vc.struct.field("counts") / vc.struct.field("counts").sum() < min_frac
+            ).struct.field(name)
+
+        return (
+            pl.when(self._expr.is_in(to_merge))
+            .then(to_merge.cast(pl.Utf8).fill_null("null").implode().first().list.join(separator))
+            .otherwise(self._expr)
+        )
+
+    def str_jaccard(
+        self, other: Union[str, pl.Expr], substr_size: int = 2, parallel: bool = False
+    ) -> pl.Expr:
         """
         Treats substrings of size `substr_size` as a set. And computes the jaccard similarity between
         this word and the other.
@@ -617,7 +805,9 @@ class StrExt:
             )
         return out
 
-    def freq_removal(self, lower: float = 0.05, upper: float = 0.95, parallel: bool = True) -> pl.Expr:
+    def freq_removal(
+        self, lower: float = 0.05, upper: float = 0.95, parallel: bool = True
+    ) -> pl.Expr:
         """
         Removes from each documents words that are too frequent (in the entire dataset). This assumes
         that the input expression represents lists of strings. E.g. output of tokenize.
@@ -633,12 +823,14 @@ class StrExt:
             context.
         """
 
-        name = self._expr.meta.output_name(raise_if_undetermined=False)
+        name = self._expr.meta.root_names()[0]
         vc = self._expr.list.explode().value_counts(parallel=parallel).sort()
         lo = vc.struct.field("counts").quantile(lower)
         u = vc.struct.field("counts").quantile(upper)
         remove = (
-            vc.filter((vc.struct.field("counts") < lo) | (vc.struct.field("counts") > u)).struct.field(name).implode()
+            vc.filter((vc.struct.field("counts") < lo) | (vc.struct.field("counts") > u))
+            .struct.field(name)
+            .implode()
         )
 
         return self._expr.list.set_difference(remove)

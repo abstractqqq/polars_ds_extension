@@ -68,6 +68,7 @@ fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
             let betas = faer_lstsq_qr(x, y); // .unwrap();
             match betas {
                 Ok(b) => {
+                    // b is 2d
                     let betas: Array1<f64> = Array1::from_iter(b);
                     let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                         ListPrimitiveChunkedBuilder::new(

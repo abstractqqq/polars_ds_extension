@@ -18,6 +18,7 @@ faer = {version = "0.14.1", features = ["ndarray", "nightly"]}
 ndarray = "0.15.6"
 hashbrown = {version = "0.14.2", features=["nightly"]}
 rustfft = "6.1.0"
+# kiddo = {version="3", features=["simd", "immutable"]}
  
 [target.'cfg(target_os = "linux")'.dependencies]
 jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }
