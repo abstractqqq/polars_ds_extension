@@ -32,9 +32,11 @@ module-name = "polars_ds._polars_ds"
 
 [project.optional-dependencies]
 dev = [
+    "numpy",
     "pytest >= 7.4.1",
     "pre-commit",
-    "scikit-learn"
+    "scikit-learn",
+    "scipy",
 ]
 
 [tool.ruff]

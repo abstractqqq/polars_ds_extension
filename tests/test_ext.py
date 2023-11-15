@@ -389,3 +389,17 @@ def test_merge_infreq(df, min_count, min_frac, res):
     assert_frame_equal(
         df.select(pl.col("a").str_ext.merge_infreq(min_count=min_count, min_frac=min_frac)), res
     )
+
+
+def test_ks_stats():
+    from scipy.stats import ks_2samp
+    import numpy as np
+
+    a = np.random.random(size=1000)
+    b = np.random.random(size=1000)
+    df = pl.DataFrame({"a": a, "b": b})
+
+    stats = ks_2samp(a, b).statistic
+    res = df.select(pl.col("a").num_ext.ks_stats(pl.col("b"))).item(0, 0)
+
+    assert np.isclose(stats, res)
