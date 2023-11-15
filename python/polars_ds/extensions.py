@@ -540,6 +540,45 @@ class NumExt:
             is_elementwise=True,
         )
 
+    def ks_stats(self, other: pl.Expr) -> pl.Expr:
+        """
+        Computes two-sided KS statistics with other. Currently it is impossible to retrieve p-value.
+
+        Parameters
+        ----------
+        other
+            A Polars Expression
+        """
+        y = self._expr.cast(pl.Float64)
+        other_ = other.cast(pl.Float64)
+        return y.register_plugin(
+            lib=lib,
+            symbol="pl_ks_2samp",
+            args=[other_, pl.lit(True, dtype=pl.Boolean)],
+            is_elementwise=False,
+            returns_scalar=True,
+        )
+
+    def ks_binary_classif(self, target: pl.Expr) -> pl.Expr:
+        """
+        Computes two-sided KS statistics with other. Currently it is impossible to retrieve p-value.
+
+        Parameters
+        ----------
+        other
+            A Polars Expression
+        """
+        y = self._expr.cast(pl.Float64)
+        y1 = y.filter(target == target.max())
+        y2 = y.filter((target == target.max()).not_())
+        return y1.register_plugin(
+            lib=lib,
+            symbol="pl_ks_2samp",
+            args=[y2, pl.lit(True, dtype=pl.Boolean)],
+            is_elementwise=False,
+            returns_scalar=True,
+        )
+
 
 @pl.api.register_expr_namespace("str_ext")
 class StrExt:
@@ -645,6 +684,10 @@ class StrExt:
             ).struct.field(name)
 
         return infreq.implode()
+
+    # def merge_cats(
+    #     self
+    # )
 
     def merge_infreq(
         self,

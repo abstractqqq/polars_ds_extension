@@ -86,8 +86,7 @@ fn pl_fast_exp(inputs: &[Series]) -> PolarsResult<Series> {
         let n = exp.get(0).unwrap();
         Ok(fast_exp_single(t, n))
     } else if s.len() == exp.len() {
-        let t = s.cast(&DataType::Float64)?;
-        let ca = s.f64()?;
+        let ca = t.f64()?;
         let out:Float64Chunked = binary_elementwise_values(ca, exp, fast_exp_pairwise);
         Ok(out.into_series())
     } else {
