@@ -561,7 +561,8 @@ class NumExt:
 
     def ks_binary_classif(self, target: pl.Expr) -> pl.Expr:
         """
-        Computes two-sided KS statistics with other. Currently it is impossible to retrieve p-value.
+        Given a binary target, compute the ks statistics by comparing the feature where target = 1
+        with the same feature where target != 1.
 
         Parameters
         ----------

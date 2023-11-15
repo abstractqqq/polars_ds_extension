@@ -1,7 +1,8 @@
 use polars::prelude::*;
+use polars::series::IsSorted;
 use pyo3_polars::derive::polars_expr;
 use itertools::Itertools;
-use crate::utils::{BinarySearchSide, binary_search_w_side};
+use crate::utils::binary_search_right;
 use crate::stats_ext::StatsResult;
 
 #[inline]
@@ -15,23 +16,21 @@ fn ks_2samp(v1:Vec<f64>, v2:Vec<f64>, stats_only:bool) -> StatsResult {
 
     // v1 and v2 must be sorted
     let n1: f64 = v1.len() as f64;
-    let n2 = v2.len() as f64;
-    let side = BinarySearchSide::Right;
+    let n2: f64 = v2.len() as f64;
 
     // Follow SciPy's trick to compute the difference between two CDFs
     let cdf1_iter = v1.iter().chain(v2.iter()).map(
-        |x| (binary_search_w_side(&v1, x, &side).unwrap() as f64) / n1
+        |x| (binary_search_right(&v1, x).unwrap() as f64) / n1
     );
 
     let cdf2_iter = v1.iter().chain(v2.iter()).map(
-        |x| (binary_search_w_side(&v2, x, &side).unwrap() as f64) / n2
+        |x| (binary_search_right(&v2, x).unwrap() as f64) / n2
     );
 
     // This differs from SciPy, since I am assuming we are doing two-sided test
     let diff_iter = cdf1_iter
         .zip(cdf2_iter)
         .map(|(x,y)| (x - y).abs());
-
 
     let stats:f64 = diff_iter.fold(f64::MIN, |acc, x| acc.max(x));
     if stats_only {
@@ -65,12 +64,19 @@ fn pl_ks_2samp(inputs: &[Series]) -> PolarsResult<Series> {
         ))
     }
 
-    // Can potentially add shortcut for sorted series here.
-    let v1:Vec<f64> = s1.into_no_null_iter().sorted_unstable_by(|a,b| a.partial_cmp(b).unwrap()).collect();
-    let v2:Vec<f64> = s2.into_no_null_iter().sorted_unstable_by(|a,b| a.partial_cmp(b).unwrap()).collect();
+    let v1: Vec<f64> = match s1.is_sorted_flag() {
+        IsSorted::Ascending => s1.into_no_null_iter().collect(),
+        IsSorted::Descending => s1.into_no_null_iter().rev().collect(),
+        _ => s1.into_no_null_iter().sorted_unstable_by(|a,b| a.partial_cmp(b).unwrap()).collect()
+    };
+    let v2: Vec<f64> = match s2.is_sorted_flag() {
+        IsSorted::Ascending => s2.into_no_null_iter().collect(),
+        IsSorted::Descending => s2.into_no_null_iter().rev().collect(),
+        _ => s2.into_no_null_iter().sorted_unstable_by(|a,b| a.partial_cmp(b).unwrap()).collect()
+    };
 
     if (v1.len() == 0) | (v2.len() == 0) {
-        return Err(PolarsError::ShapeMismatch(
+        return Err(PolarsError::ComputeError(
             "Both input series must contain at least 1 non-null values.".into(),
         ))
     }
