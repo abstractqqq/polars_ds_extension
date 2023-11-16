@@ -1,5 +1,5 @@
-use faer::{prelude::*, MatRef};
 use faer::IntoFaer;
+use faer::{prelude::*, MatRef};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
@@ -9,7 +9,6 @@ fn list_float_output(_: &[Field]) -> PolarsResult<Field> {
         DataType::List(Box::new(DataType::Float64)),
     ))
 }
-
 
 // // Closed form. Likely don't need
 // fn faer_lstsq_cf(x: MatRef<f64>, y: MatRef<f64>) -> Result<Array2<f64>, String> {
@@ -25,30 +24,31 @@ fn list_float_output(_: &[Field]) -> PolarsResult<Field> {
 //     }
 // }
 
-
 fn faer_lstsq_qr(x: MatRef<f64>, y: MatRef<f64>) -> Result<Vec<f64>, String> {
     let qr = x.qr();
     let betas = qr.solve_lstsq(y);
-    let mut out:Vec<f64> = Vec::with_capacity(betas.nrows());
+    let mut out: Vec<f64> = Vec::with_capacity(betas.nrows());
     for i in 0..betas.nrows() {
-        out.push(betas.read(i,0));
+        out.push(betas.read(i, 0));
     }
     Ok(out)
 }
 
 #[polars_expr(output_type_func=list_float_output)]
 fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
-
     let nrows = inputs[0].len();
     let add_bias = inputs[1].bool()?;
     let add_bias: bool = add_bias.get(0).unwrap();
 
-    // y is casted to f64 in Python    
+    // y is casted to f64 in Python
     let y = inputs[0].clone();
-    let mut vs:Vec<Series> = Vec::with_capacity(inputs.len()-1);
+    let mut vs: Vec<Series> = Vec::with_capacity(inputs.len() - 1);
     // Always rechunk. For loop because we need ? to work
     for (i, s) in inputs[2..].into_iter().enumerate() {
-        let news = s.rechunk().cast(&DataType::Float64)?.with_name(&i.to_string());
+        let news = s
+            .rechunk()
+            .cast(&DataType::Float64)?
+            .with_name(&i.to_string());
         vs.push(news)
     }
     // Constant term
@@ -73,13 +73,8 @@ fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
             match betas {
                 Ok(b) => {
                     let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                        ListPrimitiveChunkedBuilder::new(
-                            "betas",
-                            1,
-                            b.len(),
-                            DataType::Float64,
-                        );
-                    
+                        ListPrimitiveChunkedBuilder::new("betas", 1, b.len(), DataType::Float64);
+
                     builder.append_slice(&b);
                     let out = builder.finish();
                     Ok(out.into_series())

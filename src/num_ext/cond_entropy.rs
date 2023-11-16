@@ -1,5 +1,5 @@
-use pyo3_polars::derive::polars_expr;
 use polars::prelude::*;
+use pyo3_polars::derive::polars_expr;
 
 #[polars_expr(output_type=Float64)]
 fn pl_conditional_entropy(inputs: &[Series]) -> PolarsResult<Series> {

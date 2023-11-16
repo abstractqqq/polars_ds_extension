@@ -1,7 +1,7 @@
-use pyo3_polars::derive::polars_expr;
+use num;
 use polars::prelude::*;
 use polars_core::prelude::arity::binary_elementwise_values;
-use num;
+use pyo3_polars::derive::polars_expr;
 
 #[polars_expr(output_type=Int64)]
 fn pl_gcd(inputs: &[Series]) -> PolarsResult<Series> {

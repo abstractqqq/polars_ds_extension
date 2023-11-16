@@ -1,5 +1,5 @@
-use super::snowball::{algorithms, SnowballEnv};
 use super::consts::EN_STOPWORDS;
+use super::snowball::{algorithms, SnowballEnv};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use pyo3_polars::export::polars_core::utils::rayon::prelude::ParallelIterator;
