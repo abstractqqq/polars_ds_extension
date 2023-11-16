@@ -1,7 +1,7 @@
-use polars::prelude::{*, arity::binary_elementwise_values};
+use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
-    derive::polars_expr, 
-    export::polars_core::utils::rayon::prelude::{ParallelIterator, IndexedParallelIterator}
+    derive::polars_expr,
+    export::polars_core::utils::rayon::prelude::{IndexedParallelIterator, ParallelIterator},
 };
 
 #[inline]
