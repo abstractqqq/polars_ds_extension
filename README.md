@@ -61,6 +61,7 @@ The package right now contains two extensions:
 3. Common loss functions, e.g. L1, L2, L infinity, huber loss, MAPE, SMAPE, wMAPE, etc.
 4. Common mini-models, lstsq, condition entropy. 
 5. Discrete Fourier Transform, returning the real and complex part of the new series.
+6. ROC AUC, precision, recall, F, average precision, all as expressions.
 
 
 ## String Extension
@@ -70,19 +71,15 @@ The package right now contains two extensions:
 1. Levenshtein distance, Hamming distance, str Jaccard similarity
 2. Simple Tokenize
 3. Stemming (Right now only Snowball stemmer for English)
+4. Frequency based merging, inferral, and removal.
 
 ### Todo list
 
-1. Longest common subsequence as string distance metric
-2. Vectorizers (Count + TFIDF)?
-3. Similarity version of the distances, and more variations and parameters.
+1. Aho-Corasick string search https://en.wikipedia.org/wiki/Aho%E2%80%93Corasick_algorithm
 
 ## Other Extensions ?
 
-E.g. stats_ext, dist_ext (L^p distance for vectors (scalar version is implemented) etc.) etc.
-
-Simple unsupervised clusters can also be done. It is simply a matter of willingness and market demand.
-
+More stats, clustering, etc. It is simply a matter of willingness and market demand.
 
 # Disclaimer
 

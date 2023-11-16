@@ -120,8 +120,7 @@ class NumExt:
 
         (1) Turning sparse multiclass target into dense target.
         (2) Finding the max probability class of a multiclass classification output
-
-        This is just a shortcut for expr.list.eval(pl.element().arg_max())
+        (3) Just a shortcut for expr.list.eval(pl.element().arg_max())
         """
         return self._expr.list.eval(pl.element().arg_max())
 
@@ -320,7 +319,7 @@ class NumExt:
 
     def logloss(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
-        Computes Binary Cross Entropy loss.
+        Computes log loss, aka binary cross entropy loss.
 
         Parameters
         ----------
@@ -342,7 +341,7 @@ class NumExt:
 
     def roc_auc(self, pred: pl.Expr) -> pl.Expr:
         """
-        Computes ROC AUC using self (actual) and the predictions.
+        Computes ROC AUC using self as actual and pred as predictions.
 
         Self must be binary and castable to type UInt32. If self is not all 0s and 1s or not binary,
         the result will not make sense, or some error may occur.
@@ -363,7 +362,7 @@ class NumExt:
 
     def binary_metrics_combo(self, pred: pl.Expr, threshold: float = 0.5) -> pl.Expr:
         """
-        Computes the following binary classificaition metrics using self (actual) and the predictions:
+        Computes the following binary classificaition metrics using self as actual and pred as predictions:
         precision, recall, f, average_precision and roc_auc. The return will be a struct with values
         having the names as given here.
 
@@ -371,7 +370,7 @@ class NumExt:
         the result will not make sense, or some error may occur.
 
         Average precision is computed using Sum (R_n - R_n-1)*P_n-1, which is not the textbook definition,
-        but is consistent with how Scikit-learn computes average precision. For more information, see
+        but is consistent with Scikit-learn. For more information, see
         https://scikit-learn.org/stable/modules/generated/sklearn.metrics.average_precision_score.html
 
         Parameters
@@ -728,6 +727,12 @@ class StrExt:
 
         return expr
 
+    def line_count(self) -> pl.Expr:
+        """
+        Return the line count of the string column.
+        """
+        return self._expr.str.count_matches(pattern="\n")
+
     def infer_infreq(
         self,
         *,
@@ -971,11 +976,11 @@ class StrExt:
         )
 
 
-class LintExtExpr(pl.Expr):
-    @property
-    def num_ext(self) -> NumExt:
-        return NumExt(self)
+# class LintExtExpr(pl.Expr):
+#     @property
+#     def num_ext(self) -> NumExt:
+#         return NumExt(self)
 
-    @property
-    def str_ext(self) -> StrExt:
-        return StrExt(self)
+#     @property
+#     def str_ext(self) -> StrExt:
+#         return StrExt(self)
