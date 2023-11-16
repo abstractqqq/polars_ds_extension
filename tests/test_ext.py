@@ -403,3 +403,36 @@ def test_ks_stats():
     res = df.select(pl.col("a").num_ext.ks_stats(pl.col("b"))).item(0, 0)
 
     assert np.isclose(stats, res)
+
+
+def test_precision_recall_roc_auc():
+    import numpy as np
+    from sklearn.metrics import roc_auc_score
+
+    df = pl.DataFrame(
+        {
+            "a": np.random.random(size=5_000),
+            "b": np.random.random(size=5_000),
+            "y": np.round(np.random.random(size=5_000)).astype(int),
+        }
+    )
+    for threshold in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
+        res = df.select(
+            pl.col("y")
+            .num_ext.binary_metrics_combo(pl.col("a"), threshold=threshold)
+            .alias("metrics")
+        ).unnest("metrics")
+        precision_res = res.get_column("precision")[0]
+        recall_res = res.get_column("recall")[0]
+        roc_auc_res = res.get_column("roc_auc")[0]
+
+        # precision, recall by hand
+        predicted_prob = np.array(df["a"])
+        predicted = predicted_prob >= threshold  # boolean
+        actual = np.array(df["y"])  # .to_numpy()
+        precision = actual[predicted].sum() / np.sum(predicted)
+        recall = ((actual == 1) & (predicted == 1)).sum() / (actual.sum())
+
+        assert np.isclose(precision, precision_res)
+        assert np.isclose(recall, recall_res)
+        assert np.isclose(roc_auc_score(actual, predicted_prob), roc_auc_res)

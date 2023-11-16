@@ -114,6 +114,17 @@ class NumExt:
         """
         return (self._expr == self._expr.min()).sum()
 
+    def list_arg_max(self) -> pl.Expr:
+        """
+        Finds the argmax of the list in this column. This is useful for
+
+        (1) Turning sparse multiclass target into dense target.
+        (2) Finding the max probability class of a multiclass classification output
+
+        This is just a shortcut for expr.list.eval(pl.element().arg_max())
+        """
+        return self._expr.list.eval(pl.element().arg_max())
+
     def gcd(self, other: Union[int, pl.Expr]) -> pl.Expr:
         """
         Computes GCD of two integer columns. This will try to cast everything to int64 and may
@@ -167,7 +178,7 @@ class NumExt:
         Parameters
         ----------
         pred
-            A Polars expression representing predictions
+            An expression represeting the column with predicted probability.
         """
         temp = (self._expr - pred).abs()
         return (
@@ -182,7 +193,7 @@ class NumExt:
         Parameters
         ----------
         pred
-            A Polars expression representing predictions
+            An expression represeting the column with predicted probability.
         normalize
             If true, divide the result by length of the series
         """
@@ -199,7 +210,7 @@ class NumExt:
         Parameters
         ----------
         pred
-            A Polars expression representing predictions
+            An expression represeting the column with predicted probability.
         normalize
             If true, divide the result by length of the series
         """
@@ -216,7 +227,7 @@ class NumExt:
         Parameters
         ----------
         pred
-            A Polars expression representing predictions
+            An expression represeting the column with predicted probability.
         normalize
             If true, divide the result by length of the series
         """
@@ -261,7 +272,7 @@ class NumExt:
         Parameters
         ----------
         pred
-            A Polars expression representing predictions
+            An expression represeting the column with predicted probability.
         normalize
             If true, divide the result by length of the series
         """
@@ -281,7 +292,7 @@ class NumExt:
         Parameters
         ----------
         pred
-            A Polars expression representing predictions
+            An expression represeting the column with predicted probability.
         weighted
             If true, computes wMAPE in the wikipedia article
         """
@@ -307,14 +318,14 @@ class NumExt:
         denominator = 1.0 / (self._expr.abs() + pred.abs())
         return (1.0 / self._expr.count()) * numerator.dot(denominator)
 
-    def bce(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
+    def logloss(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
         Computes Binary Cross Entropy loss.
 
         Parameters
         ----------
         pred
-            The predicted probability.
+            An expression represeting the column with predicted probability.
         normalize
             Whether to divide by N.
         """
@@ -323,22 +334,58 @@ class NumExt:
             return -(out / self._expr.count())
         return -out
 
+    def bce(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
+        """
+        Binary cross entropy. Alias for logloss.
+        """
+        return self.logloss(pred, normalize)
+
     def roc_auc(self, pred: pl.Expr) -> pl.Expr:
         """
-        Computes ROC AUC with self (actual) and the predictions. Self must be binary and castable to
-        type UInt32. If self is not all 0s and 1s, the result will not make sense, or some error
-        may occur.
+        Computes ROC AUC using self (actual) and the predictions.
+
+        Self must be binary and castable to type UInt32. If self is not all 0s and 1s or not binary,
+        the result will not make sense, or some error may occur.
 
         Parameters
         ----------
         pred
-            The predicted probability.
+            An expression represeting the column with predicted probability.
         """
         y = self._expr.cast(pl.UInt32)
         return y.register_plugin(
             lib=lib,
             symbol="pl_roc_auc",
             args=[pred],
+            is_elementwise=False,
+            returns_scalar=True,
+        )
+
+    def binary_metrics_combo(self, pred: pl.Expr, threshold: float = 0.5) -> pl.Expr:
+        """
+        Computes the following binary classificaition metrics using self (actual) and the predictions:
+        precision, recall, f, average_precision and roc_auc. The return will be a struct with values
+        having the names as given here.
+
+        Self must be binary and castable to type UInt32. If self is not all 0s and 1s or not binary,
+        the result will not make sense, or some error may occur.
+
+        Average precision is computed using Sum (R_n - R_n-1)*P_n-1, which is not the textbook definition,
+        but is consistent with how Scikit-learn computes average precision. For more information, see
+        https://scikit-learn.org/stable/modules/generated/sklearn.metrics.average_precision_score.html
+
+        Parameters
+        ----------
+        pred
+            An expression represeting the column with predicted probability.
+        threshold
+            The threshold used to compute precision, recall and f (f score).
+        """
+        y = self._expr.cast(pl.UInt32)
+        return y.register_plugin(
+            lib=lib,
+            symbol="pl_combo_b",
+            args=[pred, pl.lit(threshold, dtype=pl.Float64)],
             is_elementwise=False,
             returns_scalar=True,
         )

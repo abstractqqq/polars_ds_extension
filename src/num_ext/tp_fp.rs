@@ -1,6 +1,16 @@
 use ndarray::ArrayView1;
-use polars::{prelude::*, lazy::dsl::count};
+use polars::{prelude::*, lazy::dsl::count, series::ops::NullBehavior};
 use pyo3_polars::derive::polars_expr;
+
+fn combo_output(_: &[Field]) -> PolarsResult<Field> {
+    let roc_auc = Field::new("roc_auc", DataType::Float64);
+    let precision = Field::new("precision", DataType::Float64);
+    let recall = Field::new("recall", DataType::Float64);
+    let f = Field::new("f", DataType::Float64);
+    let avg_precision = Field::new("avg_precision", DataType::Float64);
+    let v: Vec<Field> = vec![precision, recall, f, avg_precision, roc_auc];
+    Ok(Field::new("", DataType::Struct(v)))
+}
 
 fn tp_fp_frame(predicted: Series, actual:Series, as_ratio:bool) -> PolarsResult<LazyFrame> {
 
@@ -32,21 +42,18 @@ fn tp_fp_frame(predicted: Series, actual:Series, as_ratio:bool) -> PolarsResult<
         ).shift_and_fill(1, lit(positive_counts)).alias("tp")
     ]).select([
         col("threshold"),
-        col("cnt"),
-        // col("predicted_positive")
-        col("pos_cnt_at_threshold"),
         col("tp"),
         (col("predicted_positive") - col("tp")).alias("fp"),
         (col("tp").cast(DataType::Float64)/col("predicted_positive").cast(DataType::Float64)).alias("precision")
     ]);
+    // col("cnt"),
+    // col("predicted_positive")
+    // col("pos_cnt_at_threshold"),
 
     if as_ratio {
         Ok(
             temp.select([
                 col("threshold"),
-                col("cnt"),
-                // col("predicted_positive")
-                col("pos_cnt_at_threshold"),
                 (col("tp").cast(DataType::Float64)/col("tp").first().cast(DataType::Float64)).alias("tpr"),
                 (col("fp").cast(DataType::Float64)/col("fp").first().cast(DataType::Float64)).alias("fpr"),
                 col("precision")
@@ -57,6 +64,93 @@ fn tp_fp_frame(predicted: Series, actual:Series, as_ratio:bool) -> PolarsResult<
     }
 
 }
+
+#[polars_expr(output_type_func=combo_output)]
+fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
+
+    // actual, when passed in, is always u32 (done in Python extension side)
+    let actual = inputs[0].rechunk();
+    let predicted = inputs[1].rechunk();
+    // Threshold for precision and recall
+    let threshold = inputs[2].f64()?;
+    let threshold = threshold.get(0).unwrap();
+    
+    if (actual.len() != predicted.len()) 
+        | actual.is_empty() 
+        | predicted.is_empty() 
+        | (actual.null_count() + predicted.null_count() > 0)  
+    {
+        return Err(PolarsError::ComputeError(
+            "Input columns must be the same length, cannot be empty, and shouldn't contain nulls.".into(),
+        ))
+    }
+
+    if actual.n_unique().unwrap_or(0) != 2 {
+        return Err(PolarsError::ComputeError(
+            "Actual column must be binary without any nulls.".into(),
+        ))
+    }
+
+    let n = predicted.len();
+    let mut frame = tp_fp_frame(predicted, actual, true)?
+        .with_column(
+            (lit(-1_f64) * col("tpr").diff(1, NullBehavior::Drop).dot(col("precision").head(Some(n-1)))).alias("average_precision")
+        )
+        .collect()?
+        .agg_chunks();
+
+    let tpr = frame.drop_in_place("tpr")?;
+    let fpr = frame.drop_in_place("fpr")?;
+
+    
+    let precision = frame.drop_in_place("precision")?;
+    let precision = precision.f64()?;
+    
+    let probs = frame.drop_in_place("threshold")?;
+    let probs = probs.f64()?;
+    let probs = probs.to_ndarray()?;
+    let probs = probs.as_slice().unwrap();
+    let index = 
+    match probs.binary_search_by(|x| x.partial_cmp(&threshold).unwrap()) {
+        Ok(i) => i,
+        Err(i) => i
+    };
+
+
+    // .with_column(
+    //     col("tpr").diff(1, NullBehavior::Ignore).dot("precision").alias("average_precision")
+    // )
+
+    // Average Precision
+    let average_precision = frame.drop_in_place("average_precision")?;
+    let average_precision = average_precision.f64()?;
+    let average_precision = average_precision.get(0).unwrap();
+    let average_precision:Series = Series::from_vec("average_precision", vec![average_precision]);
+
+    // ROC AUC
+    
+    let y = tpr.f64()?;
+    let x = fpr.f64()?;
+    
+    let y:ArrayView1<f64> = y.to_ndarray()?; // Zero copy
+    let x:ArrayView1<f64> = x.to_ndarray()?; // Zero copy
+    
+    let roc_auc:f64 = -super::trapz::trapz(y,x);
+    let roc_auc:Series = Series::from_vec("roc_auc", vec![roc_auc]);
+
+    // Precision & Recall & F
+    let recall = y[index];
+    let precision = precision.get(index).unwrap();
+    let f: f64 = (precision * recall) / (precision + recall);
+    let recall:Series = Series::from_vec("recall", vec![recall]);
+    let precision:Series = Series::from_vec("precision", vec![precision]);
+    let f:Series = Series::from_vec("f", vec![f]);
+
+    let out = StructChunked::new("metrics", &[precision, recall, f, average_precision, roc_auc])?;
+    Ok(out.into_series())
+
+}
+
 
 #[polars_expr(output_type=Float64)]
 fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
@@ -75,21 +169,17 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
         ))
     }
 
-    if actual.n_unique().unwrap_or(0) != 2 {
-        return Err(PolarsError::ComputeError(
-            "Actual column must be binary without any nulls.".into(),
-        ))
-    }
-
     let mut frame = tp_fp_frame(predicted, actual, true)?
         .select([col("tpr"), col("fpr")])
-        .collect()?;
+        .collect()?
+        .agg_chunks();
     
     let tpr = frame.drop_in_place("tpr")?;
     let fpr = frame.drop_in_place("fpr")?;
     
-    let y = tpr.f64()?.rechunk();
-    let x = fpr.f64()?.rechunk();
+    // Should be contiguous. No need to rechunk
+    let y = tpr.f64()?;
+    let x = fpr.f64()?;
     
     let y:ArrayView1<f64> = y.to_ndarray()?;
     let x:ArrayView1<f64> = x.to_ndarray()?;
