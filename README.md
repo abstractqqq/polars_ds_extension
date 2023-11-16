@@ -18,7 +18,7 @@ Some examples:
 
 ```Python 
 df.group_by("dummy").agg(
-    pl.col("y").num_ext.lstsq(pl.col("a"), pl.col("b"), add_bias = True).alias("list_float")
+    pl.col("y").num_ext.lstsq(pl.col("a"), pl.col("b"), add_bias = False).alias("list_float")
 )
 
 shape: (2, 2)

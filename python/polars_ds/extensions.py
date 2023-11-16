@@ -85,6 +85,35 @@ class NumExt:
         """
         return pl.max_horizontal(self._expr.max().abs(), self._expr.min().abs())
 
+    def n_bins(self, n: int) -> pl.Expr:
+        """
+        Maps values in this series into n bins, with each bin having equal size. This is different from
+        quantiles, as the bins' ranges are the same.
+
+        Parameters
+        ----------
+        n
+            Any positive integer
+        """
+        x = self._expr
+        return (
+            (x - x.min())
+            .floordiv(pl.lit(1e-12) + (x.max() - x.min()) / pl.lit(abs(n)))
+            .cast(pl.UInt32)
+        )
+
+    def count_max(self) -> pl.Expr:
+        """
+        Count the number of occurrences of max.
+        """
+        return (self._expr == self._expr.max()).sum()
+
+    def count_min(self) -> pl.Expr:
+        """
+        Count the number of occurrences of min.
+        """
+        return (self._expr == self._expr.min()).sum()
+
     def gcd(self, other: Union[int, pl.Expr]) -> pl.Expr:
         """
         Computes GCD of two integer columns. This will try to cast everything to int64 and may
@@ -538,6 +567,46 @@ class NumExt:
             symbol="pl_fft",
             args=[pl.lit(forward, dtype=pl.Boolean)],
             is_elementwise=True,
+        )
+
+    def ks_stats(self, other: pl.Expr) -> pl.Expr:
+        """
+        Computes two-sided KS statistics with other. Currently it is impossible to retrieve p-value.
+
+        Parameters
+        ----------
+        other
+            A Polars Expression
+        """
+        y = self._expr.cast(pl.Float64)
+        other_ = other.cast(pl.Float64)
+        return y.register_plugin(
+            lib=lib,
+            symbol="pl_ks_2samp",
+            args=[other_, pl.lit(True, dtype=pl.Boolean)],
+            is_elementwise=False,
+            returns_scalar=True,
+        )
+
+    def ks_binary_classif(self, target: pl.Expr) -> pl.Expr:
+        """
+        Given a binary target, compute the ks statistics by comparing the feature where target = 1
+        with the same feature where target != 1.
+
+        Parameters
+        ----------
+        other
+            A Polars Expression
+        """
+        y = self._expr.cast(pl.Float64)
+        y1 = y.filter(target == target.max())
+        y2 = y.filter((target == target.max()).not_())
+        return y1.register_plugin(
+            lib=lib,
+            symbol="pl_ks_2samp",
+            args=[y2, pl.lit(True, dtype=pl.Boolean)],
+            is_elementwise=False,
+            returns_scalar=True,
         )
 
 

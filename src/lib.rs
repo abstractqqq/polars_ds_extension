@@ -1,5 +1,7 @@
 mod num_ext;
 mod str_ext;
+mod stats_ext;
+mod utils;
 mod kdtree;
 use pyo3::{pymodule, types::PyModule, PyResult, Python};
 
