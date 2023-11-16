@@ -389,7 +389,6 @@ dependencies = [
  "matrixcompare",
  "ndarray",
  "num-complex",
- "polars",
  "pulp",
  "reborrow",
 ]

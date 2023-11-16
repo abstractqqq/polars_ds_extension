@@ -85,6 +85,35 @@ class NumExt:
         """
         return pl.max_horizontal(self._expr.max().abs(), self._expr.min().abs())
 
+    def n_bins(self, n: int) -> pl.Expr:
+        """
+        Maps values in this series into n bins, with each bin having equal size. This is different from
+        quantiles, as the bins' ranges are the same.
+
+        Parameters
+        ----------
+        n
+            Any positive integer
+        """
+        x = self._expr
+        return (
+            (x - x.min())
+            .floordiv(pl.lit(1e-12) + (x.max() - x.min()) / pl.lit(abs(n)))
+            .cast(pl.UInt32)
+        )
+
+    def count_max(self) -> pl.Expr:
+        """
+        Count the number of occurrences of max.
+        """
+        return (self._expr == self._expr.max()).sum()
+
+    def count_min(self) -> pl.Expr:
+        """
+        Count the number of occurrences of min.
+        """
+        return (self._expr == self._expr.min()).sum()
+
     def gcd(self, other: Union[int, pl.Expr]) -> pl.Expr:
         """
         Computes GCD of two integer columns. This will try to cast everything to int64 and may
@@ -685,10 +714,6 @@ class StrExt:
             ).struct.field(name)
 
         return infreq.implode()
-
-    # def merge_cats(
-    #     self
-    # )
 
     def merge_infreq(
         self,

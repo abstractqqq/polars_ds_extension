@@ -5,7 +5,7 @@ use pyo3_polars::{
 };
 
 pub fn levenshtein_dist(s1: &str, s2: &str) -> u32 {
-    //
+
     // https://en.wikipedia.org/wiki/Wagner%E2%80%93Fischer_algorithm
 
     let (len1, len2) = (s1.len(), s2.len());
