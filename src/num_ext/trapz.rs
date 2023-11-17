@@ -29,7 +29,7 @@ fn pl_trapz(inputs: &[Series]) -> PolarsResult<Series> {
     if x.null_count() > 0 {
         return Err(PolarsError::ComputeError(
             "For trapezoidal integration to work, x axis must not contain nulls.".into(),
-        ))
+        ));
     }
     if x.len() == 1 {
         let dx = x.get(0).unwrap();
