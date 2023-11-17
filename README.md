@@ -1,5 +1,7 @@
 # Polars Extension for General Data Science Use
 
+A Polars Plugin aiming to simplify common numerical/string data analysis procedures. 
+
 **Currently in Alpha. Feel free to submit feature requests in the issues section of the repo.**
 
 The goal for this package is to provide data scientists/analysts/engineers/quants more tools to manipulate, transform, and make sense of data, without the need to leave DataFrame land (aka Wonderland).
@@ -80,6 +82,10 @@ The package right now contains two extensions:
 ## Other Extensions ?
 
 More stats, clustering, etc. It is simply a matter of willingness and market demand.
+
+## Future Plans
+
+I am open to make this package a Python frontend for other machine learning processes/models with Rust packages at the backend. There are some very interesting packages to incorporate, such as k-medoids. But I do want to stick with Faer as a Rust linear algebra backend and I do want to keep it simple for now.
 
 # Disclaimer
 

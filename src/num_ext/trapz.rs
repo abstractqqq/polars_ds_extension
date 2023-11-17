@@ -26,6 +26,11 @@ fn pl_trapz(inputs: &[Series]) -> PolarsResult<Series> {
     let y = inputs[0].f64()?.rechunk();
     let y = y.to_ndarray()?;
     let x = inputs[1].f64()?;
+    if x.null_count() > 0 {
+        return Err(PolarsError::ComputeError(
+            "For trapezoidal integration to work, x axis must not contain nulls.".into(),
+        ))
+    }
     if x.len() == 1 {
         let dx = x.get(0).unwrap();
         Ok(Series::from_iter([trapz_dx(y, dx)]))

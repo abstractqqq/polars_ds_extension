@@ -1,6 +1,7 @@
 import polars as pl
 from typing import Union, Optional
 from polars.utils.udfs import _get_shared_lib_location
+from .type_alias import AhoCorasickMatchKind
 # from polars.type_aliases import IntoExpr
 
 lib = _get_shared_lib_location(__file__)
@@ -73,6 +74,10 @@ class NumExt:
         """
         return (self._expr - self._expr.min()) / (self._expr.max() - self._expr.min())
 
+    # def most_corr_col(self, *others:pl.Expr) -> pl.Expr:
+
+    #     pl.concat_list(pl.corr(self._expr, e) for e in others)
+
     def frac(self) -> pl.Expr:
         """
         Returns the fractional part of the input values. E.g. fractional part of 1.1 is 0.1
@@ -87,8 +92,8 @@ class NumExt:
 
     def n_bins(self, n: int) -> pl.Expr:
         """
-        Maps values in this series into n bins, with each bin having equal size. This is different from
-        quantiles, as the bins' ranges are the same.
+        Maps values in this series into n bins, with each bin having equal size. This ensures that
+        the bins' ranges are the same, unlike quantiles.
 
         Parameters
         ----------
@@ -397,8 +402,8 @@ class NumExt:
         ----------
         x
             If it is a single float, it must be positive and it will represent a uniform
-            distance between points. If it is an expression, it must be sorted and have the
-            same length as self.
+            distance between points. If it is an expression, it must be sorted, does not contain
+            null, and have the same length as self.
         """
         y = self._expr.cast(pl.Float64)
         if isinstance(x, float):
@@ -974,6 +979,47 @@ class StrExt:
             args=[pl.lit(no_stopwords, dtype=pl.Boolean), pl.lit(parallel, dtype=pl.Boolean)],
             is_elementwise=True,
         )
+
+    def ac_match(
+        self,
+        patterns: list[str],
+        case_sensitive: bool = False,
+        match_kind: AhoCorasickMatchKind = "standard",
+        return_str: bool = False,
+    ) -> pl.Expr:
+        """
+        Try to match the patterns using the Aho-Corasick algorithm. The matched pattern's indices will be
+        returned. E.g. If for string1, pattern 2, 1, 3 are matched in this order, then [1, 0, 2] are
+        returned. (Indices in pattern list)
+
+        Parameters
+        ----------
+        patterns
+            A list of strs, which are the patterns to be matched
+        case_sensitive
+            Should this match be case sensitive. Default is false.
+        match_kind
+            One of `standard`, `left_most_first`, or `left_most_longest`. For more information, see
+            https://docs.rs/aho-corasick/latest/aho_corasick/enum.MatchKind.html. Any other input will
+            be treated as standard.
+        """
+        pat = pl.Series(patterns, dtype=pl.Utf8)
+        cs = pl.lit(case_sensitive, dtype=pl.Boolean)
+        mk = pl.lit(match_kind, dtype=pl.Utf8)
+        if return_str:
+            return self._expr.register_plugin(
+                lib=lib,
+                symbol="pl_ac_match_str",
+                args=[pat, cs, mk],
+                is_elementwise=True,
+            )
+        else:
+            return self._expr.register_plugin(
+                lib=lib,
+                symbol="pl_ac_match",
+                args=[pat, cs, mk],
+                is_elementwise=True,
+            )
 
 
 # class LintExtExpr(pl.Expr):
