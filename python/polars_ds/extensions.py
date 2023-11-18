@@ -2,6 +2,7 @@ import polars as pl
 from typing import Union, Optional
 from polars.utils.udfs import _get_shared_lib_location
 from .type_alias import AhoCorasickMatchKind
+import warnings
 # from polars.type_aliases import IntoExpr
 
 lib = _get_shared_lib_location(__file__)
@@ -824,7 +825,7 @@ class StrExt:
     ) -> pl.Expr:
         """
         Treats substrings of size `substr_size` as a set. And computes the jaccard similarity between
-        this word and the other.
+        this word and the other. This is not the same as comparing bigrams.
 
         Parameters
         ----------
@@ -851,16 +852,22 @@ class StrExt:
             is_elementwise=True,
         )
 
-    def levenshtein_dist(self, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
+    def sorensen_dice(
+        self, other: Union[str, pl.Expr], substr_size: int = 2, parallel: bool = False
+    ) -> pl.Expr:
         """
-        Computes the levenshtein distance between this each value in the column with the str other.
+        Treats substrings of size `substr_size` as a set. And computes the Sorensen-Dice similarity between
+        this word and the other. This is not the same as comparing bigrams.
 
         Parameters
         ----------
         other
             If this is a string, then the entire column will be compared with this string. If this
-            is an expression, then an element-wise Levenshtein distance computation between this column
-            and the other (given by the expression) will be performed.
+            is an expression, then perform element-wise jaccard similarity computation between this column
+            and the other (given by the expression).
+        substr_size
+            The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
+            the set ('ap', 'pp', 'pl', 'le') before being compared.
         parallel
             Whether to run the comparisons in parallel. Note that this is not always faster, especially
             when used with other expressions or in group_by/over context.
@@ -872,10 +879,118 @@ class StrExt:
 
         return self._expr.register_plugin(
             lib=lib,
-            symbol="pl_levenshtein_dist",
-            args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+            symbol="pl_sorensen_dice",
+            args=[other_, pl.lit(substr_size, dtype=pl.UInt32), pl.lit(parallel, dtype=pl.Boolean)],
             is_elementwise=True,
         )
+
+    def overlap_coeff(
+        self, other: Union[str, pl.Expr], substr_size: int = 2, parallel: bool = False
+    ) -> pl.Expr:
+        """
+        Treats substrings of size `substr_size` as a set. And computes the overlap coefficient as
+        similarity between this word and the other. This is not the same as comparing bigrams.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then perform element-wise jaccard similarity computation between this column
+            and the other (given by the expression).
+        substr_size
+            The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
+            the set ('ap', 'pp', 'pl', 'le') before being compared.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other, dtype=pl.Utf8)
+        else:
+            other_ = other
+
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_overlap_coeff",
+            args=[other_, pl.lit(substr_size, dtype=pl.UInt32), pl.lit(parallel, dtype=pl.Boolean)],
+            is_elementwise=True,
+        )
+
+    def levenshtein(
+        self, other: Union[str, pl.Expr], parallel: bool = False, return_sim: bool = False
+    ) -> pl.Expr:
+        """
+        Computes the Levenshtein distance between this and the other str.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then an element-wise Levenshtein distance computation between this column
+            and the other (given by the expression) will be performed.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        return_sim
+            If true, return normalized Levenshtein.
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other, dtype=pl.Utf8)
+        else:
+            other_ = other
+
+        if return_sim:
+            return self._expr.register_plugin(
+                lib=lib,
+                symbol="pl_levenshtein_sim",
+                args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+                is_elementwise=True,
+            )
+        else:
+            return self._expr.register_plugin(
+                lib=lib,
+                symbol="pl_levenshtein",
+                args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+                is_elementwise=True,
+            )
+
+    def d_levenshtein(
+        self, other: Union[str, pl.Expr], parallel: bool = False, return_sim: bool = False
+    ) -> pl.Expr:
+        """
+        Computes the Damerau-Levenshtein distance between this and the other str.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then an element-wise Levenshtein distance computation between this column
+            and the other (given by the expression) will be performed.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        return_sim
+            If true, return normalized Damerau-Levenshtein.
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other, dtype=pl.Utf8)
+        else:
+            other_ = other
+
+        if return_sim:
+            return self._expr.register_plugin(
+                lib=lib,
+                symbol="pl_d_levenshtein_sim",
+                args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+                is_elementwise=True,
+            )
+        else:
+            return self._expr.register_plugin(
+                lib=lib,
+                symbol="pl_d_levenshtein",
+                args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+                is_elementwise=True,
+            )
 
     def hamming_dist(self, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
         """
@@ -1003,6 +1118,14 @@ class StrExt:
             https://docs.rs/aho-corasick/latest/aho_corasick/enum.MatchKind.html. Any other input will
             be treated as standard.
         """
+
+        # Currently value_capacity for each list is hard-coded to 20. If there are more than 20 matches,
+        # then this will be slow (doubling vec capacity)
+        warnings.warn(
+            "This function is unstable and may subject to change and may not perform as well "
+            "as you might think. Read the source code or contact the author for more information."
+        )
+
         pat = pl.Series(patterns, dtype=pl.Utf8)
         cs = pl.lit(case_sensitive, dtype=pl.Boolean)
         mk = pl.lit(match_kind, dtype=pl.Utf8)

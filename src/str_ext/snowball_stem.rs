@@ -34,7 +34,6 @@ fn pl_snowball_stem(inputs: &[Series]) -> PolarsResult<Series> {
             .map(|op_s| snowball_stem(op_s, no_stop))
             .collect()
     } else {
-        // have to do apply_generic, not apply_values because snowball may return None for string inputs.
         ca.apply_generic(|op_s| snowball_stem(op_s, no_stop))
     };
     Ok(out.into_series())

@@ -61,7 +61,7 @@ fn pl_ac_match(inputs: &[Series]) -> PolarsResult<Series> {
             );
             // n_pat is just capacity to initialize. We can go beyond n_pat, with a performance penalty.
             // Right now this is not the best choice.
-            // One thing we can do is to enforce the length to be < values_capacity.
+            // One thing we can do is to enforce the length to be <= values_capacity.
 
             for op_s in str_col.into_iter() {
                 if let Some(s) = op_s {
@@ -114,7 +114,7 @@ fn pl_ac_match_str(inputs: &[Series]) -> PolarsResult<Series> {
             // Is there a way to make this work?
             // let out:ChunkedArray<FixedSizeListType> = str_col.apply_values_generic(op);
 
-            let mut builder = ListUtf8ChunkedBuilder::new("match", str_col.len(), n_pat);
+            let mut builder = ListUtf8ChunkedBuilder::new("match", str_col.len(), 20);
             // n_pat is just capacity to initialize. We can go beyond n_pat, with a performance penalty.
             // Right now this is not the best choice.
 

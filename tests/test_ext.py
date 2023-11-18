@@ -228,20 +228,94 @@ def test_hamming_dist(df, res):
             pl.DataFrame({"a": ["kitten", "mary", "may"], "b": ["sitting", "merry", "mayer"]}),
             pl.DataFrame({"a": pl.Series([3, 2, 2], dtype=pl.UInt32)}),
         ),
+        (
+            pl.DataFrame(
+                {
+                    "a": [
+                        "Ostroróg",
+                        "Hätönen",
+                        "Kõivsaar",
+                        "Pöitel",
+                        "Vystrčil",
+                        "Särki",
+                        "Chreptavičienė",
+                        "Väänänen",
+                        "Führus",
+                        "Könönen",
+                        "Väänänen",
+                        "Łaszczyński",
+                        "Pärnselg",
+                        "Könönen",
+                        "Piątkowski",
+                        "D’Amore",
+                        "Körber",
+                        "Särki",
+                        "Kärson",
+                        "Węgrzyn",
+                    ],
+                    "b": [
+                        "Könönen",
+                        "Hätönen",
+                        "Wyżewski",
+                        "Jäger",
+                        "Hätönen",
+                        "Mäns",
+                        "Chreptavičienė",
+                        "Väänänen",
+                        "Ahısha",
+                        "Jürist",
+                        "Vainjärv",
+                        "Łaszczyński",
+                        "Pärnselg",
+                        "Führus",
+                        "Kübarsepp",
+                        "Németi",
+                        "Räheso",
+                        "Käri",
+                        "Jäger",
+                        "Setälä",
+                    ],
+                }
+            ),
+            pl.DataFrame(
+                {
+                    "a": pl.Series(
+                        [8, 0, 8, 5, 7, 4, 0, 0, 6, 7, 6, 0, 0, 7, 10, 6, 6, 2, 5, 7],
+                        dtype=pl.UInt32,
+                    )
+                }
+            ),
+        ),
     ],
 )
-def test_levenshtein_dist(df, res):
-    assert_frame_equal(df.select(pl.col("a").str_ext.levenshtein_dist(pl.col("b"))), res)
+def test_levenshtein(df, res):
+    assert_frame_equal(df.select(pl.col("a").str_ext.levenshtein(pl.col("b"))), res)
+
+    assert_frame_equal(df.select(pl.col("a").str_ext.levenshtein(pl.col("b"), parallel=True)), res)
 
     assert_frame_equal(
-        df.select(pl.col("a").str_ext.levenshtein_dist(pl.col("b"), parallel=True)), res
+        df.lazy().select(pl.col("a").str_ext.levenshtein(pl.col("b"))).collect(), res
     )
+
+
+@pytest.mark.parametrize(
+    "df, res",
+    [
+        (
+            pl.DataFrame({"a": ["kitten"], "b": ["sitting"]}),
+            pl.DataFrame({"a": pl.Series([4 / 11], dtype=pl.Float64)}),
+        ),
+    ],
+)
+def test_sorensen_dice(df, res):
+    assert_frame_equal(df.select(pl.col("a").str_ext.sorensen_dice(pl.col("b"))), res)
+
     assert_frame_equal(
-        df.select(pl.col("a").str_ext.levenshtein_dist("may")),
-        pl.DataFrame({"a": pl.Series([6, 1, 0], dtype=pl.UInt32)}),
+        df.select(pl.col("a").str_ext.sorensen_dice(pl.col("b"), parallel=True)), res
     )
+
     assert_frame_equal(
-        df.lazy().select(pl.col("a").str_ext.levenshtein_dist(pl.col("b"))).collect(), res
+        df.lazy().select(pl.col("a").str_ext.sorensen_dice(pl.col("b"))).collect(), res
     )
 
 

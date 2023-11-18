@@ -1527,7 +1527,7 @@ dependencies = [
 
 [[package]]
 name = "polars_ds"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "aho-corasick",
  "faer",
@@ -1541,6 +1541,7 @@ dependencies = [
  "pyo3",
  "pyo3-polars",
  "rustfft",
+ "strsim",
 ]
 
 [[package]]
@@ -2107,6 +2108,12 @@ name = "strength_reduce"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe895eb47f22e2ddd4dabc02bce419d2e643c8e3b585c78158b349195bc24d82"
+
+[[package]]
+name = "strsim"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
 name = "strum"
