@@ -70,14 +70,14 @@ The package right now contains two extensions:
 
 ### Existing Features
 
-1. Levenshtein distance, Hamming distance, str Jaccard similarity
-2. Simple Tokenize
-3. Stemming (Right now only Snowball stemmer for English)
-4. Frequency based merging, inferral, and removal.
+1. Levenshtein distance + similarity, Hamming distance, Jaro similarity, Str Jaccard simiarlity, Sorensen dice similarity, overlap coefficient
+2. Simple tokenize, snowball stemming,
+3. Frequency based merging, inferral, and removal.
+4. Aho-Corasick matching, replacing multiple patterns.
 
-### Todo list
+## Plans?
 
-1. Aho-Corasick string search https://en.wikipedia.org/wiki/Aho%E2%80%93Corasick_algorithm
+1. Some more string similarity like: https://www.postgresql.org/docs/9.1/pgtrgm.html
 
 ## Other Extensions ?
 
@@ -86,6 +86,8 @@ More stats, clustering, etc. It is simply a matter of willingness and market dem
 ## Future Plans
 
 I am open to make this package a Python frontend for other machine learning processes/models with Rust packages at the backend. There are some very interesting packages to incorporate, such as k-medoids. But I do want to stick with Faer as a Rust linear algebra backend and I do want to keep it simple for now.
+
+Right now most str similarity/dist is dependent on the strsim crate, which is no longer maintained and has some very old code. The current plan is to keep it for now and maybe replace it with higher performance code later (if there is the need to do so). 
 
 # Disclaimer
 

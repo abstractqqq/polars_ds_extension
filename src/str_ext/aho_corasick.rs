@@ -140,3 +140,31 @@ fn pl_ac_match_str(inputs: &[Series]) -> PolarsResult<Series> {
         Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
     }
 }
+
+#[polars_expr(output_type=Utf8)]
+fn pl_ac_replace(inputs: &[Series]) -> PolarsResult<Series> {
+    let str_col = inputs[0].utf8()?;
+    let patterns = inputs[1].utf8()?;
+    let patterns: Vec<&str> = patterns.into_iter().filter_map(|s| s).collect();
+
+    let replace = inputs[2].utf8()?;
+    let replace: Vec<&str> = replace.into_iter().filter_map(|s| s).collect();
+
+    let ac_builder = AhoCorasick::builder().build(&patterns);
+
+    match ac_builder {
+        Ok(ac) => {
+            let op = |op_s: Option<&str>| {
+                let s = op_s?;
+                let bytes = ac.replace_all_bytes(s.as_bytes(), &replace);
+                match String::from_utf8(bytes) {
+                    Ok(new_str) => Some(new_str),
+                    _ => None,
+                }
+            };
+            let out: Utf8Chunked = str_col.apply_generic(op);
+            Ok(out.into_series())
+        }
+        Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
+    }
+}

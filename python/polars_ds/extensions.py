@@ -992,7 +992,33 @@ class StrExt:
                 is_elementwise=True,
             )
 
-    def hamming_dist(self, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
+    def jaro(self, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
+        """
+        Computes the Jaro similarity between this and the other str.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then an element-wise Levenshtein distance computation between this column
+            and the other (given by the expression) will be performed.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other, dtype=pl.Utf8)
+        else:
+            other_ = other
+
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_jaro",
+            args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+            is_elementwise=True,
+        )
+
+    def hamming(self, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
         """
         Computes the hamming distance between two strings. If they do not have the same length, null will
         be returned.
@@ -1014,7 +1040,7 @@ class StrExt:
 
         return self._expr.register_plugin(
             lib=lib,
-            symbol="pl_hamming_dist",
+            symbol="pl_hamming",
             args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
             is_elementwise=True,
         )
@@ -1110,9 +1136,9 @@ class StrExt:
         Parameters
         ----------
         patterns
-            A list of strs, which are the patterns to be matched
+            A list of strs, which are patterns to be matched
         case_sensitive
-            Should this match be case sensitive. Default is false.
+            Should this match be case sensitive? Default is false. Not working now.
         match_kind
             One of `standard`, `left_most_first`, or `left_most_longest`. For more information, see
             https://docs.rs/aho-corasick/latest/aho_corasick/enum.MatchKind.html. Any other input will
@@ -1121,9 +1147,11 @@ class StrExt:
 
         # Currently value_capacity for each list is hard-coded to 20. If there are more than 20 matches,
         # then this will be slow (doubling vec capacity)
+        warnings.warn("Argument `case_sensitive` does not seem to work right now.")
         warnings.warn(
-            "This function is unstable and may subject to change and may not perform as well "
-            "as you might think. Read the source code or contact the author for more information."
+            "This function is unstable and may subject to change and may not perform well if there are more than "
+            "20 matches. Read the source code or contact the author for more information. The most difficulty part "
+            "is to design an output API that works well with Polars, which is harder than one might think."
         )
 
         pat = pl.Series(patterns, dtype=pl.Utf8)
@@ -1143,6 +1171,33 @@ class StrExt:
                 args=[pat, cs, mk],
                 is_elementwise=True,
             )
+
+    def ac_replace(self, patterns: list[str], replacements: list[str]) -> pl.Expr:
+        """
+        Try to replace the patterns using the Aho-Corasick algorithm. The length of patterns should match
+        the length of replacements. If not, both sequences will be capped at the shorter length. If an error
+        happens during replacement, None will be returned.
+
+        Parameters
+        ----------
+        patterns
+            A list of strs, which are patterns to be matched
+        replacements
+            A list of strs to replace the patterns with
+        """
+        if (len(replacements) == 0) | (len(patterns) == 0):
+            return self._expr
+
+        mlen = min(len(patterns), len(replacements))
+        pat = pl.Series(patterns[:mlen], dtype=pl.Utf8)
+        rpl = pl.Series(replacements[:mlen], dtype=pl.Utf8)
+
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_ac_replace",
+            args=[pat, rpl],
+            is_elementwise=True,
+        )
 
 
 # class LintExtExpr(pl.Expr):

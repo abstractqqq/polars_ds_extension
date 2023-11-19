@@ -213,11 +213,89 @@ def test_snowball(df, res):
         ),
     ],
 )
-def test_hamming_dist(df, res):
-    assert_frame_equal(df.select(pl.col("a").str_ext.hamming_dist(pl.col("b"))), res)
-    assert_frame_equal(df.select(pl.col("a").str_ext.hamming_dist(pl.col("b"), parallel=True)), res)
+def test_hamming(df, res):
+    assert_frame_equal(df.select(pl.col("a").str_ext.hamming(pl.col("b"))), res)
+    assert_frame_equal(df.select(pl.col("a").str_ext.hamming(pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.lazy().select(pl.col("a").str_ext.hamming(pl.col("b"))).collect(), res)
+
+
+@pytest.mark.parametrize(
+    "df, res",
+    [
+        (  # From Wikipedia
+            pl.DataFrame(
+                {
+                    "a": ["FAREMVIEL"],
+                    "b": ["FARMVILLE"],
+                }
+            ),
+            pl.DataFrame({"a": pl.Series([(1 / 3) * (16 / 9 + 7 / 8)], dtype=pl.Float64)}),
+        ),
+    ],
+)
+def test_jaro(df, res):
+    assert_frame_equal(df.select(pl.col("a").str_ext.jaro(pl.col("b"))), res)
+    assert_frame_equal(df.select(pl.col("a").str_ext.jaro(pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.lazy().select(pl.col("a").str_ext.jaro(pl.col("b"))).collect(), res)
+
+
+@pytest.mark.parametrize(
+    "df, pat, res",
+    [
+        (  # From Wikipedia
+            pl.DataFrame(
+                {
+                    "a": ["Nobody likes maple in their apple flavored Snapple."],
+                }
+            ),
+            ["apple", "maple", "snapple"],
+            [1, 0, 2],
+        ),
+    ],
+)
+def test_ac_match(df, pat, res):
+    ans = df.select(
+        pl.col("a").str_ext.ac_match(
+            patterns=pat, case_sensitive=True, match_kind="standard", return_str=False
+        )
+    ).item(0, 0)
+    ans = list(ans)
+
+    assert ans == res
+
+    ans_strs = [pat[i] for i in ans]
+    res_strs = [pat[i] for i in res]
+
+    assert ans_strs == res_strs
+
+
+@pytest.mark.parametrize(
+    "df, pat, repl, res",
+    [
+        (  # From Wikipedia
+            pl.DataFrame(
+                {
+                    "a": ["hate 123 hate, poor 123, sad !23dc"],
+                }
+            ),
+            ["hate", "poor", "sad"],
+            ["love", "wealthy", "happy"],
+            pl.DataFrame(
+                {
+                    "a": ["love 123 love, wealthy 123, happy !23dc"],
+                }
+            ),
+        ),
+    ],
+)
+def test_ac_replace(df, pat, repl, res):
     assert_frame_equal(
-        df.lazy().select(pl.col("a").str_ext.hamming_dist(pl.col("b"))).collect(), res
+        df.select(pl.col("a").str_ext.ac_replace(patterns=pat, replacements=repl)), res
+    )
+
+    assert_frame_equal(
+        df.lazy().select(pl.col("a").str_ext.ac_replace(patterns=pat, replacements=repl)).collect(),
+        res,
     )
 
 

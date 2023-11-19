@@ -22,7 +22,7 @@ fn optional_hamming(op_w1: Option<&str>, op_w2: Option<&str>) -> Option<u32> {
 }
 
 #[polars_expr(output_type=UInt32)]
-fn pl_hamming_dist(inputs: &[Series]) -> PolarsResult<Series> {
+fn pl_hamming(inputs: &[Series]) -> PolarsResult<Series> {
     let ca1 = inputs[0].utf8()?;
     let ca2 = inputs[1].utf8()?;
     let parallel = inputs[2].bool()?;

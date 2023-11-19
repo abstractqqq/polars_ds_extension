@@ -5,6 +5,8 @@ use pyo3_polars::{
     export::polars_core::utils::rayon::prelude::{IndexedParallelIterator, ParallelIterator},
 };
 
+// This is a different implementation than Sorensen Dice from strsim package.
+
 fn sorensen_dice(w1: &str, w2: &str, n: usize) -> f64 {
     let (s1, s2, intersect) = str_set_sim_helper(w1, w2, n);
     ((2 * intersect) as f64) / ((s1 + s2) as f64)

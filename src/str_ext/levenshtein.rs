@@ -50,18 +50,15 @@ fn pl_levenshtein(inputs: &[Series]) -> PolarsResult<Series> {
     let parallel = inputs[2].bool()?;
     let parallel = parallel.get(0).unwrap();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let r = ca2.get(0);
         let out: UInt32Chunked = if parallel {
-            let op = |op_s| {
-                if let Some(s) = op_s {
-                    Some(levenshtein(s, r) as u32)
-                } else {
-                    None
-                }
-            };
-            ca1.par_iter().map(|op_s| op(op_s)).collect()
+            ca1.par_iter()
+                .map(|op_s| optional_levenshtein(op_s, r))
+                .collect()
         } else {
-            ca1.apply_nonnull_values_generic(DataType::UInt32, |x| levenshtein(x, r) as u32)
+            ca1.apply_nonnull_values_generic(DataType::UInt32, |x| {
+                levenshtein(x, r.unwrap()) as u32
+            })
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -88,18 +85,15 @@ fn pl_levenshtein_sim(inputs: &[Series]) -> PolarsResult<Series> {
     let parallel = inputs[2].bool()?;
     let parallel = parallel.get(0).unwrap();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let r = ca2.get(0);
         let out: Float64Chunked = if parallel {
-            let op = |op_s| {
-                if let Some(s) = op_s {
-                    Some(normalized_levenshtein(s, r))
-                } else {
-                    None
-                }
-            };
-            ca1.par_iter().map(|op_s| op(op_s)).collect()
+            ca1.par_iter()
+                .map(|op_s| optional_levenshtein_sim(op_s, r))
+                .collect()
         } else {
-            ca1.apply_nonnull_values_generic(DataType::Float64, |x| normalized_levenshtein(x, r))
+            ca1.apply_nonnull_values_generic(DataType::Float64, |x| {
+                normalized_levenshtein(x, r.unwrap())
+            })
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -126,18 +120,15 @@ fn pl_d_levenshtein(inputs: &[Series]) -> PolarsResult<Series> {
     let parallel = inputs[2].bool()?;
     let parallel = parallel.get(0).unwrap();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let r = ca2.get(0);
         let out: UInt32Chunked = if parallel {
-            let op = |op_s| {
-                if let Some(s) = op_s {
-                    Some(damerau_levenshtein(s, r) as u32)
-                } else {
-                    None
-                }
-            };
-            ca1.par_iter().map(|op_s| op(op_s)).collect()
+            ca1.par_iter()
+                .map(|op_s| optional_damerau_levenshtein(op_s, r))
+                .collect()
         } else {
-            ca1.apply_nonnull_values_generic(DataType::UInt32, |x| damerau_levenshtein(x, r) as u32)
+            ca1.apply_nonnull_values_generic(DataType::UInt32, |x| {
+                damerau_levenshtein(x, r.unwrap()) as u32
+            })
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -164,19 +155,14 @@ fn pl_d_levenshtein_sim(inputs: &[Series]) -> PolarsResult<Series> {
     let parallel = inputs[2].bool()?;
     let parallel = parallel.get(0).unwrap();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let r = ca2.get(0);
         let out: Float64Chunked = if parallel {
-            let op = |op_s| {
-                if let Some(s) = op_s {
-                    Some(normalized_damerau_levenshtein(s, r))
-                } else {
-                    None
-                }
-            };
-            ca1.par_iter().map(|op_s| op(op_s)).collect()
+            ca1.par_iter()
+                .map(|op_s| optional_damerau_levenshtein_sim(op_s, r))
+                .collect()
         } else {
             ca1.apply_nonnull_values_generic(DataType::Float64, |x| {
-                normalized_damerau_levenshtein(x, r)
+                normalized_damerau_levenshtein(x, r.unwrap())
             })
         };
         Ok(out.into_series())

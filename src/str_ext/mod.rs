@@ -1,13 +1,21 @@
 mod aho_corasick;
 mod consts;
-mod hamming_dist;
-mod levenshtein_dist;
+mod hamming;
+mod jaro;
+mod levenshtein;
 mod overlap;
 mod snowball;
 mod snowball_stem;
 mod sorensen_dice;
 mod str_jaccard;
 
+// Most str dist / similarity metrics are powered by strsim. They have good performance.
+// E.g. Levenshtein has 3x better performance than my own implementation.
+// However, I saw people saying in the github issue section that things can be improved.
+// The strsim project is no longer maintained. If there is a need to improve performance
+// further, we can fork and develop it ourselves (currently just me).
+
+// Hashbrown has better perf than Rust's HashSet
 use hashbrown::HashSet;
 
 #[inline]
