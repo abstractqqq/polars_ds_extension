@@ -9,6 +9,8 @@ mod snowball_stem;
 mod sorensen_dice;
 mod str_jaccard;
 
+// use unicode_segmentation::UnicodeSegmentation;
+
 // Most str dist / similarity metrics are powered by strsim. They have good performance.
 // E.g. Levenshtein has 3x better performance than my own implementation.
 // However, I saw people saying in the github issue section that things can be improved.
@@ -47,4 +49,40 @@ pub fn str_set_sim_helper(w1: &str, w2: &str, n: usize) -> (usize, usize, usize)
 
     let intersection = s1.intersection(&s2).count();
     (s1.len(), s2.len(), intersection)
+}
+
+
+#[inline]
+pub fn remove_common_prefix<'a>(s1:&'a str, s2:&'a str) -> (&'a str, &'a str) {
+
+    let iter1 = s1.chars();
+    let iter2 = s2.chars();
+    let mut prefix:String = String::new();
+    for (c1, c2) in iter1.zip(iter2) {
+        if c1 == c2 {
+            prefix.push(c1);
+        } else {
+            break
+        }
+    }
+    (s1.strip_prefix(&prefix).unwrap(), s2.strip_prefix(&prefix).unwrap())
+
+}
+
+#[inline]
+pub fn remove_common_suffix<'a>(s1:&'a str, s2:&'a str) -> (&'a str, &'a str) {
+
+
+    let iter1 = s1.chars().rev();
+    let iter2 = s2.chars().rev();
+    let mut suffix:String = String::new();
+    for (c1, c2) in iter1.zip(iter2) {
+        if c1 == c2 {
+            suffix.push(c1);
+        } else {
+            break
+        }
+    }
+    suffix = suffix.chars().rev().collect(); // meh... I have to...
+    (s1.strip_suffix(&suffix).unwrap(), s2.strip_suffix(&suffix).unwrap())
 }
