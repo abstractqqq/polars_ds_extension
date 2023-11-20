@@ -213,11 +213,89 @@ def test_snowball(df, res):
         ),
     ],
 )
-def test_hamming_dist(df, res):
-    assert_frame_equal(df.select(pl.col("a").str_ext.hamming_dist(pl.col("b"))), res)
-    assert_frame_equal(df.select(pl.col("a").str_ext.hamming_dist(pl.col("b"), parallel=True)), res)
+def test_hamming(df, res):
+    assert_frame_equal(df.select(pl.col("a").str_ext.hamming(pl.col("b"))), res)
+    assert_frame_equal(df.select(pl.col("a").str_ext.hamming(pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.lazy().select(pl.col("a").str_ext.hamming(pl.col("b"))).collect(), res)
+
+
+@pytest.mark.parametrize(
+    "df, res",
+    [
+        (  # From Wikipedia
+            pl.DataFrame(
+                {
+                    "a": ["FAREMVIEL"],
+                    "b": ["FARMVILLE"],
+                }
+            ),
+            pl.DataFrame({"a": pl.Series([(1 / 3) * (16 / 9 + 7 / 8)], dtype=pl.Float64)}),
+        ),
+    ],
+)
+def test_jaro(df, res):
+    assert_frame_equal(df.select(pl.col("a").str_ext.jaro(pl.col("b"))), res)
+    assert_frame_equal(df.select(pl.col("a").str_ext.jaro(pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.lazy().select(pl.col("a").str_ext.jaro(pl.col("b"))).collect(), res)
+
+
+@pytest.mark.parametrize(
+    "df, pat, res",
+    [
+        (  # From Wikipedia
+            pl.DataFrame(
+                {
+                    "a": ["Nobody likes maple in their apple flavored Snapple."],
+                }
+            ),
+            ["apple", "maple", "snapple"],
+            [1, 0, 2],
+        ),
+    ],
+)
+def test_ac_match(df, pat, res):
+    ans = df.select(
+        pl.col("a").str_ext.ac_match(
+            patterns=pat, case_sensitive=True, match_kind="standard", return_str=False
+        )
+    ).item(0, 0)
+    ans = list(ans)
+
+    assert ans == res
+
+    ans_strs = [pat[i] for i in ans]
+    res_strs = [pat[i] for i in res]
+
+    assert ans_strs == res_strs
+
+
+@pytest.mark.parametrize(
+    "df, pat, repl, res",
+    [
+        (  # From Wikipedia
+            pl.DataFrame(
+                {
+                    "a": ["hate 123 hate, poor 123, sad !23dc"],
+                }
+            ),
+            ["hate", "poor", "sad"],
+            ["love", "wealthy", "happy"],
+            pl.DataFrame(
+                {
+                    "a": ["love 123 love, wealthy 123, happy !23dc"],
+                }
+            ),
+        ),
+    ],
+)
+def test_ac_replace(df, pat, repl, res):
     assert_frame_equal(
-        df.lazy().select(pl.col("a").str_ext.hamming_dist(pl.col("b"))).collect(), res
+        df.select(pl.col("a").str_ext.ac_replace(patterns=pat, replacements=repl)), res
+    )
+
+    assert_frame_equal(
+        df.lazy().select(pl.col("a").str_ext.ac_replace(patterns=pat, replacements=repl)).collect(),
+        res,
     )
 
 
@@ -228,20 +306,94 @@ def test_hamming_dist(df, res):
             pl.DataFrame({"a": ["kitten", "mary", "may"], "b": ["sitting", "merry", "mayer"]}),
             pl.DataFrame({"a": pl.Series([3, 2, 2], dtype=pl.UInt32)}),
         ),
+        (
+            pl.DataFrame(
+                {
+                    "a": [
+                        "Ostroróg",
+                        "Hätönen",
+                        "Kõivsaar",
+                        "Pöitel",
+                        "Vystrčil",
+                        "Särki",
+                        "Chreptavičienė",
+                        "Väänänen",
+                        "Führus",
+                        "Könönen",
+                        "Väänänen",
+                        "Łaszczyński",
+                        "Pärnselg",
+                        "Könönen",
+                        "Piątkowski",
+                        "D’Amore",
+                        "Körber",
+                        "Särki",
+                        "Kärson",
+                        "Węgrzyn",
+                    ],
+                    "b": [
+                        "Könönen",
+                        "Hätönen",
+                        "Wyżewski",
+                        "Jäger",
+                        "Hätönen",
+                        "Mäns",
+                        "Chreptavičienė",
+                        "Väänänen",
+                        "Ahısha",
+                        "Jürist",
+                        "Vainjärv",
+                        "Łaszczyński",
+                        "Pärnselg",
+                        "Führus",
+                        "Kübarsepp",
+                        "Németi",
+                        "Räheso",
+                        "Käri",
+                        "Jäger",
+                        "Setälä",
+                    ],
+                }
+            ),
+            pl.DataFrame(
+                {
+                    "a": pl.Series(
+                        [8, 0, 8, 5, 7, 4, 0, 0, 6, 7, 6, 0, 0, 7, 10, 6, 6, 2, 5, 7],
+                        dtype=pl.UInt32,
+                    )
+                }
+            ),
+        ),
     ],
 )
-def test_levenshtein_dist(df, res):
-    assert_frame_equal(df.select(pl.col("a").str_ext.levenshtein_dist(pl.col("b"))), res)
+def test_levenshtein(df, res):
+    assert_frame_equal(df.select(pl.col("a").str_ext.levenshtein(pl.col("b"))), res)
+
+    assert_frame_equal(df.select(pl.col("a").str_ext.levenshtein(pl.col("b"), parallel=True)), res)
 
     assert_frame_equal(
-        df.select(pl.col("a").str_ext.levenshtein_dist(pl.col("b"), parallel=True)), res
+        df.lazy().select(pl.col("a").str_ext.levenshtein(pl.col("b"))).collect(), res
     )
+
+
+@pytest.mark.parametrize(
+    "df, res",
+    [
+        (
+            pl.DataFrame({"a": ["kitten"], "b": ["sitting"]}),
+            pl.DataFrame({"a": pl.Series([4 / 11], dtype=pl.Float64)}),
+        ),
+    ],
+)
+def test_sorensen_dice(df, res):
+    assert_frame_equal(df.select(pl.col("a").str_ext.sorensen_dice(pl.col("b"))), res)
+
     assert_frame_equal(
-        df.select(pl.col("a").str_ext.levenshtein_dist("may")),
-        pl.DataFrame({"a": pl.Series([6, 1, 0], dtype=pl.UInt32)}),
+        df.select(pl.col("a").str_ext.sorensen_dice(pl.col("b"), parallel=True)), res
     )
+
     assert_frame_equal(
-        df.lazy().select(pl.col("a").str_ext.levenshtein_dist(pl.col("b"))).collect(), res
+        df.lazy().select(pl.col("a").str_ext.sorensen_dice(pl.col("b"))).collect(), res
     )
 
 

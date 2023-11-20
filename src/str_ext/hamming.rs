@@ -3,17 +3,14 @@ use pyo3_polars::{
     derive::polars_expr,
     export::polars_core::utils::rayon::prelude::{IndexedParallelIterator, ParallelIterator},
 };
+use strsim::hamming;
 
 #[inline]
-pub fn hamming_dist(s1: &str, s2: &str) -> Option<u32> {
-    if s1.len() != s2.len() {
-        return None;
+fn hamming_dist(a: &str, b: &str) -> Option<u32> {
+    match hamming(a, b) {
+        Ok(d) => Some(d as u32),
+        _ => None,
     }
-    Some(
-        s1.chars()
-            .zip(s2.chars())
-            .fold(0, |a, (b, c)| a + (b != c) as u32),
-    )
 }
 
 fn optional_hamming(op_w1: Option<&str>, op_w2: Option<&str>) -> Option<u32> {
@@ -25,7 +22,7 @@ fn optional_hamming(op_w1: Option<&str>, op_w2: Option<&str>) -> Option<u32> {
 }
 
 #[polars_expr(output_type=UInt32)]
-fn pl_hamming_dist(inputs: &[Series]) -> PolarsResult<Series> {
+fn pl_hamming(inputs: &[Series]) -> PolarsResult<Series> {
     let ca1 = inputs[0].utf8()?;
     let ca2 = inputs[1].utf8()?;
     let parallel = inputs[2].bool()?;
@@ -43,7 +40,7 @@ fn pl_hamming_dist(inputs: &[Series]) -> PolarsResult<Series> {
         let out: UInt32Chunked = if parallel {
             ca1.par_iter().map(|op_s| op(op_s)).collect()
         } else {
-            ca1.apply_generic(op)
+            ca1.apply_generic(|x| op(x))
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {

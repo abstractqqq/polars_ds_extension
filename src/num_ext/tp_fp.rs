@@ -33,9 +33,9 @@ fn tp_fp_frame(predicted: Series, actual: Series, as_ratio: bool) -> PolarsResul
         ])
         .sort("threshold", Default::default())
         .with_columns([
-            (lit(n) - col("cnt").cumsum(false) + col("cnt")).alias("predicted_positive"),
-            (lit(positive_counts) - col("pos_cnt_at_threshold").cumsum(false))
-                .shift_and_fill(1, lit(positive_counts))
+            (lit(n) - col("cnt").cum_sum(false) + col("cnt")).alias("predicted_positive"),
+            (lit(positive_counts) - col("pos_cnt_at_threshold").cum_sum(false))
+                .shift_and_fill(1, positive_counts)
                 .alias("tp"),
         ])
         .select([

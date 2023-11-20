@@ -1,6 +1,8 @@
 import polars as pl
 from typing import Union, Optional
 from polars.utils.udfs import _get_shared_lib_location
+from .type_alias import AhoCorasickMatchKind
+import warnings
 # from polars.type_aliases import IntoExpr
 
 lib = _get_shared_lib_location(__file__)
@@ -73,6 +75,10 @@ class NumExt:
         """
         return (self._expr - self._expr.min()) / (self._expr.max() - self._expr.min())
 
+    # def most_corr_col(self, *others:pl.Expr) -> pl.Expr:
+
+    #     pl.concat_list(pl.corr(self._expr, e) for e in others)
+
     def frac(self) -> pl.Expr:
         """
         Returns the fractional part of the input values. E.g. fractional part of 1.1 is 0.1
@@ -87,8 +93,8 @@ class NumExt:
 
     def n_bins(self, n: int) -> pl.Expr:
         """
-        Maps values in this series into n bins, with each bin having equal size. This is different from
-        quantiles, as the bins' ranges are the same.
+        Maps values in this series into n bins, with each bin having equal size. This ensures that
+        the bins' ranges are the same, unlike quantiles.
 
         Parameters
         ----------
@@ -120,8 +126,7 @@ class NumExt:
 
         (1) Turning sparse multiclass target into dense target.
         (2) Finding the max probability class of a multiclass classification output
-
-        This is just a shortcut for expr.list.eval(pl.element().arg_max())
+        (3) Just a shortcut for expr.list.eval(pl.element().arg_max())
         """
         return self._expr.list.eval(pl.element().arg_max())
 
@@ -320,7 +325,7 @@ class NumExt:
 
     def logloss(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
-        Computes Binary Cross Entropy loss.
+        Computes log loss, aka binary cross entropy loss.
 
         Parameters
         ----------
@@ -342,7 +347,7 @@ class NumExt:
 
     def roc_auc(self, pred: pl.Expr) -> pl.Expr:
         """
-        Computes ROC AUC using self (actual) and the predictions.
+        Computes ROC AUC using self as actual and pred as predictions.
 
         Self must be binary and castable to type UInt32. If self is not all 0s and 1s or not binary,
         the result will not make sense, or some error may occur.
@@ -363,7 +368,7 @@ class NumExt:
 
     def binary_metrics_combo(self, pred: pl.Expr, threshold: float = 0.5) -> pl.Expr:
         """
-        Computes the following binary classificaition metrics using self (actual) and the predictions:
+        Computes the following binary classificaition metrics using self as actual and pred as predictions:
         precision, recall, f, average_precision and roc_auc. The return will be a struct with values
         having the names as given here.
 
@@ -371,7 +376,7 @@ class NumExt:
         the result will not make sense, or some error may occur.
 
         Average precision is computed using Sum (R_n - R_n-1)*P_n-1, which is not the textbook definition,
-        but is consistent with how Scikit-learn computes average precision. For more information, see
+        but is consistent with Scikit-learn. For more information, see
         https://scikit-learn.org/stable/modules/generated/sklearn.metrics.average_precision_score.html
 
         Parameters
@@ -398,8 +403,8 @@ class NumExt:
         ----------
         x
             If it is a single float, it must be positive and it will represent a uniform
-            distance between points. If it is an expression, it must be sorted and have the
-            same length as self.
+            distance between points. If it is an expression, it must be sorted, does not contain
+            null, and have the same length as self.
         """
         y = self._expr.cast(pl.Float64)
         if isinstance(x, float):
@@ -728,6 +733,12 @@ class StrExt:
 
         return expr
 
+    def line_count(self) -> pl.Expr:
+        """
+        Return the line count of the string column.
+        """
+        return self._expr.str.count_matches(pattern="\n")
+
     def infer_infreq(
         self,
         *,
@@ -814,7 +825,7 @@ class StrExt:
     ) -> pl.Expr:
         """
         Treats substrings of size `substr_size` as a set. And computes the jaccard similarity between
-        this word and the other.
+        this word and the other. This is not the same as comparing bigrams.
 
         Parameters
         ----------
@@ -841,9 +852,149 @@ class StrExt:
             is_elementwise=True,
         )
 
-    def levenshtein_dist(self, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
+    def sorensen_dice(
+        self, other: Union[str, pl.Expr], substr_size: int = 2, parallel: bool = False
+    ) -> pl.Expr:
         """
-        Computes the levenshtein distance between this each value in the column with the str other.
+        Treats substrings of size `substr_size` as a set. And computes the Sorensen-Dice similarity between
+        this word and the other. This is not the same as comparing bigrams.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then perform element-wise jaccard similarity computation between this column
+            and the other (given by the expression).
+        substr_size
+            The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
+            the set ('ap', 'pp', 'pl', 'le') before being compared.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other, dtype=pl.Utf8)
+        else:
+            other_ = other
+
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_sorensen_dice",
+            args=[other_, pl.lit(substr_size, dtype=pl.UInt32), pl.lit(parallel, dtype=pl.Boolean)],
+            is_elementwise=True,
+        )
+
+    def overlap_coeff(
+        self, other: Union[str, pl.Expr], substr_size: int = 2, parallel: bool = False
+    ) -> pl.Expr:
+        """
+        Treats substrings of size `substr_size` as a set. And computes the overlap coefficient as
+        similarity between this word and the other. This is not the same as comparing bigrams.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then perform element-wise jaccard similarity computation between this column
+            and the other (given by the expression).
+        substr_size
+            The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
+            the set ('ap', 'pp', 'pl', 'le') before being compared.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other, dtype=pl.Utf8)
+        else:
+            other_ = other
+
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_overlap_coeff",
+            args=[other_, pl.lit(substr_size, dtype=pl.UInt32), pl.lit(parallel, dtype=pl.Boolean)],
+            is_elementwise=True,
+        )
+
+    def levenshtein(
+        self, other: Union[str, pl.Expr], parallel: bool = False, return_sim: bool = False
+    ) -> pl.Expr:
+        """
+        Computes the Levenshtein distance between this and the other str.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then an element-wise Levenshtein distance computation between this column
+            and the other (given by the expression) will be performed.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        return_sim
+            If true, return normalized Levenshtein.
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other, dtype=pl.Utf8)
+        else:
+            other_ = other
+
+        if return_sim:
+            return self._expr.register_plugin(
+                lib=lib,
+                symbol="pl_levenshtein_sim",
+                args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+                is_elementwise=True,
+            )
+        else:
+            return self._expr.register_plugin(
+                lib=lib,
+                symbol="pl_levenshtein",
+                args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+                is_elementwise=True,
+            )
+
+    def d_levenshtein(
+        self, other: Union[str, pl.Expr], parallel: bool = False, return_sim: bool = False
+    ) -> pl.Expr:
+        """
+        Computes the Damerau-Levenshtein distance between this and the other str.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then an element-wise Levenshtein distance computation between this column
+            and the other (given by the expression) will be performed.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        return_sim
+            If true, return normalized Damerau-Levenshtein.
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other, dtype=pl.Utf8)
+        else:
+            other_ = other
+
+        if return_sim:
+            return self._expr.register_plugin(
+                lib=lib,
+                symbol="pl_d_levenshtein_sim",
+                args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+                is_elementwise=True,
+            )
+        else:
+            return self._expr.register_plugin(
+                lib=lib,
+                symbol="pl_d_levenshtein",
+                args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+                is_elementwise=True,
+            )
+
+    def jaro(self, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
+        """
+        Computes the Jaro similarity between this and the other str.
 
         Parameters
         ----------
@@ -862,12 +1013,12 @@ class StrExt:
 
         return self._expr.register_plugin(
             lib=lib,
-            symbol="pl_levenshtein_dist",
+            symbol="pl_jaro",
             args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
             is_elementwise=True,
         )
 
-    def hamming_dist(self, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
+    def hamming(self, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
         """
         Computes the hamming distance between two strings. If they do not have the same length, null will
         be returned.
@@ -889,7 +1040,7 @@ class StrExt:
 
         return self._expr.register_plugin(
             lib=lib,
-            symbol="pl_hamming_dist",
+            symbol="pl_hamming",
             args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
             is_elementwise=True,
         )
@@ -970,12 +1121,90 @@ class StrExt:
             is_elementwise=True,
         )
 
+    def ac_match(
+        self,
+        patterns: list[str],
+        case_sensitive: bool = False,
+        match_kind: AhoCorasickMatchKind = "standard",
+        return_str: bool = False,
+    ) -> pl.Expr:
+        """
+        Try to match the patterns using the Aho-Corasick algorithm. The matched pattern's indices will be
+        returned. E.g. If for string1, pattern 2, 1, 3 are matched in this order, then [1, 0, 2] are
+        returned. (Indices in pattern list)
 
-class LintExtExpr(pl.Expr):
-    @property
-    def num_ext(self) -> NumExt:
-        return NumExt(self)
+        Parameters
+        ----------
+        patterns
+            A list of strs, which are patterns to be matched
+        case_sensitive
+            Should this match be case sensitive? Default is false. Not working now.
+        match_kind
+            One of `standard`, `left_most_first`, or `left_most_longest`. For more information, see
+            https://docs.rs/aho-corasick/latest/aho_corasick/enum.MatchKind.html. Any other input will
+            be treated as standard.
+        """
 
-    @property
-    def str_ext(self) -> StrExt:
-        return StrExt(self)
+        # Currently value_capacity for each list is hard-coded to 20. If there are more than 20 matches,
+        # then this will be slow (doubling vec capacity)
+        warnings.warn("Argument `case_sensitive` does not seem to work right now.")
+        warnings.warn(
+            "This function is unstable and may subject to change and may not perform well if there are more than "
+            "20 matches. Read the source code or contact the author for more information. The most difficulty part "
+            "is to design an output API that works well with Polars, which is harder than one might think."
+        )
+
+        pat = pl.Series(patterns, dtype=pl.Utf8)
+        cs = pl.lit(case_sensitive, dtype=pl.Boolean)
+        mk = pl.lit(match_kind, dtype=pl.Utf8)
+        if return_str:
+            return self._expr.register_plugin(
+                lib=lib,
+                symbol="pl_ac_match_str",
+                args=[pat, cs, mk],
+                is_elementwise=True,
+            )
+        else:
+            return self._expr.register_plugin(
+                lib=lib,
+                symbol="pl_ac_match",
+                args=[pat, cs, mk],
+                is_elementwise=True,
+            )
+
+    def ac_replace(self, patterns: list[str], replacements: list[str]) -> pl.Expr:
+        """
+        Try to replace the patterns using the Aho-Corasick algorithm. The length of patterns should match
+        the length of replacements. If not, both sequences will be capped at the shorter length. If an error
+        happens during replacement, None will be returned.
+
+        Parameters
+        ----------
+        patterns
+            A list of strs, which are patterns to be matched
+        replacements
+            A list of strs to replace the patterns with
+        """
+        if (len(replacements) == 0) | (len(patterns) == 0):
+            return self._expr
+
+        mlen = min(len(patterns), len(replacements))
+        pat = pl.Series(patterns[:mlen], dtype=pl.Utf8)
+        rpl = pl.Series(replacements[:mlen], dtype=pl.Utf8)
+
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_ac_replace",
+            args=[pat, rpl],
+            is_elementwise=True,
+        )
+
+
+# class LintExtExpr(pl.Expr):
+#     @property
+#     def num_ext(self) -> NumExt:
+#         return NumExt(self)
+
+#     @property
+#     def str_ext(self) -> StrExt:
+#         return StrExt(self)
