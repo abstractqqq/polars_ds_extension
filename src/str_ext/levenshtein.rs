@@ -4,12 +4,11 @@ use pyo3_polars::{
     export::polars_core::utils::rayon::prelude::{IndexedParallelIterator, ParallelIterator},
 };
 use strsim::{
-    damerau_levenshtein, normalized_damerau_levenshtein, normalized_levenshtein, levenshtein
+    damerau_levenshtein, normalized_damerau_levenshtein, normalized_levenshtein,
 };
 
 
-
-// A slightly faster version than the built in Levenshtein by dropping some abstractions
+// A slightly faster version than strsim's Levenshtein by dropping some abstractions
 #[inline]
 fn _levenshtein(a: &str, b: &str) -> u32 {
 
@@ -29,16 +28,23 @@ fn _levenshtein(a: &str, b: &str) -> u32 {
     for (i, a_elem) in (0..a_len).zip(aa.chars()) {
         result = i + 1;
         let mut distance_b = i;
-
         for (j, b_elem) in bb.chars().enumerate() {
-            let distance_a = distance_b + (a_elem != b_elem) as u32;
-            distance_b = cache[j];
-            result = (result + 1).min(distance_a.min(distance_b + 1));
+            if a_elem == b_elem{
+                let distance_a = distance_b;
+                distance_b = cache[j];
+                result = distance_a;
+            } else {
+                let distance_a = distance_b + 1;
+                distance_b = cache[j];
+                result = (result + 1).min(distance_a.min(distance_b + 1));
+            }
             cache[j] = result;
         }
     }
     result
 }
+
+
 
 #[inline]
 fn optional_damerau_levenshtein(op_s1: Option<&str>, op_s2: Option<&str>) -> Option<u32> {
@@ -110,6 +116,7 @@ fn pl_levenshtein(inputs: &[Series]) -> PolarsResult<Series> {
         ))
     }
 }
+
 
 #[polars_expr(output_type=Float64)]
 fn pl_levenshtein_sim(inputs: &[Series]) -> PolarsResult<Series> {

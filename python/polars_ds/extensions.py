@@ -1172,7 +1172,9 @@ class StrExt:
                 is_elementwise=True,
             )
 
-    def ac_replace(self, patterns: list[str], replacements: list[str]) -> pl.Expr:
+    def ac_replace(
+        self, patterns: list[str], replacements: list[str], parallel: bool = False
+    ) -> pl.Expr:
         """
         Try to replace the patterns using the Aho-Corasick algorithm. The length of patterns should match
         the length of replacements. If not, both sequences will be capped at the shorter length. If an error
@@ -1184,6 +1186,9 @@ class StrExt:
             A list of strs, which are patterns to be matched
         replacements
             A list of strs to replace the patterns with
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
         """
         if (len(replacements) == 0) | (len(patterns) == 0):
             return self._expr
@@ -1191,11 +1196,11 @@ class StrExt:
         mlen = min(len(patterns), len(replacements))
         pat = pl.Series(patterns[:mlen], dtype=pl.Utf8)
         rpl = pl.Series(replacements[:mlen], dtype=pl.Utf8)
-
+        par = pl.lit(parallel, dtype=pl.Boolean)
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_ac_replace",
-            args=[pat, rpl],
+            args=[pat, rpl, par],
             is_elementwise=True,
         )
 

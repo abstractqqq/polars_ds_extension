@@ -78,24 +78,24 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
         | (actual.null_count() + predicted.null_count() > 0)
     {
         return Err(PolarsError::ComputeError(
-            "Input columns must be the same length, cannot be empty, and shouldn't contain nulls."
+            "Binary Metrics Combo: Input columns must be the same length, non-empty, and shouldn't contain nulls."
                 .into(),
         ));
     }
 
     if actual.n_unique().unwrap_or(0) != 2 {
         return Err(PolarsError::ComputeError(
-            "Actual column must be binary without any nulls.".into(),
+            "Binary Metrics Combo: Actual column must be binary without any nulls.".into(),
         ));
     }
 
-    let n = predicted.len();
+    // let n = predicted.len();
     let mut frame = tp_fp_frame(predicted, actual, true)?
         .with_column(
             (lit(-1_f64)
                 * col("tpr")
-                    .diff(1, NullBehavior::Drop)
-                    .dot(col("precision").head(Some(n - 1))))
+                    .diff(1, NullBehavior::Ignore)
+                    .dot(col("precision").shift(Expr::Nth(1))))
             .alias("average_precision"),
         )
         .collect()?
@@ -115,10 +115,6 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
         Ok(i) => i,
         Err(i) => i,
     };
-
-    // .with_column(
-    //     col("tpr").diff(1, NullBehavior::Ignore).dot("precision").alias("average_precision")
-    // )
 
     // Average Precision
     let average_precision = frame.drop_in_place("average_precision")?;
@@ -164,7 +160,7 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
         | (actual.null_count() + predicted.null_count() > 0)
     {
         return Err(PolarsError::ComputeError(
-            "Input columns must be the same length, cannot be empty, and shouldn't contain nulls."
+            "ROC AUC: Input columns must be the same length, cannot be empty, and shouldn't contain nulls."
                 .into(),
         ));
     }

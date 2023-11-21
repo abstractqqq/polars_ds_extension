@@ -24,6 +24,7 @@ use hashbrown::HashSet;
 pub fn str_set_sim_helper(w1: &str, w2: &str, n: usize) -> (usize, usize, usize) {
     // output: set 1 size, set 2 size, intersection size
 
+
     let w1_len = w1.len();
     let w2_len = w2.len();
 
