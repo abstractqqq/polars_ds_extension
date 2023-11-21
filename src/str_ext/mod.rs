@@ -24,7 +24,6 @@ use hashbrown::HashSet;
 pub fn str_set_sim_helper(w1: &str, w2: &str, n: usize) -> (usize, usize, usize) {
     // output: set 1 size, set 2 size, intersection size
 
-
     let w1_len = w1.len();
     let w2_len = w2.len();
 
@@ -52,38 +51,39 @@ pub fn str_set_sim_helper(w1: &str, w2: &str, n: usize) -> (usize, usize, usize)
     (s1.len(), s2.len(), intersection)
 }
 
-
 #[inline]
-pub fn remove_common_prefix<'a>(s1:&'a str, s2:&'a str) -> (&'a str, &'a str) {
-
+pub fn remove_common_prefix<'a>(s1: &'a str, s2: &'a str) -> (&'a str, &'a str) {
     let iter1 = s1.chars();
     let iter2 = s2.chars();
-    let mut prefix:String = String::new();
+    let mut prefix: String = String::new();
     for (c1, c2) in iter1.zip(iter2) {
         if c1 == c2 {
             prefix.push(c1);
         } else {
-            break
+            break;
         }
     }
-    (s1.strip_prefix(&prefix).unwrap(), s2.strip_prefix(&prefix).unwrap())
-
+    (
+        s1.strip_prefix(&prefix).unwrap(),
+        s2.strip_prefix(&prefix).unwrap(),
+    )
 }
 
 #[inline]
-pub fn remove_common_suffix<'a>(s1:&'a str, s2:&'a str) -> (&'a str, &'a str) {
-
-
+pub fn remove_common_suffix<'a>(s1: &'a str, s2: &'a str) -> (&'a str, &'a str) {
     let iter1 = s1.chars().rev();
     let iter2 = s2.chars().rev();
-    let mut suffix:String = String::new();
+    let mut suffix: String = String::new();
     for (c1, c2) in iter1.zip(iter2) {
         if c1 == c2 {
             suffix.push(c1);
         } else {
-            break
+            break;
         }
     }
     suffix = suffix.chars().rev().collect(); // meh... I have to...
-    (s1.strip_suffix(&suffix).unwrap(), s2.strip_suffix(&suffix).unwrap())
+    (
+        s1.strip_suffix(&suffix).unwrap(),
+        s2.strip_suffix(&suffix).unwrap(),
+    )
 }

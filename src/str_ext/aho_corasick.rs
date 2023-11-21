@@ -165,7 +165,7 @@ fn pl_ac_replace(inputs: &[Series]) -> PolarsResult<Series> {
                     _ => None,
                 }
             };
-            let out:Utf8Chunked = if parallel {
+            let out: Utf8Chunked = if parallel {
                 str_col.par_iter().map(op).collect()
             } else {
                 str_col.apply_generic(op)
