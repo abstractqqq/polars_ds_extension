@@ -955,6 +955,41 @@ class StrExt:
                 is_elementwise=True,
             )
 
+    def levenshtein_within(
+        self,
+        other: Union[str, pl.Expr],
+        bound: int,
+        parallel: bool = False,
+    ) -> pl.Expr:
+        """
+        Returns whether the Levenshtein distance between self and other is <= bound. This is much
+        faster than computing levenshtein distance and then doing <= bound.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then an element-wise Levenshtein distance computation between this column
+            and the other (given by the expression) will be performed.
+        bound
+            Closed upper bound. If levenshtein distance <= bound, return true and false otherwise.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other, dtype=pl.Utf8)
+        else:
+            other_ = other
+
+        bound = pl.lit(abs(bound), dtype=pl.UInt32)
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_levenshtein_within",
+            args=[other_, bound, pl.lit(parallel, dtype=pl.Boolean)],
+            is_elementwise=True,
+        )
+
     def d_levenshtein(
         self, other: Union[str, pl.Expr], parallel: bool = False, return_sim: bool = False
     ) -> pl.Expr:

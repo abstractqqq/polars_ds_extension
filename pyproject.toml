@@ -5,8 +5,9 @@ build-backend = "maturin"
 [project]
 name = "polars_ds"
 requires-python = ">=3.8"
-license = {file = "LICENSE.txt"}
+version = "0.1.3"
 
+license = {file = "LICENSE.txt"}
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Rust",
@@ -14,13 +15,12 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
     "License :: OSI Approved :: MIT License",
 ]
-version = "0.1.2"
 authors = [
     {name = "Tianren Qin", email = "tq9695@gmail.com"},
     {name = "Nelson Griffiths", email = "nelsongriffiths123@gmail.com"}
 ]
 dependencies = [
-    "polars == 0.19.14",
+    "polars >= 0.19.14",
 ] 
 
 keywords = ["polars-extension", "scientific-computing", "data-science"]

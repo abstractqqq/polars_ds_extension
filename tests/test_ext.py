@@ -377,6 +377,36 @@ def test_levenshtein(df, res):
 
 
 @pytest.mark.parametrize(
+    "df, bound, res",
+    [
+        (
+            pl.DataFrame(
+                {"a": ["kitten", "mary", "may", None], "b": ["sitting", "merry", "mayer", ""]}
+            ),
+            2,
+            pl.DataFrame({"a": pl.Series([False, True, True, None])}),
+        ),
+    ],
+)
+def test_levenshtein_within(df, bound, res):
+    assert_frame_equal(
+        df.select(pl.col("a").str_ext.levenshtein_within(pl.col("b"), bound=bound)), res
+    )
+
+    assert_frame_equal(
+        df.select(pl.col("a").str_ext.levenshtein_within(pl.col("b"), bound=bound, parallel=True)),
+        res,
+    )
+
+    assert_frame_equal(
+        df.lazy()
+        .select(pl.col("a").str_ext.levenshtein_within(pl.col("b"), bound=bound))
+        .collect(),
+        res,
+    )
+
+
+@pytest.mark.parametrize(
     "df, res",
     [
         (
