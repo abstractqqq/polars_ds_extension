@@ -75,29 +75,15 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     if (actual.len() != predicted.len())
         | actual.is_empty()
         | predicted.is_empty()
-        | (actual.null_count() + predicted.null_count() > 0)
+        | ((actual.null_count() + predicted.null_count()) > 0)
     {
         return Err(PolarsError::ComputeError(
             "Binary Metrics Combo: Input columns must be the same length, non-empty, and shouldn't contain nulls."
-                .into(),
+            .into(),
         ));
     }
 
-    if actual.n_unique().unwrap_or(0) != 2 {
-        return Err(PolarsError::ComputeError(
-            "Binary Metrics Combo: Actual column must be binary without any nulls.".into(),
-        ));
-    }
-
-    // let n = predicted.len();
     let mut frame = tp_fp_frame(predicted, actual, true)?
-        .with_column(
-            (lit(-1_f64)
-                * col("tpr")
-                    .diff(1, NullBehavior::Ignore)
-                    .dot(col("precision").shift(Expr::Nth(1))))
-            .alias("average_precision"),
-        )
         .collect()?
         .agg_chunks();
 
@@ -116,12 +102,6 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
         Err(i) => i,
     };
 
-    // Average Precision
-    let average_precision = frame.drop_in_place("average_precision")?;
-    let average_precision = average_precision.f64()?;
-    let average_precision = average_precision.get(0).unwrap();
-    let average_precision: Series = Series::from_vec("average_precision", vec![average_precision]);
-
     // ROC AUC
 
     let y = tpr.f64()?;
@@ -133,6 +113,16 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     let roc_auc: f64 = -super::trapz::trapz(y, x);
     let roc_auc: Series = Series::from_vec("roc_auc", vec![roc_auc]);
 
+    // Average Precision
+    let ap: f64 = -1.0
+        * y.iter()
+            .zip(y.iter().skip(1))
+            .zip(precision)
+            .fold(0., |acc, ((y, y_next), p)| {
+                (y_next - y).mul_add(p.unwrap_or(0.), acc)
+            });
+    let ap: Series = Series::from_vec("average_precision", vec![ap]);
+
     // Precision & Recall & F
     let recall = y[index];
     let precision = precision.get(index).unwrap();
@@ -141,10 +131,7 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     let precision: Series = Series::from_vec("precision", vec![precision]);
     let f: Series = Series::from_vec("f", vec![f]);
 
-    let out = StructChunked::new(
-        "metrics",
-        &[precision, recall, f, average_precision, roc_auc],
-    )?;
+    let out = StructChunked::new("metrics", &[precision, recall, f, ap, roc_auc])?;
     Ok(out.into_series())
 }
 

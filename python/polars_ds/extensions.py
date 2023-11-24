@@ -397,7 +397,8 @@ class NumExt:
 
     def trapz(self, x: Union[float, pl.Expr]) -> pl.Expr:
         """
-        Treats self as y axis, integrates along x using the trapezoidal rule.
+        Treats self as y axis, integrates along x using the trapezoidal rule. If x is not a single
+        value, then x should be sorted.
 
         Parameters
         ----------

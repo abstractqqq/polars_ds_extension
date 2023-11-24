@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
     derive::polars_expr,
@@ -7,36 +8,86 @@ use strsim::{damerau_levenshtein, normalized_damerau_levenshtein, normalized_lev
 
 // A slightly faster version than strsim's Levenshtein by dropping some abstractions
 #[inline]
-fn _levenshtein(a: &str, b: &str) -> u32 {
-    let (aa, bb) = super::remove_common_prefix(&a, &b);
-    let (aa, bb) = super::remove_common_suffix(&aa, &bb);
+fn levenshtein(s1: &str, s2: &str) -> u32 {
+    // Use chars to avoid mistakes for multi-byte characters
+    let a: Vec<char> = s1.chars().collect();
+    let b: Vec<char> = s2.chars().collect();
 
-    let b_len = bb.len() as u32;
-    let a_len = aa.len() as u32;
-    if (a_len == 0) || (b_len == 0) {
-        return a_len.max(b_len);
+    let a_slice = a.as_slice();
+    let b_slice = b.as_slice();
+
+    // Common pre, suffix, refactor this out later
+    let (left, _) = a_slice
+        .into_iter()
+        .zip(b_slice.into_iter())
+        .find_position(|(&c1, &c2)| c1 != c2)
+        .unwrap_or((0, (&'a', &'a')));
+
+    let (right, _) = a_slice
+        .into_iter()
+        .rev()
+        .zip(b_slice.into_iter().rev())
+        .find_position(|(&c1, &c2)| c1 != c2)
+        .unwrap_or((0, (&'a', &'a')));
+
+    // Removed common pre, suffix
+    let a = &a_slice[left..(a_slice.len() - right)];
+    let b = &b_slice[left..(b_slice.len() - right)];
+
+    let mut l1 = a.len();
+    let mut l2 = b.len();
+
+    if l1 == 0 {
+        return l2 as u32;
+    }
+    if l2 == 0 {
+        return l1 as u32;
     }
 
-    let mut cache: Vec<u32> = (1..(b_len + 1)).collect();
-    let mut result: u32 = 0;
+    let (a, b) = if l1 > l2 { (b, a) } else { (a, b) };
+    (l1, l2) = (a.len(), b.len());
+    // if l1 > l2 {
+    //     std::mem::swap(&mut a, &mut b);
+    //     std::mem::swap(&mut l1, &mut l2);
+    // }
 
-    for (i, a_elem) in (0..a_len).zip(aa.chars()) {
-        result = i + 1;
-        let mut distance_b = i;
-        for (j, b_elem) in bb.chars().enumerate() {
-            if a_elem == b_elem {
-                let distance_a = distance_b;
-                distance_b = cache[j];
-                result = distance_a;
+    let width = l2 + 1;
+    let mut buffer: Vec<usize> = (0..width).collect();
+    // mid point of the verticle axis of the edit matrix
+    let v_mid = (l1 + 1) >> 1; // (l1 + 1) / 2
+                               // Using 1 buffer to represent two rows
+                               // Because we can keep updating the one buffer
+
+    // buf[0]/buf[j] = cell to the left in the edit graph
+    // buf[1]/buf[j+1] = the cell above
+    // tmp = the cell in the upper left
+    for i in 1..l1 + 1 {
+        let mut tmp = buffer[0]; // cell to upper left
+        buffer[0] = i; // cell to the left
+
+        // Use Ukkonen's trick to reduce computations for the inner loop
+        // I computed and proved (empirically) these start and end point values
+        let (start, end) = (
+            1 + (i >= v_mid) as usize * (i % v_mid),
+            // if i < v_mid {1} else {1 + i % v_mid},
+            width.min(width - (l1 >> 1) + i - 1),
+        );
+        for j in start..end {
+            if a[i - 1] == b[j - 1] {
+                // Equal, swap. buf[j] = cell above
+                // Swap them. buf[j] will be tmp in the next round
+                std::mem::swap(&mut tmp, &mut buffer[j]);
             } else {
-                let distance_a = distance_b + 1;
-                distance_b = cache[j];
-                result = (result + 1).min(distance_a.min(distance_b + 1));
+                // char index is j - 1
+                // buf[j] = cell above, buf[j-1] = cell to the left
+                // tmp = cell upper left
+                let val = buffer[j].min(buffer[j - 1]).min(tmp) + 1;
+                tmp = buffer[j];
+                buffer[j] = val;
             }
-            cache[j] = result;
         }
     }
-    result
+    buffer[l2] as u32
 }
 
 #[inline]
@@ -57,7 +108,7 @@ fn optional_damerau_levenshtein_sim(op_s1: Option<&str>, op_s2: Option<&str>) ->
 fn optional_levenshtein(op_s1: Option<&str>, op_s2: Option<&str>) -> Option<u32> {
     let s1 = op_s1?;
     let s2 = op_s2?;
-    Some(_levenshtein(s1, s2))
+    Some(levenshtein(s1, s2))
 }
 
 #[inline]
@@ -81,7 +132,7 @@ fn pl_levenshtein(inputs: &[Series]) -> PolarsResult<Series> {
                 .collect()
         } else {
             let r = r.unwrap();
-            ca1.apply_nonnull_values_generic(DataType::UInt32, |x| _levenshtein(x, r))
+            ca1.apply_nonnull_values_generic(DataType::UInt32, |x| levenshtein(x, r))
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -91,7 +142,7 @@ fn pl_levenshtein(inputs: &[Series]) -> PolarsResult<Series> {
                 .map(|(op_w1, op_w2)| optional_levenshtein(op_w1, op_w2))
                 .collect()
         } else {
-            binary_elementwise_values(ca1, ca2, |x, y| _levenshtein(x, y) as u32)
+            binary_elementwise_values(ca1, ca2, |x, y| levenshtein(x, y))
         };
         Ok(out.into_series())
     } else {
