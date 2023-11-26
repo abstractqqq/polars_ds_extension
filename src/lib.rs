@@ -4,7 +4,6 @@ mod stats_ext;
 mod str_ext;
 mod utils;
 use pyo3::{pymodule, types::PyModule, PyResult, Python};
-// mod kdtree;
 
 #[cfg(target_os = "linux")]
 use jemallocator::Jemalloc;

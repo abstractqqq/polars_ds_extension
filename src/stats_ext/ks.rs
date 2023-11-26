@@ -87,6 +87,6 @@ fn pl_ks_2samp(inputs: &[Series]) -> PolarsResult<Series> {
     }
 
     let res = ks_2samp(v1, v2, stats_only);
-    let s = res.stats;
+    let s = res.statistic;
     Ok(Series::from_iter([s]))
 }

@@ -15,9 +15,9 @@ pyo3-polars = {version = "0.9", features = ["derive"]}
 polars = {version = "0.35.4", features = ["performant", "diff", "lazy", "dtype-array", "ndarray", "log", "nightly"]}
 num = "0.4.1"
 faer = {version = "0.15", features = ["ndarray", "nightly"]}
-ndarray = "0.15.6"
+ndarray = "0.15.6" # see if we can get rid of this
 hashbrown = {version = "0.14.2", features=["nightly"]}
-rustfft = "6.1.0"
+rustfft = "6.1.0" # Try realfft instead
 itertools = "0.12.0"
 aho-corasick = "1.1.2"
 strsim = "0.10.0"

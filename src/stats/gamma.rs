@@ -1,8 +1,5 @@
 use num::Zero;
 
-/// Taken from the project statrs
-///
-///
 use super::{LN_2_SQRT_E_OVER_PI, LN_PI, PREC_ACC};
 
 const GAMMA_R: f64 = 10.900511;
@@ -51,7 +48,7 @@ pub fn sf(x: f64, shape: f64, rate: f64) -> Result<f64, String> {
 /// The implementation is derived from
 /// "An Analysis of the Lanczos Gamma Approximation",
 /// Glendon Ralph Pugh, 2004 p. 116
-fn ln_gamma(x: f64) -> f64 {
+pub fn ln_gamma(x: f64) -> f64 {
     if x < 0.5 {
         let s = GAMMA_DK
             .iter()

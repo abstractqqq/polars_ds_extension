@@ -1,6 +1,6 @@
 # Polars Extension for General Data Science Use
 
-A Polars Plugin aiming to simplify common numerical/string data analysis procedures. 
+A Polars Plugin aiming to simplify common numerical/string data analysis procedures. This means that the most basic data science, stats, NLP related tasks can be done natively inside a dataframe.
 
 **Currently in Alpha. Feel free to submit feature requests in the issues section of the repo.**
 

@@ -498,13 +498,11 @@ const ERF_INV_IMPL_GD: &[f64] = &[
     0.231558608310259605225e-11,
 ];
 
-
 /// performs an unchecked sf calculation for a normal distribution
 /// with the given mean and standard deviation at x
 pub fn sf_unchecked(x: f64, mean: f64, std_dev: f64) -> f64 {
     0.5 * erfc((x - mean) / (std_dev * std::f64::consts::SQRT_2))
 }
-
 
 /// `erfc` calculates the complementary error function
 /// at `x`.
@@ -550,86 +548,72 @@ fn erf_impl(z: f64, inv: bool) -> f64 {
         if z < 1e-10 {
             z * 1.125 + z * 0.003379167095512573896158903121545171688
         } else {
-            z * 1.125
-                + z * polynomial(z, ERF_IMPL_AN) / polynomial(z, ERF_IMPL_AD)
+            z * 1.125 + z * polynomial(z, ERF_IMPL_AN) / polynomial(z, ERF_IMPL_AD)
         }
     } else if z < 110.0 {
         let (r, b) = if z < 0.75 {
             (
-                polynomial(z - 0.5, ERF_IMPL_BN)
-                    / polynomial(z - 0.5, ERF_IMPL_BD),
+                polynomial(z - 0.5, ERF_IMPL_BN) / polynomial(z - 0.5, ERF_IMPL_BD),
                 0.3440242112,
             )
         } else if z < 1.25 {
             (
-                polynomial(z - 0.75, ERF_IMPL_CN)
-                    / polynomial(z - 0.75, ERF_IMPL_CD),
+                polynomial(z - 0.75, ERF_IMPL_CN) / polynomial(z - 0.75, ERF_IMPL_CD),
                 0.419990927,
             )
         } else if z < 2.25 {
             (
-                polynomial(z - 1.25, ERF_IMPL_DN)
-                    / polynomial(z - 1.25, ERF_IMPL_DD),
+                polynomial(z - 1.25, ERF_IMPL_DN) / polynomial(z - 1.25, ERF_IMPL_DD),
                 0.4898625016,
             )
         } else if z < 3.5 {
             (
-                polynomial(z - 2.25, ERF_IMPL_EN)
-                    / polynomial(z - 2.25, ERF_IMPL_ED),
+                polynomial(z - 2.25, ERF_IMPL_EN) / polynomial(z - 2.25, ERF_IMPL_ED),
                 0.5317370892,
             )
         } else if z < 5.25 {
             (
-                polynomial(z - 3.5, ERF_IMPL_FN)
-                    / polynomial(z - 3.5, ERF_IMPL_FD),
+                polynomial(z - 3.5, ERF_IMPL_FN) / polynomial(z - 3.5, ERF_IMPL_FD),
                 0.5489973426,
             )
         } else if z < 8.0 {
             (
-                polynomial(z - 5.25, ERF_IMPL_GN)
-                    / polynomial(z - 5.25, ERF_IMPL_GD),
+                polynomial(z - 5.25, ERF_IMPL_GN) / polynomial(z - 5.25, ERF_IMPL_GD),
                 0.5571740866,
             )
         } else if z < 11.5 {
             (
-                polynomial(z - 8.0, ERF_IMPL_HN)
-                    / polynomial(z - 8.0, ERF_IMPL_HD),
+                polynomial(z - 8.0, ERF_IMPL_HN) / polynomial(z - 8.0, ERF_IMPL_HD),
                 0.5609807968,
             )
         } else if z < 17.0 {
             (
-                polynomial(z - 11.5, ERF_IMPL_IN)
-                    / polynomial(z - 11.5, ERF_IMPL_ID),
+                polynomial(z - 11.5, ERF_IMPL_IN) / polynomial(z - 11.5, ERF_IMPL_ID),
                 0.5626493692,
             )
         } else if z < 24.0 {
             (
-                polynomial(z - 17.0, ERF_IMPL_JN)
-                    / polynomial(z - 17.0, ERF_IMPL_JD),
+                polynomial(z - 17.0, ERF_IMPL_JN) / polynomial(z - 17.0, ERF_IMPL_JD),
                 0.5634598136,
             )
         } else if z < 38.0 {
             (
-                polynomial(z - 24.0, ERF_IMPL_KN)
-                    / polynomial(z - 24.0, ERF_IMPL_KD),
+                polynomial(z - 24.0, ERF_IMPL_KN) / polynomial(z - 24.0, ERF_IMPL_KD),
                 0.5638477802,
             )
         } else if z < 60.0 {
             (
-                polynomial(z - 38.0, ERF_IMPL_LN)
-                    / polynomial(z - 38.0, ERF_IMPL_LD),
+                polynomial(z - 38.0, ERF_IMPL_LN) / polynomial(z - 38.0, ERF_IMPL_LD),
                 0.5640528202,
             )
         } else if z < 85.0 {
             (
-                polynomial(z - 60.0, ERF_IMPL_MN)
-                    / polynomial(z - 60.0, ERF_IMPL_MD),
+                polynomial(z - 60.0, ERF_IMPL_MN) / polynomial(z - 60.0, ERF_IMPL_MD),
                 0.5641309023,
             )
         } else {
             (
-                polynomial(z - 85.0, ERF_IMPL_NN)
-                    / polynomial(z - 85.0, ERF_IMPL_ND),
+                polynomial(z - 85.0, ERF_IMPL_NN) / polynomial(z - 85.0, ERF_IMPL_ND),
                 0.5641584396,
             )
         };

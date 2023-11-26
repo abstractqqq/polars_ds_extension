@@ -7,3 +7,4 @@ else:  # 3.9
     from typing_extensions import TypeAlias
 
 AhoCorasickMatchKind: TypeAlias = Literal["standard", "left_most_first", "left_most_longest"]
+Alternative: TypeAlias = Literal["two-sided", "less", "greater"]

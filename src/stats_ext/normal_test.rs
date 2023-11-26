@@ -1,4 +1,3 @@
-use super::simple_stats_output;
 /// Here we implement the test as in SciPy: https://github.com/scipy/scipy/blob/v1.11.4/scipy/stats/_stats_py.py#L1836-L1996
 ///
 /// It is a method based on Kurtosis and Skew, and the Chi-2 distribution.
@@ -10,11 +9,13 @@ use super::simple_stats_output;
 ///
 /// Shapiro Francia test is not implemented because the distribution is unknown and would require Monte Carlo
 ///
+use super::{simple_stats_output, StatsResult};
 use crate::stats::gamma;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
-fn skew_test_statistic(skew: f64, n: usize) -> Result<f64, String> {
+/// Returns the skew test statistic, no pvalue, add p value if needed
+fn skew_test_statistic(skew: f64, n: usize) -> Result<StatsResult, String> {
     let n = n as f64;
     let y = skew * ((n + 1.) * (n + 3.) / (6. * (n - 2.))).sqrt();
     let beta2 = 3. * (n.powi(2) + 27. * n - 70.) * (n + 1.) * (n + 3.)
@@ -24,12 +25,12 @@ fn skew_test_statistic(skew: f64, n: usize) -> Result<f64, String> {
 
     let tmp = y / alpha;
     let z = (tmp + (tmp.powi(2) + 1.).sqrt()).ln() / (w2.ln() * 0.5).sqrt();
-    Ok(z)
+    Ok(StatsResult::from_stats(z))
 }
 
-fn kurtosis_test_statistic(kur: f64, n: usize) -> Result<f64, String> {
+/// Returns the kurtosis test statistic, no pvalue, add p value if needed
+fn kurtosis_test_statistic(kur: f64, n: usize) -> Result<StatsResult, String> {
     let n = n as f64;
-
     let e = 3.0 * (n - 1.) / (n + 1.);
     let var = 24.0 * n * (n - 2.) * (n - 3.) / ((n + 1.).powi(2) * (n + 3.) * (n + 5.));
     let x = (kur - e) / var.sqrt();
@@ -47,7 +48,7 @@ fn kurtosis_test_statistic(kur: f64, n: usize) -> Result<f64, String> {
         let term1 = 1. - tmp;
         let term2 = ((1. - 2. / a) / denom.abs()).cbrt();
         let z = (term1 - term2) / tmp.sqrt();
-        Ok(z)
+        Ok(StatsResult::from_stats(z))
     }
 }
 
@@ -72,8 +73,8 @@ fn pl_normal_test(inputs: &[Series]) -> PolarsResult<Series> {
     let k =
         kurtosis_test_statistic(kurtosis, n).map_err(|err| PolarsError::ComputeError(err.into()));
 
-    let s = s?; // the statistics
-    let k = k?; // the statistics
+    let s = s?.statistic; // the statistics
+    let k = k?.statistic; // the statistics
 
     let k2 = s * s + k * k; // the statistics
 

@@ -23,8 +23,57 @@ def test_normal_test(df):
 
     scipy_res = normaltest(df["a"].to_numpy())
 
-    assert np.isclose(statistic, float(scipy_res.statistic))
-    assert np.isclose(pvalue, float(scipy_res.pvalue))
+    assert np.isclose(statistic, scipy_res.statistic)
+    assert np.isclose(pvalue, scipy_res.pvalue)
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (pl.DataFrame({"a": np.random.normal(size=1_000), "b": np.random.normal(size=1_000)})),
+    ],
+)
+def test_ttest_ind(df):
+    from scipy.stats import ttest_ind
+
+    res = df.select(pl.col("a").stats_ext.ttest_ind(pl.col("b"), equal_var=True))
+    res = res.item(0, 0)  # A dictionary
+    statistic = res["statistic"]
+    pvalue = res["pvalue"]
+
+    scipy_res = ttest_ind(df["a"].to_numpy(), df["b"].to_numpy(), equal_var=True)
+
+    assert np.isclose(statistic, scipy_res.statistic)
+    assert np.isclose(pvalue, scipy_res.pvalue)
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "a": np.random.normal(size=1_000),
+                    "b": list(np.random.normal(size=998)) + [None, None],
+                }
+            )
+        ),
+    ],
+)
+def test_welch_t(df):
+    from scipy.stats import ttest_ind
+
+    res = df.select(pl.col("a").stats_ext.ttest_ind(pl.col("b"), equal_var=False))
+    res = res.item(0, 0)  # A dictionary
+    statistic = res["statistic"]
+    pvalue = res["pvalue"]
+
+    s1 = df["a"].drop_nulls().to_numpy()
+    s2 = df["b"].drop_nulls().to_numpy()
+    scipy_res = ttest_ind(s1, s2, equal_var=False)
+
+    assert np.isclose(statistic, scipy_res.statistic)
+    assert np.isclose(pvalue, scipy_res.pvalue)
 
 
 @pytest.mark.parametrize(
