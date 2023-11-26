@@ -1,8 +1,30 @@
 import pytest
 import polars as pl
 import math
-from polars_ds import NumExt, StrExt  # noqa: F401
+import numpy as np
+import polars_ds  # noqa: F401
 from polars.testing import assert_frame_equal
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (pl.DataFrame({"a": np.random.random(size=100)})),
+        (pl.DataFrame({"a": np.random.normal(size=100)})),
+    ],
+)
+def test_normal_test(df):
+    from scipy.stats import normaltest
+
+    res = df.select(pl.col("a").stats_ext.normal_test())
+    res = res.item(0, 0)  # A dictionary
+    statistic = res["statistic"]
+    pvalue = res["pvalue"]
+
+    scipy_res = normaltest(df["a"].to_numpy())
+
+    assert np.isclose(statistic, float(scipy_res.statistic))
+    assert np.isclose(pvalue, float(scipy_res.pvalue))
 
 
 @pytest.mark.parametrize(
@@ -582,7 +604,8 @@ def test_ks_stats():
     df = pl.DataFrame({"a": a, "b": b})
 
     stats = ks_2samp(a, b).statistic
-    res = df.select(pl.col("a").num_ext.ks_stats(pl.col("b"))).item(0, 0)
+    # Only statistic for now
+    res = df.select(pl.col("a").stats_ext.ks_stats(pl.col("b"))).item(0, 0)
 
     assert np.isclose(stats, res)
 

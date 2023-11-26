@@ -1478,6 +1478,7 @@ dependencies = [
  "polars",
  "pyo3",
  "pyo3-polars",
+ "rand 0.8.5",
  "rustfft",
  "strsim",
 ]
