@@ -94,18 +94,20 @@ class NumExt:
     def n_bins(self, n: int) -> pl.Expr:
         """
         Maps values in this series into n bins, with each bin having equal size. This ensures that
-        the bins' ranges are the same, unlike quantiles.
+        the bins' ranges are the same, unlike quantiles. This may have tiny numerical errors but
+        should be tolerable.
 
         Parameters
         ----------
         n
             Any positive integer
         """
+        if n <= 0:
+            raise ValueError("Input `n` must be positive.")
+
         x = self._expr
         return (
-            (x - x.min())
-            .floordiv(pl.lit(1e-12) + (x.max() - x.min()) / pl.lit(abs(n)))
-            .cast(pl.UInt32)
+            (x - x.min()).floordiv(pl.lit(1e-12) + (x.max() - x.min()) / pl.lit(n)).cast(pl.UInt32)
         )
 
     def count_max(self) -> pl.Expr:
@@ -350,7 +352,7 @@ class NumExt:
         precision, recall, f, average_precision and roc_auc. The return will be a struct with values
         having the names as given here.
 
-        Self must be binary and castable to type UInt32. If self is not all 0s and 1s or not binary,
+        Self must be binary and castable to type UInt32. If self is not all 0s and 1s,
         the result will not make sense, or some error may occur.
 
         Average precision is computed using Sum (R_n - R_n-1)*P_n-1, which is not the textbook definition,
@@ -587,19 +589,38 @@ class NumExt:
         )
 
     # Add a k step argument?
-    def fft(self, forward: bool = True) -> pl.Expr:
+    # def fft(self, forward: bool = True) -> pl.Expr:
+    #     """
+    #     Computes the DFT transform of input series using FFT Algorithm. A series of equal length will
+    #     be returned, with elements being the real and complex part of the transformed values.
+
+    #     Parameters
+    #     ----------
+    #     forward
+    #         If true, compute DFT. If false, compute inverse DFT.
+    #     """
+    #     return self._expr.register_plugin(
+    #         lib=lib,
+    #         symbol="pl_fft",
+    #         args=[pl.lit(forward, dtype=pl.Boolean)],
+    #         is_elementwise=True,
+    #     )
+
+    def rfft(self, length: Optional[int] = None) -> pl.Expr:
         """
-        Computes the DFT transform of input series using FFT Algorithm. A series of equal length will
-        be returned, with elements being the real and complex part of the transformed values.
+        Computes the DFT transform of a real-valued input series using FFT Algorithm. Note that
+        a series of length (length // 2 + 1) will be returned.
 
         Parameters
         ----------
-        forward
-            If true, compute DFT. If false, compute inverse DFT.
+        length
+            A positive integer
         """
-        return self._expr.register_plugin(
-            lib=lib,
-            symbol="pl_fft",
-            args=[pl.lit(forward, dtype=pl.Boolean)],
-            is_elementwise=True,
+        if length is not None and length <= 1:
+            raise ValueError("Input `length` should be > 1.")
+
+        le = pl.lit(length, dtype=pl.UInt32)
+        x: pl.Expr = self._expr.cast(pl.Float64)
+        return x.register_plugin(
+            lib=lib, symbol="pl_rfft", args=[le], is_elementwise=False, changes_length=True
         )
