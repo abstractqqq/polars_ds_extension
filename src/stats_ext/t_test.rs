@@ -1,3 +1,5 @@
+/// Student's t test and Welch's t test.
+
 use super::{simple_stats_output, Alternative, StatsResult};
 use crate::stats::beta;
 use polars::prelude::*;

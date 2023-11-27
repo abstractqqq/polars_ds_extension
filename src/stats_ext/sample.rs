@@ -1,7 +1,3 @@
-use itertools::Itertools;
-use polars::prelude::*;
-use pyo3_polars::derive::polars_expr;
-use rand::distributions::Uniform;
 /// Generates random sample from distributions for Polars DataFrame
 ///
 /// We are sacrificing speed and memory usage a little bit here by using CSPRNSGs. See
@@ -9,6 +5,11 @@ use rand::distributions::Uniform;
 ///
 /// I think it is ok to use CSPRNGS because it is fast enough and we generally do not
 /// want output to be easily guessable.
+
+use itertools::Itertools;
+use polars::prelude::*;
+use pyo3_polars::derive::polars_expr;
+use rand::distributions::Uniform;
 use rand::{distributions::DistString, Rng};
 use rand_distr::{Alphanumeric, Normal, StandardNormal};
 
