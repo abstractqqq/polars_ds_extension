@@ -1,7 +1,6 @@
 /// Jaccard similarity for two columns
 /// + Jaccard similarity for two columns of lists
-/// 
-
+///
 use core::hash::Hash;
 use polars::prelude::*;
 use pyo3_polars::{
