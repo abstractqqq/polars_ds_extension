@@ -12,16 +12,18 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = {version = "0.20", features = ["extension-module"]}
 pyo3-polars = {version = "0.9", features = ["derive"]}
-polars = {version = "0.35.4", features = ["performant", "diff", "lazy", "dtype-array", "ndarray", "log", "nightly"]}
+polars = {version = "0.35.4", features = ["performant", "lazy", "dtype-array", "ndarray", "log", "nightly"]}
 num = "0.4.1"
 faer = {version = "0.15", features = ["ndarray", "nightly"]}
 ndarray = "0.15.6" # see if we can get rid of this
 hashbrown = {version = "0.14.2", features=["nightly"]}
-rustfft = "6.1.0" # Try realfft instead
+# Try realfft instead, which is a wrapper around rustfft but specializes for reals and seems to have better perf
+rustfft = "6.1.0" 
 itertools = "0.12.0"
 aho-corasick = "1.1.2"
-strsim = "0.10.0"
-rand = "0.8.5"
+strsim = "0.10.0" # Consider alternatives
+rand = {version = "0.8.5"} # Simd support feature seems to be broken atm
+rand_distr = "0.4.3"
 
 [target.'cfg(any(not(target_os = "linux"), use_mimalloc))'.dependencies]
 mimalloc = { version = "0.1", default-features = false }

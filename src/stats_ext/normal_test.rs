@@ -7,7 +7,7 @@
 ///     moderate and large sample size", Biometrika, 58, 341-348
 /// [2] https://www.stata.com/manuals/rsktest.pdf
 ///
-/// Shapiro Francia test is not implemented because the distribution is unknown and would require Monte Carlo
+/// I chose this over the Shapiro Francia test because the distribution is unknown and would require Monte Carlo
 ///
 use super::{simple_stats_output, StatsResult};
 use crate::stats::gamma;

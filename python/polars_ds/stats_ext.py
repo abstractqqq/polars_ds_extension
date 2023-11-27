@@ -1,7 +1,6 @@
 import polars as pl
 from .type_alias import Alternative
-
-# from typing import Union, Optional
+from typing import Optional
 from polars.utils.udfs import _get_shared_lib_location
 # from polars.type_aliases import IntoExpr
 
@@ -130,4 +129,141 @@ class StatsExt:
             args=[y2, pl.lit(True, dtype=pl.Boolean)],
             is_elementwise=False,
             returns_scalar=True,
+        )
+
+    def rand_int(
+        self,
+        low: Optional[int] = 0,
+        high: Optional[int] = 10,
+        respect_null: bool = False,
+        use_ref: bool = False,
+    ) -> pl.Expr:
+        """
+        Generates random integers uniformly from the range [low, high). Throws an error if low == high
+        or if (low is None and high is None and use_ref_nunique == False).
+
+        This treats self as the reference column.
+
+        Parameters
+        ----------
+        low
+            Lower end of random sample. None will be replaced by 0.
+        high
+            Higher end of random sample. None will be replaced by 10.
+        respect_null
+            If true, null in reference column will be null in the new column
+        use_ref
+            If true, will overried low to be 0 and high = nunique of the reference column.
+            If reference column has 0 unique values, this will be set to 10.
+        """
+        if (low is None) & (high is None) & (not use_ref):
+            raise ValueError("Either set valid low and high values or set use_ref = True")
+
+        lo = pl.lit(low, dtype=pl.Int32)
+        hi = pl.lit(high, dtype=pl.Int32)
+        resp = pl.lit(respect_null, dtype=pl.Boolean)
+        use_r = pl.lit(use_ref, dtype=pl.Boolean)
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_rand_int",
+            args=[lo, hi, resp, use_r],
+            is_elementwise=True,
+            returns_scalar=False,
+        )
+
+    def sample_uniform(
+        self, low: float = 0.0, high: float = 1.0, respect_null: bool = False
+    ) -> pl.Expr:
+        """
+        Creates self.len() many random points sampled from a uniform distribution within [low, high).
+        This will throw an error if low == high.
+
+        This treats self as the reference column.
+
+        Parameters
+        ----------
+        low
+            Lower end of random sample.
+        high
+            Higher end of random sample.
+        respect_null
+            If true, null in reference column will be null in the new column
+        """
+
+        lo = pl.lit(low, dtype=pl.Float64)
+        hi = pl.lit(high, dtype=pl.Float64)
+        resp = pl.lit(respect_null, dtype=pl.Boolean)
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_sample_uniform",
+            args=[lo, hi, resp],
+            is_elementwise=True,
+            returns_scalar=False,
+        )
+
+    def sample_normal(
+        self, mean: float = 0.0, std: float = 1.0, respect_null: bool = False
+    ) -> pl.Expr:
+        """
+        Creates self.len() many random points sampled from a normal distribution with the given
+        mean and std.
+
+        This treats self as the reference column.
+
+        Parameters
+        ----------
+        mean
+            Mean of the normal distribution
+        std
+            Std of the normal distribution
+        respect_null
+            If true, null in reference column will be null in the new column
+        """
+        if std <= 0:
+            raise ValueError("Input `std` must be positive.")
+
+        me = pl.lit(mean, dtype=pl.Float64)
+        st = pl.lit(std, dtype=pl.Float64)
+        resp = pl.lit(respect_null, dtype=pl.Boolean)
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_sample_normal",
+            args=[me, st, resp],
+            is_elementwise=True,
+            returns_scalar=False,
+        )
+
+    def rand_str(
+        self, min_size: int = 1, max_size: int = 10, respect_null: bool = False
+    ) -> pl.Expr:
+        """
+        Creates self.len() many random strings with alpha-numerical values. Unfortunately that
+        means this currently only generates strings satisfying [0-9a-zA-Z]. The string's
+        length will also be uniformly.
+
+        This treats self as the reference column.
+
+        Parameters
+        ----------
+        min_size
+            The minimum length of the string to be generated. The length of the string will be
+            uniformly generated in [min_size, max_size), except when min_size = max_size, in
+            which case only fixed length strings will be generated.
+        max_size
+            The maximum length of the string to be generated.
+        respect_null
+            If true, null in reference column will be null in the new column
+        """
+        if max_size <= 0:
+            raise ValueError("Input `max_size` must be positive.")
+
+        min_s = pl.lit(min_size, dtype=pl.UInt32)
+        max_s = pl.lit(max_size, dtype=pl.UInt32)
+        resp = pl.lit(respect_null, dtype=pl.Boolean)
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_sample_alphanumeric",
+            args=[min_s, max_s, resp],
+            is_elementwise=True,
+            returns_scalar=False,
         )
