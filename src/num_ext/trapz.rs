@@ -1,7 +1,7 @@
 use ndarray::{s, ArrayView1};
 use polars::{
     prelude::{PolarsError, PolarsResult},
-    series::{IsSorted, Series},
+    series::Series,
 };
 use pyo3_polars::derive::polars_expr;
 
@@ -35,15 +35,9 @@ fn pl_trapz(inputs: &[Series]) -> PolarsResult<Series> {
         let dx = x.get(0).unwrap();
         Ok(Series::from_iter([trapz_dx(y, dx)]))
     } else if x.len() == y.len() {
-        if x.is_sorted_flag() != IsSorted::Not {
-            let x = x.rechunk();
-            let x = x.to_ndarray()?;
-            Ok(Series::from_iter([trapz(y, x)]))
-        } else {
-            Err(PolarsError::ComputeError(
-                "For trapezoidal integration to work with x-axis, x-axis must be sorted.".into(),
-            ))
-        }
+        let x = x.rechunk();
+        let x = x.to_ndarray()?;
+        Ok(Series::from_iter([trapz(y, x)]))
     } else {
         Err(PolarsError::ComputeError(
             "Input must have the same length.".into(),

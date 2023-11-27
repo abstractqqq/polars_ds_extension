@@ -1,6 +1,6 @@
 # Polars Extension for General Data Science Use
 
-A Polars Plugin aiming to simplify common numerical/string data analysis procedures. 
+A Polars Plugin aiming to simplify common numerical/string data analysis procedures. This means that the most basic data science, stats, NLP related tasks can be done natively inside a dataframe.
 
 **Currently in Alpha. Feel free to submit feature requests in the issues section of the repo.**
 
@@ -89,6 +89,7 @@ I am open to make this package a Python frontend for other machine learning proc
 
 Right now most str similarity/dist is dependent on the strsim crate, which is no longer maintained and has some very old code. The current plan is to keep it for now and maybe replace it with higher performance code later (if there is the need to do so). 
 
-# Disclaimer
+# Credits
 
-Rust Snowball Stemmer is taken from Tsoding's Seroost project (MIT). See [here](https://github.com/tsoding/seroost)
+1. Rust Snowball Stemmer is taken from Tsoding's Seroost project (MIT). See [here](https://github.com/tsoding/seroost)
+2. Some statistics functions are taken from Statrs (MIT). See [here](https://github.com/statrs-dev/statrs/tree/master)

@@ -23,6 +23,8 @@ fn ks_2samp(v1: Vec<f64>, v2: Vec<f64>, stats_only: bool) -> StatsResult {
         .chain(v2.iter())
         .map(|x| (binary_search_right(&v1, x).unwrap() as f64) / n1);
 
+    // If we can make binary_search_right work on iterators, we then can work purely on
+    // iterators and collect only once
     let cdf2_iter = v1
         .iter()
         .chain(v2.iter())
@@ -57,7 +59,7 @@ fn pl_ks_2samp(inputs: &[Series]) -> PolarsResult<Series> {
     if invalid {
         // Return NaN instead?
         return Err(PolarsError::ComputeError(
-            "Input should not contain Inf or NaN.".into(),
+            "KS: Input should not contain Inf or NaN.".into(),
         ));
     }
 
@@ -80,11 +82,11 @@ fn pl_ks_2samp(inputs: &[Series]) -> PolarsResult<Series> {
 
     if (v1.len() == 0) | (v2.len() == 0) {
         return Err(PolarsError::ComputeError(
-            "Both input series must contain at least 1 non-null values.".into(),
+            "KS: Both input series must contain at least 1 non-null values.".into(),
         ));
     }
 
     let res = ks_2samp(v1, v2, stats_only);
-    let s = res.stats;
+    let s = res.statistic;
     Ok(Series::from_iter([s]))
 }

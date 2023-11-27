@@ -9,16 +9,15 @@ mod snowball_stem;
 mod sorensen_dice;
 mod str_jaccard;
 
-// use unicode_segmentation::UnicodeSegmentation;
-
 // Most str dist / similarity metrics are powered by strsim. They have good performance.
-// E.g. Levenshtein has 3x better performance than my own implementation.
 // However, I saw people saying in the github issue section that things can be improved.
-// The strsim project is no longer maintained. If there is a need to improve performance
-// further, we can fork and develop it ourselves (currently just me).
+// The fastest Levenshtein algorithm for large strings is Meyer's bitparallel algorithm.
+// Though, I do not understand it well enough to implement it.
+// Right now, for common, smaller strings, my Levenshtein seems to be doing fine.
 
 // Hashbrown has better perf than Rust's HashSet
 use hashbrown::HashSet;
+use itertools::Itertools;
 
 #[inline]
 pub fn str_set_sim_helper(w1: &str, w2: &str, n: usize) -> (usize, usize, usize) {
@@ -51,38 +50,32 @@ pub fn str_set_sim_helper(w1: &str, w2: &str, n: usize) -> (usize, usize, usize)
     (s1.len(), s2.len(), intersection)
 }
 
-
 #[inline]
-pub fn remove_common_prefix<'a>(s1:&'a str, s2:&'a str) -> (&'a str, &'a str) {
-
-    let iter1 = s1.chars();
-    let iter2 = s2.chars();
-    let mut prefix:String = String::new();
-    for (c1, c2) in iter1.zip(iter2) {
-        if c1 == c2 {
-            prefix.push(c1);
-        } else {
-            break
-        }
-    }
-    (s1.strip_prefix(&prefix).unwrap(), s2.strip_prefix(&prefix).unwrap())
-
+pub fn common_char_prefix(a: &[char], b: &[char]) -> usize {
+    let (left, _) = a
+        .into_iter()
+        .zip(b.into_iter())
+        .find_position(|(&c1, &c2)| c1 != c2)
+        .unwrap_or((0, (&'a', &'a')));
+    left
 }
 
 #[inline]
-pub fn remove_common_suffix<'a>(s1:&'a str, s2:&'a str) -> (&'a str, &'a str) {
+pub fn common_char_suffix(a: &[char], b: &[char]) -> usize {
+    let (right, _) = a
+        .into_iter()
+        .rev()
+        .zip(b.into_iter().rev())
+        .find_position(|(&c1, &c2)| c1 != c2)
+        .unwrap_or((0, (&'a', &'a')));
+    right
+}
 
+#[inline]
+/// Strip common prefix, suffix characters
+pub fn strip_common<'a>(a: &'a [char], b: &'a [char]) -> (&'a [char], &'a [char]) {
+    let left = common_char_prefix(a, b);
+    let right = common_char_suffix(a, b);
 
-    let iter1 = s1.chars().rev();
-    let iter2 = s2.chars().rev();
-    let mut suffix:String = String::new();
-    for (c1, c2) in iter1.zip(iter2) {
-        if c1 == c2 {
-            suffix.push(c1);
-        } else {
-            break
-        }
-    }
-    suffix = suffix.chars().rev().collect(); // meh... I have to...
-    (s1.strip_suffix(&suffix).unwrap(), s2.strip_suffix(&suffix).unwrap())
+    (&a[left..(a.len() - right)], &b[left..(b.len() - right)])
 }

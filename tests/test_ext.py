@@ -1,8 +1,79 @@
 import pytest
 import polars as pl
 import math
-from polars_ds import NumExt, StrExt  # noqa: F401
+import numpy as np
+import polars_ds  # noqa: F401
 from polars.testing import assert_frame_equal
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (pl.DataFrame({"a": np.random.random(size=100)})),
+        (pl.DataFrame({"a": np.random.normal(size=100)})),
+    ],
+)
+def test_normal_test(df):
+    from scipy.stats import normaltest
+
+    res = df.select(pl.col("a").stats_ext.normal_test())
+    res = res.item(0, 0)  # A dictionary
+    statistic = res["statistic"]
+    pvalue = res["pvalue"]
+
+    scipy_res = normaltest(df["a"].to_numpy())
+
+    assert np.isclose(statistic, scipy_res.statistic)
+    assert np.isclose(pvalue, scipy_res.pvalue)
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (pl.DataFrame({"a": np.random.normal(size=1_000), "b": np.random.normal(size=1_000)})),
+    ],
+)
+def test_ttest_ind(df):
+    from scipy.stats import ttest_ind
+
+    res = df.select(pl.col("a").stats_ext.ttest_ind(pl.col("b"), equal_var=True))
+    res = res.item(0, 0)  # A dictionary
+    statistic = res["statistic"]
+    pvalue = res["pvalue"]
+
+    scipy_res = ttest_ind(df["a"].to_numpy(), df["b"].to_numpy(), equal_var=True)
+
+    assert np.isclose(statistic, scipy_res.statistic)
+    assert np.isclose(pvalue, scipy_res.pvalue)
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "a": np.random.normal(size=1_000),
+                    "b": list(np.random.normal(size=998)) + [None, None],
+                }
+            )
+        ),
+    ],
+)
+def test_welch_t(df):
+    from scipy.stats import ttest_ind
+
+    res = df.select(pl.col("a").stats_ext.ttest_ind(pl.col("b"), equal_var=False))
+    res = res.item(0, 0)  # A dictionary
+    statistic = res["statistic"]
+    pvalue = res["pvalue"]
+
+    s1 = df["a"].drop_nulls().to_numpy()
+    s2 = df["b"].drop_nulls().to_numpy()
+    scipy_res = ttest_ind(s1, s2, equal_var=False)
+
+    assert np.isclose(statistic, scipy_res.statistic)
+    assert np.isclose(pvalue, scipy_res.pvalue)
 
 
 @pytest.mark.parametrize(
@@ -377,6 +448,36 @@ def test_levenshtein(df, res):
 
 
 @pytest.mark.parametrize(
+    "df, bound, res",
+    [
+        (
+            pl.DataFrame(
+                {"a": ["kitten", "mary", "may", None], "b": ["sitting", "merry", "mayer", ""]}
+            ),
+            2,
+            pl.DataFrame({"a": pl.Series([False, True, True, None])}),
+        ),
+    ],
+)
+def test_levenshtein_within(df, bound, res):
+    assert_frame_equal(
+        df.select(pl.col("a").str_ext.levenshtein_within(pl.col("b"), bound=bound)), res
+    )
+
+    assert_frame_equal(
+        df.select(pl.col("a").str_ext.levenshtein_within(pl.col("b"), bound=bound, parallel=True)),
+        res,
+    )
+
+    assert_frame_equal(
+        df.lazy()
+        .select(pl.col("a").str_ext.levenshtein_within(pl.col("b"), bound=bound))
+        .collect(),
+        res,
+    )
+
+
+@pytest.mark.parametrize(
     "df, res",
     [
         (
@@ -552,7 +653,8 @@ def test_ks_stats():
     df = pl.DataFrame({"a": a, "b": b})
 
     stats = ks_2samp(a, b).statistic
-    res = df.select(pl.col("a").num_ext.ks_stats(pl.col("b"))).item(0, 0)
+    # Only statistic for now
+    res = df.select(pl.col("a").stats_ext.ks_stats(pl.col("b"))).item(0, 0)
 
     assert np.isclose(stats, res)
 

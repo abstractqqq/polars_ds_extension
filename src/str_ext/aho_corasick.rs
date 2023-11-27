@@ -1,6 +1,6 @@
 use aho_corasick::{AhoCorasick, MatchKind};
 use polars::prelude::*;
-use pyo3_polars::derive::polars_expr;
+use pyo3_polars::{derive::polars_expr, export::polars_core::utils::rayon::iter::ParallelIterator};
 
 fn list_u16_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
@@ -32,7 +32,7 @@ fn pl_ac_match(inputs: &[Series]) -> PolarsResult<Series> {
     let n_pat = patterns.len();
     if n_pat > u16::MAX as usize {
         return Err(PolarsError::ComputeError(
-            "Too many patterns to match.".into(),
+            "AC: Too many patterns to match.".into(),
         ));
     }
 
@@ -93,7 +93,7 @@ fn pl_ac_match_str(inputs: &[Series]) -> PolarsResult<Series> {
     let n_pat = patterns.len();
     if n_pat > u16::MAX as usize {
         return Err(PolarsError::ComputeError(
-            "Too many patterns to match.".into(),
+            "AC: Too many patterns to match.".into(),
         ));
     }
 
@@ -150,6 +150,9 @@ fn pl_ac_replace(inputs: &[Series]) -> PolarsResult<Series> {
     let replace = inputs[2].utf8()?;
     let replace: Vec<&str> = replace.into_iter().filter_map(|s| s).collect();
 
+    let parallel = inputs[3].bool()?;
+    let parallel = parallel.get(0).unwrap();
+
     let ac_builder = AhoCorasick::builder().build(&patterns);
 
     match ac_builder {
@@ -162,7 +165,11 @@ fn pl_ac_replace(inputs: &[Series]) -> PolarsResult<Series> {
                     _ => None,
                 }
             };
-            let out: Utf8Chunked = str_col.apply_generic(op);
+            let out: Utf8Chunked = if parallel {
+                str_col.par_iter().map(op).collect()
+            } else {
+                str_col.apply_generic(op)
+            };
             Ok(out.into_series())
         }
         Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),

@@ -7,10 +7,8 @@ fn fast_exp_single(s: Series, n: i32) -> Series {
     if n == 0 {
         let ss = s.f64().unwrap();
         let out: Float64Chunked = ss.apply_values(|x| {
-            if x == 0. {
+            if (x == 0.) | x.is_infinite() | x.is_nan() {
                 f64::NAN
-            } else if x.is_infinite() | x.is_nan() {
-                x
             } else {
                 1.0
             }
@@ -48,7 +46,7 @@ fn _fast_exp_pairwise(x: f64, n: u32) -> f64 {
     y
 }
 
-#[inline]
+#[inline] // Too many ifs and short circuits.
 fn fast_exp_pairwise(x: f64, n: i32) -> f64 {
     if n == 0 {
         if x == 0. {

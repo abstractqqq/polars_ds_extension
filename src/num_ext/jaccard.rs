@@ -83,7 +83,7 @@ fn pl_list_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
             .collect())
     } else {
         Err(PolarsError::ComputeError(
-            "List Jaccard similarity currently does not support this inner data type.".into(),
+            "List Jaccard similarity currently only supports utf8 or Int inner data type.".into(),
         ))
     }
 }
