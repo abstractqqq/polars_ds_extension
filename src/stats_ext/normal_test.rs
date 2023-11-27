@@ -1,4 +1,4 @@
-/// Here we implement the test as in SciPy: 
+/// Here we implement the test as in SciPy:
 /// https://github.com/scipy/scipy/blob/v1.11.4/scipy/stats/_stats_py.py#L1836-L1996
 ///
 /// It is a method based on Kurtosis and Skew, and the Chi-2 distribution.
@@ -9,9 +9,8 @@
 /// [2] https://www.stata.com/manuals/rsktest.pdf
 ///
 /// I chose this over the Shapiro Francia test because the distribution is unknown and would require Monte Carlo
-
 use super::{simple_stats_output, StatsResult};
-use crate::stats::gamma;
+use crate::stats::{gamma, is_zero};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
@@ -43,7 +42,7 @@ fn kurtosis_test_statistic(kur: f64, n: usize) -> Result<StatsResult, String> {
 
     let tmp = 2. / (9. * a);
     let denom = 1. + x * (2. / (a - 4.)).sqrt();
-    if denom == 0. {
+    if is_zero(denom) {
         Err("Kurtosis test: Division by 0 encountered.".to_owned())
     } else {
         let term1 = 1. - tmp;

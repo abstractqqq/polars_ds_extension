@@ -1,5 +1,4 @@
 /// Integration via Trapezoidal rule.
-
 use ndarray::{s, ArrayView1};
 use polars::{
     prelude::{PolarsError, PolarsResult},

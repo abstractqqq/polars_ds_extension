@@ -1,5 +1,4 @@
 /// GCD and LCM for integers in dataframe.
-
 use num;
 use polars::prelude::*;
 use polars_core::prelude::arity::binary_elementwise_values;

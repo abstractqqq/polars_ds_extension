@@ -21,9 +21,10 @@ class StatsExt:
         within 1e-10 precision from SciPy's result.
 
         In the case of student's t test, the user is responsible for data to have equal length,
-        and nulls will be ignored when computing mean and variance. As a result, nulls might
-        cause problems for student's t test. In the case of Welch's t test, data
-        will be sanitized (nulls, NaNs, Infs will be dropped before the test).
+        and nulls will be ignored when computing mean and variance. The df will be 2n - 2. As a
+        result, nulls might cause problems. In the case of Welch's t test, data
+        will be sanitized (nulls, NaNs, Infs will be dropped before the test), and df will be
+        counted based on the length of sanitized data.
 
         Parameters
         ----------
@@ -40,11 +41,11 @@ class StatsExt:
             m2 = other.mean()
             v1 = self._expr.var()
             v2 = other.var()
-            # Note here that nulls are not filtered
+            # Note here that nulls are not filtered to ensure the same length
             cnt = self._expr.count().cast(pl.UInt64)
             return m1.register_plugin(
                 lib=lib,
-                symbol="pl_student_t_2samp",
+                symbol="pl_ttest_2samp",
                 args=[m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.Utf8)],
                 is_elementwise=False,
                 returns_scalar=True,
@@ -65,6 +66,32 @@ class StatsExt:
                 is_elementwise=False,
                 returns_scalar=True,
             )
+
+    def ttest_1samp(self, pop_mean: float, alternative: Alternative = "two-sided") -> pl.Expr:
+        """
+        Performs a standard 1 sample t test using reference column and expected mean. This function
+        sanitizes the self column first. The df is the count of valid (non-null, finite) values.
+
+        Parameters
+        ----------
+        pop_mean
+            The expected population mean in the hypothesis test
+        alternative
+            One of "two-sided", "less" or "greater"
+        """
+        s1 = self._expr.filter(self._expr.is_finite())
+        sm = s1.mean()
+        pm = pl.lit(pop_mean, dtype=pl.Float64)
+        var = s1.var()
+        cnt = s1.count().cast(pl.UInt64)
+        alt = pl.lit(alternative, dtype=pl.Utf8)
+        return sm.register_plugin(
+            lib=lib,
+            symbol="pl_ttest_1samp",
+            args=[pm, var, cnt, alt],
+            is_elementwise=False,
+            returns_scalar=True,
+        )
 
     def normal_test(self) -> pl.Expr:
         """

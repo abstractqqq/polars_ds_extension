@@ -2,8 +2,6 @@
 /// Unfortunately, the pl.col("a").num_ext.powi(pl.col("b")) version may not
 /// be faster, likely due to lack of SIMD (my hunch). However, something like
 /// pl.col("a").num_ext.powi(16) is significantly faster than Polars's default.
-
-
 use num::traits::Inv;
 use polars::prelude::*;
 use polars_core::prelude::arity::binary_elementwise_values;
