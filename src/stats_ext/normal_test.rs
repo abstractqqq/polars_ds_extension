@@ -1,4 +1,5 @@
-/// Here we implement the test as in SciPy: https://github.com/scipy/scipy/blob/v1.11.4/scipy/stats/_stats_py.py#L1836-L1996
+/// Here we implement the test as in SciPy: 
+/// https://github.com/scipy/scipy/blob/v1.11.4/scipy/stats/_stats_py.py#L1836-L1996
 ///
 /// It is a method based on Kurtosis and Skew, and the Chi-2 distribution.
 ///
@@ -8,7 +9,7 @@
 /// [2] https://www.stata.com/manuals/rsktest.pdf
 ///
 /// I chose this over the Shapiro Francia test because the distribution is unknown and would require Monte Carlo
-///
+
 use super::{simple_stats_output, StatsResult};
 use crate::stats::gamma;
 use polars::prelude::*;

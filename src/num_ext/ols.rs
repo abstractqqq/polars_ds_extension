@@ -1,3 +1,5 @@
+/// OLS using Faer.
+
 use faer::IntoFaer;
 use faer::{prelude::*, MatRef};
 use polars::prelude::*;

@@ -1,12 +1,10 @@
 # Polars Extension for General Data Science Use
 
-A Polars Plugin aiming to simplify common numerical/string data analysis procedures. This means that the most basic data science, stats, NLP related tasks can be done natively inside a dataframe.
+A Polars Plugin aiming to simplify common numerical/string data analysis procedures. This means that the most basic data science, stats, NLP related tasks can be done natively inside a dataframe. Its goal is not to replace SciPy, or NumPy, but rather it tries reduce dependency for common workflows and simple analysis, and tries to reduce Python side code and UDFs.
 
 **Currently in Alpha. Feel free to submit feature requests in the issues section of the repo.**
 
-The goal for this package is to provide data scientists/analysts/engineers/quants more tools to manipulate, transform, and make sense of data, without the need to leave DataFrame land (aka Wonderland).
-
-This package will also be a "lower level" backend for another package of mine called dsds. See [here](https://github.com/abstractqqq/dsds). This package will change the ways of how many functions work in dsds.
+This package will also be a "lower level" backend for another package of mine called dsds. See [here](https://github.com/abstractqqq/dsds).
 
 Performance is a focus, but sometimes it's impossible to beat NumPy/SciPy performance for a single operation on a single array. There can be many reasons: Interop cost (sometimes copies needed), null checks, lack of support for complex number (e.g We have to do multiple copies in the FFT implementation), or we haven't found the most optimized way to write some algorithm, etc.
 

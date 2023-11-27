@@ -1480,7 +1480,7 @@ dependencies = [
  "pyo3-polars",
  "rand 0.8.5",
  "rand_distr",
- "rustfft",
+ "realfft",
  "strsim",
 ]
 
@@ -1809,6 +1809,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "678054eb77286b51581ba43620cc911abf02758c91f93f479767aed0f90458b2"
 dependencies = [
  "rand_core 0.3.1",
+]
+
+[[package]]
+name = "realfft"
+version = "3.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "953d9f7e5cdd80963547b456251296efc2626ed4e3cbf36c869d9564e0220571"
+dependencies = [
+ "rustfft",
 ]
 
 [[package]]

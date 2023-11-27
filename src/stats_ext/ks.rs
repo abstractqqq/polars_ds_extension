@@ -1,3 +1,5 @@
+/// KS statistics.
+
 use crate::stats_ext::StatsResult;
 use crate::utils::binary_search_right;
 use itertools::Itertools;
@@ -7,11 +9,10 @@ use pyo3_polars::derive::polars_expr;
 
 #[inline]
 fn ks_2samp(v1: Vec<f64>, v2: Vec<f64>, stats_only: bool) -> StatsResult {
-    // Currently only supports two-sided. Won't be too hard to do add one-sided.
+    // Currently only supports two-sided. Won't be too hard to do add one-sided? I hope.
     // Reference:
     // https://github.com/scipy/scipy/blob/v1.11.3/scipy/stats/_stats_py.py#L8644-L8875
-    // Currently does not support returning p value due to lack of "reliable" distributions
-    // in Rust.
+    // Currently does not support returning p value
 
     // v1 and v2 must be sorted
     let n1: f64 = v1.len() as f64;

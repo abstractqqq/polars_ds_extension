@@ -1,9 +1,10 @@
-pub mod beta;
 /// This submodule is mostly taken from the project statrs. See credit section in README.md
 /// The reason I do not want to add it as a dependency is that it has a nalgebra dependency for
 /// multi-variate distributions, which is something that I think will not be needed in this
 /// package. Another reason is that if I want to do linear algebra, I would use Faer since Faer
 /// performs better and nalgebra is too much of a dependency for this package right now.
+
+pub mod beta;
 pub mod gamma;
 pub mod normal;
 
