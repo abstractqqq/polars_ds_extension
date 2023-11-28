@@ -3,7 +3,6 @@ from typing import Union, Optional
 from polars.utils.udfs import _get_shared_lib_location
 from .type_alias import AhoCorasickMatchKind
 import warnings
-# from polars.type_aliases import IntoExpr
 
 lib = _get_shared_lib_location(__file__)
 
@@ -12,6 +11,17 @@ lib = _get_shared_lib_location(__file__)
 class StrExt:
     def __init__(self, expr: pl.Expr):
         self._expr: pl.Expr = expr
+
+    def is_stopword(self) -> pl.Expr:
+        """
+        Checks whether the string is a stopword or not.
+        """
+        self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_is_stopword",
+            args=[],
+            is_elementwise=True,
+        )
 
     def extract_numbers(
         self, ignore_comma: bool = False, join_by: str = "", dtype: pl.DataType = pl.Utf8
@@ -194,7 +204,7 @@ class StrExt:
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_str_jaccard",
-            args=[other_, pl.lit(substr_size, dtype=pl.UInt32), pl.lit(parallel, dtype=pl.Boolean)],
+            args=[other_, pl.lit(substr_size, pl.UInt32), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
 
@@ -226,7 +236,7 @@ class StrExt:
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_sorensen_dice",
-            args=[other_, pl.lit(substr_size, dtype=pl.UInt32), pl.lit(parallel, dtype=pl.Boolean)],
+            args=[other_, pl.lit(substr_size, pl.UInt32), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
 
@@ -251,14 +261,14 @@ class StrExt:
             when used with other expressions or in group_by/over context.
         """
         if isinstance(other, str):
-            other_ = pl.lit(other, dtype=pl.Utf8)
+            other_ = pl.lit(other, pl.Utf8)
         else:
             other_ = other
 
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_overlap_coeff",
-            args=[other_, pl.lit(substr_size, dtype=pl.UInt32), pl.lit(parallel, dtype=pl.Boolean)],
+            args=[other_, pl.lit(substr_size, pl.UInt32), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
 
@@ -289,14 +299,14 @@ class StrExt:
             return self._expr.register_plugin(
                 lib=lib,
                 symbol="pl_levenshtein_sim",
-                args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+                args=[other_, pl.lit(parallel, pl.Boolean)],
                 is_elementwise=True,
             )
         else:
             return self._expr.register_plugin(
                 lib=lib,
                 symbol="pl_levenshtein",
-                args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+                args=[other_, pl.lit(parallel, pl.Boolean)],
                 is_elementwise=True,
             )
 
@@ -323,15 +333,15 @@ class StrExt:
             when used with other expressions or in group_by/over context.
         """
         if isinstance(other, str):
-            other_ = pl.lit(other, dtype=pl.Utf8)
+            other_ = pl.lit(other, pl.Utf8)
         else:
             other_ = other
 
-        bound = pl.lit(abs(bound), dtype=pl.UInt32)
+        bound = pl.lit(abs(bound), pl.UInt32)
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_levenshtein_within",
-            args=[other_, bound, pl.lit(parallel, dtype=pl.Boolean)],
+            args=[other_, bound, pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
 
@@ -362,20 +372,58 @@ class StrExt:
             return self._expr.register_plugin(
                 lib=lib,
                 symbol="pl_d_levenshtein_sim",
-                args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+                args=[other_, pl.lit(parallel, pl.Boolean)],
                 is_elementwise=True,
             )
         else:
             return self._expr.register_plugin(
                 lib=lib,
                 symbol="pl_d_levenshtein",
-                args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+                args=[other_, pl.lit(parallel, pl.Boolean)],
+                is_elementwise=True,
+            )
+
+    def osa(
+        self, other: Union[str, pl.Expr], parallel: bool = False, return_sim: bool = False
+    ) -> pl.Expr:
+        """
+        Computes the Optimal String Alignment distance between this and the other str.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then an element-wise OSA distance computation between this column
+            and the other (given by the expression) will be performed.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        return_sim
+            If true, return normalized OSA similarity.
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other, dtype=pl.Utf8)
+        else:
+            other_ = other
+
+        if return_sim:
+            return self._expr.register_plugin(
+                lib=lib,
+                symbol="pl_osa_sim",
+                args=[other_, pl.lit(parallel, pl.Boolean)],
+                is_elementwise=True,
+            )
+        else:
+            return self._expr.register_plugin(
+                lib=lib,
+                symbol="pl_osa",
+                args=[other_, pl.lit(parallel, pl.Boolean)],
                 is_elementwise=True,
             )
 
     def jaro(self, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
         """
-        Computes the Jaro similarity between this and the other str.
+        Computes the Jaro similarity between this and the other str. Jaro distance = 1 - Jaro sim.
 
         Parameters
         ----------
@@ -395,11 +443,44 @@ class StrExt:
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_jaro",
-            args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+            args=[other_, pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
 
-    def hamming(self, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
+    def jw(
+        self, other: Union[str, pl.Expr], weight: float = 0.1, parallel: bool = False
+    ) -> pl.Expr:
+        """
+        Computes the Jaro-Winker similarity between this and the other str.
+        Jaro-Winkler distance = 1 - Jaro-Winkler sim.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then an element-wise Levenshtein distance computation between this column
+            and the other (given by the expression) will be performed.
+        weight
+            Weight for prefix. A typical value is 0.1.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other, pl.Utf8)
+        else:
+            other_ = other
+
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_jw",
+            args=[other_, pl.lit(weight, pl.Float64), pl.lit(parallel, pl.Boolean)],
+            is_elementwise=True,
+        )
+
+    def hamming(
+        self, other: Union[str, pl.Expr], pad: bool = False, parallel: bool = False
+    ) -> pl.Expr:
         """
         Computes the hamming distance between two strings. If they do not have the same length, null will
         be returned.
@@ -410,6 +491,8 @@ class StrExt:
             If this is a string, then the entire column will be compared with this string. If this
             is an expression, then an element-wise hamming distance computation between this column
             and the other (given by the expression) will be performed.
+        pad
+            Whether to pad the string when lengths are not equal.
         parallel
             Whether to run the comparisons in parallel. Note that this is not always faster, especially
             when used with other expressions or in group_by/over context.
@@ -422,7 +505,7 @@ class StrExt:
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_hamming",
-            args=[other_, pl.lit(parallel, dtype=pl.Boolean)],
+            args=[other_, pl.lit(pad, pl.Boolean), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
 
@@ -446,7 +529,7 @@ class StrExt:
                 .register_plugin(
                     lib=lib,
                     symbol="pl_snowball_stem",
-                    args=[pl.lit(True, dtype=pl.Boolean), pl.lit(False, dtype=pl.Boolean)],
+                    args=[pl.lit(True, pl.Boolean), pl.lit(False, pl.Boolean)],
                     is_elementwise=True,
                 )  # True to no stop word, False to Parallel
                 .drop_nulls()
@@ -498,7 +581,7 @@ class StrExt:
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_snowball_stem",
-            args=[pl.lit(no_stopwords, dtype=pl.Boolean), pl.lit(parallel, dtype=pl.Boolean)],
+            args=[pl.lit(no_stopwords, pl.Boolean), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
 
@@ -530,14 +613,14 @@ class StrExt:
         # then this will be slow (doubling vec capacity)
         warnings.warn("Argument `case_sensitive` does not seem to work right now.")
         warnings.warn(
-            "This function is unstable and may subject to change and may not perform well if there are more than "
+            "This function is unstable and is subject to change and may not perform well if there are more than "
             "20 matches. Read the source code or contact the author for more information. The most difficulty part "
             "is to design an output API that works well with Polars, which is harder than one might think."
         )
 
         pat = pl.Series(patterns, dtype=pl.Utf8)
-        cs = pl.lit(case_sensitive, dtype=pl.Boolean)
-        mk = pl.lit(match_kind, dtype=pl.Utf8)
+        cs = pl.lit(case_sensitive, pl.Boolean)
+        mk = pl.lit(match_kind, pl.Utf8)
         if return_str:
             return self._expr.register_plugin(
                 lib=lib,
@@ -571,13 +654,13 @@ class StrExt:
             Whether to run the comparisons in parallel. Note that this is not always faster, especially
             when used with other expressions or in group_by/over context.
         """
-        if (len(replacements) == 0) | (len(patterns) == 0):
+        if (len(replacements) == 0) or (len(patterns) == 0):
             return self._expr
 
         mlen = min(len(patterns), len(replacements))
         pat = pl.Series(patterns[:mlen], dtype=pl.Utf8)
         rpl = pl.Series(replacements[:mlen], dtype=pl.Utf8)
-        par = pl.lit(parallel, dtype=pl.Boolean)
+        par = pl.lit(parallel, pl.Boolean)
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_ac_replace",

@@ -1480,8 +1480,8 @@ dependencies = [
  "pyo3-polars",
  "rand 0.8.5",
  "rand_distr",
+ "rapidfuzz",
  "realfft",
- "strsim",
 ]
 
 [[package]]
@@ -1766,6 +1766,12 @@ checksum = "cbf7e9e623549b0e21f6e97cf8ecf247c1a8fd2e8a992ae265314300b2455d5c"
 dependencies = [
  "rand_core 0.3.1",
 ]
+
+[[package]]
+name = "rapidfuzz"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ccfe7ace5cf7db7a8148c6741a3b3462196250eb82c0aae0cf90fdaaf0340cb"
 
 [[package]]
 name = "raw-cpuid"
@@ -2057,12 +2063,6 @@ name = "strength_reduce"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe895eb47f22e2ddd4dabc02bce419d2e643c8e3b585c78158b349195bc24d82"
-
-[[package]]
-name = "strsim"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
 name = "strum"
