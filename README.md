@@ -14,64 +14,7 @@ However, there are greater benefits for staying in DataFrame land:
 2. Works in group_by context. E.g. run multiple linear regressions in parallel in a group_by context.
 3. Staying in DataFrame land typically keeps code cleaner and less confusing.
 
-Some examples:
-
-```Python 
-df.group_by("dummy").agg(
-    pl.col("y").num_ext.lstsq(pl.col("a"), pl.col("b"), add_bias = False).alias("list_float")
-)
-
-shape: (2, 2)
-┌───────┬─────────────┐
-│ dummy ┆ list_float  │
-│ ---   ┆ ---         │
-│ str   ┆ list[f64]   │
-╞═══════╪═════════════╡
-│ b     ┆ [2.0, -1.0] │
-│ a     ┆ [2.0, -1.0] │
-└───────┴─────────────┘
-
-df.group_by("dummy_groups").agg(
-    pl.col("actual").num_ext.l2_loss(pl.col("predicted")).alias("l2"),
-    pl.col("actual").num_ext.bce(pl.col("predicted")).alias("log loss"),
-    pl.col("actual").num_ext.roc_auc(pl.col("predicted")).alias("roc_auc")
-)
-
-shape: (2, 4)
-┌──────────────┬──────────┬──────────┬──────────┐
-│ dummy_groups ┆ l2       ┆ log loss ┆ roc_auc  │
-│ ---          ┆ ---      ┆ ---      ┆ ---      │
-│ str          ┆ f64      ┆ f64      ┆ f64      │
-╞══════════════╪══════════╪══════════╪══════════╡
-│ b            ┆ 0.333887 ┆ 0.999602 ┆ 0.498913 │
-│ a            ┆ 0.332575 ┆ 0.997049 ┆ 0.501997 │
-└──────────────┴──────────┴──────────┴──────────┘
-```
-
-To avoid `Chunked array is not contiguous` error, try to rechunk your dataframe.
-
-The package right now contains two extensions:
-
-## Numeric Extension
-
-### Existing Features
-
-1. GCD, LCM for integers
-2. harmonic mean, geometric mean, other common, simple metrics used in industry.
-3. Common loss functions, e.g. L1, L2, L infinity, huber loss, MAPE, SMAPE, wMAPE, etc.
-4. Common mini-models, lstsq, condition entropy. 
-5. Discrete Fourier Transform, returning the real and complex part of the new series.
-6. ROC AUC, precision, recall, F, average precision, all as expressions.
-
-
-## String Extension
-
-### Existing Features
-
-1. Levenshtein distance + similarity, Hamming distance, Jaro similarity, Str Jaccard simiarlity, Sorensen dice similarity, overlap coefficient
-2. Simple tokenize, snowball stemming,
-3. Frequency based merging, inferral, and removal.
-4. Aho-Corasick matching, replacing multiple patterns.
+See examples [here](./examples/basics.ipynb).
 
 ## Plans?
 
@@ -91,3 +34,8 @@ Right now most str similarity/dist is dependent on the strsim crate, which is no
 
 1. Rust Snowball Stemmer is taken from Tsoding's Seroost project (MIT). See [here](https://github.com/tsoding/seroost)
 2. Some statistics functions are taken from Statrs (MIT). See [here](https://github.com/statrs-dev/statrs/tree/master)
+
+# Other related Projects
+
+1. Take a look at our friendly neighbor [functime](https://github.com/TracecatHQ/functime)
+2. My other project [dsds](https://github.com/abstractqqq/dsds). This is currently paused because I am developing polars-ds, but some modules in DSDS, such as the diagonsis one, is quite stable.
