@@ -481,6 +481,22 @@ def test_levenshtein_within(df, bound, res):
     "df, res",
     [
         (
+            pl.DataFrame({"a": ["CA", "AB", None], "b": ["ABC", "BA", "a"]}),
+            pl.DataFrame({"a": pl.Series([3, 1, None], dtype=pl.UInt32)}),
+        ),
+    ],
+)
+def test_osa(df, res):
+    assert_frame_equal(df.select(pl.col("a").str_ext.osa(pl.col("b"))), res)
+
+    assert_frame_equal(df.select(pl.col("a").str_ext.osa(pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.lazy().select(pl.col("a").str_ext.osa(pl.col("b"))).collect(), res)
+
+
+@pytest.mark.parametrize(
+    "df, res",
+    [
+        (
             pl.DataFrame({"a": ["kitten"], "b": ["sitting"]}),
             pl.DataFrame({"a": pl.Series([4 / 11], dtype=pl.Float64)}),
         ),

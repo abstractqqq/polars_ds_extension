@@ -167,7 +167,7 @@ class StatsExt:
     ) -> pl.Expr:
         """
         Generates random integers uniformly from the range [low, high). Throws an error if low == high
-        or if (low is None and high is None and use_ref_nunique == False).
+        or if low is None and high is None and use_ref_nunique == False.
 
         This treats self as the reference column.
 
