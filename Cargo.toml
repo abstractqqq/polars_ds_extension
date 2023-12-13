@@ -24,7 +24,7 @@ aho-corasick = "1.1.2"
 rand = {version = "0.8.5"} # Simd support feature seems to be broken atm
 rand_distr = "0.4.3"
 realfft = "3.3.0"
-rapidfuzz = "0.3.0"
+rapidfuzz = "0.5.0"
 
 [target.'cfg(any(not(target_os = "linux"), use_mimalloc))'.dependencies]
 mimalloc = { version = "0.1", default-features = false }

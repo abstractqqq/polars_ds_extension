@@ -1769,9 +1769,9 @@ dependencies = [
 
 [[package]]
 name = "rapidfuzz"
-version = "0.3.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ccfe7ace5cf7db7a8148c6741a3b3462196250eb82c0aae0cf90fdaaf0340cb"
+checksum = "270e04e5ea61d40841942bb15e451c29ee1618637bcf97fc7ede5dd4a9b1601b"
 
 [[package]]
 name = "raw-cpuid"
