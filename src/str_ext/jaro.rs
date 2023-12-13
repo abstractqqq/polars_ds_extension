@@ -6,13 +6,17 @@ use pyo3_polars::{
 use rapidfuzz::distance::{jaro, jaro_winkler};
 
 #[inline]
-fn jaro_sim(s1: &str, s2: &str) -> Option<f64> {
-    jaro::normalized_similarity(s1.chars(), s2.chars(), None, None)
+fn jaro_sim(s1: &str, s2: &str) -> f64 {
+    jaro::normalized_similarity(s1.chars(), s2.chars())
 }
 
 #[inline]
-fn jw_sim(s1: &str, s2: &str, weight: Option<f64>) -> Option<f64> {
-    jaro_winkler::normalized_similarity(s1.chars(), s2.chars(), weight, None, None)
+fn jw_sim(s1: &str, s2: &str, weight: f64) -> f64 {
+    jaro_winkler::normalized_similarity_with_args(
+        s1.chars(),
+        s2.chars(),
+        &jaro_winkler::Args::default().prefix_weight(weight),
+    )
 }
 
 #[polars_expr(output_type=Float64)]
@@ -28,14 +32,11 @@ fn pl_jaro(inputs: &[Series]) -> PolarsResult<Series> {
             ca1.par_iter()
                 .map(|op_s| {
                     let s = op_s?;
-                    batched.similarity(s.chars(), None, None)
+                    Some(batched.similarity(s.chars()))
                 })
                 .collect()
         } else {
-            ca1.apply_generic(|op_s| {
-                let s = op_s?;
-                batched.similarity(s.chars(), None, None)
-            })
+            ca1.apply_nonnull_values_generic(DataType::Float64, |s| batched.similarity(s.chars()))
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -44,7 +45,7 @@ fn pl_jaro(inputs: &[Series]) -> PolarsResult<Series> {
                 .zip(ca2.par_iter_indexed())
                 .map(|(op_w1, op_w2)| {
                     let (w1, w2) = (op_w1?, op_w2?);
-                    jaro_sim(w1, w2)
+                    Some(jaro_sim(w1, w2))
                 })
                 .collect()
         } else {
@@ -63,23 +64,28 @@ fn pl_jw(inputs: &[Series]) -> PolarsResult<Series> {
     let ca1 = inputs[0].utf8()?;
     let ca2 = inputs[1].utf8()?;
     let weight = inputs[2].f64()?;
-    let weight = weight.get(0);
+    let weight = weight.get(0).unwrap_or(0.1);
     let parallel = inputs[3].bool()?;
     let parallel = parallel.get(0).unwrap();
     if ca2.len() == 1 {
         let r = ca2.get(0).unwrap();
-        let batched = jaro_winkler::BatchComparator::new(r.chars(), weight);
+        let batched = jaro_winkler::BatchComparator::new(r.chars());
         let out: Float64Chunked = if parallel {
             ca1.par_iter()
                 .map(|op_s| {
                     let s = op_s?;
-                    batched.similarity(s.chars(), None, None)
+                    Some(batched.similarity_with_args(
+                        s.chars(),
+                        &jaro_winkler::Args::default().prefix_weight(weight),
+                    ))
                 })
                 .collect()
         } else {
-            ca1.apply_generic(|op_s| {
-                let s = op_s?;
-                batched.similarity(s.chars(), None, None)
+            ca1.apply_nonnull_values_generic(DataType::Float64, |s| {
+                batched.similarity_with_args(
+                    s.chars(),
+                    &jaro_winkler::Args::default().prefix_weight(weight),
+                )
             })
         };
         Ok(out.into_series())
@@ -89,7 +95,7 @@ fn pl_jw(inputs: &[Series]) -> PolarsResult<Series> {
                 .zip(ca2.par_iter_indexed())
                 .map(|(op_w1, op_w2)| {
                     let (w1, w2) = (op_w1?, op_w2?);
-                    jw_sim(w1, w2, weight)
+                    Some(jw_sim(w1, w2, weight))
                 })
                 .collect()
         } else {

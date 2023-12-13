@@ -199,7 +199,7 @@ class StatsExt:
         )
 
     def sample_uniform(
-        self, low: float = 0.0, high: float = 1.0, respect_null: bool = False
+        self, low: Optional[float] = None, high: Optional[float] = None, respect_null: bool = False
     ) -> pl.Expr:
         """
         Creates self.len() many random points sampled from a uniform distribution within [low, high).
@@ -210,15 +210,15 @@ class StatsExt:
         Parameters
         ----------
         low
-            Lower end of random sample.
+            Lower end of random sample. If none, use reference col's min.
         high
-            Higher end of random sample.
+            Higher end of random sample. If none, use reference col's max.
         respect_null
             If true, null in reference column will be null in the new column
         """
 
-        lo = pl.lit(low, dtype=pl.Float64)
-        hi = pl.lit(high, dtype=pl.Float64)
+        lo = self._expr.min() if low is None else pl.lit(low, dtype=pl.Float64)
+        hi = self._expr.max() if high is None else pl.lit(high, dtype=pl.Float64)
         resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
             lib=lib,
@@ -229,7 +229,7 @@ class StatsExt:
         )
 
     def sample_normal(
-        self, mean: float = 0.0, std: float = 1.0, respect_null: bool = False
+        self, mean: Optional[float] = None, std: Optional[float] = None, respect_null: bool = False
     ) -> pl.Expr:
         """
         Creates self.len() many random points sampled from a normal distribution with the given
@@ -240,17 +240,17 @@ class StatsExt:
         Parameters
         ----------
         mean
-            Mean of the normal distribution
+            Mean of the normal distribution. If none, use reference col's mean.
         std
-            Std of the normal distribution
+            Std of the normal distribution. If none, use reference col's std.
         respect_null
             If true, null in reference column will be null in the new column
         """
         if std <= 0:
             raise ValueError("Input `std` must be positive.")
 
-        me = pl.lit(mean, dtype=pl.Float64)
-        st = pl.lit(std, dtype=pl.Float64)
+        me = self._expr.mean() if mean is None else pl.lit(mean, dtype=pl.Float64)
+        st = self._expr.std() if std is None else pl.lit(std, dtype=pl.Float64)
         resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
             lib=lib,
