@@ -27,20 +27,15 @@ fn pl_hamming(inputs: &[Series]) -> PolarsResult<Series> {
                 .map(|op_s| {
                     let s = op_s?;
                     Some(
-                        batched.distance_with_args(
-                            s.chars()
-                            , &hamming::Args::default().pad(pad)
-                        ) as u32
+                        batched.distance_with_args(s.chars(), &hamming::Args::default().pad(pad))
+                            as u32,
                     )
                 })
                 .collect()
         } else {
-            ca1.apply_nonnull_values_generic(DataType::UInt32, |s| 
-                batched.distance_with_args(
-                    s.chars()
-                    , &hamming::Args::default().pad(pad)
-                ) as u32
-            )
+            ca1.apply_nonnull_values_generic(DataType::UInt32, |s| {
+                batched.distance_with_args(s.chars(), &hamming::Args::default().pad(pad)) as u32
+            })
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {

@@ -8,20 +8,15 @@ use rapidfuzz::distance::{damerau_levenshtein, levenshtein};
 #[inline]
 fn levenshtein(s1: &str, s2: &str, bound: Option<usize>) -> Option<u32> {
     if let Some(b) = bound {
-
         levenshtein::distance_with_args(
-            s1.chars()
-            , s2.chars()
-            , &levenshtein::Args::default().score_cutoff(b))
-            .map_or(
-            None, |x| Some(x as u32)
+            s1.chars(),
+            s2.chars(),
+            &levenshtein::Args::default().score_cutoff(b),
         )
+        .map_or(None, |x| Some(x as u32))
     } else {
-        Some(
-            levenshtein::distance(s1.chars(), s2.chars()) as u32
-        )
+        Some(levenshtein::distance(s1.chars(), s2.chars()) as u32)
     }
-
 }
 
 #[inline]
@@ -97,18 +92,23 @@ fn pl_levenshtein_within(inputs: &[Series]) -> PolarsResult<Series> {
                 .map(|op_s| {
                     let s = op_s?;
                     Some(
-                        batched.distance_with_args(
-                            s.chars(), &levenshtein::Args::default().score_cutoff(bound)
-                        ).is_some()
+                        batched
+                            .distance_with_args(
+                                s.chars(),
+                                &levenshtein::Args::default().score_cutoff(bound),
+                            )
+                            .is_some(),
                     )
                 })
                 .collect()
         } else {
             ca1.apply_nonnull_values_generic(DataType::Boolean, |s| {
-                batched.distance_with_args(
-                    s.chars(), 
-                    &levenshtein::Args::default().score_cutoff(bound)
-                ).is_some()
+                batched
+                    .distance_with_args(
+                        s.chars(),
+                        &levenshtein::Args::default().score_cutoff(bound),
+                    )
+                    .is_some()
             })
         };
         Ok(out.into_series())
@@ -187,8 +187,7 @@ fn pl_d_levenshtein(inputs: &[Series]) -> PolarsResult<Series> {
             ca1.par_iter()
                 .map(|op_s| {
                     let s = op_s?;
-                    Some(batched
-                        .distance(s.chars()) as u32)
+                    Some(batched.distance(s.chars()) as u32)
                 })
                 .collect()
         } else {
@@ -234,9 +233,9 @@ fn pl_d_levenshtein_sim(inputs: &[Series]) -> PolarsResult<Series> {
                 })
                 .collect()
         } else {
-            ca1.apply_nonnull_values_generic(DataType::Float64, |s| 
+            ca1.apply_nonnull_values_generic(DataType::Float64, |s| {
                 batched.normalized_similarity(s.chars())
-            )
+            })
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {

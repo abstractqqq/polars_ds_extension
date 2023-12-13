@@ -29,16 +29,13 @@ fn pl_osa(inputs: &[Series]) -> PolarsResult<Series> {
             ca1.par_iter()
                 .map(|op_s| {
                     let s = op_s?;
-                    Some(
-                        batched
-                            .distance(s.chars()) as u32
-                    )
+                    Some(batched.distance(s.chars()) as u32)
                 })
                 .collect()
         } else {
-            ca1.apply_nonnull_values_generic(DataType::UInt32, |s|
+            ca1.apply_nonnull_values_generic(DataType::UInt32, |s| {
                 batched.distance(s.chars()) as u32
-            )
+            })
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -78,9 +75,9 @@ fn pl_osa_sim(inputs: &[Series]) -> PolarsResult<Series> {
                 })
                 .collect()
         } else {
-            ca1.apply_nonnull_values_generic(DataType::Float64, |s| 
+            ca1.apply_nonnull_values_generic(DataType::Float64, |s| {
                 batched.normalized_similarity(s.chars())
-            )
+            })
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {

@@ -13,9 +13,10 @@ fn jaro_sim(s1: &str, s2: &str) -> f64 {
 #[inline]
 fn jw_sim(s1: &str, s2: &str, weight: f64) -> f64 {
     jaro_winkler::normalized_similarity_with_args(
-        s1.chars()
-        , s2.chars()
-        , &jaro_winkler::Args::default().prefix_weight(weight))
+        s1.chars(),
+        s2.chars(),
+        &jaro_winkler::Args::default().prefix_weight(weight),
+    )
 }
 
 #[polars_expr(output_type=Float64)]
@@ -35,9 +36,7 @@ fn pl_jaro(inputs: &[Series]) -> PolarsResult<Series> {
                 })
                 .collect()
         } else {
-            ca1.apply_nonnull_values_generic(DataType::Float64, |s|
-                batched.similarity(s.chars())
-            )
+            ca1.apply_nonnull_values_generic(DataType::Float64, |s| batched.similarity(s.chars()))
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -75,21 +74,19 @@ fn pl_jw(inputs: &[Series]) -> PolarsResult<Series> {
             ca1.par_iter()
                 .map(|op_s| {
                     let s = op_s?;
-                    Some(
-                        batched.similarity_with_args(
-                            s.chars()
-                            , &jaro_winkler::Args::default().prefix_weight(weight)
-                        )
-                    )
+                    Some(batched.similarity_with_args(
+                        s.chars(),
+                        &jaro_winkler::Args::default().prefix_weight(weight),
+                    ))
                 })
                 .collect()
         } else {
-            ca1.apply_nonnull_values_generic(DataType::Float64, |s| 
+            ca1.apply_nonnull_values_generic(DataType::Float64, |s| {
                 batched.similarity_with_args(
-                    s.chars()
-                    , &jaro_winkler::Args::default().prefix_weight(weight)
+                    s.chars(),
+                    &jaro_winkler::Args::default().prefix_weight(weight),
                 )
-            )
+            })
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
