@@ -36,6 +36,29 @@ pub fn student_t_sf(x: f64, df: f64) -> Result<f64, String> {
     }
 }
 
+/// Calculates the survival function for the fisher-snedecor
+/// distribution at `x`
+///
+/// # Formula
+///
+/// ```ignore
+/// I_(1 - ((d1 * x) / (d1 * x + d2))(d2 / 2, d1 / 2)
+/// ```
+///
+/// where `d1` is the first degree of freedom, `d2` is
+/// the second degree of freedom, and `I` is the regularized incomplete
+/// beta function
+pub fn fisher_snedecor_sf(x: f64, freedom_1: f64, freedom_2: f64) -> Result<f64, String> {
+    if x < 0.0 {
+        Err("F stats found to be < 0. This should be impossible.".into())
+    } else if x.is_infinite() {
+        Ok(0.)
+    } else {
+        let t = freedom_1 * x;
+        checked_beta_reg(freedom_2 / 2.0, freedom_1 / 2.0, 1. - (t / (t + freedom_2)))
+    }
+}
+
 fn checked_beta_reg(a: f64, b: f64, x: f64) -> Result<f64, String> {
     // a, degree of freedom
     // b, shape parameter

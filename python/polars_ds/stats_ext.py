@@ -93,6 +93,42 @@ class StatsExt:
             returns_scalar=True,
         )
 
+    def f_stats(self, *cols: pl.Expr) -> pl.Expr:
+        """
+        Computes multiple F statistics at once using self as the grouping column. This does not
+        output p values. If the p value is desired, use f_test. This will return
+        all the stats as a scalar list in order.
+
+        Parameters
+        ----------
+        *cols
+            Polars expressions for numerical columns. The columns must be of the same length.
+        """
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_f_stats",
+            args=list(cols),
+            is_elementwise=False,
+            returns_scalar=True,
+        )
+
+    def f_test(self, other: pl.Expr) -> pl.Expr:
+        """
+        Performs the ANOVA F-test using self as the grouping column.
+
+        Parameters
+        ----------
+        other
+            The column to run ANOVA F-test on
+        """
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_f_test",
+            args=[other],
+            is_elementwise=False,
+            returns_scalar=True,
+        )
+
     def normal_test(self) -> pl.Expr:
         """
         Perform a normality test which is based on D'Agostino and Pearson's test
@@ -246,8 +282,6 @@ class StatsExt:
         respect_null
             If true, null in reference column will be null in the new column
         """
-        if std <= 0:
-            raise ValueError("Input `std` must be positive.")
 
         me = self._expr.mean() if mean is None else pl.lit(mean, dtype=pl.Float64)
         st = self._expr.std() if std is None else pl.lit(std, dtype=pl.Float64)

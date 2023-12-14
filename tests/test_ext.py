@@ -77,6 +77,35 @@ def test_welch_t(df):
 
 
 @pytest.mark.parametrize(
+    "df",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "target": np.random.randint(0, 3, size=1_000),
+                    "a": np.random.normal(size=1_000),
+                }
+            )
+        ),
+    ],
+)
+def test_f_test(df):
+    from sklearn.feature_selection import f_classif
+
+    res = df.select(pl.col("target").stats_ext.f_test(pl.col("a")))
+    res = res.item(0, 0)  # A dictionary
+    statistic = res["statistic"]
+    pvalue = res["pvalue"]
+
+    scikit_res = f_classif(df["a"].to_numpy().reshape(-1, 1), df["target"].to_numpy())
+    scikit_s = scikit_res[0][0]
+    scikit_p = scikit_res[1][0]
+
+    assert np.isclose(statistic, scikit_s)
+    assert np.isclose(pvalue, scikit_p)
+
+
+@pytest.mark.parametrize(
     "df, other, res",
     [
         (
