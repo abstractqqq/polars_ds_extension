@@ -3,6 +3,9 @@ tests/*.ipynb
 
 /target
 
+# Ruff
+.ruff_cache/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 .pytest_cache/

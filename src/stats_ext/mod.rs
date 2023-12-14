@@ -1,9 +1,17 @@
+mod fstats;
 mod ks;
 mod normal_test;
 mod sample;
 mod t_test;
 
 use polars::prelude::*;
+
+pub fn list_float_output(_: &[Field]) -> PolarsResult<Field> {
+    Ok(Field::new(
+        "list_float",
+        DataType::List(Box::new(DataType::Float64)),
+    ))
+}
 
 pub fn simple_stats_output(_: &[Field]) -> PolarsResult<Field> {
     let s = Field::new("statistic", DataType::Float64);
