@@ -1,3 +1,4 @@
+use super::complex::complex_output;
 /// Performs forward FFT.
 /// Since data in dataframe are always real numbers, only realfft
 /// is implemented and inverse fft is not implemented and even if it
@@ -7,13 +8,6 @@ use itertools::Either;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use realfft::RealFftPlanner;
-
-fn complex_output(_: &[Field]) -> PolarsResult<Field> {
-    Ok(Field::new(
-        "complex",
-        DataType::List(Box::new(DataType::Float64)),
-    ))
-}
 
 #[polars_expr(output_type_func=complex_output)]
 fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {

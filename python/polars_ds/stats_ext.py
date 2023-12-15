@@ -1,3 +1,7 @@
+"""
+Tools for dealing with well-known statistical tests and random sampling inside Polars DataFrame. 
+"""
+
 import polars as pl
 from .type_alias import Alternative
 from typing import Optional

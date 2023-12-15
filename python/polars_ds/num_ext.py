@@ -1,15 +1,37 @@
+"""
+Tools for dealing with well-known numerical operations and other metrics inside Polars DataFrame. 
+
+It currently contains some time series stuff such as detrend, rfft, and time series metrics like SMAPE.
+"""
+
 import polars as pl
 from typing import Union, Optional
+from .type_alias import DetrendMethod
 from polars.utils.udfs import _get_shared_lib_location
+# import math
 # from polars.type_aliases import IntoExpr
 
 lib = _get_shared_lib_location(__file__)
+
+# TwoPi = 2.0 * math.pi
 
 
 @pl.api.register_expr_namespace("num_ext")
 class NumExt:
     def __init__(self, expr: pl.Expr):
         self._expr: pl.Expr = expr
+
+    # def _hamming_window(self, a:float = 0.5) -> pl.Expr:
+    #     """
+    #     Generates a hamming window the same legnth as self. By default a = 0.5, which is the Hann window.
+    #     """
+    #     N = self._expr.count()
+    #     return (
+    #         pl.lit(a, dtype=pl.Float64)
+    #         - (pl.lit(1.0 - a, dtype = pl.Float64)) * (
+    #             (pl.lit(TwoPi) * pl.int_range(0, N, dtype=pl.Float64, eager=False) / N).cos()
+    #         )
+    #     )
 
     def binarize(self, cond: Optional[pl.Expr]) -> pl.Expr:
         """
@@ -543,7 +565,7 @@ class NumExt:
 
     def cond_entropy(self, other: pl.Expr) -> pl.Expr:
         """
-        Computes the conditional entropy of self(y) given other. H(y|other).
+        Computes the conditional entropy of self(y) given other, aka. H(y|other).
 
         Parameters
         ----------
@@ -587,6 +609,27 @@ class NumExt:
             is_elementwise=False,
             returns_scalar=True,
         )
+
+    def detrend(self, method: DetrendMethod = "linear") -> pl.Expr:
+        """
+        Detrends self using either linear/mean method.
+
+        Parameters
+        ----------
+        method
+            Either `linear` or `mean`
+        """
+
+        if method == "linear":
+            N = self._expr.count()
+            x = pl.int_range(0, N, dtype=pl.Float64, eager=False)
+            coeff = pl.cov(self._expr, x) / x.var()
+            const = self._expr.mean() - coeff * (N - 1) / 2
+            return self._expr - x * coeff - const
+        elif method == "mean":
+            return self._expr - self._expr.mean()
+        else:
+            raise ValueError(f"Unknown detrend method: {method}")
 
     # Add a k step argument?
     # def fft(self, forward: bool = True) -> pl.Expr:
