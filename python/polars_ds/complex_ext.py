@@ -1,7 +1,9 @@
 """
 Tools for dealing with complex numbers columns inside Polars dataframe.
 
-Complex number columns are represented as a column of size-2 lists. An element will look like [re, im].
+Complex number columns are represented as a column of size-2 lists. By default, an element will look like [re, im],
+which is in coordinate form. All operations (except powi, which turns it into polar form internally) assume the number 
+is in coordinate form. There is a to_coord function provided for complex numbers in polar form [r, theta].
 """
 
 import polars as pl
@@ -61,6 +63,16 @@ class ComplexExt:
                 .then(pl.lit(math.pi, dtype=pl.Float64))
                 .otherwise(pl.lit(math.nan, dtype=pl.Float64))
             )
+
+    def to_polar(self) -> pl.Expr:
+        """Turns a complex number in coordinate form into polar form."""
+        return pl.concat_list(self.modulus(), self.theta())
+
+    def to_coord(self) -> pl.Expr:
+        """Turns a complex number in polar form into coordinate form."""
+        r = self._expr.list.first()
+        theta = self._expr.list.last()
+        return pl.concat_list(r * theta.cos(), r * theta.sin())
 
     def conj(self) -> pl.Expr:
         """Returns complex conjugate."""
@@ -150,3 +162,28 @@ class ComplexExt:
             new_real = x * x_inv - y * y_inv
             new_imag = x * y_inv + y * x_inv
             return pl.concat_list(new_real, new_imag)
+
+    def mul_by_i(self) -> pl.Expr:
+        """Multiplies self by i."""
+        x = self._expr.list.first()
+        y = self._expr.list.last()
+        return pl.concat_list(-y, x)
+
+    def pow(self, x: float) -> pl.Expr:
+        """Raises a complex number to the x power."""
+        if x == 0.0:
+            return pl.concat_list(
+                pl.when(self.modulus() == 0.0).then(math.nan).otherwise(1.0),
+                pl.lit(0.0, dtype=pl.Float64),
+            )
+        elif x == 1.0:
+            return self._expr
+        elif x == 2.0:
+            return self.mul(self._expr)
+        elif x == -1.0:
+            return self.inv()
+        else:
+            polar = self.to_polar()
+            r = polar.list.first()
+            theta = polar.list.last()
+            return pl.concat_list(r.pow(x) * (x * theta).cos(), r.pow(x) * (x * theta).sin())
