@@ -1,3 +1,7 @@
+"""
+Tools for dealing with string similarity, common string operations like tokenize, extract numbers, etc., inside Polars DataFrame.
+"""
+
 import polars as pl
 from typing import Union, Optional
 from polars.utils.udfs import _get_shared_lib_location
