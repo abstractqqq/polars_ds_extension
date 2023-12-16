@@ -10,7 +10,7 @@ use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use rand::distributions::Uniform;
 use rand::{distributions::DistString, Rng};
-use rand_distr::{Alphanumeric, Normal, StandardNormal};
+use rand_distr::{Alphanumeric, Binomial, Exp, Exp1, Normal, StandardNormal};
 
 #[polars_expr(output_type=Int32)]
 fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
@@ -52,6 +52,82 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
         let sample: Vec<i32> = (&mut rng).sample_iter(dist).take(n).collect_vec();
         let out = Int32Chunked::from_vec("", sample);
         Ok(out.into_series())
+    }
+}
+
+#[polars_expr(output_type=UInt64)]
+fn pl_sample_binomial(inputs: &[Series]) -> PolarsResult<Series> {
+    let reference = &inputs[0];
+    let n = inputs[1].u64()?;
+    let n = n.get(0).unwrap();
+    let p = inputs[2].f64()?;
+    let p = p.get(0).unwrap();
+    let respect_null = inputs[3].bool()?;
+    let respect_null = respect_null.get(0).unwrap();
+    let m = reference.len();
+
+    let dist = Binomial::new(n, p).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
+    let mut rng = rand::thread_rng();
+    if respect_null && (reference.null_count() > 0) {
+        let ca = reference.is_not_null();
+        let out: UInt64Chunked = ca.apply_generic(|x| {
+            if x.unwrap_or(false) {
+                Some(rng.sample(dist))
+            } else {
+                None
+            }
+        });
+        Ok(out.into_series())
+    } else {
+        let sample: Vec<u64> = (&mut rng).sample_iter(dist).take(m).collect_vec();
+        let out = UInt64Chunked::from_vec("", sample);
+        Ok(out.into_series())
+    }
+}
+
+#[polars_expr(output_type=Float64)]
+fn pl_sample_exp(inputs: &[Series]) -> PolarsResult<Series> {
+    let reference = &inputs[0];
+    let lambda = inputs[1].f64()?;
+    let lambda = lambda.get(0).unwrap();
+    let respect_null = inputs[3].bool()?;
+    let respect_null = respect_null.get(0).unwrap();
+    let m = reference.len();
+
+    let mut rng = rand::thread_rng();
+    if lambda == 1.0 {
+        if respect_null && (reference.null_count() > 0) {
+            let ca = reference.is_not_null();
+            let out: Float64Chunked = ca.apply_generic(|x| {
+                if x.unwrap_or(false) {
+                    Some(rng.sample(Exp1))
+                } else {
+                    None
+                }
+            });
+            Ok(out.into_series())
+        } else {
+            let sample: Vec<f64> = (&mut rng).sample_iter(Exp1).take(m).collect_vec();
+            let out = Float64Chunked::from_vec("", sample);
+            Ok(out.into_series())
+        }
+    } else {
+        let dist = Exp::new(lambda).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
+        if respect_null && (reference.null_count() > 0) {
+            let ca = reference.is_not_null();
+            let out: Float64Chunked = ca.apply_generic(|x| {
+                if x.unwrap_or(false) {
+                    Some(rng.sample(dist))
+                } else {
+                    None
+                }
+            });
+            Ok(out.into_series())
+        } else {
+            let sample: Vec<f64> = (&mut rng).sample_iter(dist).take(m).collect_vec();
+            let out = Float64Chunked::from_vec("", sample);
+            Ok(out.into_series())
+        }
     }
 }
 
@@ -105,9 +181,9 @@ fn pl_sample_uniform(inputs: &[Series]) -> PolarsResult<Series> {
 fn pl_sample_normal(inputs: &[Series]) -> PolarsResult<Series> {
     let reference = &inputs[0];
     let mean = inputs[1].f64()?;
-    let mean = mean.get(0).unwrap();
+    let mean = mean.get(0).unwrap_or(0.);
     let std_ = inputs[2].f64()?;
-    let std_ = std_.get(0).unwrap();
+    let std_ = std_.get(0).unwrap_or(1.);
     let respect_null = inputs[3].bool()?;
     let respect_null = respect_null.get(0).unwrap();
 

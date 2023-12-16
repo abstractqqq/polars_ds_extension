@@ -215,9 +215,13 @@ class NumExt:
             / self._expr.count()
         )
 
+    def mad(self, pred: pl.Expr) -> pl.Expr:
+        """Computes mean absolute deivation between this and the other `pred` expression."""
+        return (self._expr - pred).abs().mean()
+
     def l1_loss(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
-        Computes L1 loss (absolute difference) between this and the other expression.
+        Computes L1 loss (absolute difference) between this and the other `pred` expression.
 
         Parameters
         ----------
@@ -233,7 +237,7 @@ class NumExt:
 
     def l2_loss(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
-        Computes L2 loss (normalized L2 distance) between this and the other expression. This
+        Computes L2 loss (normalized L2 distance) between this and the other `pred` expression. This
         is the norm without 1/p power.
 
         Parameters
@@ -251,7 +255,7 @@ class NumExt:
 
     def msle(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
-        Computes the mean square log error.
+        Computes the mean square log error between this and the other `pred` expression.
 
         Parameters
         ----------
@@ -274,7 +278,7 @@ class NumExt:
 
     def l_inf_loss(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
-        Computes L^infinity loss between this and the other expression
+        Computes L^infinity loss between this and the other `pred` expression
 
         Parameters
         ----------
@@ -291,7 +295,7 @@ class NumExt:
 
     def mape(self, pred: pl.Expr, weighted: bool = False) -> pl.Expr:
         """
-        Computes mean absolute percentage error between self and other. Self is actual.
+        Computes mean absolute percentage error between self and the other `pred` expression.
         If weighted, it will compute the weighted version as defined here:
 
         https://en.wikipedia.org/wiki/Mean_absolute_percentage_error
@@ -310,7 +314,7 @@ class NumExt:
 
     def smape(self, pred: pl.Expr) -> pl.Expr:
         """
-        Computes symmetric mean absolute percentage error between self and other. Self is actual.
+        Computes symmetric mean absolute percentage error between self and other `pred` expression.
         The value is always between 0 and 1. This is the third version in the wikipedia without
         the 100 factor.
 
@@ -327,7 +331,7 @@ class NumExt:
 
     def logloss(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
-        Computes log loss, aka binary cross entropy loss.
+        Computes log loss, aka binary cross entropy loss, between self and other `pred` expression.
 
         Parameters
         ----------

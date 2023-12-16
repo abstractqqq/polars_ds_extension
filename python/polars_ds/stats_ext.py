@@ -268,6 +268,58 @@ class StatsExt:
             returns_scalar=False,
         )
 
+    def sample_binomial(self, n: int, p: float, respect_null: bool = False) -> pl.Expr:
+        """
+        Creates self.len() many random points sampled from a uniform binomial with n and p.
+
+        This treats self as the reference column.
+
+        Parameters
+        ----------
+        n
+            n in a binomial distribution
+        p
+            p in a binomial distribution
+        respect_null
+            If true, null in reference column will be null in the new column
+        """
+
+        nn = pl.lit(n, dtype=pl.UInt64)
+        pp = pl.lit(p, dtype=pl.Float64)
+        resp = pl.lit(respect_null, dtype=pl.Boolean)
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_sample_binomial",
+            args=[nn, pp, resp],
+            is_elementwise=True,
+            returns_scalar=False,
+        )
+
+    def sample_exp(self, lam: Optional[float] = None, respect_null: bool = False) -> pl.Expr:
+        """
+        Creates self.len() many random points sampled from a exponential distribution with n and p.
+
+        This treats self as the reference column.
+
+        Parameters
+        ----------
+        lam
+            lambda in a exponential distribution. If none, it will be 1/reference col's mean. Note that if
+            lambda < 0 will throw an error and lambda = 0 will only return infinity.
+        respect_null
+            If true, null in reference column will be null in the new column
+        """
+
+        lamb = (1.0 / self._expr.mean()) if lam is None else pl.lit(lam, dtype=pl.Float64)
+        resp = pl.lit(respect_null, dtype=pl.Boolean)
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_sample_exp",
+            args=[lamb, resp],
+            is_elementwise=True,
+            returns_scalar=False,
+        )
+
     def sample_normal(
         self, mean: Optional[float] = None, std: Optional[float] = None, respect_null: bool = False
     ) -> pl.Expr:
