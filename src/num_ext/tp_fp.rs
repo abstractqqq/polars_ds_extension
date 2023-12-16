@@ -2,7 +2,7 @@
 /// ROC AUC, Average Precision, precision, recall, etc.
 ///
 use ndarray::ArrayView1;
-use polars::{lazy::dsl::count, prelude::*, series::ops::NullBehavior};
+use polars::{lazy::dsl::count, prelude::*};
 use pyo3_polars::derive::polars_expr;
 
 fn combo_output(_: &[Field]) -> PolarsResult<Field> {

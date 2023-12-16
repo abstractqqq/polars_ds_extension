@@ -214,26 +214,22 @@ class StatsExt:
         Parameters
         ----------
         low
-            Lower end of random sample. None will be replaced by 0.
+            Lower end of random sample. None will be replaced 0.
         high
-            Higher end of random sample. None will be replaced by 10.
+            Higher end of random sample. None will be replaced n_unique of reference.
         respect_null
             If true, null in reference column will be null in the new column
-        use_ref
-            If true, will overried low to be 0 and high = nunique of the reference column.
-            If reference column has 0 unique values, this will be set to 10.
         """
-        if (low is None) & (high is None) & (not use_ref):
-            raise ValueError("Either set valid low and high values or set use_ref = True")
+        if (low is None) & (high is None):
+            raise ValueError("Either low or high must be set.")
 
         lo = pl.lit(low, dtype=pl.Int32)
-        hi = pl.lit(high, dtype=pl.Int32)
+        hi = self._expr.n_unique.cast(pl.UInt32) if high is None else pl.lit(high, dtype=pl.Int32)
         resp = pl.lit(respect_null, dtype=pl.Boolean)
-        use_r = pl.lit(use_ref, dtype=pl.Boolean)
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_rand_int",
-            args=[lo, hi, resp, use_r],
+            args=[lo, hi, resp],
             is_elementwise=True,
             returns_scalar=False,
         )

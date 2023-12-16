@@ -20,13 +20,8 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
 
     let respect_null = inputs[3].bool()?;
     let respect_null = respect_null.get(0).unwrap();
-    let use_ref = inputs[4].bool()?;
-    let use_ref = use_ref.get(0).unwrap();
-    let (mut low, mut high) = if use_ref {
-        (0, reference.n_unique().unwrap_or(10) as i32)
-    } else {
-        (low.get(0).unwrap_or(0), high.get(0).unwrap_or(10))
-    };
+
+    let (mut low, mut high) =(low.get(0).unwrap_or(0), high.get(0).unwrap_or(10));
     if high == low {
         return Err(PolarsError::ComputeError(
             "Sample: Low and high must be different values.".into(),
@@ -90,7 +85,7 @@ fn pl_sample_exp(inputs: &[Series]) -> PolarsResult<Series> {
     let reference = &inputs[0];
     let lambda = inputs[1].f64()?;
     let lambda = lambda.get(0).unwrap();
-    let respect_null = inputs[3].bool()?;
+    let respect_null = inputs[2].bool()?;
     let respect_null = respect_null.get(0).unwrap();
     let m = reference.len();
 
