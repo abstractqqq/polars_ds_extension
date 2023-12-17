@@ -214,26 +214,22 @@ class StatsExt:
         Parameters
         ----------
         low
-            Lower end of random sample. None will be replaced by 0.
+            Lower end of random sample. None will be replaced 0.
         high
-            Higher end of random sample. None will be replaced by 10.
+            Higher end of random sample. None will be replaced n_unique of reference.
         respect_null
             If true, null in reference column will be null in the new column
-        use_ref
-            If true, will overried low to be 0 and high = nunique of the reference column.
-            If reference column has 0 unique values, this will be set to 10.
         """
-        if (low is None) & (high is None) & (not use_ref):
-            raise ValueError("Either set valid low and high values or set use_ref = True")
+        if (low is None) & (high is None):
+            raise ValueError("Either low or high must be set.")
 
         lo = pl.lit(low, dtype=pl.Int32)
-        hi = pl.lit(high, dtype=pl.Int32)
+        hi = self._expr.n_unique.cast(pl.UInt32) if high is None else pl.lit(high, dtype=pl.Int32)
         resp = pl.lit(respect_null, dtype=pl.Boolean)
-        use_r = pl.lit(use_ref, dtype=pl.Boolean)
         return self._expr.register_plugin(
             lib=lib,
             symbol="pl_rand_int",
-            args=[lo, hi, resp, use_r],
+            args=[lo, hi, resp],
             is_elementwise=True,
             returns_scalar=False,
         )
@@ -264,6 +260,58 @@ class StatsExt:
             lib=lib,
             symbol="pl_sample_uniform",
             args=[lo, hi, resp],
+            is_elementwise=True,
+            returns_scalar=False,
+        )
+
+    def sample_binomial(self, n: int, p: float, respect_null: bool = False) -> pl.Expr:
+        """
+        Creates self.len() many random points sampled from a uniform binomial with n and p.
+
+        This treats self as the reference column.
+
+        Parameters
+        ----------
+        n
+            n in a binomial distribution
+        p
+            p in a binomial distribution
+        respect_null
+            If true, null in reference column will be null in the new column
+        """
+
+        nn = pl.lit(n, dtype=pl.UInt64)
+        pp = pl.lit(p, dtype=pl.Float64)
+        resp = pl.lit(respect_null, dtype=pl.Boolean)
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_sample_binomial",
+            args=[nn, pp, resp],
+            is_elementwise=True,
+            returns_scalar=False,
+        )
+
+    def sample_exp(self, lam: Optional[float] = None, respect_null: bool = False) -> pl.Expr:
+        """
+        Creates self.len() many random points sampled from a exponential distribution with n and p.
+
+        This treats self as the reference column.
+
+        Parameters
+        ----------
+        lam
+            lambda in a exponential distribution. If none, it will be 1/reference col's mean. Note that if
+            lambda < 0 will throw an error and lambda = 0 will only return infinity.
+        respect_null
+            If true, null in reference column will be null in the new column
+        """
+
+        lamb = (1.0 / self._expr.mean()) if lam is None else pl.lit(lam, dtype=pl.Float64)
+        resp = pl.lit(respect_null, dtype=pl.Boolean)
+        return self._expr.register_plugin(
+            lib=lib,
+            symbol="pl_sample_exp",
+            args=[lamb, resp],
             is_elementwise=True,
             returns_scalar=False,
         )

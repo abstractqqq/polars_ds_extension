@@ -52,7 +52,7 @@ fn pl_levenshtein(inputs: &[Series]) -> PolarsResult<Series> {
                 .collect()
         } else {
             ca1.apply_nonnull_values_generic(DataType::UInt32, |s| {
-                (batched.distance(s.chars()) as u32)
+                batched.distance(s.chars()) as u32
             })
         };
         Ok(out.into_series())
