@@ -32,7 +32,7 @@ jobs:
       - name: Test
         run: | 
           pip install pytest
-          pytest tests/test.test_ext.py
+          pytest tests/test_ext.py
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
