@@ -31,7 +31,9 @@ jobs:
           python-version: "3.10"
       - name: Test
         run: | 
+          python -m pip install --upgrade pip
           pip install pytest
+          pip install .
           pytest tests/test_ext.py
       - name: Build wheels
         uses: PyO3/maturin-action@v1
