@@ -125,10 +125,10 @@ class StrExt:
         if min_count is None and min_frac is None:
             raise ValueError("Either min_count or min_frac must be provided.")
         elif min_count is not None:
-            infreq: pl.Expr = vc.filter(vc.struct.field("counts") < min_count).struct.field(name)
+            infreq: pl.Expr = vc.filter(vc.struct.field("count") < min_count).struct.field(name)
         elif min_frac is not None:
             infreq: pl.Expr = vc.filter(
-                vc.struct.field("counts") / vc.struct.field("counts").sum() < min_frac
+                vc.struct.field("count") / vc.struct.field("count").sum() < min_frac
             ).struct.field(name)
 
         return infreq.implode()
@@ -168,10 +168,10 @@ class StrExt:
         if min_count is None and min_frac is None:
             raise ValueError("Either min_count or min_frac must be provided.")
         elif min_count is not None:
-            to_merge: pl.Expr = vc.filter(vc.struct.field("counts") < min_count).struct.field(name)
+            to_merge: pl.Expr = vc.filter(vc.struct.field("count") < min_count).struct.field(name)
         elif min_frac is not None:
             to_merge: pl.Expr = vc.filter(
-                vc.struct.field("counts") / vc.struct.field("counts").sum() < min_frac
+                vc.struct.field("count") / vc.struct.field("count").sum() < min_frac
             ).struct.field(name)
 
         return (
@@ -560,10 +560,10 @@ class StrExt:
 
         name = self._expr.meta.root_names()[0]
         vc = self._expr.list.explode().value_counts(parallel=parallel).sort()
-        lo = vc.struct.field("counts").quantile(lower)
-        u = vc.struct.field("counts").quantile(upper)
+        lo = vc.struct.field("count").quantile(lower)
+        u = vc.struct.field("count").quantile(upper)
         remove = (
-            vc.filter((vc.struct.field("counts") < lo) | (vc.struct.field("counts") > u))
+            vc.filter((vc.struct.field("count") < lo) | (vc.struct.field("count") > u))
             .struct.field(name)
             .implode()
         )
@@ -600,6 +600,9 @@ class StrExt:
         Try to match the patterns using the Aho-Corasick algorithm. The matched pattern's indices will be
         returned. E.g. If for string1, pattern 2, 1, 3 are matched in this order, then [1, 0, 2] are
         returned. (Indices in pattern list)
+
+        Polars >= 0.20 now has native aho-corasick support. The backend package is the same, though the function
+        api is different. See str.contains_any and str.replace_many.
 
         Parameters
         ----------
@@ -647,6 +650,9 @@ class StrExt:
         Try to replace the patterns using the Aho-Corasick algorithm. The length of patterns should match
         the length of replacements. If not, both sequences will be capped at the shorter length. If an error
         happens during replacement, None will be returned.
+
+        Polars >= 0.20 now has native aho-corasick support. The backend package is the same, though the function
+        api is different. See str.contains_any and str.replace_many.
 
         Parameters
         ----------

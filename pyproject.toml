@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "polars_ds"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 version = "0.1.4"
 
 license = {file = "LICENSE.txt"}
@@ -20,7 +20,7 @@ authors = [
     {name = "Nelson Griffiths", email = "nelsongriffiths123@gmail.com"}
 ]
 dependencies = [
-    "polars >= 0.19.19",
+    "polars >= 0.20",
 ] 
 
 keywords = ["polars-extension", "scientific-computing", "data-science"]

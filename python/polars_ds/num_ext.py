@@ -484,48 +484,6 @@ class NumExt:
             lib=lib, symbol="pl_fast_exp", args=[n_], is_elementwise=True, returns_scalar=False
         )
 
-    # Move to stats_ext
-    def t_2samp(self, other: pl.Expr) -> pl.Expr:
-        """
-        Computes the t statistics for an Independent two-sample t-test. It is highly recommended
-        that nulls be imputed before calling this.
-
-        Parameters
-        ----------
-        other
-            Either an int or a Polars expression
-        """
-        numerator = self._expr.mean() - other.mean()
-        denom = ((self._expr.var() + other.var()) / self._expr.count()).sqrt()
-        return numerator / denom
-
-    # Move to stats_ext
-    def welch_t(self, other: pl.Expr, return_df: bool = True) -> pl.Expr:
-        """
-        Computes the statistics for Welch's t-test. Welch's t-test is often used when
-        the two series do not have the same length. Two series in a dataframe will always
-        have the same length. Here, only non-null values are counted.
-
-        Parameters
-        ----------
-        other
-            Either an int or a Polars expression
-        return_df
-            Whether to return the degree of freedom or not.
-        """
-        e1 = self._expr.drop_nulls()
-        e2 = other.drop_nulls()
-        numerator = e1.mean() - e2.mean()
-        s1: pl.Expr = e1.var() / e1.count()
-        s2: pl.Expr = e2.var() / e2.count()
-        denom = (s1 + s2).sqrt()
-        if return_df:
-            df_num = (s1 + s2).pow(2)
-            df_denom = s1.pow(2) / (e1.count() - 1) + s2.pow(2) / (e2.count() - 1)
-            return pl.concat_list(numerator / denom, df_num / df_denom)
-        else:
-            return numerator / denom
-
     def jaccard(self, other: pl.Expr, include_null: bool = False) -> pl.Expr:
         """
         Computes jaccard similarity between this column and the other. This will hash entire

@@ -24,11 +24,12 @@ class StatsExt:
         equivalent to SciPy's ttest_ind, with fewer options. The result is not exact but
         within 1e-10 precision from SciPy's result.
 
-        In the case of student's t test, the user is responsible for data to have equal length,
-        and nulls will be ignored when computing mean and variance. The df will be 2n - 2. As a
-        result, nulls might cause problems. In the case of Welch's t test, data
-        will be sanitized (nulls, NaNs, Infs will be dropped before the test), and df will be
-        counted based on the length of sanitized data.
+        In the case of student's t test, the data is assumed to have no nulls, and n = self._expr.count()
+        is used to compute the statistic. Note self._expr.count() only counts non-null elements after polars 0.20.
+        The df will be 2n - 2. As a result, nulls might cause problems.
+
+        In the case of Welch's t test, data will be sanitized (nulls, NaNs, Infs will be dropped
+        before the test), and df will be counted based on the length of sanitized data.
 
         Parameters
         ----------
@@ -45,7 +46,6 @@ class StatsExt:
             m2 = other.mean()
             v1 = self._expr.var()
             v2 = other.var()
-            # Note here that nulls are not filtered to ensure the same length
             cnt = self._expr.count().cast(pl.UInt64)
             return m1.register_plugin(
                 lib=lib,
@@ -74,7 +74,7 @@ class StatsExt:
     def ttest_1samp(self, pop_mean: float, alternative: Alternative = "two-sided") -> pl.Expr:
         """
         Performs a standard 1 sample t test using reference column and expected mean. This function
-        sanitizes the self column first. The df is the count of valid (non-null, finite) values.
+        sanitizes the self column first. The df is the count of valid values.
 
         Parameters
         ----------
