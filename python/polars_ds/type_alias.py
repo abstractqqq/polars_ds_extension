@@ -6,6 +6,7 @@ if sys.version_info >= (3, 10):
 else:  # 3.9
     from typing_extensions import TypeAlias
 
+
 DetrendMethod: TypeAlias = Literal["linear", "mean"]
 AhoCorasickMatchKind: TypeAlias = Literal["standard", "left_most_first", "left_most_longest"]
 Alternative: TypeAlias = Literal["two-sided", "less", "greater"]
