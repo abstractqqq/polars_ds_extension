@@ -21,7 +21,7 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
     let respect_null = inputs[3].bool()?;
     let respect_null = respect_null.get(0).unwrap();
 
-    let (mut low, mut high) =(low.get(0).unwrap_or(0), high.get(0).unwrap_or(10));
+    let (mut low, mut high) = (low.get(0).unwrap_or(0), high.get(0).unwrap_or(10));
     if high == low {
         return Err(PolarsError::ComputeError(
             "Sample: Low and high must be different values.".into(),

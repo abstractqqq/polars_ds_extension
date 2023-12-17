@@ -27,9 +27,7 @@ pub fn str_set_sim_helper(w1: &str, w2: &str, n: usize) -> (usize, usize, usize)
     let w2_len = w2.len();
 
     // as long as intersection size is 0, output will be correct
-    if (w1_len == 0) && (w2_len == 0) {
-        return (0, 0, 0);
-    } else if (w1_len == 0) | (w2_len == 0) {
+    if (w1_len == 0) | (w2_len == 0) {
         return (0, 0, 0);
     }
 

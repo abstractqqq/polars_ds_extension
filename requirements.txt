@@ -3,3 +3,4 @@ polars
 numpy
 pytest
 scikit-learn
+scipy
