@@ -1,11 +1,3 @@
-"""
-Tools for dealing with complex numbers columns inside Polars dataframe.
-
-Complex number columns are represented as a column of size-2 lists. By default, an element will look like [re, im],
-which is in coordinate form. All operations (except powi, which turns it into polar form internally) assume the number 
-is in coordinate form. There is a to_coord function provided for complex numbers in polar form [r, theta].
-"""
-
 import polars as pl
 from typing import Union
 import math
@@ -13,6 +5,19 @@ import math
 
 @pl.api.register_expr_namespace("c")
 class ComplexExt:
+
+    """
+    This class contains tools for dealing with complex numbers columns inside Polars dataframe.
+
+    Polars Namespace: c
+
+    Example: pl.col("a").c.modulus()
+
+    Complex number columns are represented as a column of size-2 lists. By default, an element will look like [re, im],
+    which is in coordinate form. All operations (except powi, which turns it into polar form internally) assume the number
+    is in coordinate form. There is a to_coord function provided for complex numbers in polar form [r, theta].
+    """
+
     def __init__(self, expr: pl.Expr):
         self._expr: pl.Expr = expr
 

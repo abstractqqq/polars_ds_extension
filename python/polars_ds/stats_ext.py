@@ -1,18 +1,23 @@
-"""
-Tools for dealing with well-known statistical tests and random sampling inside Polars DataFrame. 
-"""
-
 import polars as pl
 from .type_alias import Alternative
 from typing import Optional
 from polars.utils.udfs import _get_shared_lib_location
 # from polars.type_aliases import IntoExpr
 
-lib = _get_shared_lib_location(__file__)
+_lib = _get_shared_lib_location(__file__)
 
 
 @pl.api.register_expr_namespace("stats_ext")
 class StatsExt:
+
+    """
+    This class contains tools for dealing with well-known statistical tests and random sampling inside Polars DataFrame.
+
+    Polars Namespace: stats_ext
+
+    Example: pl.col("a").stats_ext.ttest_ind(pl.col("b"), equal_var = True)
+    """
+
     def __init__(self, expr: pl.Expr):
         self._expr: pl.Expr = expr
 
@@ -48,7 +53,7 @@ class StatsExt:
             v2 = other.var()
             cnt = self._expr.count().cast(pl.UInt64)
             return m1.register_plugin(
-                lib=lib,
+                lib=_lib,
                 symbol="pl_ttest_2samp",
                 args=[m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.Utf8)],
                 is_elementwise=False,
@@ -64,7 +69,7 @@ class StatsExt:
             n1 = s1.count().cast(pl.UInt64)
             n2 = s2.count().cast(pl.UInt64)
             return m1.register_plugin(
-                lib=lib,
+                lib=_lib,
                 symbol="pl_welch_t",
                 args=[m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.Utf8)],
                 is_elementwise=False,
@@ -90,7 +95,7 @@ class StatsExt:
         cnt = s1.count().cast(pl.UInt64)
         alt = pl.lit(alternative, dtype=pl.Utf8)
         return sm.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_ttest_1samp",
             args=[pm, var, cnt, alt],
             is_elementwise=False,
@@ -109,7 +114,7 @@ class StatsExt:
             Polars expressions for numerical columns. The columns must be of the same length.
         """
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_f_stats",
             args=list(cols),
             is_elementwise=False,
@@ -126,7 +131,7 @@ class StatsExt:
             The column to run ANOVA F-test on
         """
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_f_test",
             args=[other],
             is_elementwise=False,
@@ -136,14 +141,14 @@ class StatsExt:
     def normal_test(self) -> pl.Expr:
         """
         Perform a normality test which is based on D'Agostino and Pearson's test
-        [1], [2] that combines skew and kurtosis to produce an omnibus test of normality.
+        that combines skew and kurtosis to produce an omnibus test of normality.
         Null values, NaN and inf are dropped when running this computation.
 
         References
         ----------
-        .. [1] D'Agostino, R. B. (1971), "An omnibus test of normality for
+        D'Agostino, R. B. (1971), "An omnibus test of normality for
             moderate and large sample size", Biometrika, 58, 341-348
-        .. [2] D'Agostino, R. and Pearson, E. S. (1973), "Tests for departure from
+        D'Agostino, R. and Pearson, E. S. (1973), "Tests for departure from
             normality", Biometrika, 60, 613-622
         """
         valid: pl.Expr = self._expr.filter(self._expr.is_finite())
@@ -151,7 +156,7 @@ class StatsExt:
         # Pearson Kurtosis, see here: https://en.wikipedia.org/wiki/D%27Agostino%27s_K-squared_test
         kur = valid.kurtosis(fisher=False)
         return skew.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_normal_test",
             args=[kur, valid.count().cast(pl.UInt64)],
             is_elementwise=False,
@@ -170,7 +175,7 @@ class StatsExt:
         y = self._expr.cast(pl.Float64)
         other_ = other.cast(pl.Float64)
         return y.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_ks_2samp",
             args=[other_, pl.lit(True, dtype=pl.Boolean)],
             is_elementwise=False,
@@ -191,7 +196,7 @@ class StatsExt:
         y1 = y.filter(target == target.max())
         y2 = y.filter((target == target.max()).not_())
         return y1.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_ks_2samp",
             args=[y2, pl.lit(True, dtype=pl.Boolean)],
             is_elementwise=False,
@@ -227,7 +232,7 @@ class StatsExt:
         hi = self._expr.n_unique.cast(pl.UInt32) if high is None else pl.lit(high, dtype=pl.Int32)
         resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_rand_int",
             args=[lo, hi, resp],
             is_elementwise=True,
@@ -257,7 +262,7 @@ class StatsExt:
         hi = self._expr.max() if high is None else pl.lit(high, dtype=pl.Float64)
         resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_sample_uniform",
             args=[lo, hi, resp],
             is_elementwise=True,
@@ -284,7 +289,7 @@ class StatsExt:
         pp = pl.lit(p, dtype=pl.Float64)
         resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_sample_binomial",
             args=[nn, pp, resp],
             is_elementwise=True,
@@ -309,7 +314,7 @@ class StatsExt:
         lamb = (1.0 / self._expr.mean()) if lam is None else pl.lit(lam, dtype=pl.Float64)
         resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_sample_exp",
             args=[lamb, resp],
             is_elementwise=True,
@@ -339,7 +344,7 @@ class StatsExt:
         st = self._expr.std() if std is None else pl.lit(std, dtype=pl.Float64)
         resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_sample_normal",
             args=[me, st, resp],
             is_elementwise=True,
@@ -374,7 +379,7 @@ class StatsExt:
         max_s = pl.lit(max_size, dtype=pl.UInt32)
         resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_sample_alphanumeric",
             args=[min_s, max_s, resp],
             is_elementwise=True,

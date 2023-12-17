@@ -1,37 +1,26 @@
-"""
-Tools for dealing with well-known numerical operations and other metrics inside Polars DataFrame. 
-
-It currently contains some time series stuff such as detrend, rfft, and time series metrics like SMAPE.
-"""
-
 import polars as pl
 from typing import Union, Optional
 from .type_alias import DetrendMethod
 from polars.utils.udfs import _get_shared_lib_location
-# import math
-# from polars.type_aliases import IntoExpr
 
-lib = _get_shared_lib_location(__file__)
-
-# TwoPi = 2.0 * math.pi
+_lib = _get_shared_lib_location(__file__)
 
 
 @pl.api.register_expr_namespace("num_ext")
 class NumExt:
+
+    """
+    This class contains tools for dealing with well-known numerical operations and other metrics inside Polars DataFrame.
+
+    Polars Namespace: num_ext
+
+    Example: pl.col("a").num_ext.range_over_mean()
+
+    It currently contains some time series stuff such as detrend, rfft, and time series metrics like SMAPE.
+    """
+
     def __init__(self, expr: pl.Expr):
         self._expr: pl.Expr = expr
-
-    # def _hamming_window(self, a:float = 0.5) -> pl.Expr:
-    #     """
-    #     Generates a hamming window the same legnth as self. By default a = 0.5, which is the Hann window.
-    #     """
-    #     N = self._expr.count()
-    #     return (
-    #         pl.lit(a, dtype=pl.Float64)
-    #         - (pl.lit(1.0 - a, dtype = pl.Float64)) * (
-    #             (pl.lit(TwoPi) * pl.int_range(0, N, dtype=pl.Float64, eager=False) / N).cos()
-    #         )
-    #     )
 
     def binarize(self, cond: Optional[pl.Expr]) -> pl.Expr:
         """
@@ -109,7 +98,7 @@ class NumExt:
 
     def max_abs(self) -> pl.Expr:
         """
-        Returns the maximum of |x|.
+        Returns the maximum of absolute values of self.
         """
         return pl.max_horizontal(self._expr.max().abs(), self._expr.min().abs())
 
@@ -144,20 +133,19 @@ class NumExt:
         """
         return (self._expr == self._expr.min()).sum()
 
-    def list_arg_max(self) -> pl.Expr:
+    def list_amax(self) -> pl.Expr:
         """
         Finds the argmax of the list in this column. This is useful for
 
         (1) Turning sparse multiclass target into dense target.
-        (2) Finding the max probability class of a multiclass classification output
-        (3) Just a shortcut for expr.list.eval(pl.element().arg_max())
+        (2) Finding the max probability class of a multiclass classification output.
+        (3) Just a shortcut for expr.list.eval(pl.element().arg_max()).
         """
         return self._expr.list.eval(pl.element().arg_max())
 
     def gcd(self, other: Union[int, pl.Expr]) -> pl.Expr:
         """
-        Computes GCD of two integer columns. This will try to cast everything to int64 and may
-        fail.
+        Computes GCD of two integer columns. This will try to cast everything to int64.
 
         Parameters
         ----------
@@ -170,7 +158,7 @@ class NumExt:
             other_ = other.cast(pl.Int64)
 
         return self._expr.cast(pl.Int64).register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_gcd",
             args=[other_],
             is_elementwise=True,
@@ -178,8 +166,7 @@ class NumExt:
 
     def lcm(self, other: Union[int, pl.Expr]) -> pl.Expr:
         """
-        Computes LCM of two integer columns. This will try to cast everything to int64 and may
-        fail.
+        Computes LCM of two integer columns. This will try to cast everything to int64.
 
         Parameters
         ----------
@@ -192,11 +179,17 @@ class NumExt:
             other_ = other.cast(pl.Int64)
 
         return self._expr.cast(pl.Int64).register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_lcm",
             args=[other_],
             is_elementwise=True,
         )
+
+    def is_equidistant(self) -> pl.Expr:
+        """
+        Checks if a column has equal distance between consecutive values.
+        """
+        return self._expr.diff(null_behavior="drop").unique_counts().count().eq(1)
 
     def hubor_loss(self, pred: pl.Expr, delta: float) -> pl.Expr:
         """
@@ -365,7 +358,7 @@ class NumExt:
         """
         y = self._expr.cast(pl.UInt32)
         return y.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_roc_auc",
             args=[pred],
             is_elementwise=False,
@@ -394,7 +387,7 @@ class NumExt:
         """
         y = self._expr.cast(pl.UInt32)
         return y.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_combo_b",
             args=[pred, pl.lit(threshold, dtype=pl.Float64)],
             is_elementwise=False,
@@ -420,7 +413,7 @@ class NumExt:
             x_ = x.cast(pl.Float64)
 
         return y.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_trapz",
             args=[x_],
             is_elementwise=False,
@@ -481,7 +474,7 @@ class NumExt:
             n_ = n
 
         return self._expr.register_plugin(
-            lib=lib, symbol="pl_fast_exp", args=[n_], is_elementwise=True, returns_scalar=False
+            lib=_lib, symbol="pl_fast_exp", args=[n_], is_elementwise=True, returns_scalar=False
         )
 
     def jaccard(self, other: pl.Expr, include_null: bool = False) -> pl.Expr:
@@ -498,7 +491,7 @@ class NumExt:
             Whether to include null as a distinct element.
         """
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_jaccard",
             args=[other, pl.lit(include_null, dtype=pl.Boolean)],
             is_elementwise=False,
@@ -519,7 +512,7 @@ class NumExt:
             Currently there are some technical issue with adding this parameter.
         """
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_list_jaccard",
             args=[other],
             is_elementwise=True,
@@ -536,7 +529,7 @@ class NumExt:
         """
 
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_conditional_entropy",
             args=[other],
             is_elementwise=False,
@@ -554,18 +547,18 @@ class NumExt:
         does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
 
         If add_bias is true, it will be the last coefficient in the output
-        and output will have length |other| + 1
+        and output will have len(others) + 1
 
         Parameters
         ----------
-        other
+        others
             Polars expressions.
         add_bias
             Whether to add a bias term
         """
         y = self._expr.cast(pl.Float64)
         return y.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_lstsq",
             args=[pl.lit(add_bias, dtype=pl.Boolean)] + list(others),
             is_elementwise=False,
@@ -593,24 +586,6 @@ class NumExt:
         else:
             raise ValueError(f"Unknown detrend method: {method}")
 
-    # Add a k step argument?
-    # def fft(self, forward: bool = True) -> pl.Expr:
-    #     """
-    #     Computes the DFT transform of input series using FFT Algorithm. A series of equal length will
-    #     be returned, with elements being the real and complex part of the transformed values.
-
-    #     Parameters
-    #     ----------
-    #     forward
-    #         If true, compute DFT. If false, compute inverse DFT.
-    #     """
-    #     return self._expr.register_plugin(
-    #         lib=lib,
-    #         symbol="pl_fft",
-    #         args=[pl.lit(forward, dtype=pl.Boolean)],
-    #         is_elementwise=True,
-    #     )
-
     def rfft(self, length: Optional[int] = None) -> pl.Expr:
         """
         Computes the DFT transform of a real-valued input series using FFT Algorithm. Note that
@@ -621,11 +596,12 @@ class NumExt:
         length
             A positive integer
         """
+        # Add a k step argument?
         if length is not None and length <= 1:
             raise ValueError("Input `length` should be > 1.")
 
         le = pl.lit(length, dtype=pl.UInt32)
         x: pl.Expr = self._expr.cast(pl.Float64)
         return x.register_plugin(
-            lib=lib, symbol="pl_rfft", args=[le], is_elementwise=False, changes_length=True
+            lib=_lib, symbol="pl_rfft", args=[le], is_elementwise=False, changes_length=True
         )

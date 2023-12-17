@@ -1,18 +1,24 @@
-"""
-Tools for dealing with string similarity, common string operations like tokenize, extract numbers, etc., inside Polars DataFrame.
-"""
-
 import polars as pl
 from typing import Union, Optional
 from polars.utils.udfs import _get_shared_lib_location
 from .type_alias import AhoCorasickMatchKind
 import warnings
 
-lib = _get_shared_lib_location(__file__)
+_lib = _get_shared_lib_location(__file__)
 
 
 @pl.api.register_expr_namespace("str_ext")
 class StrExt:
+
+    """
+    This class contains tools for dealing with string similarity, common string operations like tokenize,
+    extract numbers, etc., inside Polars DataFrame.
+
+    Polars Namespace: str_ext
+
+    Example: pl.col("a").str_ext.levenshtein(pl.col("b"), return_sim=True)
+    """
+
     def __init__(self, expr: pl.Expr):
         self._expr: pl.Expr = expr
 
@@ -21,7 +27,7 @@ class StrExt:
         Checks whether the string is a stopword or not.
         """
         self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_is_stopword",
             args=[],
             is_elementwise=True,
@@ -206,7 +212,7 @@ class StrExt:
             other_ = other
 
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_str_jaccard",
             args=[other_, pl.lit(substr_size, pl.UInt32), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
@@ -238,7 +244,7 @@ class StrExt:
             other_ = other
 
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_sorensen_dice",
             args=[other_, pl.lit(substr_size, pl.UInt32), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
@@ -270,7 +276,7 @@ class StrExt:
             other_ = other
 
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_overlap_coeff",
             args=[other_, pl.lit(substr_size, pl.UInt32), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
@@ -301,14 +307,14 @@ class StrExt:
 
         if return_sim:
             return self._expr.register_plugin(
-                lib=lib,
+                lib=_lib,
                 symbol="pl_levenshtein_sim",
                 args=[other_, pl.lit(parallel, pl.Boolean)],
                 is_elementwise=True,
             )
         else:
             return self._expr.register_plugin(
-                lib=lib,
+                lib=_lib,
                 symbol="pl_levenshtein",
                 args=[other_, pl.lit(parallel, pl.Boolean)],
                 is_elementwise=True,
@@ -343,7 +349,7 @@ class StrExt:
 
         bound = pl.lit(abs(bound), pl.UInt32)
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_levenshtein_within",
             args=[other_, bound, pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
@@ -374,14 +380,14 @@ class StrExt:
 
         if return_sim:
             return self._expr.register_plugin(
-                lib=lib,
+                lib=_lib,
                 symbol="pl_d_levenshtein_sim",
                 args=[other_, pl.lit(parallel, pl.Boolean)],
                 is_elementwise=True,
             )
         else:
             return self._expr.register_plugin(
-                lib=lib,
+                lib=_lib,
                 symbol="pl_d_levenshtein",
                 args=[other_, pl.lit(parallel, pl.Boolean)],
                 is_elementwise=True,
@@ -412,14 +418,14 @@ class StrExt:
 
         if return_sim:
             return self._expr.register_plugin(
-                lib=lib,
+                lib=_lib,
                 symbol="pl_osa_sim",
                 args=[other_, pl.lit(parallel, pl.Boolean)],
                 is_elementwise=True,
             )
         else:
             return self._expr.register_plugin(
-                lib=lib,
+                lib=_lib,
                 symbol="pl_osa",
                 args=[other_, pl.lit(parallel, pl.Boolean)],
                 is_elementwise=True,
@@ -445,7 +451,7 @@ class StrExt:
             other_ = other
 
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_jaro",
             args=[other_, pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
@@ -476,7 +482,7 @@ class StrExt:
             other_ = other
 
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_jw",
             args=[other_, pl.lit(weight, pl.Float64), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
@@ -507,7 +513,7 @@ class StrExt:
             other_ = other
 
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_hamming",
             args=[other_, pl.lit(pad, pl.Boolean), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
@@ -531,7 +537,7 @@ class StrExt:
             out = out.list.eval(
                 pl.element()
                 .register_plugin(
-                    lib=lib,
+                    lib=_lib,
                     symbol="pl_snowball_stem",
                     args=[pl.lit(True, pl.Boolean), pl.lit(False, pl.Boolean)],
                     is_elementwise=True,
@@ -583,7 +589,7 @@ class StrExt:
             when used with other expressions or in group_by/over context.
         """
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_snowball_stem",
             args=[pl.lit(no_stopwords, pl.Boolean), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
@@ -602,7 +608,7 @@ class StrExt:
         returned. (Indices in pattern list)
 
         Polars >= 0.20 now has native aho-corasick support. The backend package is the same, though the function
-        api is different. See str.contains_any and str.replace_many.
+        api is different. See polars's str.contains_any and str.replace_many.
 
         Parameters
         ----------
@@ -630,14 +636,14 @@ class StrExt:
         mk = pl.lit(match_kind, pl.Utf8)
         if return_str:
             return self._expr.register_plugin(
-                lib=lib,
+                lib=_lib,
                 symbol="pl_ac_match_str",
                 args=[pat, cs, mk],
                 is_elementwise=True,
             )
         else:
             return self._expr.register_plugin(
-                lib=lib,
+                lib=_lib,
                 symbol="pl_ac_match",
                 args=[pat, cs, mk],
                 is_elementwise=True,
@@ -652,7 +658,7 @@ class StrExt:
         happens during replacement, None will be returned.
 
         Polars >= 0.20 now has native aho-corasick support. The backend package is the same, though the function
-        api is different. See str.contains_any and str.replace_many.
+        api is different. See polars's str.contains_any and str.replace_many.
 
         Parameters
         ----------
@@ -672,7 +678,7 @@ class StrExt:
         rpl = pl.Series(replacements[:mlen], dtype=pl.Utf8)
         par = pl.lit(parallel, pl.Boolean)
         return self._expr.register_plugin(
-            lib=lib,
+            lib=_lib,
             symbol="pl_ac_replace",
             args=[pat, rpl, par],
             is_elementwise=True,
