@@ -245,6 +245,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Examples
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -368,6 +377,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Examples
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -384,9 +402,36 @@
 
 
 <h1 id="polars-ds">Polars-ds</h1>
+<p>A Polars Plugin aiming to simplify common numerical/string data analysis procedures. This means that the most basic data science, stats, NLP related tasks can be done natively inside a dataframe, without leaving dataframe world. This also means that for simple data pipelines, you do not need to install NumPy/Scipy/Scikit-learn, which saves a lot of space, which is great under constrained resources.</p>
+<p>Its goal is NOT to replace SciPy, or NumPy, but rather it tries reduce dependency for simple analysis, and tries to reduce Python side code and UDFs, which are often performance bottlenecks.</p>
 <h2 id="getting-started">Getting Started</h2>
 <pre><code class="language-bash">pip install polars_ds
 </code></pre>
+<p>and </p>
+<pre><code class="language-python">import polars_ds
+</code></pre>
+<p>when you are using the namespaces provided by the package.</p>
+<h2 id="examples">Examples</h2>
+<p>Generating random numbers, and running t-test, normality test inside a dataframe</p>
+<pre><code class="language-python">df.with_columns(
+    pl.col(&quot;a&quot;).stats_ext.sample_normal(mean = 0.5, std = 1.).alias(&quot;test1&quot;)
+    , pl.col(&quot;a&quot;).stats_ext.sample_normal(mean = 0.5, std = 2.).alias(&quot;test2&quot;)
+).select(
+    pl.col(&quot;test1&quot;).stats_ext.ttest_ind(pl.col(&quot;test2&quot;), equal_var = False).alias(&quot;t-test&quot;)
+    , pl.col(&quot;test1&quot;).stats_ext.normal_test().alias(&quot;normality_test&quot;)
+).select(
+    pl.col(&quot;t-test&quot;).struct.field(&quot;statistic&quot;).alias(&quot;t-tests: statistics&quot;)
+    , pl.col(&quot;t-test&quot;).struct.field(&quot;pvalue&quot;).alias(&quot;t-tests: pvalue&quot;)
+    , pl.col(&quot;normality_test&quot;).struct.field(&quot;statistic&quot;).alias(&quot;normality_test: statistics&quot;)
+    , pl.col(&quot;normality_test&quot;).struct.field(&quot;pvalue&quot;).alias(&quot;normality_test: pvalue&quot;)
+)
+</code></pre>
+<p>Blazingly fast string similarity comparisons. (Thanks to <a href="https://docs.rs/rapidfuzz/latest/rapidfuzz/">RapidFuzz</a>)</p>
+<pre><code class="language-python">df2.select(
+    pl.col(&quot;word&quot;).str_ext.levenshtein(&quot;world&quot;, return_sim = True)
+).head()
+</code></pre>
+<p>And a lot more!</p>
 
 
 

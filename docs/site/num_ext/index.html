@@ -2546,24 +2546,7 @@
 <span class="normal">604</span>
 <span class="normal">605</span>
 <span class="normal">606</span>
-<span class="normal">607</span>
-<span class="normal">608</span>
-<span class="normal">609</span>
-<span class="normal">610</span>
-<span class="normal">611</span>
-<span class="normal">612</span>
-<span class="normal">613</span>
-<span class="normal">614</span>
-<span class="normal">615</span>
-<span class="normal">616</span>
-<span class="normal">617</span>
-<span class="normal">618</span>
-<span class="normal">619</span>
-<span class="normal">620</span>
-<span class="normal">621</span>
-<span class="normal">622</span>
-<span class="normal">623</span>
-<span class="normal">624</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@pl</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">register_expr_namespace</span><span class="p">(</span><span class="s2">&quot;num_ext&quot;</span><span class="p">)</span>
+<span class="normal">607</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@pl</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">register_expr_namespace</span><span class="p">(</span><span class="s2">&quot;num_ext&quot;</span><span class="p">)</span>
 <span class="k">class</span> <span class="nc">NumExt</span><span class="p">:</span>
 
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -2695,8 +2678,8 @@
 <span class="sd">        Finds the argmax of the list in this column. This is useful for</span>
 
 <span class="sd">        (1) Turning sparse multiclass target into dense target.</span>
-<span class="sd">        (2) Finding the max probability class of a multiclass classification output</span>
-<span class="sd">        (3) Just a shortcut for expr.list.eval(pl.element().arg_max())</span>
+<span class="sd">        (2) Finding the max probability class of a multiclass classification output.</span>
+<span class="sd">        (3) Just a shortcut for expr.list.eval(pl.element().arg_max()).</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_expr</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">element</span><span class="p">()</span><span class="o">.</span><span class="n">arg_max</span><span class="p">())</span>
 
@@ -3143,24 +3126,6 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unknown detrend method: </span><span class="si">{</span><span class="n">method</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
-    <span class="c1"># Add a k step argument?</span>
-    <span class="c1"># def fft(self, forward: bool = True) -&gt; pl.Expr:</span>
-    <span class="c1">#     &quot;&quot;&quot;</span>
-    <span class="c1">#     Computes the DFT transform of input series using FFT Algorithm. A series of equal length will</span>
-    <span class="c1">#     be returned, with elements being the real and complex part of the transformed values.</span>
-
-    <span class="c1">#     Parameters</span>
-    <span class="c1">#     ----------</span>
-    <span class="c1">#     forward</span>
-    <span class="c1">#         If true, compute DFT. If false, compute inverse DFT.</span>
-    <span class="c1">#     &quot;&quot;&quot;</span>
-    <span class="c1">#     return self._expr.register_plugin(</span>
-    <span class="c1">#         lib=lib,</span>
-    <span class="c1">#         symbol=&quot;pl_fft&quot;,</span>
-    <span class="c1">#         args=[pl.lit(forward, dtype=pl.Boolean)],</span>
-    <span class="c1">#         is_elementwise=True,</span>
-    <span class="c1">#     )</span>
-
     <span class="k">def</span> <span class="nf">rfft</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">length</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Computes the DFT transform of a real-valued input series using FFT Algorithm. Note that</span>
@@ -3171,6 +3136,7 @@
 <span class="sd">        length</span>
 <span class="sd">            A positive integer</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Add a k step argument?</span>
         <span class="k">if</span> <span class="n">length</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">length</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Input `length` should be &gt; 1.&quot;</span><span class="p">)</span>
 
@@ -4284,8 +4250,8 @@ normalize
   
       <p>Finds the argmax of the list in this column. This is useful for</p>
 <p>(1) Turning sparse multiclass target into dense target.
-(2) Finding the max probability class of a multiclass classification output
-(3) Just a shortcut for expr.list.eval(pl.element().arg_max())</p>
+(2) Finding the max probability class of a multiclass classification output.
+(3) Just a shortcut for expr.list.eval(pl.element().arg_max()).</p>
 
           <details class="quote">
             <summary>Source code in <code>polars_ds/num_ext.py</code></summary>
@@ -4302,8 +4268,8 @@ normalize
 <span class="sd">    Finds the argmax of the list in this column. This is useful for</span>
 
 <span class="sd">    (1) Turning sparse multiclass target into dense target.</span>
-<span class="sd">    (2) Finding the max probability class of a multiclass classification output</span>
-<span class="sd">    (3) Just a shortcut for expr.list.eval(pl.element().arg_max())</span>
+<span class="sd">    (2) Finding the max probability class of a multiclass classification output.</span>
+<span class="sd">    (3) Just a shortcut for expr.list.eval(pl.element().arg_max()).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_expr</span><span class="o">.</span><span class="n">list</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">pl</span><span class="o">.</span><span class="n">element</span><span class="p">()</span><span class="o">.</span><span class="n">arg_max</span><span class="p">())</span>
 </code></pre></div></td></tr></table></div>
@@ -4994,24 +4960,25 @@ a series of length (length // 2 + 1) will be returned.</p>
 
           <details class="quote">
             <summary>Source code in <code>polars_ds/num_ext.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">607</span>
-<span class="normal">608</span>
-<span class="normal">609</span>
-<span class="normal">610</span>
-<span class="normal">611</span>
-<span class="normal">612</span>
-<span class="normal">613</span>
-<span class="normal">614</span>
-<span class="normal">615</span>
-<span class="normal">616</span>
-<span class="normal">617</span>
-<span class="normal">618</span>
-<span class="normal">619</span>
-<span class="normal">620</span>
-<span class="normal">621</span>
-<span class="normal">622</span>
-<span class="normal">623</span>
-<span class="normal">624</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">rfft</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">length</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">:</span>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">589</span>
+<span class="normal">590</span>
+<span class="normal">591</span>
+<span class="normal">592</span>
+<span class="normal">593</span>
+<span class="normal">594</span>
+<span class="normal">595</span>
+<span class="normal">596</span>
+<span class="normal">597</span>
+<span class="normal">598</span>
+<span class="normal">599</span>
+<span class="normal">600</span>
+<span class="normal">601</span>
+<span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span>
+<span class="normal">605</span>
+<span class="normal">606</span>
+<span class="normal">607</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">rfft</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">length</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pl</span><span class="o">.</span><span class="n">Expr</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Computes the DFT transform of a real-valued input series using FFT Algorithm. Note that</span>
 <span class="sd">    a series of length (length // 2 + 1) will be returned.</span>
@@ -5021,6 +4988,7 @@ a series of length (length // 2 + 1) will be returned.</p>
 <span class="sd">    length</span>
 <span class="sd">        A positive integer</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Add a k step argument?</span>
     <span class="k">if</span> <span class="n">length</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">length</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Input `length` should be &gt; 1.&quot;</span><span class="p">)</span>
 
