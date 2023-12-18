@@ -18,7 +18,7 @@ and
 ```python
 import polars_ds
 ```
-when you are using the namespaces provided by the package.
+when you want to use the namespaces provided by the package.
 
 ## Examples
 
