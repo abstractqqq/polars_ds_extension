@@ -8,17 +8,44 @@ See examples [here](./examples/basics.ipynb).
 
 **Currently in Alpha. Feel free to submit feature requests in the issues section of the repo.**
 
-## Plans?
+## Getting Started
+```bash
+pip install polars_ds
+```
 
-1. Some more string similarity like: https://www.postgresql.org/docs/9.1/pgtrgm.html
+and 
 
-## Other Extensions ?
+```python
+import polars_ds
+```
+when you are using the namespaces provided by the package.
 
-More stats, clustering, etc. It is simply a matter of willingness and market demand.
+## Examples
 
-## Future Plans
+Generating random numbers, and running t-test, normality test inside a dataframe
+```python
+df.with_columns(
+    pl.col("a").stats_ext.sample_normal(mean = 0.5, std = 1.).alias("test1")
+    , pl.col("a").stats_ext.sample_normal(mean = 0.5, std = 2.).alias("test2")
+).select(
+    pl.col("test1").stats_ext.ttest_ind(pl.col("test2"), equal_var = False).alias("t-test")
+    , pl.col("test1").stats_ext.normal_test().alias("normality_test")
+).select(
+    pl.col("t-test").struct.field("statistic").alias("t-tests: statistics")
+    , pl.col("t-test").struct.field("pvalue").alias("t-tests: pvalue")
+    , pl.col("normality_test").struct.field("statistic").alias("normality_test: statistics")
+    , pl.col("normality_test").struct.field("pvalue").alias("normality_test: pvalue")
+)
+```
 
-I am open to make this package a Python frontend for other machine learning processes/models with Rust packages at the backend. There are some very interesting packages to incorporate, such as k-medoids. But I do want to stick with Faer as a Rust linear algebra backend and I do want to keep it simple for now.
+Blazingly fast string similarity comparisons. (Thanks to [RapidFuzz](https://docs.rs/rapidfuzz/latest/rapidfuzz/))
+```python
+df2.select(
+    pl.col("word").str_ext.levenshtein("world", return_sim = True)
+).head()
+```
+
+And a lot more!
 
 # Credits
 
