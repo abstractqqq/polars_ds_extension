@@ -7,15 +7,15 @@ from polars.utils.udfs import _get_shared_lib_location
 _lib = _get_shared_lib_location(__file__)
 
 
-@pl.api.register_expr_namespace("stats_ext")
+@pl.api.register_expr_namespace("stats")
 class StatsExt:
 
     """
     This class contains tools for dealing with well-known statistical tests and random sampling inside Polars DataFrame.
 
-    Polars Namespace: stats_ext
+    Polars Namespace: stats
 
-    Example: pl.col("a").stats_ext.ttest_ind(pl.col("b"), equal_var = True)
+    Example: pl.col("a").stats.ttest_ind(pl.col("b"), equal_var = True)
     """
 
     def __init__(self, expr: pl.Expr):

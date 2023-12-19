@@ -1,6 +1,8 @@
 mod aho_corasick;
 mod consts;
+mod fuzz;
 mod hamming;
+mod inflections;
 mod is_stopword;
 mod jaro;
 mod levenshtein;

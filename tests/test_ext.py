@@ -16,7 +16,7 @@ from polars.testing import assert_frame_equal
 def test_normal_test(df):
     from scipy.stats import normaltest
 
-    res = df.select(pl.col("a").stats_ext.normal_test())
+    res = df.select(pl.col("a").stats.normal_test())
     res = res.item(0, 0)  # A dictionary
     statistic = res["statistic"]
     pvalue = res["pvalue"]
@@ -36,7 +36,7 @@ def test_normal_test(df):
 def test_ttest_ind(df):
     from scipy.stats import ttest_ind
 
-    res = df.select(pl.col("a").stats_ext.ttest_ind(pl.col("b"), equal_var=True))
+    res = df.select(pl.col("a").stats.ttest_ind(pl.col("b"), equal_var=True))
     res = res.item(0, 0)  # A dictionary
     statistic = res["statistic"]
     pvalue = res["pvalue"]
@@ -63,7 +63,7 @@ def test_ttest_ind(df):
 def test_welch_t(df):
     from scipy.stats import ttest_ind
 
-    res = df.select(pl.col("a").stats_ext.ttest_ind(pl.col("b"), equal_var=False))
+    res = df.select(pl.col("a").stats.ttest_ind(pl.col("b"), equal_var=False))
     res = res.item(0, 0)  # A dictionary
     statistic = res["statistic"]
     pvalue = res["pvalue"]
@@ -92,7 +92,7 @@ def test_welch_t(df):
 def test_f_test(df):
     from sklearn.feature_selection import f_classif
 
-    res = df.select(pl.col("target").stats_ext.f_test(pl.col("a")))
+    res = df.select(pl.col("target").stats.f_test(pl.col("a")))
     res = res.item(0, 0)  # A dictionary
     statistic = res["statistic"]
     pvalue = res["pvalue"]
@@ -121,9 +121,9 @@ def test_f_test(df):
     ],
 )
 def test_gcd(df, other, res):
-    assert_frame_equal(df.select(pl.col("a").num_ext.gcd(other)), res)
+    assert_frame_equal(df.select(pl.col("a").num.gcd(other)), res)
 
-    assert_frame_equal(df.lazy().select(pl.col("a").num_ext.gcd(other)).collect(), res)
+    assert_frame_equal(df.lazy().select(pl.col("a").num.gcd(other)).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -142,9 +142,9 @@ def test_gcd(df, other, res):
     ],
 )
 def test_lcm(df, other, res):
-    assert_frame_equal(df.select(pl.col("a").num_ext.lcm(other)), res)
+    assert_frame_equal(df.select(pl.col("a").num.lcm(other)), res)
 
-    assert_frame_equal(df.lazy().select(pl.col("a").num_ext.lcm(other)).collect(), res)
+    assert_frame_equal(df.lazy().select(pl.col("a").num.lcm(other)).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -182,7 +182,7 @@ def test_powi(df, p):
     # The reason I avoided 0 is that
     # In polars 0^0 = 1, which is wrong.
     # In polars-ds, this will be mapped to NaN.
-    assert_frame_equal(df.select(pl.col("a").num_ext.powi(p)), df.select(pl.col("a").pow(p)))
+    assert_frame_equal(df.select(pl.col("a").num.powi(p)), df.select(pl.col("a").pow(p)))
 
 
 @pytest.mark.parametrize(
@@ -196,7 +196,7 @@ def test_powi(df, p):
     ],
 )
 def test_trapz(df, x, res):
-    assert_frame_equal(df.select(pl.col("a").num_ext.trapz(x=x)), res)
+    assert_frame_equal(df.select(pl.col("a").num.trapz(x=x)), res)
 
 
 @pytest.mark.parametrize(
@@ -215,11 +215,9 @@ def test_trapz(df, x, res):
     ],
 )
 def test_cond_entropy(df, res):
-    assert_frame_equal(df.select(pl.col("y").num_ext.cond_entropy(pl.col("a"))), res)
+    assert_frame_equal(df.select(pl.col("y").num.cond_entropy(pl.col("a"))), res)
 
-    assert_frame_equal(
-        df.lazy().select(pl.col("y").num_ext.cond_entropy(pl.col("a"))).collect(), res
-    )
+    assert_frame_equal(df.lazy().select(pl.col("y").num.cond_entropy(pl.col("a"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -236,10 +234,10 @@ def test_cond_entropy(df, res):
     ],
 )
 def test_list_jaccard(df, res):
-    assert_frame_equal(df.select(pl.col("a").num_ext.list_jaccard(pl.col("b")).alias("res")), res)
+    assert_frame_equal(df.select(pl.col("a").num.list_jaccard(pl.col("b")).alias("res")), res)
 
     assert_frame_equal(
-        df.lazy().select(pl.col("a").num_ext.list_jaccard(pl.col("b")).alias("res")).collect(), res
+        df.lazy().select(pl.col("a").num.list_jaccard(pl.col("b")).alias("res")).collect(), res
     )
 
 
@@ -248,7 +246,7 @@ def test_lstsq():
     df = pl.DataFrame({"y": [1, 2, 3, 4, 5], "a": [2, 3, 4, 5, 6], "b": [-1, -1, -1, -1, -1]})
     res = pl.DataFrame({"y": [[1.0, 1.0]]})
     assert_frame_equal(
-        df.select(pl.col("y").num_ext.lstsq(pl.col("a"), pl.col("b"), add_bias=False)), res
+        df.select(pl.col("y").num.lstsq(pl.col("a"), pl.col("b"), add_bias=False)), res
     )
 
     df = pl.DataFrame(
@@ -258,7 +256,7 @@ def test_lstsq():
         }
     )
     res = pl.DataFrame({"y": [[1.0, -1.0]]})
-    assert_frame_equal(df.select(pl.col("y").num_ext.lstsq(pl.col("a"), add_bias=True)), res)
+    assert_frame_equal(df.select(pl.col("y").num.lstsq(pl.col("a"), add_bias=True)), res)
 
 
 @pytest.mark.parametrize(
@@ -271,10 +269,10 @@ def test_lstsq():
     ],
 )
 def test_col_jaccard(df, res):
-    assert_frame_equal(df.select(pl.col("a").num_ext.jaccard(pl.col("b")).alias("j")), res)
+    assert_frame_equal(df.select(pl.col("a").num.jaccard(pl.col("b")).alias("j")), res)
 
     assert_frame_equal(
-        df.lazy().select(pl.col("a").num_ext.jaccard(pl.col("b")).alias("j")).collect(), res
+        df.lazy().select(pl.col("a").num.jaccard(pl.col("b")).alias("j")).collect(), res
     )
 
 
@@ -292,11 +290,11 @@ def test_col_jaccard(df, res):
     ],
 )
 def test_snowball(df, res):
-    assert_frame_equal(df.select(pl.col("a").str_ext.snowball()), res)
+    assert_frame_equal(df.select(pl.col("a").str2.snowball()), res)
 
-    assert_frame_equal(df.select(pl.col("a").str_ext.snowball(parallel=True)), res)
+    assert_frame_equal(df.select(pl.col("a").str2.snowball(parallel=True)), res)
 
-    assert_frame_equal(df.lazy().select(pl.col("a").str_ext.snowball()).collect(), res)
+    assert_frame_equal(df.lazy().select(pl.col("a").str2.snowball()).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -314,9 +312,9 @@ def test_snowball(df, res):
     ],
 )
 def test_hamming(df, res):
-    assert_frame_equal(df.select(pl.col("a").str_ext.hamming(pl.col("b"))), res)
-    assert_frame_equal(df.select(pl.col("a").str_ext.hamming(pl.col("b"), parallel=True)), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").str_ext.hamming(pl.col("b"))).collect(), res)
+    assert_frame_equal(df.select(pl.col("a").str2.hamming(pl.col("b"))), res)
+    assert_frame_equal(df.select(pl.col("a").str2.hamming(pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.lazy().select(pl.col("a").str2.hamming(pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -334,9 +332,9 @@ def test_hamming(df, res):
     ],
 )
 def test_jaro(df, res):
-    assert_frame_equal(df.select(pl.col("a").str_ext.jaro(pl.col("b"))), res)
-    assert_frame_equal(df.select(pl.col("a").str_ext.jaro(pl.col("b"), parallel=True)), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").str_ext.jaro(pl.col("b"))).collect(), res)
+    assert_frame_equal(df.select(pl.col("a").str2.jaro(pl.col("b"))), res)
+    assert_frame_equal(df.select(pl.col("a").str2.jaro(pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.lazy().select(pl.col("a").str2.jaro(pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -355,7 +353,7 @@ def test_jaro(df, res):
 )
 def test_ac_match(df, pat, res):
     ans = df.select(
-        pl.col("a").str_ext.ac_match(
+        pl.col("a").str2.ac_match(
             patterns=pat, case_sensitive=True, match_kind="standard", return_str=False
         )
     ).item(0, 0)
@@ -389,12 +387,10 @@ def test_ac_match(df, pat, res):
     ],
 )
 def test_ac_replace(df, pat, repl, res):
-    assert_frame_equal(
-        df.select(pl.col("a").str_ext.ac_replace(patterns=pat, replacements=repl)), res
-    )
+    assert_frame_equal(df.select(pl.col("a").str2.ac_replace(patterns=pat, replacements=repl)), res)
 
     assert_frame_equal(
-        df.lazy().select(pl.col("a").str_ext.ac_replace(patterns=pat, replacements=repl)).collect(),
+        df.lazy().select(pl.col("a").str2.ac_replace(patterns=pat, replacements=repl)).collect(),
         res,
     )
 
@@ -467,13 +463,11 @@ def test_ac_replace(df, pat, repl, res):
     ],
 )
 def test_levenshtein(df, res):
-    assert_frame_equal(df.select(pl.col("a").str_ext.levenshtein(pl.col("b"))), res)
+    assert_frame_equal(df.select(pl.col("a").str2.levenshtein(pl.col("b"))), res)
 
-    assert_frame_equal(df.select(pl.col("a").str_ext.levenshtein(pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.select(pl.col("a").str2.levenshtein(pl.col("b"), parallel=True)), res)
 
-    assert_frame_equal(
-        df.lazy().select(pl.col("a").str_ext.levenshtein(pl.col("b"))).collect(), res
-    )
+    assert_frame_equal(df.lazy().select(pl.col("a").str2.levenshtein(pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -490,18 +484,16 @@ def test_levenshtein(df, res):
 )
 def test_levenshtein_within(df, bound, res):
     assert_frame_equal(
-        df.select(pl.col("a").str_ext.levenshtein_within(pl.col("b"), bound=bound)), res
+        df.select(pl.col("a").str2.levenshtein_within(pl.col("b"), bound=bound)), res
     )
 
     assert_frame_equal(
-        df.select(pl.col("a").str_ext.levenshtein_within(pl.col("b"), bound=bound, parallel=True)),
+        df.select(pl.col("a").str2.levenshtein_within(pl.col("b"), bound=bound, parallel=True)),
         res,
     )
 
     assert_frame_equal(
-        df.lazy()
-        .select(pl.col("a").str_ext.levenshtein_within(pl.col("b"), bound=bound))
-        .collect(),
+        df.lazy().select(pl.col("a").str2.levenshtein_within(pl.col("b"), bound=bound)).collect(),
         res,
     )
 
@@ -516,10 +508,10 @@ def test_levenshtein_within(df, bound, res):
     ],
 )
 def test_osa(df, res):
-    assert_frame_equal(df.select(pl.col("a").str_ext.osa(pl.col("b"))), res)
+    assert_frame_equal(df.select(pl.col("a").str2.osa(pl.col("b"))), res)
 
-    assert_frame_equal(df.select(pl.col("a").str_ext.osa(pl.col("b"), parallel=True)), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").str_ext.osa(pl.col("b"))).collect(), res)
+    assert_frame_equal(df.select(pl.col("a").str2.osa(pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.lazy().select(pl.col("a").str2.osa(pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -532,15 +524,11 @@ def test_osa(df, res):
     ],
 )
 def test_sorensen_dice(df, res):
-    assert_frame_equal(df.select(pl.col("a").str_ext.sorensen_dice(pl.col("b"))), res)
+    assert_frame_equal(df.select(pl.col("a").str2.sorensen_dice(pl.col("b"))), res)
 
-    assert_frame_equal(
-        df.select(pl.col("a").str_ext.sorensen_dice(pl.col("b"), parallel=True)), res
-    )
+    assert_frame_equal(df.select(pl.col("a").str2.sorensen_dice(pl.col("b"), parallel=True)), res)
 
-    assert_frame_equal(
-        df.lazy().select(pl.col("a").str_ext.sorensen_dice(pl.col("b"))).collect(), res
-    )
+    assert_frame_equal(df.lazy().select(pl.col("a").str2.sorensen_dice(pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -559,16 +547,14 @@ def test_sorensen_dice(df, res):
     ],
 )
 def test_str_jaccard(df, size, res):
+    assert_frame_equal(df.select(pl.col("a").str2.str_jaccard(pl.col("b"), substr_size=size)), res)
     assert_frame_equal(
-        df.select(pl.col("a").str_ext.str_jaccard(pl.col("b"), substr_size=size)), res
-    )
-    assert_frame_equal(
-        df.select(pl.col("a").str_ext.str_jaccard(pl.col("b"), substr_size=size, parallel=True)),
+        df.select(pl.col("a").str2.str_jaccard(pl.col("b"), substr_size=size, parallel=True)),
         res,
     )
     assert_frame_equal(
         df.lazy()
-        .select(pl.col("a").str_ext.str_jaccard(pl.col("b"), substr_size=size, parallel=True))
+        .select(pl.col("a").str2.str_jaccard(pl.col("b"), substr_size=size, parallel=True))
         .collect(),
         res,
     )
@@ -588,7 +574,7 @@ def test_str_jaccard(df, size, res):
     ],
 )
 def test_freq_removal(df, lower, upper, res):
-    ans = df.select(pl.col("a").str_ext.freq_removal(lower=lower, upper=upper).list.sort())
+    ans = df.select(pl.col("a").str2.freq_removal(lower=lower, upper=upper).list.sort())
     assert_frame_equal(ans, res)
 
 
@@ -631,9 +617,9 @@ def test_freq_removal(df, lower, upper, res):
         ),
     ],
 )
-def test_extract_numbers(df, dtype, join_by, res):
+def testract_numbers(df, dtype, join_by, res):
     assert_frame_equal(
-        df.select(pl.col("a").str_ext.extract_numbers(join_by=join_by, dtype=dtype)), res
+        df.select(pl.col("a").str2.extract_numbers(join_by=join_by, dtype=dtype)), res
     )
 
 
@@ -685,7 +671,7 @@ def test_extract_numbers(df, dtype, join_by, res):
 )
 def test_merge_infreq(df, min_count, min_frac, res):
     assert_frame_equal(
-        df.select(pl.col("a").str_ext.merge_infreq(min_count=min_count, min_frac=min_frac)), res
+        df.select(pl.col("a").str2.merge_infreq(min_count=min_count, min_frac=min_frac)), res
     )
 
 
@@ -699,7 +685,7 @@ def test_ks_stats():
 
     stats = ks_2samp(a, b).statistic
     # Only statistic for now
-    res = df.select(pl.col("a").stats_ext.ks_stats(pl.col("b"))).item(0, 0)
+    res = df.select(pl.col("a").stats.ks_stats(pl.col("b"))).item(0, 0)
 
     assert np.isclose(stats, res)
 
@@ -717,9 +703,7 @@ def test_precision_recall_roc_auc():
     )
     for threshold in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
         res = df.select(
-            pl.col("y")
-            .num_ext.binary_metrics_combo(pl.col("a"), threshold=threshold)
-            .alias("metrics")
+            pl.col("y").num.binary_metrics_combo(pl.col("a"), threshold=threshold).alias("metrics")
         ).unnest("metrics")
         precision_res = res.get_column("precision")[0]
         recall_res = res.get_column("recall")[0]
