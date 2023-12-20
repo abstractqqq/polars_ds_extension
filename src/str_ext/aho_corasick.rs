@@ -141,7 +141,6 @@ fn pl_ac_match_str(inputs: &[Series]) -> PolarsResult<Series> {
     }
 }
 
-
 #[polars_expr(output_type=Utf8)]
 fn pl_ac_replace(inputs: &[Series]) -> PolarsResult<Series> {
     let str_col = inputs[0].utf8()?;
@@ -158,14 +157,7 @@ fn pl_ac_replace(inputs: &[Series]) -> PolarsResult<Series> {
 
     match ac_builder {
         Ok(ac) => {
-            let op = |op_s: Option<&str>| {
-                let s = op_s?;
-                let bytes = ac.replace_all_bytes(s.as_bytes(), &replace);
-                match String::from_utf8(bytes) {
-                    Ok(new_str) => Some(new_str),
-                    _ => None,
-                }
-            };
+            let op = |op_s: Option<&str>| op_s.map(|s| ac.replace_all(s, &replace));
             let out: Utf8Chunked = if parallel {
                 str_col.par_iter().map(op).collect()
             } else {

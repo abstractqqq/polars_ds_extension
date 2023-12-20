@@ -775,6 +775,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e186cfbae8084e513daff4240b4797e342f988cecda4fb6c939150f96315fd8"
 
 [[package]]
+name = "inflections"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a257582fdcde896fd96463bf2d40eefea0580021c0712a0e2b028b60b47a837a"
+
+[[package]]
 name = "is-terminal"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1465,11 +1471,12 @@ dependencies = [
 
 [[package]]
 name = "polars_ds"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "aho-corasick",
  "faer",
  "hashbrown",
+ "inflections",
  "itertools",
  "jemallocator",
  "mimalloc",

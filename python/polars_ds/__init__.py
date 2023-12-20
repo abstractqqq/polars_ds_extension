@@ -1,4 +1,4 @@
-version = "0.1.4"
+version = "0.2.0"
 
 from polars_ds.num_ext import NumExt  # noqa: E402
 from polars_ds.complex_ext import ComplexExt  # noqa: E402

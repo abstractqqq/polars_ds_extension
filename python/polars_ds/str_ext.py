@@ -7,16 +7,16 @@ import warnings
 _lib = _get_shared_lib_location(__file__)
 
 
-@pl.api.register_expr_namespace("str_ext")
+@pl.api.register_expr_namespace("str2")
 class StrExt:
 
     """
     This class contains tools for dealing with string similarity, common string operations like tokenize,
     extract numbers, etc., inside Polars DataFrame.
 
-    Polars Namespace: str_ext
+    Polars Namespace: str2
 
-    Example: pl.col("a").str_ext.levenshtein(pl.col("b"), return_sim=True)
+    Example: pl.col("a").str2.levenshtein(pl.col("b"), return_sim=True)
     """
 
     def __init__(self, expr: pl.Expr):
@@ -184,6 +184,37 @@ class StrExt:
             pl.when(self._expr.is_in(to_merge))
             .then(to_merge.cast(pl.Utf8).fill_null("null").implode().first().list.join(separator))
             .otherwise(self._expr)
+        )
+
+    def fuzz(
+        self, other: Union[str, pl.Expr], cutoff: Optional[float] = None, parallel: bool = False
+    ) -> pl.Expr:
+        """
+        A string similarity based on Longest Common Subsequence.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then perform element-wise jaccard similarity computation between this column
+            and the other (given by the expression).
+        cutoff
+            If this is provided, it has to be between 0 and 1. If sim < cutoff, then Null will be returned.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other, dtype=pl.Utf8)
+        else:
+            other_ = other
+
+        cutoff_ = pl.lit(cutoff, dtype=pl.Float64)
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_fuzz",
+            args=[other_, cutoff_, pl.lit(parallel, pl.Boolean)],
+            is_elementwise=True,
         )
 
     def str_jaccard(
@@ -681,5 +712,41 @@ class StrExt:
             lib=_lib,
             symbol="pl_ac_replace",
             args=[pat, rpl, par],
+            is_elementwise=True,
+        )
+
+    def to_camel_case(self) -> pl.Expr:
+        """Turns itself into camel case. E.g. helloWorld"""
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_to_camel",
+            args=[],
+            is_elementwise=True,
+        )
+
+    def to_snake_case(self) -> pl.Expr:
+        """Turns itself into snake case. E.g. hello_world"""
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_to_snake",
+            args=[],
+            is_elementwise=True,
+        )
+
+    def to_pascal_case(self) -> pl.Expr:
+        """Turns itself into Pascal case. E.g. HelloWorld"""
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_to_pascal",
+            args=[],
+            is_elementwise=True,
+        )
+
+    def to_constant_case(self) -> pl.Expr:
+        """Turns itself into constant case. E.g. Hello_World"""
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_to_constant",
+            args=[],
             is_elementwise=True,
         )

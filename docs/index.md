@@ -2,7 +2,7 @@
 
 A Polars Plugin aiming to simplify common numerical/string data analysis procedures. This means that the most basic data science, stats, NLP related tasks can be done natively inside a dataframe, without leaving dataframe world. This also means that for simple data pipelines, you do not need to install NumPy/Scipy/Scikit-learn, which saves a lot of space, which is great under constrained resources.
 
-Its goal is NOT to replace SciPy, or NumPy, but rather it tries reduce dependency for simple analysis, and tries to reduce Python side code and UDFs, which are often performance bottlenecks.
+Its goal is NOT to replace SciPy, or NumPy, but rather it tries to reduce dependency for simple analysis, and tries to reduce Python side code and UDFs, which are often performance bottlenecks.
 
 ## Getting Started
 ```bash

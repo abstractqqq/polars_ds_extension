@@ -6,15 +6,15 @@ from polars.utils.udfs import _get_shared_lib_location
 _lib = _get_shared_lib_location(__file__)
 
 
-@pl.api.register_expr_namespace("num_ext")
+@pl.api.register_expr_namespace("num")
 class NumExt:
 
     """
     This class contains tools for dealing with well-known numerical operations and other metrics inside Polars DataFrame.
 
-    Polars Namespace: num_ext
+    Polars Namespace: num
 
-    Example: pl.col("a").num_ext.range_over_mean()
+    Example: pl.col("a").num.range_over_mean()
 
     It currently contains some time series stuff such as detrend, rfft, and time series metrics like SMAPE.
     """
@@ -594,7 +594,7 @@ class NumExt:
         Parameters
         ----------
         length
-            A positive integer
+            A positive integer. If none, the input series's length will be used.
         """
         # Add a k step argument?
         if length is not None and length <= 1:
