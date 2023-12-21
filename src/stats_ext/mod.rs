@@ -1,3 +1,4 @@
+mod chi2;
 mod fstats;
 mod ks;
 mod normal_test;

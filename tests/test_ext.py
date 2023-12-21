@@ -9,76 +9,6 @@ from polars.testing import assert_frame_equal
 @pytest.mark.parametrize(
     "df",
     [
-        (pl.DataFrame({"a": np.random.random(size=100)})),
-        (pl.DataFrame({"a": np.random.normal(size=100)})),
-    ],
-)
-def test_normal_test(df):
-    from scipy.stats import normaltest
-
-    res = df.select(pl.col("a").stats.normal_test())
-    res = res.item(0, 0)  # A dictionary
-    statistic = res["statistic"]
-    pvalue = res["pvalue"]
-
-    scipy_res = normaltest(df["a"].to_numpy())
-
-    assert np.isclose(statistic, scipy_res.statistic)
-    assert np.isclose(pvalue, scipy_res.pvalue)
-
-
-@pytest.mark.parametrize(
-    "df",
-    [
-        (pl.DataFrame({"a": np.random.normal(size=1_000), "b": np.random.normal(size=1_000)})),
-    ],
-)
-def test_ttest_ind(df):
-    from scipy.stats import ttest_ind
-
-    res = df.select(pl.col("a").stats.ttest_ind(pl.col("b"), equal_var=True))
-    res = res.item(0, 0)  # A dictionary
-    statistic = res["statistic"]
-    pvalue = res["pvalue"]
-
-    scipy_res = ttest_ind(df["a"].to_numpy(), df["b"].to_numpy(), equal_var=True)
-
-    assert np.isclose(statistic, scipy_res.statistic)
-    assert np.isclose(pvalue, scipy_res.pvalue)
-
-
-@pytest.mark.parametrize(
-    "df",
-    [
-        (
-            pl.DataFrame(
-                {
-                    "a": np.random.normal(size=1_000),
-                    "b": list(np.random.normal(size=998)) + [None, None],
-                }
-            )
-        ),
-    ],
-)
-def test_welch_t(df):
-    from scipy.stats import ttest_ind
-
-    res = df.select(pl.col("a").stats.ttest_ind(pl.col("b"), equal_var=False))
-    res = res.item(0, 0)  # A dictionary
-    statistic = res["statistic"]
-    pvalue = res["pvalue"]
-
-    s1 = df["a"].drop_nulls().to_numpy()
-    s2 = df["b"].drop_nulls().to_numpy()
-    scipy_res = ttest_ind(s1, s2, equal_var=False)
-
-    assert np.isclose(statistic, scipy_res.statistic)
-    assert np.isclose(pvalue, scipy_res.pvalue)
-
-
-@pytest.mark.parametrize(
-    "df",
-    [
         (
             pl.DataFrame(
                 {
@@ -617,7 +547,7 @@ def test_freq_removal(df, lower, upper, res):
         ),
     ],
 )
-def testract_numbers(df, dtype, join_by, res):
+def test_extract_numbers(df, dtype, join_by, res):
     assert_frame_equal(
         df.select(pl.col("a").str2.extract_numbers(join_by=join_by, dtype=dtype)), res
     )
@@ -688,6 +618,104 @@ def test_ks_stats():
     res = df.select(pl.col("a").stats.ks_stats(pl.col("b"))).item(0, 0)
 
     assert np.isclose(stats, res)
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (pl.DataFrame({"a": np.random.normal(size=1_000), "b": np.random.normal(size=1_000)})),
+    ],
+)
+def test_ttest_ind(df):
+    from scipy.stats import ttest_ind
+
+    res = df.select(pl.col("a").stats.ttest_ind(pl.col("b"), equal_var=True))
+    res = res.item(0, 0)  # A dictionary
+    statistic = res["statistic"]
+    pvalue = res["pvalue"]
+
+    scipy_res = ttest_ind(df["a"].to_numpy(), df["b"].to_numpy(), equal_var=True)
+
+    assert np.isclose(statistic, scipy_res.statistic)
+    assert np.isclose(pvalue, scipy_res.pvalue)
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "a": np.random.normal(size=1_000),
+                    "b": list(np.random.normal(size=998)) + [None, None],
+                }
+            )
+        ),
+    ],
+)
+def test_welch_t(df):
+    from scipy.stats import ttest_ind
+
+    res = df.select(pl.col("a").stats.ttest_ind(pl.col("b"), equal_var=False))
+    res = res.item(0, 0)  # A dictionary
+    statistic = res["statistic"]
+    pvalue = res["pvalue"]
+
+    s1 = df["a"].drop_nulls().to_numpy()
+    s2 = df["b"].drop_nulls().to_numpy()
+    scipy_res = ttest_ind(s1, s2, equal_var=False)
+
+    assert np.isclose(statistic, scipy_res.statistic)
+    assert np.isclose(pvalue, scipy_res.pvalue)
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "x": ["a"] * 200 + ["b"] * 300 + ["c"] * 500 + ["d"] * 200,
+                    "y": [1] * 800 + [2] * 400,
+                }
+            )
+        ),
+    ],
+)
+def test_chi2(df):
+    import pandas as pd
+    from scipy.stats import chi2_contingency
+
+    res = df.select(pl.col("x").stats.chi2(pl.col("y"))).item(0, 0)
+    stats, p = res["statistic"], res["pvalue"]
+
+    df2 = df.to_pandas()
+    contigency = pd.crosstab(index=df2["x"], columns=df2["y"])
+    sp_res = chi2_contingency(contigency.to_numpy(), correction=True)
+    sp_stats, sp_p = sp_res.statistic, sp_res.pvalue
+    assert np.isclose(stats, sp_stats)
+    assert np.isclose(p, sp_p)
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (pl.DataFrame({"a": np.random.random(size=100)})),
+        (pl.DataFrame({"a": np.random.normal(size=100)})),
+    ],
+)
+def test_normal_test(df):
+    from scipy.stats import normaltest
+
+    res = df.select(pl.col("a").stats.normal_test())
+    res = res.item(0, 0)  # A dictionary
+    statistic = res["statistic"]
+    pvalue = res["pvalue"]
+
+    scipy_res = normaltest(df["a"].to_numpy())
+
+    assert np.isclose(statistic, scipy_res.statistic)
+    assert np.isclose(pvalue, scipy_res.pvalue)
 
 
 def test_precision_recall_roc_auc():
