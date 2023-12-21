@@ -203,6 +203,17 @@ class StatsExt:
             returns_scalar=True,
         )
 
+    def chi2(self, other: pl.Expr) -> pl.Expr:
+        """"""
+
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_chi2",
+            args=[other],
+            is_elementwise=False,
+            returns_scalar=True,
+        )
+
     def rand_int(
         self,
         low: Optional[int] = 0,
