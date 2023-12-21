@@ -204,7 +204,17 @@ class StatsExt:
         )
 
     def chi2(self, other: pl.Expr) -> pl.Expr:
-        """"""
+        """
+        Computes the Chi Squared statistic and p value between two categorical values. Note that it is
+        up to the user to make sure that the two columns contain categorical values. This method is
+        equivalent to SciPy's chi2_contingency, except that it also computes the contingency table
+        internally for the user.
+
+        Parameters
+        ----------
+        other
+            A Polars Expression
+        """
 
         return self._expr.register_plugin(
             lib=_lib,
