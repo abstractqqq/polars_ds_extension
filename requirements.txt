@@ -5,4 +5,5 @@ numpy
 pytest
 scikit-learn
 scipy
+pyarrow
 pandas
