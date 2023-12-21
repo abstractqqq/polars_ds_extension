@@ -1,6 +1,8 @@
+# requirements for testing
 maturin[patchelf]
 polars
 numpy
 pytest
 scikit-learn
 scipy
+pandas
