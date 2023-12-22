@@ -172,8 +172,8 @@ class StatsExt:
         other
             A Polars Expression
         """
-        y = self._expr.cast(pl.Float64)
-        other_ = other.cast(pl.Float64)
+        y = self._expr.filter(self._expr.is_finite()).cast(pl.Float64)
+        other_ = other.filter(other.is_finite()).cast(pl.Float64)
         return y.register_plugin(
             lib=_lib,
             symbol="pl_ks_2samp",
@@ -292,7 +292,7 @@ class StatsExt:
 
     def sample_binomial(self, n: int, p: float, respect_null: bool = False) -> pl.Expr:
         """
-        Creates self.len() many random points sampled from a uniform binomial with n and p.
+        Creates self.len() many random points sampled from a binomial distribution with n and p.
 
         This treats self as the reference column.
 

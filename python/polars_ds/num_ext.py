@@ -518,6 +518,26 @@ class NumExt:
             is_elementwise=True,
         )
 
+    def lempel_ziv_complexity(self, as_ratio: bool = True) -> pl.Expr:
+        """
+        Computes Lempel Ziv complexity on a boolean column.
+
+        Parameters
+        ----------
+        as_ratio : bool
+            If true, return complexity / length.
+        """
+        out = self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_lempel_ziv_complexity",
+            args=[],
+            is_elementwise=False,
+            returns_scalar=True,
+        )
+        if as_ratio:
+            return out / self._expr.count()
+        return out
+
     def cond_entropy(self, other: pl.Expr) -> pl.Expr:
         """
         Computes the conditional entropy of self(y) given other, aka. H(y|other).
@@ -527,7 +547,6 @@ class NumExt:
         other
             A Polars expression
         """
-
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_conditional_entropy",
@@ -596,7 +615,6 @@ class NumExt:
         length
             A positive integer. If none, the input series's length will be used.
         """
-        # Add a k step argument?
         if length is not None and length <= 1:
             raise ValueError("Input `length` should be > 1.")
 

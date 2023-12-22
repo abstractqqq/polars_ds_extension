@@ -605,6 +605,91 @@ def test_merge_infreq(df, min_count, min_frac, res):
     )
 
 
+@pytest.mark.parametrize(
+    "df, threshold, res",
+    [
+        (
+            pl.DataFrame({"a": pl.Series([1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0])}),
+            0,
+            8,
+        ),
+        (
+            pl.DataFrame(
+                {
+                    "a": pl.Series(
+                        [
+                            1,
+                            0,
+                            0,
+                            1,
+                            1,
+                            1,
+                            1,
+                            0,
+                            1,
+                            1,
+                            0,
+                            0,
+                            0,
+                            0,
+                            1,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            1,
+                            0,
+                        ]
+                    )
+                }
+            ),
+            0,
+            9,
+        ),
+        (
+            pl.DataFrame(
+                {
+                    "a": pl.Series(
+                        [
+                            1,
+                            0,
+                            0,
+                            1,
+                            1,
+                            1,
+                            1,
+                            0,
+                            1,
+                            1,
+                            0,
+                            0,
+                            0,
+                            0,
+                            1,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            1,
+                            0,
+                            1,
+                            0,
+                        ]
+                    )
+                }
+            ),
+            0,
+            10,
+        ),
+    ],
+)
+def test_lempel_ziv_complexity(df, threshold, res):
+    test = df.select((pl.col("a") > threshold).num.lempel_ziv_complexity(as_ratio=False))
+    assert test.item(0, 0) == res
+
+
 def test_ks_stats():
     from scipy.stats import ks_2samp
     import numpy as np
@@ -621,20 +706,27 @@ def test_ks_stats():
 
 
 @pytest.mark.parametrize(
-    "df",
+    "df, eq_var",
     [
-        (pl.DataFrame({"a": np.random.normal(size=1_000), "b": np.random.normal(size=1_000)})),
+        (
+            pl.DataFrame({"a": np.random.normal(size=1_000), "b": np.random.normal(size=1_000)}),
+            True,
+        ),
+        (
+            pl.DataFrame({"a": np.random.normal(size=1_000), "b": np.random.normal(size=1_000)}),
+            False,
+        ),
     ],
 )
-def test_ttest_ind(df):
+def test_ttest_ind(df, eq_var):
     from scipy.stats import ttest_ind
 
-    res = df.select(pl.col("a").stats.ttest_ind(pl.col("b"), equal_var=True))
+    res = df.select(pl.col("a").stats.ttest_ind(pl.col("b"), equal_var=eq_var))
     res = res.item(0, 0)  # A dictionary
     statistic = res["statistic"]
     pvalue = res["pvalue"]
 
-    scipy_res = ttest_ind(df["a"].to_numpy(), df["b"].to_numpy(), equal_var=True)
+    scipy_res = ttest_ind(df["a"].to_numpy(), df["b"].to_numpy(), equal_var=eq_var)
 
     assert np.isclose(statistic, scipy_res.statistic)
     assert np.isclose(pvalue, scipy_res.pvalue)
