@@ -49,19 +49,9 @@ fn pl_ks_2samp(inputs: &[Series]) -> PolarsResult<Series> {
 
     // Always true right now
     let stats_only = inputs[2].bool()?;
-    let stats_only = stats_only.get(0).unwrap();
+    let stats_only = stats_only.get(0).unwrap_or(true);
 
-    // Get rid of these checks? Or how to make them faster? SciPy isn't checking for NaN or Inf..
-    let nan_count = s1.is_nan().sum().unwrap() + s2.is_nan().sum().unwrap();
-    let inf_count = s1.is_infinite().sum().unwrap() + s2.is_infinite().sum().unwrap();
-    let invalid = (nan_count + inf_count) > 0;
-
-    if invalid {
-        // Return NaN instead?
-        return Err(PolarsError::ComputeError(
-            "KS: Input should not contain Inf or NaN.".into(),
-        ));
-    }
+    // Input is gauranteed to be finite
 
     let v1: Vec<f64> = match s1.is_sorted_flag() {
         IsSorted::Ascending => s1.into_no_null_iter().collect(),
@@ -80,7 +70,7 @@ fn pl_ks_2samp(inputs: &[Series]) -> PolarsResult<Series> {
             .collect(),
     };
 
-    if (v1.len() == 0) | (v2.len() == 0) {
+    if (v1.len() == 0) || (v2.len() == 0) {
         return Err(PolarsError::ComputeError(
             "KS: Both input series must contain at least 1 non-null values.".into(),
         ));

@@ -34,7 +34,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest
           pip install .
-          pip install -r requirements.txt
+          pip install -r tests/requirements-test.txt
           pytest tests/test_ext.py
       - name: Build wheels
         uses: PyO3/maturin-action@v1

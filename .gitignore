@@ -7,6 +7,9 @@ tests/test.ipynb
 # Ruff
 .ruff_cache/
 
+# Memray
+tests/*.bin
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 .pytest_cache/
