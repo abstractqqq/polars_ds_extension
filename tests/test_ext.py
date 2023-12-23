@@ -839,3 +839,26 @@ def test_precision_recall_roc_auc():
         assert np.isclose(precision, precision_res)
         assert np.isclose(recall, recall_res)
         assert np.isclose(roc_auc_score(actual, predicted_prob), roc_auc_res)
+
+
+@pytest.mark.parametrize(
+    "df, dist, k, res",
+    [
+        (
+            pl.DataFrame({"id": range(5), "val1": range(5), "val2": range(5), "val3": range(5)}),
+            "l2",
+            2,
+            pl.DataFrame({"nn": [[1, 2], [2, 0], [1, 3], [2, 4], [3, 2]]}),
+        ),
+    ],
+)
+def test_knn_ptwise(df, dist, k, res):
+    df2 = df.select(
+        pl.col("id")
+        .num.knn_ptwise(pl.col("val1"), pl.col("val2"), pl.col("val3"), dist=dist, k=k)
+        .alias("nn")
+    )
+    # Make sure the list inner types are both u64
+    res = res.select(pl.col("nn").list.eval(pl.element().cast(pl.UInt64)))
+
+    assert_frame_equal(df2, res)

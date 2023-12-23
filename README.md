@@ -1,8 +1,8 @@
 # Polars Extension for General Data Science Use
 
-A Polars Plugin aiming to simplify common numerical/string data analysis procedures. This means that the most basic data science, stats, NLP related tasks can be done natively inside a dataframe. 
+A Polars Plugin aiming to simplify common numerical/string data analysis procedures. This means that the most basic data science, stats, NLP related tasks can be done natively inside a dataframe, thus minimizing the number of dependencies.
 
-Its goal is not to replace SciPy, or NumPy, but rather it tries to reduce dependency for common workflows and simple analysis, and tries to reduce Python side code and UDFs.
+Its goal is not to replace SciPy, or NumPy, but rather it tries to improve runtime for common tasks, reduce Python code and UDFs.
 
 See examples [here](./examples/basics.ipynb).
 

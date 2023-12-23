@@ -1,6 +1,6 @@
 import polars as pl
 from typing import Union, Optional
-from .type_alias import DetrendMethod
+from .type_alias import DetrendMethod, Distance
 from polars.utils.udfs import _get_shared_lib_location
 
 _lib = _get_shared_lib_location(__file__)
@@ -596,7 +596,7 @@ class NumExt:
 
         if method == "linear":
             N = self._expr.count()
-            x = pl.int_range(0, N, dtype=pl.Float64, eager=False)
+            x = pl.int_range(0, N, eager=False)
             coeff = pl.cov(self._expr, x) / x.var()
             const = self._expr.mean() - coeff * (N - 1) / 2
             return self._expr - x * coeff - const
@@ -622,4 +622,49 @@ class NumExt:
         x: pl.Expr = self._expr.cast(pl.Float64)
         return x.register_plugin(
             lib=_lib, symbol="pl_rfft", args=[le], is_elementwise=False, changes_length=True
+        )
+
+    def knn_ptwise(
+        self,
+        *others: pl.Expr,
+        k: int = 5,
+        leaf_size: int = 40,
+        dist: Distance = "l2",
+        parallel: bool = False,
+    ) -> pl.Expr:
+        """
+        Treats self as an ID column, and uses other columns to determine the k nearest neighbors
+        to every index in self. By default, this will not include the point itself as its neighbor.
+        This will throw an error if any null value is found in the data/id column.
+
+        Note that reference col/self must be convertible to u64. If you do not have a u64 ID column,
+        you can generate one using pl.int_range(..), which should be a step before this.
+
+        Parameters
+        ----------
+        others
+            Other columns used as features
+        k
+            Number of neighbors to query
+        leaf_size
+            Leaf size for the kd-tree. Tuning this might improve performance.
+        dist
+            The L^p distance to use or `h` for haversine. Default `l2`. Currently only
+            supports `l1`, `l2` and `inf` which is L infinity or `h` or `haversine`. Any
+            other string will be redirected to `l2`.
+        parallel
+            Whether to run the k-nearest neighbor query in parallel. This is recommended when you
+            are running only this expression, and not in group_by context.
+        """
+        if k < 1:
+            raise ValueError("Input `k` must be >= 1.")
+
+        metric = str(dist).lower()
+        index: pl.Expr = self._expr.cast(pl.UInt64)
+        return index.register_plugin(
+            lib=_lib,
+            symbol="pl_knn_ptwise",
+            args=list(others),
+            kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
+            is_elementwise=True,
         )

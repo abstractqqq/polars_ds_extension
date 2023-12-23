@@ -10,12 +10,13 @@ crate-type = ["cdylib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-pyo3 = {version = "0.20", features = ["extension-module"]}
-pyo3-polars = {version = "0.9", features = ["derive"]}
+pyo3 = {version = "*", features = ["extension-module"]}
+pyo3-polars = {version = "*", features = ["derive"]}
 polars = {version = "0.35.4", features = ["performant", "lazy", "dtype-array", "ndarray", "log", "nightly"]}
 num = "0.4.1"
 faer = {version = "0.15", features = ["ndarray", "nightly"]}
-ndarray = "0.15.6" # see if we can get rid of this
+serde = {version = "*", features=["derive"]}
+ndarray = {version="0.15.6", features=["rayon"]} # see if we can get rid of this
 hashbrown = {version = "0.14.2", features=["nightly"]}
 itertools = "0.12.0"
 aho-corasick = "1.1"
@@ -24,6 +25,7 @@ rand_distr = "0.4.3"
 realfft = "3.3.0"
 rapidfuzz = "0.5.0"
 inflections = "1.1.1"
+kdtree = "0.7"
 
 [target.'cfg(any(not(target_os = "linux"), use_mimalloc))'.dependencies]
 mimalloc = { version = "0.1", default-features = false }

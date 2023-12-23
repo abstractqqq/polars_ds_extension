@@ -851,6 +851,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kdtree"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f0a0e9f770b65bac9aad00f97a67ab5c5319effed07f6da385da3c2115e47ba"
+dependencies = [
+ "num-traits",
+ "thiserror",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1012,6 +1022,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "rawpointer",
+ "rayon",
 ]
 
 [[package]]
@@ -1479,6 +1490,7 @@ dependencies = [
  "inflections",
  "itertools",
  "jemallocator",
+ "kdtree",
  "mimalloc",
  "ndarray",
  "num",
@@ -1489,6 +1501,7 @@ dependencies = [
  "rand_distr",
  "rapidfuzz",
  "realfft",
+ "serde",
 ]
 
 [[package]]

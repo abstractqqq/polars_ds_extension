@@ -1,9 +1,9 @@
-use super::complex::complex_output;
 /// Performs forward FFT.
 /// Since data in dataframe are always real numbers, only realfft
 /// is implemented and inverse fft is not implemented and even if it
 /// is eventually implemented, it would likely not be a dataframe
 /// operation.
+use super::complex::complex_output;
 use itertools::Either;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
