@@ -2,7 +2,7 @@ import pytest
 import polars as pl
 import math
 import numpy as np
-import polars_ds  # noqa: F401
+import polars_ds as pld
 from polars.testing import assert_frame_equal
 
 
@@ -860,5 +860,25 @@ def test_knn_ptwise(df, dist, k, res):
     )
     # Make sure the list inner types are both u64
     res = res.select(pl.col("nn").list.eval(pl.element().cast(pl.UInt64)))
+
+    assert_frame_equal(df2, res)
+
+
+@pytest.mark.parametrize(
+    "df, pt, dist, k, res",
+    [
+        (
+            pl.DataFrame({"id": range(5), "val1": range(5), "val2": range(5), "val3": range(5)}),
+            [0.5, 0.5, 0.5],
+            "l2",
+            3,
+            pl.DataFrame({"id": [0, 1, 2]}),
+        ),
+    ],
+)
+def test_knn_pt(df, pt, dist, k, res):
+    df2 = df.filter(
+        pld.knn(pl.col("val1"), pl.col("val2"), pl.col("val3"), pt=pt, dist=dist, k=k)
+    ).select(pl.col("id"))
 
     assert_frame_equal(df2, res)

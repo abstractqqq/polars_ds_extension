@@ -1,5 +1,6 @@
 use kdtree::distance::squared_euclidean;
 use num::{Float, Zero};
+use polars::error::PolarsError;
 
 mod complex;
 mod cond_entropy;
@@ -45,7 +46,7 @@ pub fn haversine<T: Float>(start: &[T], end: &[T]) -> T {
 }
 
 #[inline(always)]
-pub fn which_distance(metric: &str, dim: usize) -> Result<fn(&[f64], &[f64]) -> f64, String> {
+pub fn which_distance(metric: &str, dim: usize) -> Result<fn(&[f64], &[f64]) -> f64, PolarsError> {
     match metric {
         "l1" => Ok(l1_dist::<f64>),
         "inf" => Ok(l_inf_dist::<f64>),
@@ -54,7 +55,9 @@ pub fn which_distance(metric: &str, dim: usize) -> Result<fn(&[f64], &[f64]) -> 
                 Ok(haversine::<f64>)
             } else {
                 Err(
-                    "KNN: Haversine distance must take 2 columns as features, one for lat and one for long.".into(),
+                    PolarsError::ComputeError(
+                        "KNN: Haversine distance must take 2 columns as features, one for lat and one for long.".into()
+                    )
                 )
             }
         }

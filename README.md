@@ -27,11 +27,11 @@ when you want to use the namespaces provided by the package.
 Generating random numbers, and running t-test, normality test inside a dataframe
 ```python
 df.with_columns(
-    pl.col("a").stats_ext.sample_normal(mean = 0.5, std = 1.).alias("test1")
-    , pl.col("a").stats_ext.sample_normal(mean = 0.5, std = 2.).alias("test2")
+    pl.col("a").stats.sample_normal(mean = 0.5, std = 1.).alias("test1")
+    , pl.col("a").stats.sample_normal(mean = 0.5, std = 2.).alias("test2")
 ).select(
-    pl.col("test1").stats_ext.ttest_ind(pl.col("test2"), equal_var = False).alias("t-test")
-    , pl.col("test1").stats_ext.normal_test().alias("normality_test")
+    pl.col("test1").stats.ttest_ind(pl.col("test2"), equal_var = False).alias("t-test")
+    , pl.col("test1").stats.normal_test().alias("normality_test")
 ).select(
     pl.col("t-test").struct.field("statistic").alias("t-tests: statistics")
     , pl.col("t-test").struct.field("pvalue").alias("t-tests: pvalue")
@@ -43,8 +43,31 @@ df.with_columns(
 Blazingly fast string similarity comparisons. (Thanks to [RapidFuzz](https://docs.rs/rapidfuzz/latest/rapidfuzz/))
 ```python
 df2.select(
-    pl.col("word").str_ext.levenshtein("world", return_sim = True)
+    pl.col("word").str2.levenshtein("world", return_sim = True)
 ).head()
+```
+
+Even in-dataframe nearest neighbors queries! 😲
+```python
+df.with_columns(
+    pl.col("id").num.knn_ptwise(
+        pl.col("val1"), pl.col("val2"), pl.col("val2"),
+        k = 2, dist = "l1", parallel = False
+    ).alias("nearest neighbor ids")
+)
+
+shape: (5, 4)
+┌─────┬──────────┬──────────┬───────────────────────┐
+│ id  ┆ val1     ┆ val2     ┆ nearest neighbor ids  │
+│ --- ┆ ---      ┆ ---      ┆ ---                   │
+│ i64 ┆ f64      ┆ f64      ┆ list[u64]             │
+╞═════╪══════════╪══════════╪═══════════════════════╡
+│ 0   ┆ 0.031918 ┆ 0.966439 ┆ [49187, 54820, 14596] │
+│ 1   ┆ 0.824656 ┆ 0.765373 ┆ [55462, 74455, 78960] │
+│ 2   ┆ 0.739483 ┆ 0.91011  ┆ [5264, 53423, 40837]  │
+│ 3   ┆ 0.041424 ┆ 0.241765 ┆ [90369, 32434, 14777] │
+│ 4   ┆ 0.956705 ┆ 0.964461 ┆ [27196, 53936, 58850] │
+└─────┴──────────┴──────────┴───────────────────────┘
 ```
 
 And a lot more!

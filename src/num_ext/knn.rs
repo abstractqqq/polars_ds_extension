@@ -1,9 +1,9 @@
-use super::which_distance;
 /// Performs KNN related search queries, classification and regression, and
 /// other features/entropies that require KNN to be efficiently computed.
+use super::which_distance;
 use itertools::Itertools;
 use kdtree::KdTree;
-use ndarray::Axis;
+use ndarray::{Array2, Axis};
 use polars::prelude::*;
 use pyo3_polars::export::polars_core::utils::rayon::iter::IntoParallelIterator;
 use pyo3_polars::{
@@ -18,6 +18,23 @@ struct KnnKwargs {
     leaf_size: usize,
     metric: String,
     parallel: bool,
+}
+
+#[inline]
+fn build_standard_kdtree<'a>(
+    dim: usize,
+    leaf_size: usize,
+    data: &'a Array2<f64>,
+) -> Result<KdTree<f64, usize, &'a [f64]>, PolarsError> {
+    // Building the tree
+    let mut tree = KdTree::with_capacity(dim, leaf_size);
+    for (i, p) in data.rows().into_iter().enumerate() {
+        let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
+        let _is_ok = tree
+            .add(s, i)
+            .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
+    }
+    Ok(tree)
 }
 
 pub fn knn_index_output(_: &[Field]) -> PolarsResult<Field> {
@@ -42,32 +59,27 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KnnKwargs) -> PolarsResult<Series> {
     let id = inputs[0].u64()?;
     let data = DataFrame::new(inputs[1..].to_vec())?.agg_chunks();
     let dim = inputs[1..].len();
+    if dim == 0 {
+        return Err(PolarsError::ComputeError("KNN: No input column.".into()));
+    }
 
     let k = kwargs.k;
     let leaf_size = kwargs.leaf_size;
     let parallel = kwargs.parallel;
-    let dist_func = which_distance(kwargs.metric.as_str(), dim)
-        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+    let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
 
     // Need to use C order because C order is row-contiguous
-    let matrix = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
+    let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
 
     // Building the tree
-    let mut tree = KdTree::with_capacity(dim, leaf_size);
-    for (i, p) in matrix.rows().into_iter().enumerate() {
-        let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
-        let _is_ok = tree
-            .add(s, i)
-            .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
-    }
+    let tree = build_standard_kdtree(dim, leaf_size, &data)?;
 
     // Building output
     let mut builder =
         ListPrimitiveChunkedBuilder::<UInt64Type>::new("", id.len(), k, DataType::UInt64);
     if parallel {
         let mut nbs: Vec<Option<Vec<u64>>> = Vec::with_capacity(id.len());
-        matrix
-            .axis_iter(Axis(0))
+        data.axis_iter(Axis(0))
             .into_par_iter()
             .map(|p| {
                 let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
@@ -92,7 +104,7 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KnnKwargs) -> PolarsResult<Series> {
             }
         }
     } else {
-        for p in matrix.rows() {
+        for p in data.rows() {
             let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
             if let Ok(v) = tree.iter_nearest(s, &dist_func) {
                 // By construction, this unwrap is safe
@@ -109,4 +121,54 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KnnKwargs) -> PolarsResult<Series> {
     }
     let ca = builder.finish();
     Ok(ca.into_series())
+}
+
+#[polars_expr(output_type=Boolean)]
+fn pl_knn_pt(inputs: &[Series], kwargs: KnnKwargs) -> PolarsResult<Series> {
+    // Make sure no null input
+    for s in inputs {
+        if s.null_count() > 0 {
+            return Err(PolarsError::ComputeError(
+                "KNN: Input contains null.".into(),
+            ));
+        }
+    }
+
+    // Check len
+    let pt = inputs[0].f64()?;
+    let dim = inputs[1..].len();
+    if dim == 0 || pt.len() != dim {
+        return Err(PolarsError::ComputeError(
+            "KNN: There has to be at least one column in `others` and input point \
+            must be the same length as the number of columns in `others`."
+                .into(),
+        ));
+    }
+    // Set up the point to query
+    let binding = pt.rechunk();
+    let p = binding.to_ndarray()?;
+    let p = p.as_slice().unwrap(); // Rechunked, so safe to unwrap
+
+    // Set up params
+    let data = DataFrame::new(inputs[1..].to_vec())?.agg_chunks();
+    let height = data.height();
+    let dim = inputs[1..].len();
+    let k = kwargs.k;
+    let leaf_size = kwargs.leaf_size;
+    let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
+
+    // Need to use C order because C order is row-contiguous
+    let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
+
+    // Building the tree
+    let tree = build_standard_kdtree(dim, leaf_size, &data)?;
+
+    // Building the output
+    let mut out: Vec<bool> = vec![false; height];
+    if let Ok(v) = tree.iter_nearest(p, &dist_func) {
+        for (_, i) in v.into_iter().take(k) {
+            out[*i] = true;
+        }
+    }
+    Ok(BooleanChunked::from_slice("", &out).into_series())
 }

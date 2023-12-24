@@ -640,6 +640,10 @@ class NumExt:
         Note that reference col/self must be convertible to u64. If you do not have a u64 ID column,
         you can generate one using pl.int_range(..), which should be a step before this.
 
+        Also note that this internally builds a kd-tree for fast querying and deallocates it once we
+        are done. If you need to repeatedly run the same query on the same data, then it is not
+        ideal to use this. A specialized external kd-tree structure would be better in that case.
+
         Parameters
         ----------
         others
@@ -666,5 +670,49 @@ class NumExt:
             symbol="pl_knn_ptwise",
             args=list(others),
             kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
+            is_elementwise=True,
+        )
+
+    def _knn_pt(
+        self,
+        *others: pl.Expr,
+        k: int = 5,
+        leaf_size: int = 40,
+        dist: Distance = "l2",
+    ) -> pl.Expr:
+        """
+        Treats self as a point, and uses other columns to filter to the k nearest neighbors
+        to self. The recommended usage of this is something like
+
+        pl.lit(pl.Series([0.1,0.2,0.3])).num._knn_pt(pl.col('x1'), pl.col('x2'), pl.col('x3'), dist='inf')
+
+        but a wrapper will be provided.
+
+        Also note that this internally builds a kd-tree for fast querying and deallocates it once we
+        are done. If you need to repeatedly run the same query on the same data, then it is not
+        ideal to use this. A specialized external kd-tree structure would be better in that case.
+
+        Parameters
+        ----------
+        others
+            Other columns used as features
+        k
+            Number of neighbors to query
+        leaf_size
+            Leaf size for the kd-tree. Tuning this might improve performance.
+        dist
+            The L^p distance to use or `h` for haversine. Default `l2`. Currently only
+            supports `l1`, `l2` and `inf` which is L infinity or `h` or `haversine`. Any
+            other string will be redirected to `l2`.
+        """
+        if k < 1:
+            raise ValueError("Input `k` must be >= 1.")
+
+        metric = str(dist).lower()
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_knn_pt",
+            args=list(others),
+            kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": False},
             is_elementwise=True,
         )
