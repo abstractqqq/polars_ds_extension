@@ -886,6 +886,32 @@ def test_knn_pt(df, x, dist, k, res):
 
 
 @pytest.mark.parametrize(
+    "df, r, dist, res",
+    [
+        (
+            pl.DataFrame({"x": range(5), "y": range(5), "z": range(5)}),
+            4,
+            "l2",
+            pl.DataFrame({"nb_cnt": [1, 2, 2, 2, 1]}),
+        ),
+    ],
+)
+def test_nb_cnt(df, r, dist, res):
+    test = df.select(
+        pld.query_nb_cnt(
+            r,
+            pl.col("x"),
+            pl.col("y"),
+            pl.col("z"),  # Columns used as the coordinates in n-d space
+            dist=dist,
+        )
+        .cast(pl.UInt32)
+        .alias("nb_cnt")
+    )
+    assert_frame_equal(test, res.with_columns(pl.col("nb_cnt").cast(pl.UInt32)))
+
+
+@pytest.mark.parametrize(
     "df, res",
     [
         (

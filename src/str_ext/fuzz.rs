@@ -50,7 +50,7 @@ fn pl_fuzz(inputs: &[Series]) -> PolarsResult<Series> {
         Ok(out.into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length.".into(),
+            "Inputs must have the same length or one of them must be a scalar.".into(),
         ))
     }
 }

@@ -1,6 +1,5 @@
 import polars as pl
 from typing import Union, Optional
-from . import IntoExpr
 from .type_alias import DetrendMethod, Distance
 from polars.utils.udfs import _get_shared_lib_location
 
@@ -186,11 +185,16 @@ class NumExt:
             is_elementwise=True,
         )
 
-    def is_equidistant(self) -> pl.Expr:
+    def is_equidistant(self, tol: float = 1e-6) -> pl.Expr:
         """
         Checks if a column has equal distance between consecutive values.
+
+        Parameters
+        ----------
+        tol
+            Tolerance. If difference is all smaller than this, then true.
         """
-        return self._expr.diff(null_behavior="drop").unique_counts().count().eq(1)
+        return (self._expr.diff(null_behavior="drop").abs() < tol).all()
 
     def hubor_loss(self, pred: pl.Expr, delta: float) -> pl.Expr:
         """
@@ -587,7 +591,7 @@ class NumExt:
 
     def detrend(self, method: DetrendMethod = "linear") -> pl.Expr:
         """
-        Detrends self using either linear/mean method.
+        Detrends self using either linear/mean method. This does not persist.
 
         Parameters
         ----------
@@ -654,9 +658,8 @@ class NumExt:
         leaf_size
             Leaf size for the kd-tree. Tuning this might improve runtime performance.
         dist
-            The L^p distance to use or `h` for haversine. Default `l2`. Currently only
-            supports `l1`, `l2` and `inf` which is L infinity or `h` or `haversine`. Any
-            other string will be redirected to `l2`.
+            One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+            `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
         parallel
             Whether to run the k-nearest neighbor query in parallel. This is recommended when you
             are running only this expression, and not in group_by context.
@@ -698,9 +701,8 @@ class NumExt:
         leaf_size
             Leaf size for the kd-tree. Tuning this might improve performance.
         dist
-            The L^p distance to use or `h` for haversine. Default `l2`. Currently only
-            supports `l1`, `l2` and `inf` which is L infinity or `h` or `haversine`. Any
-            other string will be redirected to `l2`.
+            One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+            `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
         """
         if k < 1:
             raise ValueError("Input `k` must be >= 1.")
@@ -714,19 +716,52 @@ class NumExt:
             is_elementwise=True,
         )
 
-    def _haversine(
+    def _nb_cnt(
         self,
-        start_long: IntoExpr,
-        end_lat: IntoExpr,
-        end_long: IntoExpr,
+        *others: pl.Expr,
+        leaf_size: int = 40,
+        dist: Distance = "l2",
+        parallel: bool = False,
     ) -> pl.Expr:
         """
-        Treats self as start_lat and computes haversine distance naively.
+        Treats self as radius, which can be a scalar, or a column with the same length as the columns
+        in `others`. This will return the number of neighbors within (<=) distance for each row.
+        The recommendation is to use the nb_cnt function in polars_ds.
+
+        Parameters
+        ----------
+        others
+            Other columns used as features
+        leaf_size
+            Leaf size for the kd-tree. Tuning this might improve performance.
+        dist
+            One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+            `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
+        parallel
+            Whether to run the k-nearest neighbor query in parallel. This is recommended when you
+            are running only this expression, and not in group_by context.
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_nb_cnt",
+            args=list(others),
+            kwargs={"k": 0, "leaf_size": leaf_size, "metric": dist, "parallel": parallel},
+            is_elementwise=True,
+        )
+
+    def _haversine(
+        self,
+        x_long: pl.Expr,
+        y_lat: pl.Expr,
+        y_long: pl.Expr,
+    ) -> pl.Expr:
+        """
+        Treats self as x_lat and computes haversine distance naively.
         """
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_haversine",
-            args=[start_long, end_lat, end_long],
+            args=[x_long, y_lat, y_long],
             is_elementwise=True,
             cast_to_supertypes=True,
         )

@@ -30,9 +30,8 @@ def query_radius(
     radius
         The radius to query with.
     dist
-        The L^p distance to use or `h` for haversine. Default `l2`. Currently only
-        supports `l1`, `l2` and `inf` which is L infinity or `h` or `haversine`. Any
-        other string will be redirected to `l2`.
+        One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+        `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
     """
     oth = list(others)
     if len(x) != len(oth):
@@ -68,12 +67,51 @@ def query_radius(
         )
 
 
+def query_nb_cnt(
+    radius: Union[float, pl.Expr, list[float], "np.ndarray", pl.Series],  # noqa: F821
+    *others: pl.Expr,
+    leaf_size: int = 40,
+    dist: Distance = "l2",
+    parallel: bool = False,
+) -> pl.Expr:
+    """
+    Return the number of neighbors within (<=) radius for each row under the given distance
+    metric.
+
+    Parameters
+    ----------
+    radius
+        If this is a scalar, then it will run the query with fixed radius for all rows. If
+        this is a list, then it must have the same height as the dataframe in which this is run. If
+        this is an expression, it must be a pl.col() representing radius in the dataframe.
+        A large radius (lots of neighbors) will slow down performance.
+    others
+        Other columns used as features
+    leaf_size
+        Leaf size for the kd-tree. Tuning this might improve performance.
+    dist
+        One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+        `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
+    parallel
+        Whether to run the distance query in parallel. This is recommended when you
+        are running only this expression, and not in group_by context.
+    """
+    if isinstance(radius, (float, int)):
+        rad = pl.lit(pl.Series(values=[radius], dtype=pl.Float64))
+    elif isinstance(radius, pl.Expr):
+        rad = radius
+    else:
+        rad = pl.lit(pl.Series(values=radius, dtype=pl.Float64))
+
+    return rad.num._nb_cnt(*others, leaf_size=leaf_size, dist=dist, parallel=parallel)
+
+
 def knn(
     x: Union[list[float], "np.ndarray", pl.Series],  # noqa: F821
     *others: pl.Expr,
     k: int = 5,
-    dist: Distance = "l2",
     leaf_size: int = 40,
+    dist: Distance = "l2",
 ) -> pl.Expr:
     """
     Returns an expression that queries the k nearest neighbors to x.
@@ -93,9 +131,8 @@ def knn(
     leaf_size
         Leaf size for the kd-tree. Tuning this might improve performance.
     dist
-        The L^p distance to use or `h` for haversine. Default `l2`. Currently only
-        supports `l1`, `l2` and `inf` which is L infinity or `h` or `haversine`. Any
-        other string will be redirected to `l2`.
+        One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+        `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
     """
     pt = pl.Series(x, dtype=pl.Float64)
     return pl.lit(pt).num._knn_pt(

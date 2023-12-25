@@ -16,16 +16,8 @@ use pyo3_polars::{
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
-struct KnnKwargs {
+struct KdtreeKwargs {
     k: usize,
-    leaf_size: usize,
-    metric: String,
-    parallel: bool,
-}
-
-#[derive(Deserialize, Debug)]
-struct RadiusKwargs {
-    radius: f64,
     leaf_size: usize,
     metric: String,
     parallel: bool,
@@ -56,7 +48,7 @@ pub fn knn_index_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 #[polars_expr(output_type_func=knn_index_output)]
-fn pl_knn_ptwise(inputs: &[Series], kwargs: KnnKwargs) -> PolarsResult<Series> {
+fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     // Make sure no null input
     let _ = no_null_in_inputs(inputs, "KNN: Input contains null.".into())?;
 
@@ -129,7 +121,7 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KnnKwargs) -> PolarsResult<Series> {
 }
 
 #[polars_expr(output_type=Boolean)]
-fn pl_knn_pt(inputs: &[Series], kwargs: KnnKwargs) -> PolarsResult<Series> {
+fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     // Make sure no null input
     let _ = no_null_in_inputs(inputs, "KNN: Input contains null.".into())?;
 
@@ -172,43 +164,97 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KnnKwargs) -> PolarsResult<Series> {
     Ok(BooleanChunked::from_slice("", &out).into_series())
 }
 
-// /// For a given point, find out how many neighbors are within that radius
-// #[polars_expr(output_type=Boolean)]
-// fn pl_query_radius(inputs: &[Series], kwargs: RadiusKwargs) -> PolarsResult<Series> {
-//     // Make sure no null input
-//     let _ = no_null_in_inputs(inputs, "KNN: Input contains null.".into())?;
+/// For every point in this dataframe, find the number of neighbors within radius r
+#[polars_expr(output_type=UInt32)]
+fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
+    // Make sure no null input
+    let _ = no_null_in_inputs(inputs, "KNN: Input contains null.".into())?;
 
-//     // Set up radius
-//     let pt = inputs[0].f64()?;
-//     let pt = pt.rechunk();
-//     let pt = pt.to_ndarray().unwrap(); // safe because we rechunked
-//     let pt = pt.as_slice().unwrap();
+    // Set up radius
+    let radius = inputs[0].f64()?;
 
-//     // Set up params
-//     let radius = kwargs.radius;
-//     let data = DataFrame::new(inputs[1..].to_vec())?.agg_chunks();
-//     let dim = inputs[1..].len();
-//     if dim == 0 {
-//         return Err(PolarsError::ComputeError("KNN: No column to decide distance from.".into()));
-//     }
-//     let leaf_size = kwargs.leaf_size;
-//     let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
+    // Set up params
+    let data = DataFrame::new(inputs[1..].to_vec())?.agg_chunks();
+    let dim = inputs[1..].len();
+    if dim == 0 {
+        return Err(PolarsError::ComputeError(
+            "KNN: No column to decide distance from.".into(),
+        ));
+    }
+    let parallel = kwargs.parallel;
+    let leaf_size = kwargs.leaf_size;
+    let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
 
-//     // Need to use C order because C order is row-contiguous
-//     let height = data.height();
-//     let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
+    // Need to use C order because C order is row-contiguous
+    let height = data.height();
+    let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
 
-//     // Building the tree
-//     let tree = build_standard_kdtree(dim, leaf_size, &data)?;
+    // Building the tree
+    let tree = build_standard_kdtree(dim, leaf_size, &data)?;
 
-//     // Build output
-//     let mut output:Vec<bool> = vec![false; height];
-//     if let Ok(v) = tree.iter_nearest(pt, &dist_func) {
-//         for (_, i) in v.take_while(|(d, _)| d <= &radius) {
-//             output[*i] = true;
-//         }
-//     }
-
-//     Ok(BooleanChunked::from_slice("", &output).into_series())
-
-// }
+    if radius.len() == 1 {
+        let r = radius.get(0).unwrap();
+        if parallel {
+            let ca =
+                UInt32Chunked::from_par_iter(data.axis_iter(Axis(0)).into_par_iter().map(|pt| {
+                    let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
+                    if let Ok(v) = tree.iter_nearest(s, &dist_func) {
+                        let cnt = v.take_while(|(d, _)| d <= &r).count();
+                        Some(cnt.abs_diff(1) as u32)
+                    } else {
+                        None
+                    }
+                }));
+            Ok(ca.into_series())
+        } else {
+            let ca = UInt32Chunked::from_iter(data.axis_iter(Axis(0)).map(|pt| {
+                let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
+                if let Ok(v) = tree.iter_nearest(s, &dist_func) {
+                    let cnt = v.take_while(|(d, _)| d <= &r).count();
+                    Some(cnt.abs_diff(1) as u32)
+                } else {
+                    None
+                }
+            }));
+            Ok(ca.into_series())
+        }
+    } else if radius.len() == height {
+        if parallel {
+            let ca = UInt32Chunked::from_par_iter(
+                radius
+                    .into_iter()
+                    .zip(data.axis_iter(Axis(0)))
+                    .par_bridge()
+                    .map(|(rad, pt)| {
+                        let r = rad?;
+                        let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
+                        if let Ok(v) = tree.iter_nearest(s, &dist_func) {
+                            let cnt = v.take_while(|(d, _)| d <= &r).count();
+                            Some(cnt.abs_diff(1) as u32)
+                        } else {
+                            None
+                        }
+                    }),
+            );
+            Ok(ca.into_series())
+        } else {
+            let ca = UInt32Chunked::from_iter(radius.into_iter().zip(data.axis_iter(Axis(0))).map(
+                |(rad, pt)| {
+                    let r = rad?;
+                    let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
+                    if let Ok(v) = tree.iter_nearest(s, &dist_func) {
+                        let cnt = v.take_while(|(d, _)| d <= &r).count();
+                        Some(cnt.abs_diff(1) as u32)
+                    } else {
+                        None
+                    }
+                },
+            ));
+            Ok(ca.into_series())
+        }
+    } else {
+        Err(PolarsError::ShapeMismatch(
+            "Inputs must have the same length or one of them must be a scalar.".into(),
+        ))
+    }
+}
