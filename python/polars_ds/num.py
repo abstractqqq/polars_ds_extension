@@ -827,18 +827,21 @@ class NumExt:
         """
         threshold = ratio * self._expr.std(ddof=0)  # 1 should be fine
         n_rows1 = self._expr.count() - m + 1
-        data1 = [self._expr.slice(offset=0, length=n_rows1)] + [
+        data1 = [self._expr.slice(offset=0, length=n_rows1)]
+        data1.extend(
             self._expr.shift(-i).slice(offset=0, length=n_rows1).alias(f"{i}") for i in range(1, m)
-        ]
+        )
+
         b: pl.Expr = (
             threshold.num._nb_cnt(*data1, leaf_size=50, dist="inf", parallel=parallel).sum()
             - n_rows1
         )
         n_rows2 = self._expr.count() - m
-        data2 = [self._expr.slice(offset=0, length=n_rows2)] + [
+        data2 = [self._expr.slice(offset=0, length=n_rows2)]
+        data2.extend(
             self._expr.shift(-i).slice(offset=0, length=n_rows2).alias(f"{i}")
             for i in range(1, m + 1)
-        ]
+        )
         a: pl.Expr = (
             threshold.num._nb_cnt(*data2, leaf_size=50, dist="inf", parallel=parallel).sum()
             - n_rows2

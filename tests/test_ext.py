@@ -892,7 +892,7 @@ def test_knn_pt(df, x, dist, k, res):
             pl.DataFrame({"x": range(5), "y": range(5), "z": range(5)}),
             4,
             "l2",
-            pl.DataFrame({"nb_cnt": [1, 2, 2, 2, 1]}),
+            pl.DataFrame({"nb_cnt": [2, 3, 3, 3, 2]}),  # A point is always its own neighbor
         ),
     ],
 )
