@@ -4,7 +4,7 @@ use super::which_distance;
 use crate::no_null_in_inputs;
 use itertools::Itertools;
 use kdtree::KdTree;
-use ndarray::{Array2, Axis};
+use ndarray::{Array2, ArrayView2, Axis};
 use polars::prelude::*;
 use pyo3_polars::export::polars_core::utils::rayon::iter::{
     FromParallelIterator, IntoParallelIterator, ParallelBridge,
@@ -16,18 +16,18 @@ use pyo3_polars::{
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
-struct KdtreeKwargs {
-    k: usize,
-    leaf_size: usize,
-    metric: String,
-    parallel: bool,
+pub(crate) struct KdtreeKwargs {
+    pub(crate) k: usize,
+    pub(crate) leaf_size: usize,
+    pub(crate) metric: String,
+    pub(crate) parallel: bool,
 }
 
 #[inline]
-fn build_standard_kdtree<'a>(
+pub fn build_standard_kdtree<'a>(
     dim: usize,
     leaf_size: usize,
-    data: &'a Array2<f64>,
+    data: &'a ArrayView2<f64>,
 ) -> Result<KdTree<f64, usize, &'a [f64]>, PolarsError> {
     // Building the tree
     let mut tree = KdTree::with_capacity(dim, leaf_size);
@@ -71,7 +71,8 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
     let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
 
     // Building the tree
-    let tree = build_standard_kdtree(dim, leaf_size, &data)?;
+    let binding = data.view();
+    let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
 
     // Building output
     let mut builder =
@@ -152,7 +153,8 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
 
     // Building the tree
-    let tree = build_standard_kdtree(dim, leaf_size, &data)?;
+    let binding = data.view();
+    let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
 
     // Building the output
     let mut out: Vec<bool> = vec![false; height];
@@ -162,6 +164,38 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
         }
     }
     Ok(BooleanChunked::from_slice("", &out).into_series())
+}
+
+/// Neighbor count query
+#[inline]
+pub fn query_nb_cnt(
+    tree: &KdTree<f64, usize, &[f64]>,
+    data: ArrayView2<f64>,
+    dist_func: &fn(&[f64], &[f64]) -> f64,
+    r: &f64,
+    parallel: bool,
+) -> UInt32Chunked {
+    if parallel {
+        UInt32Chunked::from_par_iter(data.axis_iter(Axis(0)).into_par_iter().map(|pt| {
+            let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
+            if let Ok(v) = tree.iter_nearest(s, dist_func) {
+                let cnt = v.take_while(|(d, _)| d <= &r).count();
+                Some(cnt.abs_diff(1) as u32)
+            } else {
+                None
+            }
+        }))
+    } else {
+        UInt32Chunked::from_iter(data.axis_iter(Axis(0)).map(|pt| {
+            let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
+            if let Ok(v) = tree.iter_nearest(s, dist_func) {
+                let cnt = v.take_while(|(d, _)| d <= &r).count();
+                Some(cnt.abs_diff(1) as u32)
+            } else {
+                None
+            }
+        }))
+    }
 }
 
 /// For every point in this dataframe, find the number of neighbors within radius r
@@ -190,34 +224,13 @@ fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
 
     // Building the tree
-    let tree = build_standard_kdtree(dim, leaf_size, &data)?;
+    let binding = data.view();
+    let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
 
     if radius.len() == 1 {
         let r = radius.get(0).unwrap();
-        if parallel {
-            let ca =
-                UInt32Chunked::from_par_iter(data.axis_iter(Axis(0)).into_par_iter().map(|pt| {
-                    let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
-                    if let Ok(v) = tree.iter_nearest(s, &dist_func) {
-                        let cnt = v.take_while(|(d, _)| d <= &r).count();
-                        Some(cnt.abs_diff(1) as u32)
-                    } else {
-                        None
-                    }
-                }));
-            Ok(ca.into_series())
-        } else {
-            let ca = UInt32Chunked::from_iter(data.axis_iter(Axis(0)).map(|pt| {
-                let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
-                if let Ok(v) = tree.iter_nearest(s, &dist_func) {
-                    let cnt = v.take_while(|(d, _)| d <= &r).count();
-                    Some(cnt.abs_diff(1) as u32)
-                } else {
-                    None
-                }
-            }));
-            Ok(ca.into_series())
-        }
+        let ca = query_nb_cnt(&tree, data.view(), &dist_func, &r, parallel);
+        Ok(ca.into_series())
     } else if radius.len() == height {
         if parallel {
             let ca = UInt32Chunked::from_par_iter(

@@ -1,11 +1,8 @@
 use kdtree::distance::squared_euclidean;
 use num::{Float, Zero};
-use polars::{
-    chunked_array::ChunkedArray,
-    datatypes::PolarsFloatType,
-    error::{PolarsError, PolarsResult},
-};
+use polars::error::PolarsError;
 
+mod approximate_entropy;
 mod complex;
 mod cond_entropy;
 mod fft;

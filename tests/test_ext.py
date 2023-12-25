@@ -932,3 +932,50 @@ def test_haversine(df, res):
         pld.haversine(pl.col("x1"), pl.col("x2"), pl.col("y1"), pl.col("y2")).alias("dist")
     )
     assert_frame_equal(test, res)
+
+
+@pytest.mark.parametrize(
+    "s, res",
+    [
+        (list(range(100)), 0.010471299867295437),
+        (np.sin(2 * np.pi * np.arange(3000) / 100), 0.16367903754688098),
+    ],
+)
+def test_sample_entropy(s, res):
+    # Test 1's answer comes from comparing result with Tsfresh
+    # Thest 2's answer comes from running this using the Python code on Wikipedia
+    df = pl.Series(name="a", values=s).to_frame()
+    entropy = df.select(pl.col("a").num.sample_entropy()).item(0, 0)
+    assert np.isclose(entropy, res, atol=1e-12, equal_nan=True)
+
+
+@pytest.mark.parametrize(
+    "s, m, r, scale, res",
+    [
+        ([1], 2, 0.5, False, float("nan")),
+        ([12, 13, 15, 16, 17] * 10, 2, 0.9, True, 0.282456191276673),
+        ([1.4, -1.3, 1.7, -1.2], 2, 0.5, False, 0.0566330122651324),
+        (
+            [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+            2,
+            0.5,
+            False,
+            0.002223871246127107,
+        ),
+        (
+            [0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1],
+            2,
+            0.5,
+            False,
+            0.47133806162842484,
+        ),
+        ([85, 80, 89] * 17, 2, 3, False, 1.099654110658932e-05),
+        ([85, 80, 89] * 17, 2, 3, True, 0.0),
+    ],
+)
+def test_apprximate_entropy(s, m, r, scale, res):
+    df = pl.Series(name="a", values=s).to_frame()
+    entropy = df.select(
+        pl.col("a").num.approximate_entropy(m=m, filtering_level=r, scale_by_std=scale)
+    ).item(0, 0)
+    assert np.isclose(entropy, res, atol=1e-12, equal_nan=True)
