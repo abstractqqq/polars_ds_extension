@@ -1,5 +1,6 @@
 import polars as pl
 from typing import Union, Optional
+from . import IntoExpr
 from .type_alias import DetrendMethod, Distance
 from polars.utils.udfs import _get_shared_lib_location
 
@@ -560,7 +561,7 @@ class NumExt:
         Computes least squares solution to the equation Ax = y. If columns are
         not linearly independent, some numerical issue may occur. E.g you may see
         unrealistic coefficient in the output. It is possible to have `silent` numerical
-        issue during computation.
+        issue during computation. If input contains null, an error will be thrown.
 
         All positional arguments should be expressions representing predictive variables. This
         does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
@@ -634,8 +635,8 @@ class NumExt:
     ) -> pl.Expr:
         """
         Treats self as an ID column, and uses other columns to determine the k nearest neighbors
-        to every index in self. By default, this will not include the point itself as its neighbor.
-        This will throw an error if any null value is found in the data/id column.
+        to every id. By default, this will return self, and k more neighbors. So the output size
+        is actually k + 1. This will throw an error if any null value is found.
 
         Note that reference col/self must be convertible to u64. If you do not have a u64 ID column,
         you can generate one using pl.int_range(..), which should be a step before this.
@@ -651,7 +652,7 @@ class NumExt:
         k
             Number of neighbors to query
         leaf_size
-            Leaf size for the kd-tree. Tuning this might improve performance.
+            Leaf size for the kd-tree. Tuning this might improve runtime performance.
         dist
             The L^p distance to use or `h` for haversine. Default `l2`. Currently only
             supports `l1`, `l2` and `inf` which is L infinity or `h` or `haversine`. Any
@@ -682,13 +683,9 @@ class NumExt:
     ) -> pl.Expr:
         """
         Treats self as a point, and uses other columns to filter to the k nearest neighbors
-        to self. The recommended usage of this is something like
+        to self. The recommendation is to use the knn function in polars_ds.
 
-        pl.lit(pl.Series([0.1,0.2,0.3])).num._knn_pt(pl.col('x1'), pl.col('x2'), pl.col('x3'), dist='inf')
-
-        but a wrapper will be provided.
-
-        Also note that this internally builds a kd-tree for fast querying and deallocates it once we
+        Note that this internally builds a kd-tree for fast querying and deallocates it once we
         are done. If you need to repeatedly run the same query on the same data, then it is not
         ideal to use this. A specialized external kd-tree structure would be better in that case.
 
@@ -715,4 +712,21 @@ class NumExt:
             args=list(others),
             kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": False},
             is_elementwise=True,
+        )
+
+    def _haversine(
+        self,
+        start_long: IntoExpr,
+        end_lat: IntoExpr,
+        end_long: IntoExpr,
+    ) -> pl.Expr:
+        """
+        Treats self as start_lat and computes haversine distance naively.
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_haversine",
+            args=[start_long, end_lat, end_long],
+            is_elementwise=True,
+            cast_to_supertypes=True,
         )

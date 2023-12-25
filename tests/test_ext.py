@@ -848,7 +848,8 @@ def test_precision_recall_roc_auc():
             pl.DataFrame({"id": range(5), "val1": range(5), "val2": range(5), "val3": range(5)}),
             "l2",
             2,
-            pl.DataFrame({"nn": [[1, 2], [2, 0], [1, 3], [2, 4], [3, 2]]}),
+            # Remember that this counts self as well.
+            pl.DataFrame({"nn": [[0, 1, 2], [1, 2, 0], [2, 1, 3], [3, 2, 4], [4, 3, 2]]}),
         ),
     ],
 )
@@ -865,7 +866,7 @@ def test_knn_ptwise(df, dist, k, res):
 
 
 @pytest.mark.parametrize(
-    "df, pt, dist, k, res",
+    "df, x, dist, k, res",
     [
         (
             pl.DataFrame({"id": range(5), "val1": range(5), "val2": range(5), "val3": range(5)}),
@@ -876,9 +877,32 @@ def test_knn_ptwise(df, dist, k, res):
         ),
     ],
 )
-def test_knn_pt(df, pt, dist, k, res):
-    df2 = df.filter(
-        pld.knn(pl.col("val1"), pl.col("val2"), pl.col("val3"), pt=pt, dist=dist, k=k)
+def test_knn_pt(df, x, dist, k, res):
+    test = df.filter(
+        pld.knn(x, pl.col("val1"), pl.col("val2"), pl.col("val3"), dist=dist, k=k)
     ).select(pl.col("id"))
 
-    assert_frame_equal(df2, res)
+    assert_frame_equal(test, res)
+
+
+@pytest.mark.parametrize(
+    "df, res",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "x1": [51.5007],
+                    "x2": [0.1246],
+                    "y1": [40.6892],
+                    "y2": [74.0445],
+                }
+            ),
+            pl.DataFrame({"dist": [5574.840456848555]}),
+        ),
+    ],
+)
+def test_haversine(df, res):
+    test = df.select(
+        pld.haversine(pl.col("x1"), pl.col("x2"), pl.col("y1"), pl.col("y2")).alias("dist")
+    )
+    assert_frame_equal(test, res)

@@ -1,3 +1,3 @@
 ## Extension for String Manipulation and Metrics
 
-::: polars_ds.str_ext
+::: polars_ds.str2
