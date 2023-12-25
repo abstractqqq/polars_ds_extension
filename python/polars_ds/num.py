@@ -1,6 +1,6 @@
 import polars as pl
 from typing import Union, Optional
-from .type_alias import DetrendMethod
+from .type_alias import DetrendMethod, Distance
 from polars.utils.udfs import _get_shared_lib_location
 
 _lib = _get_shared_lib_location(__file__)
@@ -185,11 +185,16 @@ class NumExt:
             is_elementwise=True,
         )
 
-    def is_equidistant(self) -> pl.Expr:
+    def is_equidistant(self, tol: float = 1e-6) -> pl.Expr:
         """
         Checks if a column has equal distance between consecutive values.
+
+        Parameters
+        ----------
+        tol
+            Tolerance. If difference is all smaller than this, then true.
         """
-        return self._expr.diff(null_behavior="drop").unique_counts().count().eq(1)
+        return (self._expr.diff(null_behavior="drop").abs() < tol).all()
 
     def hubor_loss(self, pred: pl.Expr, delta: float) -> pl.Expr:
         """
@@ -560,7 +565,7 @@ class NumExt:
         Computes least squares solution to the equation Ax = y. If columns are
         not linearly independent, some numerical issue may occur. E.g you may see
         unrealistic coefficient in the output. It is possible to have `silent` numerical
-        issue during computation.
+        issue during computation. If input contains null, an error will be thrown.
 
         All positional arguments should be expressions representing predictive variables. This
         does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
@@ -586,7 +591,7 @@ class NumExt:
 
     def detrend(self, method: DetrendMethod = "linear") -> pl.Expr:
         """
-        Detrends self using either linear/mean method.
+        Detrends self using either linear/mean method. This does not persist.
 
         Parameters
         ----------
@@ -596,7 +601,7 @@ class NumExt:
 
         if method == "linear":
             N = self._expr.count()
-            x = pl.int_range(0, N, dtype=pl.Float64, eager=False)
+            x = pl.int_range(0, N, eager=False)
             coeff = pl.cov(self._expr, x) / x.var()
             const = self._expr.mean() - coeff * (N - 1) / 2
             return self._expr - x * coeff - const
@@ -622,4 +627,235 @@ class NumExt:
         x: pl.Expr = self._expr.cast(pl.Float64)
         return x.register_plugin(
             lib=_lib, symbol="pl_rfft", args=[le], is_elementwise=False, changes_length=True
+        )
+
+    def knn_ptwise(
+        self,
+        *others: pl.Expr,
+        k: int = 5,
+        leaf_size: int = 40,
+        dist: Distance = "l2",
+        parallel: bool = False,
+    ) -> pl.Expr:
+        """
+        Treats self as an ID column, and uses other columns to determine the k nearest neighbors
+        to every id. By default, this will return self, and k more neighbors. So the output size
+        is actually k + 1. This will throw an error if any null value is found.
+
+        Note that reference col/self must be convertible to u64. If you do not have a u64 ID column,
+        you can generate one using pl.int_range(..), which should be a step before this.
+
+        Also note that this internally builds a kd-tree for fast querying and deallocates it once we
+        are done. If you need to repeatedly run the same query on the same data, then it is not
+        ideal to use this. A specialized external kd-tree structure would be better in that case.
+
+        Parameters
+        ----------
+        others
+            Other columns used as features
+        k
+            Number of neighbors to query
+        leaf_size
+            Leaf size for the kd-tree. Tuning this might improve runtime performance.
+        dist
+            One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+            `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
+        parallel
+            Whether to run the k-nearest neighbor query in parallel. This is recommended when you
+            are running only this expression, and not in group_by context.
+        """
+        if k < 1:
+            raise ValueError("Input `k` must be >= 1.")
+
+        metric = str(dist).lower()
+        index: pl.Expr = self._expr.cast(pl.UInt64)
+        return index.register_plugin(
+            lib=_lib,
+            symbol="pl_knn_ptwise",
+            args=list(others),
+            kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
+            is_elementwise=True,
+        )
+
+    def _knn_pt(
+        self,
+        *others: pl.Expr,
+        k: int = 5,
+        leaf_size: int = 40,
+        dist: Distance = "l2",
+    ) -> pl.Expr:
+        """
+        Treats self as a point, and uses other columns to filter to the k nearest neighbors
+        to self. The recommendation is to use the knn function in polars_ds.
+
+        Note that this internally builds a kd-tree for fast querying and deallocates it once we
+        are done. If you need to repeatedly run the same query on the same data, then it is not
+        ideal to use this. A specialized external kd-tree structure would be better in that case.
+
+        Parameters
+        ----------
+        others
+            Other columns used as features
+        k
+            Number of neighbors to query
+        leaf_size
+            Leaf size for the kd-tree. Tuning this might improve performance.
+        dist
+            One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+            `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
+        """
+        if k < 1:
+            raise ValueError("Input `k` must be >= 1.")
+
+        metric = str(dist).lower()
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_knn_pt",
+            args=list(others),
+            kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": False},
+            is_elementwise=True,
+        )
+
+    def _nb_cnt(
+        self,
+        *others: pl.Expr,
+        leaf_size: int = 40,
+        dist: Distance = "l2",
+        parallel: bool = False,
+    ) -> pl.Expr:
+        """
+        Treats self as radius, which can be a scalar, or a column with the same length as the columns
+        in `others`. This will return the number of neighbors within (<=) distance for each row.
+        The recommendation is to use the nb_cnt function in polars_ds.
+
+        Parameters
+        ----------
+        others
+            Other columns used as features
+        leaf_size
+            Leaf size for the kd-tree. Tuning this might improve performance.
+        dist
+            One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+            `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
+        parallel
+            Whether to run the k-nearest neighbor query in parallel. This is recommended when you
+            are running only this expression, and not in group_by context.
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_nb_cnt",
+            args=list(others),
+            kwargs={"k": 0, "leaf_size": leaf_size, "metric": dist, "parallel": parallel},
+            is_elementwise=True,
+        )
+
+    # Rewrite of Functime's approximate entropy
+    def approximate_entropy(
+        self, m: int, filtering_level: float, scale_by_std: bool = True, parallel: bool = True
+    ) -> pl.Expr:
+        """
+        Approximate sample entropies of a time series given the filtering level.
+
+        If NaN is returned, it is likely that:
+        (1) Too little data, e.g. m + 1 > length
+        (2) filtering_level or (filtering_level * std) is too close to 0 or std is null/NaN.
+
+        Parameters
+        ----------
+        m : int
+            Length of compared runs of data. This is `m` in the wikipedia article.
+        filtering_level : float
+            Filtering level, must be positive. This is `r` in the wikipedia article.
+        scale_by_std : bool
+            Whether to scale filter level by std of data. In most applications, this is the default
+            behavior, but not in some other cases.
+        parallel : bool
+            Whether to run this in parallel or not. This is recommended when you
+            are running only this expression, and not in group_by context.
+
+        Reference
+        ---------
+        https://en.wikipedia.org/wiki/Approximate_entropy
+        """
+        if filtering_level <= 0:
+            raise ValueError("Filter level must be positive.")
+
+        if scale_by_std:
+            r: pl.Expr = filtering_level * self._expr.std()
+        else:
+            r: pl.Expr = pl.lit(filtering_level, dtype=pl.Float64)
+
+        rows = self._expr.count() - m + 1
+        data = [self._expr.slice(0, length=rows)]
+        # See rust code for more comment on why I put m + 1 here.
+        data.extend(
+            self._expr.shift(-i).slice(0, length=rows).alias(f"{i}") for i in range(1, m + 1)
+        )
+        # More errors are handled in Rust
+        return r.register_plugin(
+            lib=_lib,
+            symbol="pl_approximate_entropy",
+            args=data,
+            kwargs={"k": 0, "leaf_size": 50, "metric": "inf", "parallel": parallel},
+            is_elementwise=False,
+            returns_scalar=True,
+        )
+
+    # Rewrite of Functime's sample_entropy
+    def sample_entropy(self, ratio: float = 0.2, m: int = 2, parallel: bool = False) -> pl.Expr:
+        """
+        Calculate the sample entropy of this column.
+
+        If column's length < m, an "Input contains null" error will be thrown,
+        because the shifted input has null. NaN might be returned when (1) ratio
+        is too small, leading to 0 neighbors in the threshold, (2) when length is
+        very small, which makes (1) more likely.
+
+        Parameters
+        ----------
+        ratio : float
+            The tolerance parameter. Default is 0.2.
+        m : int
+            Length of a run of data. Most common run length is 2.
+        parallel : bool
+            Whether to run this in parallel or not. This is recommended when you
+            are running only this expression, and not in group_by context.
+
+        Reference
+        ---------
+        https://en.wikipedia.org/wiki/Sample_entropy
+        """
+        threshold = ratio * self._expr.std(ddof=0)  # 1 should be fine
+        n_rows1 = self._expr.count() - m + 1
+        data1 = [self._expr.slice(offset=0, length=n_rows1)] + [
+            self._expr.shift(-i).slice(offset=0, length=n_rows1).alias(f"{i}") for i in range(1, m)
+        ]
+        b: pl.Expr = threshold.num._nb_cnt(
+            *data1, leaf_size=50, dist="inf", parallel=parallel
+        ).sum()
+        n_rows2 = self._expr.count() - m
+        data2 = [self._expr.slice(offset=0, length=n_rows2)] + [
+            self._expr.shift(-i).slice(offset=0, length=n_rows2).alias(f"{i}")
+            for i in range(1, m + 1)
+        ]
+        a: pl.Expr = threshold.num._nb_cnt(
+            *data2, leaf_size=50, dist="inf", parallel=parallel
+        ).sum()
+        return (b / a).log()
+
+    def _haversine(
+        self,
+        x_long: pl.Expr,
+        y_lat: pl.Expr,
+        y_long: pl.Expr,
+    ) -> pl.Expr:
+        """
+        Treats self as x_lat and computes haversine distance naively.
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_haversine",
+            args=[x_long, y_lat, y_long],
+            is_elementwise=True,
+            cast_to_supertypes=True,
         )

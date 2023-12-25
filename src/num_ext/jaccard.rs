@@ -204,8 +204,8 @@ fn pl_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
             )),
         }
     } else {
-        Err(PolarsError::ComputeError(
-            "Input column must have the same type.".into(),
+        Err(PolarsError::ShapeMismatch(
+            "Inputs must have the same length or one of them must be a scalar.".into(),
         ))
     }
 }

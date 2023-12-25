@@ -2,7 +2,7 @@ import pytest
 import polars as pl
 import math
 import numpy as np
-import polars_ds  # noqa: F401
+import polars_ds as pld
 from polars.testing import assert_frame_equal
 
 
@@ -839,3 +839,143 @@ def test_precision_recall_roc_auc():
         assert np.isclose(precision, precision_res)
         assert np.isclose(recall, recall_res)
         assert np.isclose(roc_auc_score(actual, predicted_prob), roc_auc_res)
+
+
+@pytest.mark.parametrize(
+    "df, dist, k, res",
+    [
+        (
+            pl.DataFrame({"id": range(5), "val1": range(5), "val2": range(5), "val3": range(5)}),
+            "l2",
+            2,
+            # Remember that this counts self as well.
+            pl.DataFrame({"nn": [[0, 1, 2], [1, 2, 0], [2, 1, 3], [3, 2, 4], [4, 3, 2]]}),
+        ),
+    ],
+)
+def test_knn_ptwise(df, dist, k, res):
+    df2 = df.select(
+        pl.col("id")
+        .num.knn_ptwise(pl.col("val1"), pl.col("val2"), pl.col("val3"), dist=dist, k=k)
+        .alias("nn")
+    )
+    # Make sure the list inner types are both u64
+    res = res.select(pl.col("nn").list.eval(pl.element().cast(pl.UInt64)))
+
+    assert_frame_equal(df2, res)
+
+
+@pytest.mark.parametrize(
+    "df, x, dist, k, res",
+    [
+        (
+            pl.DataFrame({"id": range(5), "val1": range(5), "val2": range(5), "val3": range(5)}),
+            [0.5, 0.5, 0.5],
+            "l2",
+            3,
+            pl.DataFrame({"id": [0, 1, 2]}),
+        ),
+    ],
+)
+def test_knn_pt(df, x, dist, k, res):
+    test = df.filter(
+        pld.knn(x, pl.col("val1"), pl.col("val2"), pl.col("val3"), dist=dist, k=k)
+    ).select(pl.col("id"))
+
+    assert_frame_equal(test, res)
+
+
+@pytest.mark.parametrize(
+    "df, r, dist, res",
+    [
+        (
+            pl.DataFrame({"x": range(5), "y": range(5), "z": range(5)}),
+            4,
+            "l2",
+            pl.DataFrame({"nb_cnt": [1, 2, 2, 2, 1]}),
+        ),
+    ],
+)
+def test_nb_cnt(df, r, dist, res):
+    test = df.select(
+        pld.query_nb_cnt(
+            r,
+            pl.col("x"),
+            pl.col("y"),
+            pl.col("z"),  # Columns used as the coordinates in n-d space
+            dist=dist,
+        )
+        .cast(pl.UInt32)
+        .alias("nb_cnt")
+    )
+    assert_frame_equal(test, res.with_columns(pl.col("nb_cnt").cast(pl.UInt32)))
+
+
+@pytest.mark.parametrize(
+    "df, res",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "x1": [51.5007],
+                    "x2": [0.1246],
+                    "y1": [40.6892],
+                    "y2": [74.0445],
+                }
+            ),
+            pl.DataFrame({"dist": [5574.840456848555]}),
+        ),
+    ],
+)
+def test_haversine(df, res):
+    test = df.select(
+        pld.haversine(pl.col("x1"), pl.col("x2"), pl.col("y1"), pl.col("y2")).alias("dist")
+    )
+    assert_frame_equal(test, res)
+
+
+@pytest.mark.parametrize(
+    "s, res",
+    [
+        (list(range(100)), 0.010471299867295437),
+        (np.sin(2 * np.pi * np.arange(3000) / 100), 0.16367903754688098),
+    ],
+)
+def test_sample_entropy(s, res):
+    # Test 1's answer comes from comparing result with Tsfresh
+    # Thest 2's answer comes from running this using the Python code on Wikipedia
+    df = pl.Series(name="a", values=s).to_frame()
+    entropy = df.select(pl.col("a").num.sample_entropy()).item(0, 0)
+    assert np.isclose(entropy, res, atol=1e-12, equal_nan=True)
+
+
+@pytest.mark.parametrize(
+    "s, m, r, scale, res",
+    [
+        ([1], 2, 0.5, False, float("nan")),
+        ([12, 13, 15, 16, 17] * 10, 2, 0.9, True, 0.282456191276673),
+        ([1.4, -1.3, 1.7, -1.2], 2, 0.5, False, 0.0566330122651324),
+        (
+            [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+            2,
+            0.5,
+            False,
+            0.002223871246127107,
+        ),
+        (
+            [0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1],
+            2,
+            0.5,
+            False,
+            0.47133806162842484,
+        ),
+        ([85, 80, 89] * 17, 2, 3, False, 1.099654110658932e-05),
+        ([85, 80, 89] * 17, 2, 3, True, 0.0),
+    ],
+)
+def test_apprximate_entropy(s, m, r, scale, res):
+    df = pl.Series(name="a", values=s).to_frame()
+    entropy = df.select(
+        pl.col("a").num.approximate_entropy(m=m, filtering_level=r, scale_by_std=scale)
+    ).item(0, 0)
+    assert np.isclose(entropy, res, atol=1e-12, equal_nan=True)

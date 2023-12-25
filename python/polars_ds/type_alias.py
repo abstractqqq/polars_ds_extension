@@ -10,3 +10,4 @@ else:  # 3.9
 DetrendMethod: TypeAlias = Literal["linear", "mean"]
 AhoCorasickMatchKind: TypeAlias = Literal["standard", "left_most_first", "left_most_longest"]
 Alternative: TypeAlias = Literal["two-sided", "less", "greater"]
+Distance = Literal["l1", "l2", "inf", "h", "haversine"]

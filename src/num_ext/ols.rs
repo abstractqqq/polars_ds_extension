@@ -1,3 +1,4 @@
+use crate::no_null_in_inputs;
 /// OLS using Faer.
 use faer::IntoFaer;
 use faer::{prelude::*, MatRef};
@@ -37,6 +38,8 @@ fn faer_lstsq_qr(x: MatRef<f64>, y: MatRef<f64>) -> Result<Vec<f64>, String> {
 
 #[polars_expr(output_type_func=list_float_output)]
 fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
+    let _ = no_null_in_inputs(inputs, "OLS: Input should not contain null.".into());
+
     let nrows = inputs[0].len();
     let add_bias = inputs[1].bool()?;
     let add_bias: bool = add_bias.get(0).unwrap();
