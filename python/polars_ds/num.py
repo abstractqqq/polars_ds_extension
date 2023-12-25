@@ -754,9 +754,10 @@ class NumExt:
         self, m: int, filtering_level: float, scale_by_std: bool = True, parallel: bool = True
     ) -> pl.Expr:
         """
-        Approximate sample entropies of a time series given the filtering level.
+        Approximate sample entropies of a time series given the filtering level. It is highly
+        recommended that the user impute nulls before calling this.
 
-        If NaN is returned, it is likely that:
+        If NaN/some error is returned/thrown, it is likely that:
         (1) Too little data, e.g. m + 1 > length
         (2) filtering_level or (filtering_level * std) is too close to 0 or std is null/NaN.
 
@@ -796,7 +797,7 @@ class NumExt:
             lib=_lib,
             symbol="pl_approximate_entropy",
             args=data,
-            kwargs={"k": 0, "leaf_size": 50, "metric": "inf", "parallel": parallel},
+            kwargs={"k": 0, "leaf_size": 40, "metric": "inf", "parallel": parallel},
             is_elementwise=False,
             returns_scalar=True,
         )
@@ -804,12 +805,12 @@ class NumExt:
     # Rewrite of Functime's sample_entropy
     def sample_entropy(self, ratio: float = 0.2, m: int = 2, parallel: bool = False) -> pl.Expr:
         """
-        Calculate the sample entropy of this column.
+        Calculate the sample entropy of this column. It is highly
+        recommended that the user impute nulls before calling this.
 
-        If column's length < m, an "Input contains null" error will be thrown,
-        because the shifted input has null. NaN might be returned when (1) ratio
-        is too small, leading to 0 neighbors in the threshold, (2) when length is
-        very small, which makes (1) more likely.
+        If NaN/some error is returned/thrown, it is likely that:
+        (1) Too little data, e.g. m + 1 > length
+        (2) ratio or (ratio * std) is too close to 0 or std is null/NaN.
 
         Parameters
         ----------
@@ -825,28 +826,22 @@ class NumExt:
         ---------
         https://en.wikipedia.org/wiki/Sample_entropy
         """
-        threshold = ratio * self._expr.std(ddof=0)  # 1 should be fine
-        n_rows1 = self._expr.count() - m + 1
-        data1 = [self._expr.slice(offset=0, length=n_rows1)]
-        data1.extend(
-            self._expr.shift(-i).slice(offset=0, length=n_rows1).alias(f"{i}") for i in range(1, m)
+        r = ratio * self._expr.std(ddof=0)
+        rows = self._expr.count() - m + 1
+        data = [self._expr.slice(0, length=rows)]
+        # See rust code for more comment on why I put m + 1 here.
+        data.extend(
+            self._expr.shift(-i).slice(0, length=rows).alias(f"{i}") for i in range(1, m + 1)
         )
-
-        b: pl.Expr = (
-            threshold.num._nb_cnt(*data1, leaf_size=50, dist="inf", parallel=parallel).sum()
-            - n_rows1
+        # More errors are handled in Rust
+        return r.register_plugin(
+            lib=_lib,
+            symbol="pl_sample_entropy",
+            args=data,
+            kwargs={"k": 0, "leaf_size": 40, "metric": "inf", "parallel": parallel},
+            is_elementwise=False,
+            returns_scalar=True,
         )
-        n_rows2 = self._expr.count() - m
-        data2 = [self._expr.slice(offset=0, length=n_rows2)]
-        data2.extend(
-            self._expr.shift(-i).slice(offset=0, length=n_rows2).alias(f"{i}")
-            for i in range(1, m + 1)
-        )
-        a: pl.Expr = (
-            threshold.num._nb_cnt(*data2, leaf_size=50, dist="inf", parallel=parallel).sum()
-            - n_rows2
-        )
-        return (b / a).log()
 
     def _haversine(
         self,

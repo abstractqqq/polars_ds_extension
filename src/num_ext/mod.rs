@@ -2,9 +2,9 @@ use kdtree::distance::squared_euclidean;
 use num::{Float, Zero};
 use polars::error::PolarsError;
 
-mod approximate_entropy;
 mod complex;
 mod cond_entropy;
+mod entrophies;
 mod fft;
 mod gcd_lcm;
 mod haversine;
@@ -16,22 +16,23 @@ mod powi;
 mod tp_fp;
 mod trapz;
 
-// Collection of distances
-
+// Collection of distances, most will be used as function pointers in kd tree related queries,
+// which may be bad for perf.
+#[inline]
 pub fn l_inf_dist<T: Float>(a: &[T], b: &[T]) -> T {
     debug_assert_eq!(a.len(), b.len());
     a.iter()
         .zip(b.iter())
-        .fold(Float::min_value(), |acc, (x, y)| acc.max((*x - *y).abs()))
+        .fold(Zero::zero(), |acc, (x, y)| acc.max((*x - *y).abs()))
 }
-
+#[inline]
 pub fn l1_dist<T: Float>(a: &[T], b: &[T]) -> T {
     debug_assert_eq!(a.len(), b.len());
     a.iter()
         .zip(b.iter())
         .fold(Zero::zero(), |acc, (x, y)| acc + (*x - *y).abs())
 }
-
+#[inline]
 fn haversine_elementwise<T: Float>(start_lat: T, start_long: T, end_lat: T, end_long: T) -> T {
     let r_in_km = T::from(6371.0).unwrap();
     let two = T::from(2.0).unwrap();

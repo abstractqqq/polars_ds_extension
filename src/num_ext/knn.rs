@@ -1,7 +1,6 @@
 /// Performs KNN related search queries, classification and regression, and
 /// other features/entropies that require KNN to be efficiently computed.
 use super::which_distance;
-use crate::no_null_in_inputs;
 use itertools::Itertools;
 use kdtree::KdTree;
 use ndarray::{ArrayView2, Axis};
@@ -49,9 +48,6 @@ pub fn knn_index_output(_: &[Field]) -> PolarsResult<Field> {
 
 #[polars_expr(output_type_func=knn_index_output)]
 fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
-    // Make sure no null input
-    let _ = no_null_in_inputs(inputs, "KNN: Input contains null.".into())?;
-
     // Set up params
     let id = inputs[0].u64()?;
     let data = DataFrame::new(inputs[1..].to_vec())?.agg_chunks();
@@ -84,7 +80,8 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
             .map(|p| {
                 let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
                 if let Ok(v) = tree.iter_nearest(s, &dist_func) {
-                    // By construction, this unwrap is safe
+                    // By construction, this unwrap is safe.
+                    // k+ 1 because we include the point itself, and ask for k more neighbors.
                     Some(
                         v.map(|(_, i)| id.get(*i).unwrap())
                             .take(k + 1)
@@ -125,9 +122,6 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
 /// Only k points will be returned as true.
 #[polars_expr(output_type=Boolean)]
 fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
-    // Make sure no null input
-    let _ = no_null_in_inputs(inputs, "KNN: Input contains null.".into())?;
-
     // Check len
     let pt = inputs[0].f64()?;
     let dim = inputs[1..].len();
@@ -165,10 +159,10 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
             for (_, i) in v.into_iter().take(k) {
                 out[*i] = true;
             }
-        },
+        }
         Err(e) => {
             return Err(PolarsError::ComputeError(
-                ("KNN: ".to_owned() + e.to_string().as_str()).into()
+                ("KNN: ".to_owned() + e.to_string().as_str()).into(),
             ));
         }
     }
@@ -177,13 +171,16 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
 
 /// Neighbor count query
 #[inline]
-pub fn query_nb_cnt(
+pub fn query_nb_cnt<F>(
     tree: &KdTree<f64, usize, &[f64]>,
     data: ArrayView2<f64>,
-    dist_func: &fn(&[f64], &[f64]) -> f64,
+    dist_func: &F,
     r: &f64,
     parallel: bool,
-) -> UInt32Chunked {
+) -> UInt32Chunked
+where
+    F: Fn(&[f64], &[f64]) -> f64 + std::marker::Sync,
+{
     if parallel {
         UInt32Chunked::from_par_iter(data.axis_iter(Axis(0)).into_par_iter().map(|pt| {
             let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
@@ -209,9 +206,6 @@ pub fn query_nb_cnt(
 /// The point itself is always considered as a neighbor to itself.
 #[polars_expr(output_type=UInt32)]
 fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
-    // Make sure no null input
-    let _ = no_null_in_inputs(inputs, "KNN: Input contains null.".into())?;
-
     // Set up radius
     let radius = inputs[0].f64()?;
 
