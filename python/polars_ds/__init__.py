@@ -76,7 +76,7 @@ def query_nb_cnt(
 ) -> pl.Expr:
     """
     Return the number of neighbors within (<=) radius for each row under the given distance
-    metric.
+    metric. The point itself is always a neighbor of itself.
 
     Parameters
     ----------

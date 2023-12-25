@@ -4,7 +4,7 @@ use super::which_distance;
 use crate::no_null_in_inputs;
 use itertools::Itertools;
 use kdtree::KdTree;
-use ndarray::{Array2, ArrayView2, Axis};
+use ndarray::{ArrayView2, Axis};
 use polars::prelude::*;
 use pyo3_polars::export::polars_core::utils::rayon::iter::{
     FromParallelIterator, IntoParallelIterator, ParallelBridge,
@@ -121,6 +121,8 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
     Ok(ca.into_series())
 }
 
+/// Find all the rows that are the k-nearest neighbors to the point given.
+/// Only k points will be returned as true.
 #[polars_expr(output_type=Boolean)]
 fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     // Make sure no null input
@@ -158,9 +160,16 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
 
     // Building the output
     let mut out: Vec<bool> = vec![false; height];
-    if let Ok(v) = tree.iter_nearest(p, &dist_func) {
-        for (_, i) in v.into_iter().take(k) {
-            out[*i] = true;
+    match tree.iter_nearest(p, &dist_func) {
+        Ok(v) => {
+            for (_, i) in v.into_iter().take(k) {
+                out[*i] = true;
+            }
+        },
+        Err(e) => {
+            return Err(PolarsError::ComputeError(
+                ("KNN: ".to_owned() + e.to_string().as_str()).into()
+            ));
         }
     }
     Ok(BooleanChunked::from_slice("", &out).into_series())
@@ -179,8 +188,7 @@ pub fn query_nb_cnt(
         UInt32Chunked::from_par_iter(data.axis_iter(Axis(0)).into_par_iter().map(|pt| {
             let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
             if let Ok(v) = tree.iter_nearest(s, dist_func) {
-                let cnt = v.take_while(|(d, _)| d <= &r).count();
-                Some(cnt.abs_diff(1) as u32)
+                Some(v.take_while(|(d, _)| d <= &r).count() as u32)
             } else {
                 None
             }
@@ -189,8 +197,7 @@ pub fn query_nb_cnt(
         UInt32Chunked::from_iter(data.axis_iter(Axis(0)).map(|pt| {
             let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
             if let Ok(v) = tree.iter_nearest(s, dist_func) {
-                let cnt = v.take_while(|(d, _)| d <= &r).count();
-                Some(cnt.abs_diff(1) as u32)
+                Some(v.take_while(|(d, _)| d <= &r).count() as u32)
             } else {
                 None
             }
@@ -199,6 +206,7 @@ pub fn query_nb_cnt(
 }
 
 /// For every point in this dataframe, find the number of neighbors within radius r
+/// The point itself is always considered as a neighbor to itself.
 #[polars_expr(output_type=UInt32)]
 fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     // Make sure no null input
@@ -242,8 +250,7 @@ fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
                         let r = rad?;
                         let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
                         if let Ok(v) = tree.iter_nearest(s, &dist_func) {
-                            let cnt = v.take_while(|(d, _)| d <= &r).count();
-                            Some(cnt.abs_diff(1) as u32)
+                            Some(v.take_while(|(d, _)| d <= &r).count() as u32)
                         } else {
                             None
                         }
@@ -256,8 +263,7 @@ fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
                     let r = rad?;
                     let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
                     if let Ok(v) = tree.iter_nearest(s, &dist_func) {
-                        let cnt = v.take_while(|(d, _)| d <= &r).count();
-                        Some(cnt.abs_diff(1) as u32)
+                        Some(v.take_while(|(d, _)| d <= &r).count() as u32)
                     } else {
                         None
                     }
