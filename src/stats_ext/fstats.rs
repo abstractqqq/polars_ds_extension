@@ -16,15 +16,27 @@ fn ftest(x: f64, f1: f64, f2: f64) -> Result<StatsResult, String> {
 }
 
 /// An internal helper function to compute f statistic for F test, with the option to comput
-/// the p value too. It shouldn't be used outside.
-/// When return_p is false, returns a Vec
+/// the p value too. It shouldn't be used outside. The API is bad for outsiders to use.
+/// When return_p is false, returns a Vec with f stats.
 /// When return_p is true, returns a Vec that has x_0, .., x_{n-1} = f_0, .., f_{n-1}
 /// where n = inputs.len() - 1 = number of features
-/// x_0, .., x_{n-1} are the same as before, but
-/// x_n, .., x_{2n - 2} = p_0, .., p_{n-1}, are the p values.
+/// And additionally x_n, .., x_{2n - 2} = p_0, .., p_{n-1}, are the p values.
 fn _f_stats(inputs: &[Series], return_p: bool) -> PolarsResult<Vec<f64>> {
-    let target = inputs[0].name();
-    let df = DataFrame::new(inputs.to_vec())?.lazy();
+    let target = "target";
+    let v = inputs
+        .into_iter()
+        .enumerate()
+        .map(|(i, s)| {
+            if i == 0 {
+                s.clone().with_name(target)
+            } else {
+                s.clone().with_name(i.to_string().as_str())
+            }
+        })
+        .collect_vec();
+    let n_cols = v.len();
+
+    let df = DataFrame::new(v)?.lazy();
     // inputs[0] is the group
     // all the rest should numerical
     let mut step_one: Vec<Expr> = Vec::with_capacity(inputs.len() * 2 - 1);
@@ -38,11 +50,12 @@ fn _f_stats(inputs: &[Series], return_p: bool) -> PolarsResult<Vec<f64>> {
             .cast(DataType::UInt32),
     );
 
-    for s in &inputs[1..] {
-        let name = s.name();
-        let n_sum = format!("{}_sum", name);
+    for i in 1..n_cols {
+        let name = i.to_string();
+        let name = name.as_str();
+        let n_sum = format!("{}_sum", i);
         let n_sum = n_sum.as_str();
-        let n_var = format!("{}_var", name);
+        let n_var = format!("{}_var", i);
         let n_var = n_var.as_str();
         step_one.push(col(name).sum().alias(n_sum));
         step_one.push(col(name).var(0).alias(n_var));
@@ -56,7 +69,7 @@ fn _f_stats(inputs: &[Series], return_p: bool) -> PolarsResult<Vec<f64>> {
     }
 
     let mut reference = df
-        .group_by([target])
+        .group_by([col(target)])
         .agg(step_one)
         .select(step_two)
         .collect()?;
@@ -65,18 +78,19 @@ fn _f_stats(inputs: &[Series], return_p: bool) -> PolarsResult<Vec<f64>> {
     let n_classes = reference.drop_in_place("n_classes")?;
     let n_samples = n_samples.u32()?;
     let n_classes = n_classes.u32()?;
-    let n_samples = n_samples.get(0).unwrap();
+    let n_samples = n_samples.get(0).unwrap_or(0);
     let n_classes = n_classes.get(0).unwrap_or(0);
 
-    if n_classes <= 1 {
+    if n_classes <= 1 || n_samples <= 1 {
         return Err(PolarsError::ComputeError(
-            "Number of classes is either 1 or 0, which is invalid.".into(),
+            "Number of classes, or number of samples is either 1 or 0, which is invalid.".into(),
         ));
     }
 
     let df_btw_class = n_classes.abs_diff(1) as f64;
     let df_in_class = n_samples.abs_diff(n_classes) as f64;
 
+    // fstats is 2D
     let fstats = reference.to_ndarray::<Float64Type>(IndexOrder::default())?;
     let scale = df_in_class / df_btw_class;
 
@@ -130,7 +144,7 @@ fn pl_f_stats(inputs: &[Series]) -> PolarsResult<Series> {
 /// and inputs[1] as the column to run F-test. There should be only two columns.
 #[polars_expr(output_type_func=simple_stats_output)]
 fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
-    // Since inputs only has 1 feature, this has to be a size 2 vec.
+    // The variable res has 2 values, the test statistic and p value.
     let res = _f_stats(&inputs[..2], true)?;
     let s = Series::from_vec("statistic", vec![res[0]]);
     let p = Series::from_vec("pvalue", vec![res[1]]);
