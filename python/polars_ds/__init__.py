@@ -14,7 +14,7 @@ __all__ = ["NumExt", "StrExt", "StatsExt", "ComplexExt"]
 def query_radius(
     x: Union[list[float], "np.ndarray", pl.Series],  # noqa: F821
     *others: pl.Expr,
-    radius: float,
+    radius: Union[float, pl.Expr],
     dist: Distance = "l2",
 ) -> pl.Expr:
     """
@@ -28,14 +28,14 @@ def query_radius(
     others
         Other columns used as features
     radius
-        The radius to query with.
+        The radius to query with. Either a scalar, or an expression.
     dist
         One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
         `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
     """
     oth = list(others)
     if len(x) != len(oth):
-        raise ValueError("Dimension of x must match the number of columns in `others`.")
+        raise ValueError("Dimension does not match.")
 
     if dist == "l1":
         return (
@@ -50,7 +50,7 @@ def query_radius(
     elif dist in ("h", "haversine"):
         if (len(x) != 2) or (len(oth) < 2):
             raise ValueError(
-                "For Haversine distance, input x must have size 2 and 2 more columns"
+                "For Haversine distance, input x must have dimension 2 and 2 other columns"
                 " must be provided as lat and long."
             )
 
@@ -58,7 +58,7 @@ def query_radius(
         y_long = pl.Series(values=[x[1]], dtype=pl.Float64)
         dist = oth[0].num._haversine(oth[1], y_lat, y_long)
         return dist <= radius
-    else:  # defaults to l2
+    else:  # defaults to l2, actually squared l2
         return (
             pl.sum_horizontal(
                 (e - pl.lit(x[i], dtype=pl.Float64)).pow(2) for i, e in enumerate(oth)

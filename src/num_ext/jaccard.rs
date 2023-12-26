@@ -56,9 +56,6 @@ fn _list_jaccard(a: &ListChunked, b: &ListChunked) -> Float64Chunked {
 
 #[polars_expr(output_type=Float64)]
 fn pl_list_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
-    // let include_null = inputs[2].bool()?;
-    // let include_null = include_null.get(0).unwrap();
-
     let s1 = inputs[0].list()?;
     let s2 = inputs[1].list()?;
 
@@ -71,7 +68,6 @@ fn pl_list_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
         let out = _list_jaccard(s1, s2);
         Ok(out.into_series())
     } else if s1.inner_dtype() == DataType::Utf8 {
-        // Not sure how to get binary elementwise to work here.
         Ok(s1
             .into_iter()
             .zip(s2.into_iter())
@@ -104,13 +100,19 @@ fn pl_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
         (t1.drop_nulls(), t2.drop_nulls())
     };
 
-    if s1.dtype() == s2.dtype() {
-        // God, help me with this unholy mess,
-        // All for the sake of not casting...
-        // I wasn't able to do it using the same method above.
-        // Nor was I able to figure out some macro to help me do this...
-        // It is fine like this, because this is what the compiler would do anyways,
-        // But it is just plain ugly...
+    // God, help me with this unholy mess,
+    if s1.dtype().is_integer() && s1.dtype() != s2.dtype() {
+        let ca1 = s1.cast(&DataType::Int64)?;
+        let ca1 = ca1.i64()?;
+        let ca2 = s2.cast(&DataType::Int64)?;
+        let ca2 = ca2.i64()?;
+        let hs1 = ca1.into_iter().collect::<PlHashSet<_>>();
+        let hs2 = ca2.into_iter().collect::<PlHashSet<_>>();
+        let s3_len = hs1.intersection(&hs2).count();
+        let out = s3_len as f64 / (hs1.len() + hs2.len() - s3_len) as f64;
+        let out = Float64Chunked::from_iter([Some(out)]);
+        Ok(out.into_series())
+    } else if s1.dtype() == s2.dtype() {
         match s1.dtype() {
             Int8 => {
                 let ca1 = s1.i8()?;
