@@ -857,10 +857,11 @@ def test_knn_ptwise(df, dist, k, res):
     df2 = df.select(
         pl.col("id")
         .num.knn_ptwise(pl.col("val1"), pl.col("val2"), pl.col("val3"), dist=dist, k=k)
+        .list.eval(pl.element().sort().cast(pl.UInt32))
         .alias("nn")
     )
     # Make sure the list inner types are both u64
-    res = res.select(pl.col("nn").list.eval(pl.element().cast(pl.UInt64)))
+    res = res.select(pl.col("nn").list.eval(pl.element().sort().cast(pl.UInt32)))
 
     assert_frame_equal(df2, res)
 

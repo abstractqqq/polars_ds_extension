@@ -50,7 +50,7 @@ df2.select(
 Even in-dataframe nearest neighbors queries! 😲
 ```python
 df.with_columns(
-    pl.col("id").cast(pl.UInt64).num.knn_ptwise(
+    pl.col("id").num.knn_ptwise(
         pl.col("val1"), pl.col("val2"), 
         k = 3, dist = "haversine", parallel = True
     ).alias("nearest neighbor ids")

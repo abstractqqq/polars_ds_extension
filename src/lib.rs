@@ -16,15 +16,15 @@ use jemallocator::Jemalloc;
 #[cfg(target_os = "linux")]
 static ALLOC: Jemalloc = Jemalloc;
 
-#[inline]
-pub fn no_null_in_inputs(inputs: &[Series], err_msg: String) -> PolarsResult<()> {
-    for s in inputs {
-        if s.null_count() > 0 {
-            return Err(PolarsError::ComputeError(err_msg.into()));
-        }
-    }
-    Ok(())
-}
+// #[inline]
+// pub fn no_null_in_inputs(inputs: &[Series], err_msg: String) -> PolarsResult<()> {
+//     for s in inputs {
+//         if s.null_count() > 0 {
+//             return Err(PolarsError::ComputeError(err_msg.into()));
+//         }
+//     }
+//     Ok(())
+// }
 
 #[pymodule]
 #[pyo3(name = "_polars_ds")]
