@@ -76,9 +76,9 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     let threshold = threshold.get(0).unwrap();
 
     if (actual.len() != predicted.len())
-        | actual.is_empty()
-        | predicted.is_empty()
-        | ((actual.null_count() + predicted.null_count()) > 0)
+        || actual.is_empty()
+        || predicted.is_empty()
+        || ((actual.null_count() + predicted.null_count()) > 0)
     {
         return Err(PolarsError::ComputeError(
             "Binary Metrics Combo: Input columns must be the same length, non-empty, and shouldn't contain nulls."
