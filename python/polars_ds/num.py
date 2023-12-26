@@ -797,7 +797,7 @@ class NumExt:
             lib=_lib,
             symbol="pl_approximate_entropy",
             args=data,
-            kwargs={"k": 0, "leaf_size": 40, "metric": "inf", "parallel": parallel},
+            kwargs={"k": 0, "leaf_size": 50, "metric": "inf", "parallel": parallel},
             is_elementwise=False,
             returns_scalar=True,
         )
@@ -838,7 +838,7 @@ class NumExt:
             lib=_lib,
             symbol="pl_sample_entropy",
             args=data,
-            kwargs={"k": 0, "leaf_size": 40, "metric": "inf", "parallel": parallel},
+            kwargs={"k": 0, "leaf_size": 50, "metric": "inf", "parallel": parallel},
             is_elementwise=False,
             returns_scalar=True,
         )

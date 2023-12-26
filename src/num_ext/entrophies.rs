@@ -6,6 +6,7 @@ use pyo3_polars::derive::polars_expr;
 // https://en.wikipedia.org/wiki/Sample_entropy
 // https://en.wikipedia.org/wiki/Approximate_entropy
 
+
 #[polars_expr(output_type=Float64)]
 fn pl_approximate_entropy(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     // inputs[0] is radius, the rest are the shifted columns
@@ -31,17 +32,17 @@ fn pl_approximate_entropy(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResu
     // Step 3, 4, 5 in wiki
     let data_1_view = data.slice(s![..n1, ..dim.abs_diff(1)]);
     let tree = build_standard_kdtree(dim.abs_diff(1), leaf_size, &data_1_view)?;
-    let nb_in_radius = query_nb_cnt(&tree, data_1_view, &super::l_inf_dist, &r, parallel);
-    let phi_m: Float64Chunked = nb_in_radius.apply_values_generic(|x| (x as f64 / n1 as f64).ln());
-    let phi_m: f64 = phi_m.mean().unwrap_or(0.);
+    let nb_in_radius = query_nb_cnt(&tree, data_1_view, &super::l_inf_dist, r, parallel);
+    let phi_m: f64 = nb_in_radius.into_no_null_iter()
+        .fold(0_f64, |acc, x| acc + (x as f64 / n1 as f64).ln()) / n1 as f64;
 
     // Step 3, 4, 5 for m + 1 in wiki
     let n2 = n1.abs_diff(1);
     let data_2_view = data.slice(s![..n2, ..]);
     let tree = build_standard_kdtree(dim, leaf_size, &data_2_view)?;
-    let nb_in_radius = query_nb_cnt(&tree, data_2_view, &super::l_inf_dist, &r, parallel);
-    let phi_m1: Float64Chunked = nb_in_radius.apply_values_generic(|x| (x as f64 / n2 as f64).ln());
-    let phi_m1: f64 = phi_m1.mean().unwrap_or(0.);
+    let nb_in_radius = query_nb_cnt(&tree, data_2_view, &super::l_inf_dist, r, parallel);
+    let phi_m1: f64 = nb_in_radius.into_no_null_iter()
+        .fold(0_f64, |acc, x| acc + (x as f64 / n2 as f64).ln()) / n2 as f64;
 
     // Output
     Ok(Series::from_vec("", vec![(phi_m1 - phi_m).abs()]))
@@ -71,13 +72,13 @@ fn pl_sample_entropy(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Se
 
     let data_1_view = data.slice(s![..n1, ..dim.abs_diff(1)]);
     let tree = build_standard_kdtree(dim.abs_diff(1), leaf_size, &data_1_view)?;
-    let nb_in_radius = query_nb_cnt(&tree, data_1_view, &super::l_inf_dist, &r, parallel);
+    let nb_in_radius = query_nb_cnt(&tree, data_1_view, &super::l_inf_dist, r, parallel);
     let b = (nb_in_radius.sum().unwrap_or(0) as f64) - (n1 as f64);
 
     let n2 = n1.abs_diff(1);
     let data_2_view = data.slice(s![..n2, ..]);
     let tree = build_standard_kdtree(dim, leaf_size, &data_2_view)?;
-    let nb_in_radius = query_nb_cnt(&tree, data_2_view, &super::l_inf_dist, &r, parallel);
+    let nb_in_radius = query_nb_cnt(&tree, data_2_view, &super::l_inf_dist, r, parallel);
     let a = (nb_in_radius.sum().unwrap_or(0) as f64) - (n2 as f64);
 
     // Output

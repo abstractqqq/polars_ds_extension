@@ -25,6 +25,7 @@ pub fn l_inf_dist<T: Float>(a: &[T], b: &[T]) -> T {
         .zip(b.iter())
         .fold(Zero::zero(), |acc, (x, y)| acc.max((*x - *y).abs()))
 }
+
 #[inline]
 pub fn l1_dist<T: Float>(a: &[T], b: &[T]) -> T {
     debug_assert_eq!(a.len(), b.len());
@@ -32,6 +33,7 @@ pub fn l1_dist<T: Float>(a: &[T], b: &[T]) -> T {
         .zip(b.iter())
         .fold(Zero::zero(), |acc, (x, y)| acc + (*x - *y).abs())
 }
+
 #[inline]
 fn haversine_elementwise<T: Float>(start_lat: T, start_long: T, end_lat: T, end_long: T) -> T {
     let r_in_km = T::from(6371.0).unwrap();
