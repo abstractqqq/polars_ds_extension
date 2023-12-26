@@ -22,15 +22,18 @@ fn ftest(x: f64, f1: f64, f2: f64) -> Result<StatsResult, String> {
 /// where n = inputs.len() - 1 = number of features
 /// And additionally x_n, .., x_{2n - 2} = p_0, .., p_{n-1}, are the p values.
 fn _f_stats(inputs: &[Series], return_p: bool) -> PolarsResult<Vec<f64>> {
-    
     let target = "target";
-    let v = inputs.into_iter().enumerate().map(|(i , s)| {
-        if i == 0 {
-            s.clone().with_name(target)
-        } else {
-            s.clone().with_name(i.to_string().as_str())
-        }
-    }).collect_vec();
+    let v = inputs
+        .into_iter()
+        .enumerate()
+        .map(|(i, s)| {
+            if i == 0 {
+                s.clone().with_name(target)
+            } else {
+                s.clone().with_name(i.to_string().as_str())
+            }
+        })
+        .collect_vec();
     let n_cols = v.len();
 
     let df = DataFrame::new(v)?.lazy();

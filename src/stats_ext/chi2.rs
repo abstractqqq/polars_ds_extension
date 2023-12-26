@@ -5,7 +5,6 @@ use pyo3_polars::derive::polars_expr;
 
 #[polars_expr(output_type_func=simple_stats_output)]
 fn pl_chi2(inputs: &[Series]) -> PolarsResult<Series> {
-
     let s1_name = "s1";
     let s2_name = "s2";
 

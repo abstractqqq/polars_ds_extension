@@ -1,5 +1,5 @@
 import polars as pl
-from typing import Union, Optional
+from typing import Union, Optional, Literal
 from polars.utils.udfs import _get_shared_lib_location
 from .type_alias import AhoCorasickMatchKind
 import warnings
@@ -492,7 +492,7 @@ class StrExt:
         self, other: Union[str, pl.Expr], weight: float = 0.1, parallel: bool = False
     ) -> pl.Expr:
         """
-        Computes the Jaro-Winker similarity between this and the other str.
+        Computes the Jaro-Winkler similarity between this and the other str.
         Jaro-Winkler distance = 1 - Jaro-Winkler sim.
 
         Parameters
@@ -549,6 +549,53 @@ class StrExt:
             args=[other_, pl.lit(pad, pl.Boolean), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
+
+    def similar_to_vocab(
+        self,
+        vocab: list[str],
+        threshold: float,
+        metric: Literal["leven", "dleven", "jw", "osa"] = "leven",
+        strategy: Literal["avg", "all", "any"] = "avg",
+    ) -> pl.Expr:
+        """
+        Compare each word in the vocab with the each word in self. Filters self to the words
+        that are most similar to the words in the vocab.
+
+        Parameters
+        ----------
+        vocab
+            Any iterable collection of strings
+        threshold
+            A entry is considered similar to the words in the vocabulary if the similarity
+            is above (>=) the threshold
+        metric
+            Which similarity metric to use. One of `leven`, `dleven`, `jw`, `osa`
+        strategy
+            If `avg`, then will return true if the average similarity is above the threshold.
+            If `all`, then will return true if the similarity to all words in the vocab is above
+            the threshold.
+            If `any`, then will return true if the similarity to any words in the vocab is above
+            the threshold.
+        """
+        if metric == "leven":
+            sims = [self.levenshtein(w, return_sim=True) for w in vocab]
+        elif metric == "dleven":
+            sims = [self.d_levenshtein(w, return_sim=True) for w in vocab]
+        elif metric == "osa":
+            sims = [self.osa(w, return_sim=True) for w in vocab]
+        elif sims == "jw":
+            sims = [self.jw(w, return_sim=True) for w in vocab]
+        else:
+            raise ValueError(f"Unknown metric for find_similar: {metric}")
+
+        if strategy == "all":
+            return pl.all_horizontal(s >= threshold for s in sims)
+        elif strategy == "any":
+            return pl.any_horizontal(s >= threshold for s in sims)
+        elif strategy == "avg":
+            return (pl.sum_horizontal(sims) / len(vocab)) >= threshold
+        else:
+            raise ValueError(f"Unknown strategy for find_similar: {strategy}")
 
     def tokenize(self, pattern: str = r"(?u)\b\w\w+\b", stem: bool = False) -> pl.Expr:
         """

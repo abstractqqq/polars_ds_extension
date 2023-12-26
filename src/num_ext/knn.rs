@@ -80,12 +80,13 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
             .into_par_iter()
             .map(|p| {
                 let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
-                // tree.nearest(s, k+1, &dist_func)
-                if let Ok(v) = tree.nearest(s, k+1, &dist_func) {
+                                               // tree.nearest(s, k+1, &dist_func)
+                if let Ok(v) = tree.nearest(s, k + 1, &dist_func) {
                     // By construction, this unwrap is safe.
                     // k+ 1 because we include the point itself, and ask for k more neighbors.
                     Some(
-                        v.into_iter().map(|(_, i)| id.get(*i).unwrap())
+                        v.into_iter()
+                            .map(|(_, i)| id.get(*i).unwrap())
                             .collect_vec(),
                     )
                 } else {
@@ -103,9 +104,10 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
     } else {
         for p in data.rows() {
             let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
-            if let Ok(v) = tree.nearest(s, k+1, &dist_func) {
+            if let Ok(v) = tree.nearest(s, k + 1, &dist_func) {
                 // By construction, this unwrap is safe
-                let w: Vec<u64> = v.into_iter()
+                let w: Vec<u64> = v
+                    .into_iter()
                     .map(|(_, i)| id.get(*i).unwrap())
                     .collect_vec();
                 builder.append_slice(w.as_slice());
