@@ -33,12 +33,17 @@ class ComplexExt:
         """Turns a column of floats into a column of complex with im = 0."""
         return pl.concat_list(self._expr, pl.lit(0.0, dtype=pl.Float64))
 
-    def with_imag(self, other: pl.Expr) -> pl.Expr:
+    def with_imag(self, im: pl.Expr) -> pl.Expr:
         """
-        Treats self as the real part, and other as the imaginary part and combines
-        them into a complex column. An alias for pl.concat_list(self._expr, other)
+        Treats self as the real part, and the other as the imaginary part and combines
+        them into a complex column. An alias for pl.concat_list(self._expr, im)
+
+        Parameters
+        ----------
+        im
+            Another polars expression represeting imaginary part
         """
-        return pl.concat_list(self._expr, other)
+        return pl.concat_list(self._expr, im)
 
     def modulus(self) -> pl.Expr:
         """Returns the modulus of the complex number."""
@@ -49,7 +54,14 @@ class ComplexExt:
         return self._expr.list.eval(pl.element().dot(pl.element())).list.first()
 
     def theta(self, degree: bool = False) -> pl.Expr:
-        """Returns the polar angle (in radians by default) of the complex number."""
+        """
+        Returns the polar angle (in radians by default) of the complex number.
+
+        Parameters
+        ----------
+        degree
+            If true, use degree. If false, use radians.
+        """
         x = self._expr.list.first()
         y = self._expr.list.last()
         if degree:
@@ -83,54 +95,69 @@ class ComplexExt:
         """Returns complex conjugate."""
         return pl.concat_list(self._expr.list.first(), -self._expr.list.last())
 
-    def add(self, other: Union[float, complex, pl.Expr]) -> pl.Expr:
+    def add(self, rhs: Union[float, complex, pl.Expr]) -> pl.Expr:
         """
         Add either a single real, complex, or another col of complex to self. If other is
         an expression, it must be another col of complex numbers.
+
+        Parameters
+        ----------
+        rhs
+            The right hand side.
         """
-        if isinstance(other, float):
-            return self._expr.list.eval(pl.element() + pl.Series([other, 0]))
-        if isinstance(other, complex):
-            return self._expr.list.eval(pl.element() + pl.Series([other.real, other.imag]))
-        else:
+        if isinstance(rhs, float):
+            return self._expr.list.eval(pl.element() + pl.Series([rhs, 0]))
+        if isinstance(rhs, complex):
+            return self._expr.list.eval(pl.element() + pl.Series([rhs.real, rhs.imag]))
+        else:  # Expression must be another complex col
             return pl.concat_list(
-                self._expr.list.first() + other.list.first(),
-                self._expr.list.last() + other.list.last(),
+                self._expr.list.first() + rhs.list.first(),
+                self._expr.list.last() + rhs.list.last(),
             )
 
-    def sub(self, other: Union[float, complex, pl.Expr]) -> pl.Expr:
+    def sub(self, rhs: Union[float, complex, pl.Expr]) -> pl.Expr:
         """
         Subtract either a single real, complex, or another col of complex to self. If other is
         an expression, it must be another col of complex numbers.
+
+        Parameters
+        ----------
+        rhs
+            The right hand side.
         """
-        if isinstance(other, float):
-            return self._expr.list.eval(pl.element() - pl.Series([other, 0]))
-        if isinstance(other, complex):
-            return self._expr.list.eval(pl.element() - pl.Series([other.real, other.imag]))
+        if isinstance(rhs, float):
+            return self._expr.list.eval(pl.element() - pl.Series([rhs, 0]))
+        if isinstance(rhs, complex):
+            return self._expr.list.eval(pl.element() - pl.Series([rhs.real, rhs.imag]))
         else:
             return pl.concat_list(
-                self._expr.list.first() - other.list.first(),
-                self._expr.list.last() - other.list.last(),
+                self._expr.list.first() - rhs.list.first(),
+                self._expr.list.last() - rhs.list.last(),
             )
 
-    def mul(self, other: Union[float, complex, pl.Expr]) -> pl.Expr:
+    def mul(self, rhs: Union[float, complex, pl.Expr]) -> pl.Expr:
         """
         Multiply either a single real, complex, or another col of complex to self. If other is
         an expression, it must be another col of complex numbers.
+
+        Parameters
+        ----------
+        rhs
+            The right hand side.
         """
-        if isinstance(other, float):
-            return self._expr.list.eval(pl.element() * pl.lit(other))
-        if isinstance(other, complex):
+        if isinstance(rhs, float):
+            return self._expr.list.eval(pl.element() * pl.lit(rhs))
+        if isinstance(rhs, complex):
             x = self._expr.list.first()
             y = self._expr.list.last()
-            new_real = x * other.real - y * other.imag
-            new_imag = x * other.imag + y * other.real
+            new_real = x * rhs.real - y * rhs.imag
+            new_imag = x * rhs.imag + y * rhs.real
             return pl.concat_list(new_real, new_imag)
         else:
             x = self._expr.list.first()
             y = self._expr.list.last()
-            x2 = other.list.first()
-            y2 = other.list.last()
+            x2 = rhs.list.first()
+            y2 = rhs.list.last()
             new_real = x * x2 - y * y2
             new_imag = x * y2 + y * x2
             return pl.concat_list(new_real, new_imag)
@@ -142,25 +169,30 @@ class ComplexExt:
         denom = x.pow(2) + y.pow(2)
         return pl.concat_list(x / denom, -y / denom)
 
-    def div(self, other: Union[float, complex, pl.Expr]) -> pl.Expr:
+    def div(self, rhs: Union[float, complex, pl.Expr]) -> pl.Expr:
         """
         Divide either a single real, complex, or another col of complex to self. If other is
         an expression, it must be another col of complex numbers.
+
+        Parameters
+        ----------
+        rhs
+            The right hand side.
         """
-        if isinstance(other, float):
-            return self._expr.list.eval(pl.element() / pl.lit(other))
-        if isinstance(other, complex):
+        if isinstance(rhs, float):
+            return self._expr.list.eval(pl.element() / pl.lit(rhs))
+        if isinstance(rhs, complex):
             x = self._expr.list.first()
             y = self._expr.list.last()
-            inverse = 1 / other
+            inverse = 1 / rhs
             new_real = x * inverse.real - y * inverse.imag
             new_imag = x * inverse.imag + y * inverse.real
             return pl.concat_list(new_real, new_imag)
         else:
             x = self._expr.list.first()
             y = self._expr.list.last()
-            x2 = other.list.first()
-            y2 = other.list.last()
+            x2 = rhs.list.first()
+            y2 = rhs.list.last()
             denom = x2.pow(2) + y2.pow(2)
             x_inv = x2 / denom
             y_inv = -y2 / denom
@@ -175,7 +207,14 @@ class ComplexExt:
         return pl.concat_list(-y, x)
 
     def pow(self, x: float) -> pl.Expr:
-        """Raises a complex number to the x power."""
+        """
+        Raises a complex number to the x power.
+
+        Parameters
+        ----------
+        x
+            Only supports real power now.
+        """
         if x == 0.0:
             return pl.concat_list(
                 pl.when(self.modulus() == 0.0).then(math.nan).otherwise(1.0),

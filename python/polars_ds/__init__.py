@@ -23,15 +23,15 @@ def query_radius(
 
     Parameters
     ----------
-    x
+    x : A point
         The point, at which we filter using the radius.
-    others
+    others : pl.Expr, positional arguments
         Other columns used as features
-    radius
-        The radius to query with. Either a scalar, or an expression.
-    dist
-        One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
-        `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
+    radius : either a float or an expression
+        The radius to query with.
+    dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
+        Distance metric to use. Note `l2` is actually squared `l2` for computational
+        efficiency. It defaults to `l2`.
     """
     oth = list(others)
     if len(x) != len(oth):
@@ -80,19 +80,19 @@ def query_nb_cnt(
 
     Parameters
     ----------
-    radius
+    radius : float | Iterable[float] | pl.Expr
         If this is a scalar, then it will run the query with fixed radius for all rows. If
         this is a list, then it must have the same height as the dataframe in which this is run. If
         this is an expression, it must be a pl.col() representing radius in the dataframe.
         A large radius (lots of neighbors) will slow down performance.
-    others
+    others : pl.Expr, positional arguments
         Other columns used as features
-    leaf_size
+    leaf_size : int, > 0
         Leaf size for the kd-tree. Tuning this might improve performance.
-    dist
-        One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
-        `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
-    parallel
+    dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
+        Distance metric to use. Note `l2` is actually squared `l2` for computational
+        efficiency. It defaults to `l2`.
+    parallel : bool
         Whether to run the distance query in parallel. This is recommended when you
         are running only this expression, and not in group_by context.
     """
@@ -122,18 +122,21 @@ def knn(
 
     Parameters
     ----------
-    x
+    x : A point
         The point. It must be of the same length as the number of columns in `others`.
-    others
+    others : pl.Expr, positional arguments
         Other columns used as features
-    k
+    k : int, > 0
         Number of neighbors to query
-    leaf_size
+    leaf_size : int, > 0
         Leaf size for the kd-tree. Tuning this might improve performance.
-    dist
-        One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
-        `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
+    dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
+        Distance metric to use. Note `l2` is actually squared `l2` for computational
+        efficiency. It defaults to `l2`.
     """
+    if k <= 0:
+        raise ValueError("Input `k` should be strictly positive.")
+
     pt = pl.Series(x, dtype=pl.Float64)
     return pl.lit(pt).num._knn_pt(
         *others,

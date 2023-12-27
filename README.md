@@ -18,7 +18,7 @@ pip install polars_ds
 and 
 
 ```python
-import polars_ds
+import polars_ds as pld
 ```
 when you want to use the namespaces provided by the package.
 

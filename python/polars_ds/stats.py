@@ -25,13 +25,13 @@ class StatsExt:
         self, other: pl.Expr, alternative: Alternative = "two-sided", equal_var: bool = False
     ) -> pl.Expr:
         """
-        Performs 2 sample student's t test or Welch's t test. Functionality-wise this is
-        equivalent to SciPy's ttest_ind, with fewer options. The result is not exact but
-        within 1e-10 precision from SciPy's result.
+        Performs 2 sample student's t test or Welch's t test. Functionality-wise this is desgined
+        to be equivalent to SciPy's ttest_ind, with fewer options. The result is not exact but
+        within 1e-10 precision from SciPy's.
 
         In the case of student's t test, the data is assumed to have no nulls, and n = self._expr.count()
-        is used to compute the statistic. Note self._expr.count() only counts non-null elements after polars 0.20.
-        The df will be 2n - 2. As a result, nulls might cause problems.
+        is used. Note self._expr.count() only counts non-null elements after polars 0.20.
+        The degree of freedom will be 2n - 2. As a result, nulls might cause problems.
 
         In the case of Welch's t test, data will be sanitized (nulls, NaNs, Infs will be dropped
         before the test), and df will be counted based on the length of sanitized data.
@@ -40,8 +40,8 @@ class StatsExt:
         ----------
         other
             The other expression
-        alternative
-            One of "two-sided", "less" or "greater"
+        alternative : {"two-sided", "less", "greater"}
+            Alternative of the hypothesis test
         equal_var
             If true, perform standard student t 2 sample test. Otherwise, perform Welch's
             t test.
@@ -85,8 +85,8 @@ class StatsExt:
         ----------
         pop_mean
             The expected population mean in the hypothesis test
-        alternative
-            One of "two-sided", "less" or "greater"
+        alternative : {"two-sided", "less", "greater"}
+            Alternative of the hypothesis test
         """
         s1 = self._expr.filter(self._expr.is_finite())
         sm = s1.mean()
@@ -102,38 +102,38 @@ class StatsExt:
             returns_scalar=True,
         )
 
-    def f_stats(self, *cols: pl.Expr) -> pl.Expr:
+    def f_stats(self, *vars: pl.Expr) -> pl.Expr:
         """
-        Computes multiple F statistics at once using self as the grouping column. This does not
-        output p values. If the p value is desired, use f_test. This will return
+        Computes multiple F statistics at once by using self as the grouping (class) column. This
+        does not output p values. If the p value is desired, use `f_test`. This will return
         all the stats as a scalar list in order.
 
         Parameters
         ----------
-        *cols
-            Polars expressions for numerical columns. The columns must be of the same length.
+        *vars
+            The variables (Polars df columns) to compute the F statistics
         """
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_f_stats",
-            args=list(cols),
+            args=list(vars),
             is_elementwise=False,
             returns_scalar=True,
         )
 
-    def f_test(self, other: pl.Expr) -> pl.Expr:
+    def f_test(self, var: pl.Expr) -> pl.Expr:
         """
         Performs the ANOVA F-test using self as the grouping column.
 
         Parameters
         ----------
-        other
+        var
             The column to run ANOVA F-test on
         """
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_f_test",
-            args=[other],
+            args=[var],
             is_elementwise=False,
             returns_scalar=True,
         )
@@ -163,17 +163,17 @@ class StatsExt:
             returns_scalar=True,
         )
 
-    def ks_stats(self, other: pl.Expr) -> pl.Expr:
+    def ks_stats(self, var: pl.Expr) -> pl.Expr:
         """
         Computes two-sided KS statistics with other. Currently it only returns the statistics.
 
         Parameters
         ----------
-        other
-            A Polars Expression
+        var
+            The column to run KS statistic on
         """
         y = self._expr.filter(self._expr.is_finite()).cast(pl.Float64)
-        other_ = other.filter(other.is_finite()).cast(pl.Float64)
+        other_ = var.filter(var.is_finite()).cast(pl.Float64)
         return y.register_plugin(
             lib=_lib,
             symbol="pl_ks_2samp",
@@ -189,8 +189,8 @@ class StatsExt:
 
         Parameters
         ----------
-        other
-            A Polars Expression
+        target
+            A Polars Expression representing the binary target
         """
         y = self._expr.cast(pl.Float64)
         y1 = y.filter(target == target.max())
@@ -203,23 +203,25 @@ class StatsExt:
             returns_scalar=True,
         )
 
-    def chi2(self, other: pl.Expr) -> pl.Expr:
+    def chi2(self, var: pl.Expr) -> pl.Expr:
         """
-        Computes the Chi Squared statistic and p value between two categorical values. Note that it is
-        up to the user to make sure that the two columns contain categorical values. This method is
-        equivalent to SciPy's chi2_contingency, except that it also computes the contingency table
-        internally for the user.
+        Computes the Chi Squared statistic and p value between two categorical values by treating
+        self as the first column and var as the second.
+
+        Note that it is up to the user to make sure that the two columns contain categorical
+        values. This method is equivalent to SciPy's chi2_contingency, except that it also
+        computes the contingency table internally for the user.
 
         Parameters
         ----------
-        other
-            A Polars Expression
+        var
+            The second column to run chi squared test on
         """
 
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_chi2",
-            args=[other],
+            args=[var],
             is_elementwise=False,
             returns_scalar=True,
         )
@@ -233,7 +235,7 @@ class StatsExt:
     ) -> pl.Expr:
         """
         Generates random integers uniformly from the range [low, high). Throws an error if low == high
-        or if low is None and high is None and use_ref_nunique == False.
+        or if low is None and high is None.
 
         This treats self as the reference column.
 

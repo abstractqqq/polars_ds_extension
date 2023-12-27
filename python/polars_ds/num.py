@@ -523,23 +523,25 @@ class NumExt:
             returns_scalar=True,
         )
 
-    def lstsq(self, *others: pl.Expr, add_bias: bool = False) -> pl.Expr:
+    def lstsq(self, *vars: pl.Expr, add_bias: bool = False) -> pl.Expr:
         """
-        Computes least squares solution to the equation Ax = y. If columns are
-        not linearly independent, some numerical issue may occur. E.g you may see
-        unrealistic coefficient in the output. It is possible to have `silent` numerical
+        Computes least squares solution to the equation Ax = y by treating self as y.
+
+        Note: if columns are not linearly independent, some numerical issue may occur. E.g
+        you may see unrealistic coefficients in the output. It is possible to have
+        `silent` numerical
         issue during computation. If input contains null, an error will be thrown.
 
         All positional arguments should be expressions representing predictive variables. This
         does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
 
         If add_bias is true, it will be the last coefficient in the output
-        and output will have len(others) + 1
+        and output will have len(vars) + 1
 
         Parameters
         ----------
-        others
-            Polars expressions.
+        vars
+            The other variables used to predict target (self).
         add_bias
             Whether to add a bias term
         """
@@ -547,7 +549,7 @@ class NumExt:
         return y.register_plugin(
             lib=_lib,
             symbol="pl_lstsq",
-            args=[pl.lit(add_bias, dtype=pl.Boolean)] + list(others),
+            args=[pl.lit(add_bias, dtype=pl.Boolean)] + list(vars),
             is_elementwise=False,
             returns_scalar=True,
         )
