@@ -50,15 +50,21 @@ pub fn knn_index_output(_: &[Field]) -> PolarsResult<Field> {
 fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     // Set up params
     let id = inputs[0].u64()?;
-    let data = DataFrame::new(inputs[1..].to_vec())?.agg_chunks();
-
+    
     let dim = inputs[1..].len();
     if dim == 0 {
         return Err(PolarsError::ComputeError(
             "KNN: No column to decide distance from.".into(),
         ));
     }
-
+    let mut vs:Vec<Series> = Vec::with_capacity(dim);
+    for (i, s) in inputs[1..].into_iter().enumerate() {
+        let news = s
+            .rechunk()
+            .with_name(&i.to_string());
+        vs.push(news)
+    }
+    let data = DataFrame::new(vs)?;
     let k = kwargs.k;
     let leaf_size = kwargs.leaf_size;
     let parallel = kwargs.parallel;
@@ -141,7 +147,14 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     let p = p.as_slice().unwrap(); // Rechunked, so safe to unwrap
 
     // Set up params
-    let data = DataFrame::new(inputs[1..].to_vec())?.agg_chunks();
+    let mut vs:Vec<Series> = Vec::with_capacity(dim);
+    for (i, s) in inputs[1..].into_iter().enumerate() {
+        let news = s
+            .rechunk()
+            .with_name(&i.to_string());
+        vs.push(news)
+    }
+    let data = DataFrame::new(vs)?;
     let height = data.height();
     let dim = inputs[1..].len();
     let k = kwargs.k;
@@ -213,19 +226,26 @@ fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     let radius = inputs[0].f64()?;
 
     // Set up params
-    let data = DataFrame::new(inputs[1..].to_vec())?.agg_chunks();
     let dim = inputs[1..].len();
     if dim == 0 {
         return Err(PolarsError::ComputeError(
             "KNN: No column to decide distance from.".into(),
         ));
     }
+    
+    let mut vs:Vec<Series> = Vec::with_capacity(dim);
+    for (i, s) in inputs[1..].into_iter().enumerate() {
+        let news = s
+            .rechunk()
+            .with_name(&i.to_string());
+        vs.push(news)
+    }
+    let data = DataFrame::new(vs)?;
+    let height = data.height();
     let parallel = kwargs.parallel;
     let leaf_size = kwargs.leaf_size;
     let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
-
     // Need to use C order because C order is row-contiguous
-    let height = data.height();
     let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
 
     // Building the tree
