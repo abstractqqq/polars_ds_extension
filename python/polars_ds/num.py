@@ -1,3 +1,4 @@
+import math
 import polars as pl
 from typing import Union, Optional
 from .type_alias import DetrendMethod, Distance
@@ -21,20 +22,6 @@ class NumExt:
 
     def __init__(self, expr: pl.Expr):
         self._expr: pl.Expr = expr
-
-    def binarize(self, cond: Optional[pl.Expr]) -> pl.Expr:
-        """
-        Binarize the column by a boolean condition.
-
-        Parameters
-        ----------
-        cond : Optional[pl.Expr]
-            If cond is none, this is equivalent to self._expr == self._expr.max(). If provided,
-            this will binarize by (self._expr >= cond).
-        """
-        if cond is None:
-            return (self._expr.eq(self._expr.max())).cast(pl.UInt8)
-        return (self._expr.ge(cond)).cast(pl.UInt8)
 
     def std_err(self, ddof: int = 1) -> pl.Expr:
         """
@@ -66,7 +53,7 @@ class NumExt:
         """
         return self._expr.product().pow(1.0 / self._expr.count())
 
-    def c_o_v(self, ddof: int = 1) -> pl.Expr:
+    def cv(self, ddof: int = 1) -> pl.Expr:
         """
         Returns the coefficient of variation of the expression
         """
@@ -78,13 +65,13 @@ class NumExt:
         """
         return (self._expr.max() - self._expr.min()) / self._expr.mean()
 
-    def z_normalize(self, ddof: int = 1) -> pl.Expr:
+    def z_scale(self, ddof: int = 1) -> pl.Expr:
         """
         z_normalize the given expression: remove the mean and scales by the std
         """
         return (self._expr - self._expr.mean()) / self._expr.std(ddof=ddof)
 
-    def min_max_normalize(self) -> pl.Expr:
+    def min_max_scale(self) -> pl.Expr:
         """
         Min max normalize the given expression.
         """
@@ -192,9 +179,9 @@ class NumExt:
         Parameters
         ----------
         tol
-            Tolerance. If difference is all smaller than this, then true.
+            Tolerance. If difference is all smaller (<=) than this, then true.
         """
-        return (self._expr.diff(null_behavior="drop").abs() < tol).all()
+        return (self._expr.diff(null_behavior="drop").abs() <= tol).all()
 
     def hubor_loss(self, pred: pl.Expr, delta: float) -> pl.Expr:
         """
@@ -327,7 +314,7 @@ class NumExt:
         denominator = 1.0 / (self._expr.abs() + pred.abs())
         return (1.0 / self._expr.count()) * numerator.dot(denominator)
 
-    def logloss(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
+    def log_loss(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
         Computes log loss, aka binary cross entropy loss, between self and other `pred` expression.
 
@@ -345,9 +332,9 @@ class NumExt:
 
     def bce(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
-        Binary cross entropy. Alias for logloss.
+        Binary cross entropy. Alias for log_loss.
         """
-        return self.logloss(pred, normalize)
+        return self.log_loss(pred, normalize)
 
     def roc_auc(self, pred: pl.Expr) -> pl.Expr:
         """
@@ -459,34 +446,10 @@ class NumExt:
         df_tot = self._expr.count() - 1
         return 1.0 - (ss_res / df_res) / (ss_tot / df_tot)
 
-    # Not recommended to use
-    def powi(self, n: Union[int, pl.Expr]) -> pl.Expr:
-        """
-        Computes positive integer power using the fast exponentiation algorithm. This is the
-        fastest when n is an integer input (Faster than Polars's builtin when n >= 16). When n
-        is an expression, it would depend on values in the expression (Still researching...)
-
-        Parameters
-        ----------
-        n
-            A single positive int or an expression representing a column of type i32. If type is
-            not i32, an error will occur.
-        """
-
-        if isinstance(n, int):
-            n_ = pl.lit(n, pl.Int32)
-        else:
-            n_ = n
-
-        return self._expr.register_plugin(
-            lib=_lib, symbol="pl_fast_exp", args=[n_], is_elementwise=True, returns_scalar=False
-        )
-
     def jaccard(self, other: pl.Expr, include_null: bool = False) -> pl.Expr:
         """
         Computes jaccard similarity between this column and the other. This will hash entire
         columns and compares the two hashsets. Note: only integer/str columns can be compared.
-        Input expressions must represent columns of the same dtype.
 
         Parameters
         ----------
@@ -560,23 +523,25 @@ class NumExt:
             returns_scalar=True,
         )
 
-    def lstsq(self, *others: pl.Expr, add_bias: bool = False) -> pl.Expr:
+    def lstsq(self, *vars: pl.Expr, add_bias: bool = False) -> pl.Expr:
         """
-        Computes least squares solution to the equation Ax = y. If columns are
-        not linearly independent, some numerical issue may occur. E.g you may see
-        unrealistic coefficient in the output. It is possible to have `silent` numerical
+        Computes least squares solution to the equation Ax = y by treating self as y.
+
+        Note: if columns are not linearly independent, some numerical issue may occur. E.g
+        you may see unrealistic coefficients in the output. It is possible to have
+        `silent` numerical
         issue during computation. If input contains null, an error will be thrown.
 
         All positional arguments should be expressions representing predictive variables. This
         does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
 
         If add_bias is true, it will be the last coefficient in the output
-        and output will have len(others) + 1
+        and output will have len(vars) + 1
 
         Parameters
         ----------
-        others
-            Polars expressions.
+        vars
+            The other variables used to predict target (self).
         add_bias
             Whether to add a bias term
         """
@@ -584,7 +549,7 @@ class NumExt:
         return y.register_plugin(
             lib=_lib,
             symbol="pl_lstsq",
-            args=[pl.lit(add_bias, dtype=pl.Boolean)] + list(others),
+            args=[pl.lit(add_bias, dtype=pl.Boolean)] + list(vars),
             is_elementwise=False,
             returns_scalar=True,
         )
@@ -842,6 +807,54 @@ class NumExt:
             is_elementwise=False,
             returns_scalar=True,
         )
+
+    def permutation_entropy(
+        self,
+        tau: int = 1,
+        n_dims: int = 3,
+        base: float = math.e,
+    ) -> pl.Expr:
+        """
+        Computes permutation entropy.
+
+        Parameters
+        ----------
+        tau : int
+            The embedding time delay which controls the number of time periods between elements
+            of each of the new column vectors.
+        n_dims : int, > 1
+            The embedding dimension which controls the length of each of the new column vectors
+        base : float
+            The base for log in the entropy computation
+
+        Reference
+        ---------
+        https://www.aptech.com/blog/permutation-entropy/
+        """
+        if n_dims <= 1:
+            raise ValueError("Input `n_dims` has to be > 1.")
+
+        if tau == 1:  # Fast track the most common use case
+            return (
+                pl.concat_list(self._expr, *(self._expr.shift(-i) for i in range(1, n_dims)))
+                .head(self._expr.count() - n_dims + 1)
+                .list.eval(pl.element().arg_sort())
+                .value_counts()  # groupby and count, but returns a struct
+                .struct.field("count")  # extract the field named "counts"
+                .entropy(base=base, normalize=True)
+            )
+        else:
+            return (
+                pl.concat_list(
+                    self._expr.gather_every(tau),
+                    *(self._expr.shift(-i).gather_every(tau) for i in range(1, n_dims)),
+                )
+                .slice(0, length=(self._expr.count() // tau) + 1 - (n_dims // tau))
+                .list.eval(pl.element().arg_sort())
+                .value_counts()
+                .struct.field("count")
+                .entropy(base=base, normalize=True)
+            )
 
     def _haversine(
         self,

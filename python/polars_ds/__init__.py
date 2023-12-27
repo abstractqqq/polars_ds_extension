@@ -14,7 +14,7 @@ __all__ = ["NumExt", "StrExt", "StatsExt", "ComplexExt"]
 def query_radius(
     x: Union[list[float], "np.ndarray", pl.Series],  # noqa: F821
     *others: pl.Expr,
-    radius: float,
+    radius: Union[float, pl.Expr],
     dist: Distance = "l2",
 ) -> pl.Expr:
     """
@@ -23,19 +23,19 @@ def query_radius(
 
     Parameters
     ----------
-    x
+    x : A point
         The point, at which we filter using the radius.
-    others
+    others : pl.Expr, positional arguments
         Other columns used as features
-    radius
+    radius : either a float or an expression
         The radius to query with.
-    dist
-        One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
-        `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
+    dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
+        Distance metric to use. Note `l2` is actually squared `l2` for computational
+        efficiency. It defaults to `l2`.
     """
     oth = list(others)
     if len(x) != len(oth):
-        raise ValueError("Dimension of x must match the number of columns in `others`.")
+        raise ValueError("Dimension does not match.")
 
     if dist == "l1":
         return (
@@ -50,7 +50,7 @@ def query_radius(
     elif dist in ("h", "haversine"):
         if (len(x) != 2) or (len(oth) < 2):
             raise ValueError(
-                "For Haversine distance, input x must have size 2 and 2 more columns"
+                "For Haversine distance, input x must have dimension 2 and 2 other columns"
                 " must be provided as lat and long."
             )
 
@@ -58,7 +58,7 @@ def query_radius(
         y_long = pl.Series(values=[x[1]], dtype=pl.Float64)
         dist = oth[0].num._haversine(oth[1], y_lat, y_long)
         return dist <= radius
-    else:  # defaults to l2
+    else:  # defaults to l2, actually squared l2
         return (
             pl.sum_horizontal(
                 (e - pl.lit(x[i], dtype=pl.Float64)).pow(2) for i, e in enumerate(oth)
@@ -80,19 +80,19 @@ def query_nb_cnt(
 
     Parameters
     ----------
-    radius
+    radius : float | Iterable[float] | pl.Expr
         If this is a scalar, then it will run the query with fixed radius for all rows. If
         this is a list, then it must have the same height as the dataframe in which this is run. If
         this is an expression, it must be a pl.col() representing radius in the dataframe.
         A large radius (lots of neighbors) will slow down performance.
-    others
+    others : pl.Expr, positional arguments
         Other columns used as features
-    leaf_size
+    leaf_size : int, > 0
         Leaf size for the kd-tree. Tuning this might improve performance.
-    dist
-        One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
-        `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
-    parallel
+    dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
+        Distance metric to use. Note `l2` is actually squared `l2` for computational
+        efficiency. It defaults to `l2`.
+    parallel : bool
         Whether to run the distance query in parallel. This is recommended when you
         are running only this expression, and not in group_by context.
     """
@@ -122,18 +122,21 @@ def knn(
 
     Parameters
     ----------
-    x
+    x : A point
         The point. It must be of the same length as the number of columns in `others`.
-    others
+    others : pl.Expr, positional arguments
         Other columns used as features
-    k
+    k : int, > 0
         Number of neighbors to query
-    leaf_size
+    leaf_size : int, > 0
         Leaf size for the kd-tree. Tuning this might improve performance.
-    dist
-        One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
-        `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
+    dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
+        Distance metric to use. Note `l2` is actually squared `l2` for computational
+        efficiency. It defaults to `l2`.
     """
+    if k <= 0:
+        raise ValueError("Input `k` should be strictly positive.")
+
     pt = pl.Series(x, dtype=pl.Float64)
     return pl.lit(pt).num._knn_pt(
         *others,

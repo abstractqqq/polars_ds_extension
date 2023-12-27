@@ -131,7 +131,7 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     if dim == 0 || pt.len() != dim {
         return Err(PolarsError::ComputeError(
             "KNN: There has to be at least one column in `others` and input point \
-            must be the same length as the number of columns in `others`."
+            must be the same dimension as the number of columns in `others`."
                 .into(),
         ));
     }

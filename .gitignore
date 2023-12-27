@@ -1,8 +1,13 @@
 .ipynb_checkpoints
+
+# Local, quick adhoc test only purpose
 tests/*.ipynb
 tests/test.ipynb
 
 /target
+
+# Mkdocs
+site/
 
 # Ruff
 .ruff_cache/

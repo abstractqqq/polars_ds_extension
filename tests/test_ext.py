@@ -1,6 +1,5 @@
 import pytest
 import polars as pl
-import math
 import numpy as np
 import polars_ds as pld
 from polars.testing import assert_frame_equal
@@ -75,44 +74,6 @@ def test_lcm(df, other, res):
     assert_frame_equal(df.select(pl.col("a").num.lcm(other)), res)
 
     assert_frame_equal(df.lazy().select(pl.col("a").num.lcm(other)).collect(), res)
-
-
-@pytest.mark.parametrize(
-    "df, p",
-    [
-        (
-            pl.DataFrame(
-                {
-                    "a": [0.1 + x / 1000 for x in range(1000)],
-                    "b": pl.Series(range(1000), dtype=pl.Int32),
-                }
-            ),
-            pl.col("b"),
-        ),
-        (
-            pl.DataFrame(
-                {
-                    "a": [0.1 + x / 1000 for x in range(1000)],
-                    "b": pl.Series(range(1000), dtype=pl.Int32),
-                }
-            ),
-            10,
-        ),
-        (
-            pl.DataFrame(
-                {
-                    "a": [math.inf, math.nan],
-                }
-            ),
-            2,
-        ),
-    ],
-)
-def test_powi(df, p):
-    # The reason I avoided 0 is that
-    # In polars 0^0 = 1, which is wrong.
-    # In polars-ds, this will be mapped to NaN.
-    assert_frame_equal(df.select(pl.col("a").num.powi(p)), df.select(pl.col("a").pow(p)))
 
 
 @pytest.mark.parametrize(

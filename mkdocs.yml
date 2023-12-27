@@ -1,20 +1,28 @@
-site_name: Polars-ds Docs
+site_name: Polars-ds API References
+site_url: https://polars-ds-extension.readthedocs.io/en/latest/
+
+use_directory_urls: false
 
 nav:
 - Home: index.md
-- Complex Extension: complex_ext.md
-- Numerical Extension: num_ext.md
-- Stats Extension: stats_ext.md
-- String Extension: str_ext.md
+- Complex Extension: complex.md
+- Numerical Extension: num.md
+- Stats Extension: stats.md
+- String Extension: str2.md
+- Additional Expressions: polars_ds.md
 
 theme:
   name: material
+  locale: en
+  highlightjs: true
 
 plugins:
 - search
+- section-index
 - mkdocstrings:
     handlers:
       python:
         paths: [python]
-        selection:
+        options:
+          summary: true
           docstring_style: numpy
