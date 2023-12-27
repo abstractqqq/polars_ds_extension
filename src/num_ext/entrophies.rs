@@ -11,19 +11,27 @@ fn pl_approximate_entropy(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResu
     // inputs[0] is radius, the rest are the shifted columns
     // Set up radius. r is a scalar and set up at Python side.
     let radius = inputs[0].f64()?;
+    let name = inputs[1].name();
     if radius.get(0).is_none() {
-        return Ok(Series::from_vec("", vec![f64::NAN]));
+        return Ok(Series::from_vec(name, vec![f64::NAN]));
     }
     let r = radius.get(0).unwrap();
     // Set up params
-    let data = DataFrame::new(inputs[1..].to_vec())?.agg_chunks();
+    let dim = inputs[1..].len();
+    let mut vs:Vec<Series> = Vec::with_capacity(dim);
+    for (i, s) in inputs[1..].into_iter().enumerate() {
+        let news = s
+            .rechunk()
+            .with_name(&i.to_string());
+        vs.push(news)
+    }
+    let data = DataFrame::new(vs)?;
     let n1 = data.height(); // This is equal to original length - m + 1
     let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
     // Here, dim equals to run_length + 1, or m + 1
     // + 1 because I am intentionally generating one more, so that we do to_ndarray only once.
-    let dim = inputs[1..].len();
     if (n1 < dim) || (r <= 0.) || (!r.is_finite()) {
-        return Ok(Series::from_vec("", vec![f64::NAN]));
+        return Ok(Series::from_vec(name, vec![f64::NAN]));
     }
     let parallel = kwargs.parallel;
     let leaf_size = kwargs.leaf_size;
@@ -48,7 +56,7 @@ fn pl_approximate_entropy(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResu
         / n2 as f64;
 
     // Output
-    Ok(Series::from_vec("", vec![(phi_m1 - phi_m).abs()]))
+    Ok(Series::from_vec(name, vec![(phi_m1 - phi_m).abs()]))
 }
 
 #[polars_expr(output_type=Float64)]
@@ -56,19 +64,27 @@ fn pl_sample_entropy(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Se
     // inputs[0] is radius, the rest are the shifted columns
     // Set up radius. r is a scalar and set up at Python side.
     let radius = inputs[0].f64()?;
+    let name = inputs[1].name();
     if radius.get(0).is_none() {
-        return Ok(Series::from_vec("", vec![f64::NAN]));
+        return Ok(Series::from_vec(name, vec![f64::NAN]));
     }
     let r = radius.get(0).unwrap();
     // Set up params
-    let data = DataFrame::new(inputs[1..].to_vec())?.agg_chunks();
+    let dim = inputs[1..].len();
+    let mut vs:Vec<Series> = Vec::with_capacity(dim);
+    for (i, s) in inputs[1..].into_iter().enumerate() {
+        let news = s
+            .rechunk()
+            .with_name(&i.to_string());
+        vs.push(news)
+    }
+    let data = DataFrame::new(vs)?;
     let n1 = data.height(); // This is equal to original length - m + 1
     let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
     // Here, dim equals to run_length + 1, or m + 1
     // + 1 because I am intentionally generating one more, so that we do to_ndarray only once.
-    let dim = inputs[1..].len();
     if (n1 < dim) || (r <= 0.) || (!r.is_finite()) {
-        return Ok(Series::from_vec("", vec![f64::NAN]));
+        return Ok(Series::from_vec(name, vec![f64::NAN]));
     }
     let parallel = kwargs.parallel;
     let leaf_size = kwargs.leaf_size;
@@ -85,5 +101,5 @@ fn pl_sample_entropy(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Se
     let a = (nb_in_radius.sum().unwrap_or(0) as f64) - (n2 as f64);
 
     // Output
-    Ok(Series::from_vec("", vec![(b / a).ln()]))
+    Ok(Series::from_vec(name, vec![(b / a).ln()]))
 }

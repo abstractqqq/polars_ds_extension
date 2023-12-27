@@ -7,7 +7,7 @@ from polars_ds.complex import ComplexExt  # noqa: E402
 from polars_ds.str2 import StrExt  # noqa: E402
 from polars_ds.stats import StatsExt  # noqa: E402
 
-version = "0.2.0"
+version = "0.2.1"
 __all__ = ["NumExt", "StrExt", "StatsExt", "ComplexExt"]
 
 
