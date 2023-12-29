@@ -23,6 +23,23 @@ class MetricExt:
     def __init__(self, expr: pl.Expr):
         self._expr: pl.Expr = expr
 
+    def max_error(self, pred: pl.Expr) -> pl.Expr:
+        """
+        Computes the max absolute error between actual and pred.
+        """
+        x = self._expr - pred
+        return pl.max_horizontal(x.max(), -x.min())
+
+    def mean_gamma_deviance(self, pred: pl.Expr) -> pl.Expr:
+        """
+        Computes the mean gamma deviance between actual and pred.
+
+        Note that this will return NaNs when any value is < 0. This only makes sense when y_true
+        and y_pred as strictly positive.
+        """
+        x = self._expr / pred
+        return 2.0 * (x.log() + x - 1).mean()
+
     def hubor_loss(self, pred: pl.Expr, delta: float) -> pl.Expr:
         """
         Computes huber loss between this and the other expression. This assumes

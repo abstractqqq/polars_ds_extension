@@ -1,4 +1,4 @@
-use crate::num_ext::knn::{build_standard_kdtree, query_nb_cnt, KdtreeKwargs};
+use crate::num::knn::{build_standard_kdtree, query_nb_cnt, KdtreeKwargs};
 use ndarray::s;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;

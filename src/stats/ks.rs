@@ -1,5 +1,5 @@
 /// KS statistics.
-use crate::stats_ext::StatsResult;
+use crate::stats::StatsResult;
 use crate::utils::binary_search_right;
 use itertools::Itertools;
 use polars::prelude::*;
