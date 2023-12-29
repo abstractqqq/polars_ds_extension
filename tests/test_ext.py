@@ -115,6 +115,39 @@ def test_cond_entropy(df, res):
     "df, res",
     [
         (
+            pl.DataFrame(
+                {
+                    "y": [0, 1, 2, 0, 1],
+                    "pred": [
+                        [0.1, 0.5, 0.4],
+                        [0.2, 0.6, 0.2],
+                        [0.4, 0.1, 0.5],
+                        [0.9, 0.05, 0.05],
+                        [0.2, 0.5, 0.3],
+                    ],
+                }
+            ),
+            pl.DataFrame({"a": [0.8610131187075506]}),
+        ),
+    ],
+)
+def test_cross_entropy(df, res):
+    assert_frame_equal(
+        df.select(pl.col("y").metric.categorical_cross_entropy(pl.col("pred")).alias("a")), res
+    )
+
+    assert_frame_equal(
+        df.lazy()
+        .select(pl.col("y").metric.categorical_cross_entropy(pl.col("pred")).alias("a"))
+        .collect(),
+        res,
+    )
+
+
+@pytest.mark.parametrize(
+    "df, res",
+    [
+        (
             pl.DataFrame({"a": [[1, 2, 3], [2, 3]], "b": [[1, 3], [1]]}),
             pl.DataFrame({"res": [2 / 3, 0.0]}),
         ),
@@ -784,7 +817,9 @@ def test_precision_recall_roc_auc():
     )
     for threshold in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
         res = df.select(
-            pl.col("y").num.binary_metrics_combo(pl.col("a"), threshold=threshold).alias("metrics")
+            pl.col("y")
+            .metric.binary_metrics_combo(pl.col("a"), threshold=threshold)
+            .alias("metrics")
         ).unnest("metrics")
         precision_res = res.get_column("precision")[0]
         recall_res = res.get_column("recall")[0]
