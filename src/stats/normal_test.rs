@@ -10,7 +10,7 @@
 ///
 /// I chose this over the Shapiro Francia test because the distribution is unknown and would require Monte Carlo
 use super::{simple_stats_output, StatsResult};
-use crate::stats::{gamma, is_zero};
+use crate::stats_utils::{gamma, is_zero};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 

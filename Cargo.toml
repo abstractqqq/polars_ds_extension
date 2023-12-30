@@ -14,7 +14,7 @@ pyo3 = {version = "*", features = ["extension-module"]}
 pyo3-polars = {version = "*", features = ["derive"]}
 polars = {version = "0.35.4", features = ["performant", "lazy", "dtype-array", "ndarray", "log", "nightly"]}
 num = "0.4.1"
-faer = {version = "0.15", features = ["ndarray", "nightly"]}
+faer = {version = "0.16", features = ["ndarray", "nightly"]}
 serde = {version = "*", features=["derive"]}
 ndarray = {version="0.15.6", features=["rayon"]} # see if we can get rid of this
 hashbrown = {version = "0.14.2", features=["nightly"]}

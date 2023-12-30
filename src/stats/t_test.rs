@@ -1,6 +1,6 @@
 /// Student's t test and Welch's t test.
 use super::{simple_stats_output, Alternative, StatsResult};
-use crate::stats::{beta, is_zero};
+use crate::{stats_utils::{beta, is_zero}, stats};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
@@ -110,7 +110,7 @@ fn pl_ttest_2samp(inputs: &[Series]) -> PolarsResult<Series> {
 
     let alt = inputs[5].utf8()?;
     let alt = alt.get(0).unwrap();
-    let alt = super::Alternative::from(alt);
+    let alt = stats::Alternative::from(alt);
 
     let valid = mean1.is_finite() && mean2.is_finite() && var1.is_finite() && var2.is_finite();
     if !valid {
@@ -147,7 +147,7 @@ fn pl_welch_t(inputs: &[Series]) -> PolarsResult<Series> {
 
     let alt = inputs[6].utf8()?;
     let alt = alt.get(0).unwrap();
-    let alt = super::Alternative::from(alt);
+    let alt = stats::Alternative::from(alt);
 
     // No need to check for validity because input is sanitized.
 
@@ -175,7 +175,7 @@ fn pl_ttest_1samp(inputs: &[Series]) -> PolarsResult<Series> {
 
     let alt = inputs[4].utf8()?;
     let alt = alt.get(0).unwrap();
-    let alt = super::Alternative::from(alt);
+    let alt = stats::Alternative::from(alt);
 
     // No need to check for validity because input is sanitized.
 

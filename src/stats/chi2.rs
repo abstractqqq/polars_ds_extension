@@ -1,5 +1,5 @@
 use super::simple_stats_output;
-use crate::stats::gamma;
+use crate::stats_utils::gamma;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 

@@ -1,6 +1,6 @@
 /// Multiple F-statistics at once and F test
 use super::{list_float_output, simple_stats_output, StatsResult};
-use crate::stats::beta::fisher_snedecor_sf;
+use crate::stats_utils::beta::fisher_snedecor_sf;
 use itertools::Itertools;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
