@@ -328,8 +328,8 @@ class NumExt:
 
         Note: if columns are not linearly independent, some numerical issue may occur. E.g
         you may see unrealistic coefficients in the output. It is possible to have
-        `silent` numerical
-        issue during computation. If input contains null, an error will be thrown.
+        `silent` numerical issue during computation. Also note that if any input column contains null,
+        NaNs will be returned.
 
         All positional arguments should be expressions representing predictive variables. This
         does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.

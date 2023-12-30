@@ -50,18 +50,16 @@ pub fn knn_index_output(_: &[Field]) -> PolarsResult<Field> {
 fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     // Set up params
     let id = inputs[0].u64()?;
-    
+
     let dim = inputs[1..].len();
     if dim == 0 {
         return Err(PolarsError::ComputeError(
             "KNN: No column to decide distance from.".into(),
         ));
     }
-    let mut vs:Vec<Series> = Vec::with_capacity(dim);
+    let mut vs: Vec<Series> = Vec::with_capacity(dim);
     for (i, s) in inputs[1..].into_iter().enumerate() {
-        let news = s
-            .rechunk()
-            .with_name(&i.to_string());
+        let news = s.rechunk().with_name(&i.to_string());
         vs.push(news)
     }
     let data = DataFrame::new(vs)?;
@@ -147,11 +145,9 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     let p = p.as_slice().unwrap(); // Rechunked, so safe to unwrap
 
     // Set up params
-    let mut vs:Vec<Series> = Vec::with_capacity(dim);
+    let mut vs: Vec<Series> = Vec::with_capacity(dim);
     for (i, s) in inputs[1..].into_iter().enumerate() {
-        let news = s
-            .rechunk()
-            .with_name(&i.to_string());
+        let news = s.rechunk().with_name(&i.to_string());
         vs.push(news)
     }
     let data = DataFrame::new(vs)?;
@@ -232,12 +228,10 @@ fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
             "KNN: No column to decide distance from.".into(),
         ));
     }
-    
-    let mut vs:Vec<Series> = Vec::with_capacity(dim);
+
+    let mut vs: Vec<Series> = Vec::with_capacity(dim);
     for (i, s) in inputs[1..].into_iter().enumerate() {
-        let news = s
-            .rechunk()
-            .with_name(&i.to_string());
+        let news = s.rechunk().with_name(&i.to_string());
         vs.push(news)
     }
     let data = DataFrame::new(vs)?;

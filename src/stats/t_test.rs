@@ -1,6 +1,9 @@
 /// Student's t test and Welch's t test.
 use super::{simple_stats_output, Alternative, StatsResult};
-use crate::{stats_utils::{beta, is_zero}, stats};
+use crate::{
+    stats,
+    stats_utils::{beta, is_zero},
+};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
