@@ -6,6 +6,8 @@ use pyo3_polars::derive::polars_expr;
 // https://en.wikipedia.org/wiki/Sample_entropy
 // https://en.wikipedia.org/wiki/Approximate_entropy
 
+// Could be made faster once https://github.com/mrhooray/kdtree-rs/pull/52 is merged
+
 #[polars_expr(output_type=Float64)]
 fn pl_approximate_entropy(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     // inputs[0] is radius, the rest are the shifted columns
@@ -18,11 +20,9 @@ fn pl_approximate_entropy(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResu
     let r = radius.get(0).unwrap();
     // Set up params
     let dim = inputs[1..].len();
-    let mut vs:Vec<Series> = Vec::with_capacity(dim);
+    let mut vs: Vec<Series> = Vec::with_capacity(dim);
     for (i, s) in inputs[1..].into_iter().enumerate() {
-        let news = s
-            .rechunk()
-            .with_name(&i.to_string());
+        let news = s.rechunk().with_name(&i.to_string());
         vs.push(news)
     }
     let data = DataFrame::new(vs)?;
@@ -71,11 +71,9 @@ fn pl_sample_entropy(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Se
     let r = radius.get(0).unwrap();
     // Set up params
     let dim = inputs[1..].len();
-    let mut vs:Vec<Series> = Vec::with_capacity(dim);
+    let mut vs: Vec<Series> = Vec::with_capacity(dim);
     for (i, s) in inputs[1..].into_iter().enumerate() {
-        let news = s
-            .rechunk()
-            .with_name(&i.to_string());
+        let news = s.rechunk().with_name(&i.to_string());
         vs.push(news)
     }
     let data = DataFrame::new(vs)?;
