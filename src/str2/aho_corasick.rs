@@ -1,3 +1,4 @@
+use super::list_str_output;
 use aho_corasick::{AhoCorasick, MatchKind};
 use polars::prelude::*;
 use pyo3_polars::{derive::polars_expr, export::polars_core::utils::rayon::iter::ParallelIterator};
@@ -6,13 +7,6 @@ fn list_u16_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
         "list_u16",
         DataType::List(Box::new(DataType::UInt16)),
-    ))
-}
-
-fn list_str_output(_: &[Field]) -> PolarsResult<Field> {
-    Ok(Field::new(
-        "list_str",
-        DataType::List(Box::new(DataType::Utf8)),
     ))
 }
 
@@ -134,7 +128,8 @@ fn pl_ac_match_str(inputs: &[Series]) -> PolarsResult<Series> {
                     builder.append_null();
                 }
             }
-            let out = builder.finish();
+            let mut out = builder.finish();
+            out.shrink_to_fit();
             Ok(out.into_series())
         }
         Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
