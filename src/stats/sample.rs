@@ -231,7 +231,7 @@ fn pl_sample_normal(inputs: &[Series]) -> PolarsResult<Series> {
     }
 }
 
-#[polars_expr(output_type=Utf8)]
+#[polars_expr(output_type=String)]
 fn pl_sample_alphanumeric(inputs: &[Series]) -> PolarsResult<Series> {
     let reference = &inputs[0];
     let min_size = inputs[1].u32()?;
@@ -256,7 +256,7 @@ fn pl_sample_alphanumeric(inputs: &[Series]) -> PolarsResult<Series> {
     let mut rng = rand::thread_rng();
     if respect_null && reference.has_validity() {
         let ca = reference.is_not_null();
-        let out: Utf8Chunked = ca.apply_generic(|x| {
+        let out: StringChunked = ca.apply_generic(|x| {
             if x.unwrap_or(false) {
                 let length: usize = rng.sample(uniform);
                 Some(Alphanumeric.sample_string(&mut rng, length))
@@ -270,7 +270,7 @@ fn pl_sample_alphanumeric(inputs: &[Series]) -> PolarsResult<Series> {
             let length: usize = rng.sample(uniform);
             Alphanumeric.sample_string(&mut rng, length)
         });
-        let out = Utf8Chunked::from_iter(sample);
+        let out = StringChunked::from_iter(sample);
         Ok(out.into_series())
     }
 }

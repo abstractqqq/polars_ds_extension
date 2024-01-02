@@ -36,8 +36,8 @@ fn d_levenshtein_sim(s1: &str, s2: &str) -> f64 {
 
 #[polars_expr(output_type=UInt32)]
 fn pl_levenshtein(inputs: &[Series]) -> PolarsResult<Series> {
-    let ca1 = inputs[0].utf8()?;
-    let ca2 = inputs[1].utf8()?;
+    let ca1 = inputs[0].str()?;
+    let ca2 = inputs[1].str()?;
     let parallel = inputs[2].bool()?;
     let parallel = parallel.get(0).unwrap();
     if ca2.len() == 1 {
@@ -77,9 +77,9 @@ fn pl_levenshtein(inputs: &[Series]) -> PolarsResult<Series> {
 }
 
 #[polars_expr(output_type=Boolean)]
-fn pl_levenshtein_within(inputs: &[Series]) -> PolarsResult<Series> {
-    let ca1 = inputs[0].utf8()?;
-    let ca2 = inputs[1].utf8()?;
+fn pl_levenshtein_filter(inputs: &[Series]) -> PolarsResult<Series> {
+    let ca1 = inputs[0].str()?;
+    let ca2 = inputs[1].str()?;
     let bound = inputs[2].u32()?;
     let bound = bound.get(0).unwrap() as usize;
     let parallel = inputs[3].bool()?;
@@ -134,8 +134,8 @@ fn pl_levenshtein_within(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=Float64)]
 fn pl_levenshtein_sim(inputs: &[Series]) -> PolarsResult<Series> {
-    let ca1 = inputs[0].utf8()?;
-    let ca2 = inputs[1].utf8()?;
+    let ca1 = inputs[0].str()?;
+    let ca2 = inputs[1].str()?;
     let parallel = inputs[2].bool()?;
     let parallel = parallel.get(0).unwrap();
     if ca2.len() == 1 {
@@ -176,8 +176,8 @@ fn pl_levenshtein_sim(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=UInt32)]
 fn pl_d_levenshtein(inputs: &[Series]) -> PolarsResult<Series> {
-    let ca1 = inputs[0].utf8()?;
-    let ca2 = inputs[1].utf8()?;
+    let ca1 = inputs[0].str()?;
+    let ca2 = inputs[1].str()?;
     let parallel = inputs[2].bool()?;
     let parallel = parallel.get(0).unwrap();
     if ca2.len() == 1 {
@@ -218,8 +218,8 @@ fn pl_d_levenshtein(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=Float64)]
 fn pl_d_levenshtein_sim(inputs: &[Series]) -> PolarsResult<Series> {
-    let ca1 = inputs[0].utf8()?;
-    let ca2 = inputs[1].utf8()?;
+    let ca1 = inputs[0].str()?;
+    let ca2 = inputs[1].str()?;
     let parallel = inputs[2].bool()?;
     let parallel = parallel.get(0).unwrap();
     if ca2.len() == 1 {

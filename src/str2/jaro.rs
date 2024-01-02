@@ -21,8 +21,8 @@ fn jw_sim(s1: &str, s2: &str, weight: f64) -> f64 {
 
 #[polars_expr(output_type=Float64)]
 fn pl_jaro(inputs: &[Series]) -> PolarsResult<Series> {
-    let ca1 = inputs[0].utf8()?;
-    let ca2 = inputs[1].utf8()?;
+    let ca1 = inputs[0].str()?;
+    let ca2 = inputs[1].str()?;
     let parallel = inputs[2].bool()?;
     let parallel = parallel.get(0).unwrap();
     if ca2.len() == 1 {
@@ -61,8 +61,8 @@ fn pl_jaro(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=Float64)]
 fn pl_jw(inputs: &[Series]) -> PolarsResult<Series> {
-    let ca1 = inputs[0].utf8()?;
-    let ca2 = inputs[1].utf8()?;
+    let ca1 = inputs[0].str()?;
+    let ca2 = inputs[1].str()?;
     let weight = inputs[2].f64()?;
     let weight = weight.get(0).unwrap_or(0.1);
     let parallel = inputs[3].bool()?;

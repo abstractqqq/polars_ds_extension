@@ -351,7 +351,7 @@ class StrExt:
                 is_elementwise=True,
             )
 
-    def levenshtein_within(
+    def levenshtein_filter(
         self,
         other: Union[str, pl.Expr],
         bound: int,
@@ -359,7 +359,7 @@ class StrExt:
     ) -> pl.Expr:
         """
         Returns whether the Levenshtein distance between self and other is <= bound. This is much
-        faster than computing levenshtein distance and then doing <= bound.
+        faster than computing levenshtein distance and then doing a filter.
 
         Parameters
         ----------
@@ -368,7 +368,7 @@ class StrExt:
             is an expression, then an element-wise Levenshtein distance computation between this column
             and the other (given by the expression) will be performed.
         bound
-            Closed upper bound. If levenshtein distance <= bound, return true and false otherwise.
+            Closed upper bound. If distance <= bound, return true and false otherwise.
         parallel
             Whether to run the comparisons in parallel. Note that this is not always faster, especially
             when used with other expressions or in group_by/over context.
@@ -381,7 +381,7 @@ class StrExt:
         bound = pl.lit(abs(bound), pl.UInt32)
         return self._expr.register_plugin(
             lib=_lib,
-            symbol="pl_levenshtein_within",
+            symbol="pl_levenshtein_filter",
             args=[other_, bound, pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
@@ -550,11 +550,49 @@ class StrExt:
             is_elementwise=True,
         )
 
+    def hamming_filter(
+        self, other: Union[str, pl.Expr], bound: int, pad: bool = False, parallel: bool = False
+    ) -> pl.Expr:
+        """
+        Returns whether the hamming distance between self and other is <= bound. This is much
+        faster than computing hamming distance and then doing a filter.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then an element-wise hamming distance computation between this column
+            and the other (given by the expression) will be performed.
+        bound
+            Closed upper bound. If distance <= bound, return true and false otherwise.
+        pad
+            Whether to pad the string when lengths are not equal.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other)
+        else:
+            other_ = other
+
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_hamming_filter",
+            args=[
+                other_,
+                pl.lit(bound, dtype=pl.UInt32),
+                pl.lit(pad, pl.Boolean),
+                pl.lit(parallel, pl.Boolean),
+            ],
+            is_elementwise=True,
+        )
+
     def similar_to_vocab(
         self,
         vocab: list[str],
         threshold: float,
-        metric: Literal["leven", "dleven", "jw", "osa"] = "leven",
+        metric: Literal["lv", "dlv", "jw", "osa"] = "lv",
         strategy: Literal["avg", "all", "any"] = "avg",
     ) -> pl.Expr:
         """
@@ -569,7 +607,7 @@ class StrExt:
             A entry is considered similar to the words in the vocabulary if the similarity
             is above (>=) the threshold
         metric
-            Which similarity metric to use. One of `leven`, `dleven`, `jw`, `osa`
+            Which similarity metric to use. One of `lv`, `dlv`, `jw`, `osa`
         strategy
             If `avg`, then will return true if the average similarity is above the threshold.
             If `all`, then will return true if the similarity to all words in the vocab is above
@@ -577,13 +615,13 @@ class StrExt:
             If `any`, then will return true if the similarity to any words in the vocab is above
             the threshold.
         """
-        if metric == "leven":
+        if metric == "lv":
             sims = [self.levenshtein(w, return_sim=True) for w in vocab]
-        elif metric == "dleven":
+        elif metric == "dlv":
             sims = [self.d_levenshtein(w, return_sim=True) for w in vocab]
         elif metric == "osa":
             sims = [self.osa(w, return_sim=True) for w in vocab]
-        elif sims == "jw":
+        elif metric == "jw":
             sims = [self.jw(w, return_sim=True) for w in vocab]
         else:
             raise ValueError(f"Unknown metric for find_similar: {metric}")
@@ -595,7 +633,76 @@ class StrExt:
         elif strategy == "avg":
             return (pl.sum_horizontal(sims) / len(vocab)) >= threshold
         else:
-            raise ValueError(f"Unknown strategy for find_similar: {strategy}")
+            raise ValueError(f"Unknown strategy for similar_to_vocab: {strategy}")
+
+    def similar_words(
+        self,
+        vocab: Union[pl.Expr, list[str]],
+        k: int = 1,
+        threshold: int = 100,
+        metric: Literal["lv", "hamming"] = "lv",
+        parallel: bool = False,
+    ) -> pl.Expr:
+        """
+        Finds the k most similar words in vocab to each word in self. This works by computing
+        Hamming/Levenshtein distances, instead of similarity, and then taking the smallest distance
+        words as similar words. The result is correct because of the relationship between distance
+        and similarity. This will deduplicate words in vocab. In case of a tie, any one may be chosen.
+
+        Comment: When k > 1, the algorithm is not the most efficient, since this is building a heap
+        for each word in self in order to search for the top k in vocab.
+
+        Parameters
+        ----------
+        vocab
+            Any iterable collection of strings that can be turned into a polars Series, or an expression
+        k : int, >0
+            k most similar words will be found
+        threshold : int, >0
+            A word in the vocab has to be within threshold distance to a word in self to be considered. This is
+            a positive integer because all the distances output integers.
+        metric
+            Which similarity metric to use. One of `lv`, `hamming`
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        """
+        if metric not in ("lv", "hamming"):
+            raise ValueError(f"Unknown metric for similar_words: {metric}")
+
+        if isinstance(vocab, pl.Expr):
+            vb = vocab.unique()
+        else:
+            vb = pl.Series(values=vocab, dtype=pl.Utf8).unique()
+
+        if k == 1:  # k = 1, this is a fast path (no heap)
+            return self._expr.register_plugin(
+                lib=_lib,
+                symbol="pl_nearest_str",
+                args=[vb],
+                kwargs={
+                    "k": k,
+                    "metric": str(metric).lower(),
+                    "threshold": threshold,
+                    "parallel": parallel,
+                },
+                is_elementwise=True,
+            )
+        elif k > 1:
+            return self._expr.register_plugin(
+                lib=_lib,
+                symbol="pl_knn_str",
+                args=[vb],
+                kwargs={
+                    "k": k,
+                    "metric": str(metric).lower(),
+                    "threshold": threshold,
+                    "parallel": parallel,
+                },
+                is_elementwise=True,
+            )
+        else:
+            raise ValueError("Input `k` must be >= 1.")
 
     def tokenize(self, pattern: str = r"(?u)\b\w\w+\b", stem: bool = False) -> pl.Expr:
         """

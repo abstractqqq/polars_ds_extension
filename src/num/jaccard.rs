@@ -13,7 +13,7 @@ use pyo3_polars::{
 use DataType::*;
 
 #[inline]
-fn jaccard_str(c1: &Utf8Chunked, c2: &Utf8Chunked) -> f64 {
+fn jaccard_str(c1: &StringChunked, c2: &StringChunked) -> f64 {
     // Jaccard similarity for strings
     let hs1 = c1.into_iter().collect::<PlHashSet<_>>();
     let hs2 = c2.into_iter().collect::<PlHashSet<_>>();
@@ -67,14 +67,14 @@ fn pl_list_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
     if s1.inner_dtype().is_integer() {
         let out = _list_jaccard(s1, s2);
         Ok(out.into_series())
-    } else if s1.inner_dtype() == DataType::Utf8 {
+    } else if s1.inner_dtype() == DataType::String {
         Ok(s1
             .into_iter()
             .zip(s2.into_iter())
             .map(|(c1, c2)| match (c1, c2) {
                 (Some(c1), Some(c2)) => {
-                    let c1 = c1.utf8().unwrap();
-                    let c2 = c2.utf8().unwrap();
+                    let c1 = c1.str().unwrap();
+                    let c2 = c2.str().unwrap();
                     Some(jaccard_str(c1, c2))
                 }
                 _ => None,
@@ -82,7 +82,7 @@ fn pl_list_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
             .collect())
     } else {
         Err(PolarsError::ComputeError(
-            "List Jaccard similarity currently only supports utf8 or Int inner data type.".into(),
+            "List Jaccard similarity currently only supports Str or Int inner data type.".into(),
         ))
     }
 }
@@ -195,8 +195,8 @@ fn pl_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
                 Ok(out.into_series())
             }
             Utf8 => {
-                let ca1 = s1.utf8()?;
-                let ca2 = s2.utf8()?;
+                let ca1 = s1.str()?;
+                let ca2 = s2.str()?;
                 let out = jaccard_str(ca1, ca2);
                 let out = Float64Chunked::from_iter([Some(out)]);
                 Ok(out.into_series())

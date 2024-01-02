@@ -10,6 +10,8 @@ Read the docs [here](https://polars-ds-extension.readthedocs.io/en/latest/).
 
 **Currently in Beta. Feel free to submit feature requests in the issues section of the repo.**
 
+Disclaimer: this plugin is not tested with streaming mode.
+
 ## Getting Started
 ```bash
 pip install polars_ds

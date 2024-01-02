@@ -5,6 +5,7 @@ mod hamming;
 mod inflections;
 mod is_stopword;
 mod jaro;
+mod knn_strs;
 mod levenshtein;
 mod osa;
 mod overlap;
@@ -13,10 +14,19 @@ mod snowball_stem;
 mod sorensen_dice;
 mod str_jaccard;
 
+use polars::prelude::{DataType, Field, PolarsResult};
 // Shoutout to RapidFuzz!
 // Most string similarity/distance is very striaghtforward to implement given we have RapidFuzz.
 // I believe I have covered the most important ones. If anybody needs some more, feel free to
 // contribute to the project!
+
+// Output functions
+fn list_str_output(_: &[Field]) -> PolarsResult<Field> {
+    Ok(Field::new(
+        "list_str",
+        DataType::List(Box::new(DataType::String)),
+    ))
+}
 
 // Hashbrown has better perf than Rust's HashSet
 use hashbrown::HashSet;

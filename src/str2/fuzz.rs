@@ -9,8 +9,8 @@ use rapidfuzz::fuzz::{ratio_with_args, Args, RatioBatchComparator};
 
 #[polars_expr(output_type=UInt32)]
 fn pl_fuzz(inputs: &[Series]) -> PolarsResult<Series> {
-    let ca1 = inputs[0].utf8()?;
-    let ca2 = inputs[1].utf8()?;
+    let ca1 = inputs[0].str()?;
+    let ca2 = inputs[1].str()?;
     let cutoff = inputs[2].f64()?;
     let cutoff = cutoff.get(0).unwrap_or(0.);
     let args = Args::default().score_cutoff(cutoff);
