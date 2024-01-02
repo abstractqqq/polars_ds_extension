@@ -20,8 +20,8 @@ fn str_to_matchkind(value: &str) -> MatchKind {
 
 #[polars_expr(output_type_func=list_u16_output)]
 fn pl_ac_match(inputs: &[Series]) -> PolarsResult<Series> {
-    let str_col = inputs[0].utf8()?;
-    let patterns = inputs[1].utf8()?;
+    let str_col = inputs[0].str()?;
+    let patterns = inputs[1].str()?;
     let patterns: Vec<&str> = patterns.into_iter().filter_map(|s| s).collect();
     let n_pat = patterns.len();
     if n_pat > u16::MAX as usize {
@@ -33,7 +33,7 @@ fn pl_ac_match(inputs: &[Series]) -> PolarsResult<Series> {
     let case_insensitive = inputs[2].bool()?;
     let case_insensitive = case_insensitive.get(0).unwrap();
 
-    let mk = inputs[3].utf8()?;
+    let mk = inputs[3].str()?;
     let mk = mk.get(0).unwrap();
     let mk: MatchKind = str_to_matchkind(mk);
 
@@ -81,8 +81,8 @@ fn pl_ac_match(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type_func=list_str_output)]
 fn pl_ac_match_str(inputs: &[Series]) -> PolarsResult<Series> {
-    let str_col = inputs[0].utf8()?;
-    let patterns = inputs[1].utf8()?;
+    let str_col = inputs[0].str()?;
+    let patterns = inputs[1].str()?;
     let patterns: Vec<&str> = patterns.into_iter().filter_map(|s| s).collect();
     let n_pat = patterns.len();
     if n_pat > u16::MAX as usize {
@@ -94,7 +94,7 @@ fn pl_ac_match_str(inputs: &[Series]) -> PolarsResult<Series> {
     let case_insensitive = inputs[2].bool()?;
     let case_insensitive = case_insensitive.get(0).unwrap();
 
-    let mk = inputs[3].utf8()?;
+    let mk = inputs[3].str()?;
     let mk = mk.get(0).unwrap();
     let mk: MatchKind = str_to_matchkind(mk);
 
@@ -108,7 +108,7 @@ fn pl_ac_match_str(inputs: &[Series]) -> PolarsResult<Series> {
             // Is there a way to make this work?
             // let out:ChunkedArray<FixedSizeListType> = str_col.apply_values_generic(op);
 
-            let mut builder = ListUtf8ChunkedBuilder::new("match", str_col.len(), 20);
+            let mut builder = ListStringChunkedBuilder::new("match", str_col.len(), 20);
             // n_pat is just capacity to initialize. We can go beyond n_pat, with a performance penalty.
             // Right now this is not the best choice.
 
@@ -117,7 +117,7 @@ fn pl_ac_match_str(inputs: &[Series]) -> PolarsResult<Series> {
                     let matches = ac
                         .find_iter(s)
                         .map(|m| patterns[m.pattern().as_usize()])
-                        .collect::<Utf8Chunked>();
+                        .collect::<StringChunked>();
                     if matches.is_empty() {
                         builder.append_null();
                     } else {
@@ -136,13 +136,13 @@ fn pl_ac_match_str(inputs: &[Series]) -> PolarsResult<Series> {
     }
 }
 
-#[polars_expr(output_type=Utf8)]
+#[polars_expr(output_type=String)]
 fn pl_ac_replace(inputs: &[Series]) -> PolarsResult<Series> {
-    let str_col = inputs[0].utf8()?;
-    let patterns = inputs[1].utf8()?;
+    let str_col = inputs[0].str()?;
+    let patterns = inputs[1].str()?;
     let patterns: Vec<&str> = patterns.into_iter().filter_map(|s| s).collect();
 
-    let replace = inputs[2].utf8()?;
+    let replace = inputs[2].str()?;
     let replace: Vec<&str> = replace.into_iter().filter_map(|s| s).collect();
 
     let parallel = inputs[3].bool()?;
@@ -153,7 +153,7 @@ fn pl_ac_replace(inputs: &[Series]) -> PolarsResult<Series> {
     match ac_builder {
         Ok(ac) => {
             let op = |op_s: Option<&str>| op_s.map(|s| ac.replace_all(s, &replace));
-            let out: Utf8Chunked = if parallel {
+            let out: StringChunked = if parallel {
                 str_col.par_iter().map(op).collect()
             } else {
                 str_col.apply_generic(op)

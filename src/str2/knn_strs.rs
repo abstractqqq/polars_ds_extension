@@ -15,7 +15,7 @@ pub(crate) struct KnnStrKwargs {
     pub(crate) parallel: bool,
 }
 
-fn levenshtein_nearest<'a>(s: &str, cutoff: usize, vocab: &'a Utf8Chunked) -> Option<&'a str> {
+fn levenshtein_nearest<'a>(s: &str, cutoff: usize, vocab: &'a StringChunked) -> Option<&'a str> {
     let batched = levenshtein::BatchComparator::new(s.chars());
     // Most similar == having smallest distance
     let mut best: usize = usize::MAX;
@@ -38,7 +38,7 @@ fn levenshtein_nearest<'a>(s: &str, cutoff: usize, vocab: &'a Utf8Chunked) -> Op
 
 /// Returns a series of strings, so that it does less redundant work later.
 /// Only use this internally.
-fn levenshtein_knn(s: &str, cutoff: usize, k: usize, vocab: &Utf8Chunked) -> Series {
+fn levenshtein_knn(s: &str, cutoff: usize, k: usize, vocab: &StringChunked) -> Series {
     let batched = levenshtein::BatchComparator::new(s.chars());
     // Most similar == having smallest distance
     // A binary heap is a max heap. So we do -usize
@@ -55,7 +55,7 @@ fn levenshtein_knn(s: &str, cutoff: usize, k: usize, vocab: &Utf8Chunked) -> Ser
             }
         }
     });
-    let utf8 = Utf8Chunked::from_iter_values(
+    let utf8 = StringChunked::from_iter_values(
         "",
         heap.into_sorted_vec()
             .into_iter()
@@ -66,7 +66,7 @@ fn levenshtein_knn(s: &str, cutoff: usize, k: usize, vocab: &Utf8Chunked) -> Ser
     utf8.into_series()
 }
 
-fn hamming_nearest<'a>(s: &str, cutoff: usize, vocab: &'a Utf8Chunked) -> Option<&'a str> {
+fn hamming_nearest<'a>(s: &str, cutoff: usize, vocab: &'a StringChunked) -> Option<&'a str> {
     let batched = hamming::BatchComparator::new(s.chars());
     let mut best: usize = usize::MAX;
     let mut nearest_str: Option<&str> = None;
@@ -87,7 +87,7 @@ fn hamming_nearest<'a>(s: &str, cutoff: usize, vocab: &'a Utf8Chunked) -> Option
     nearest_str
 }
 
-fn hamming_knn(s: &str, cutoff: usize, k: usize, vocab: &Utf8Chunked) -> Series {
+fn hamming_knn(s: &str, cutoff: usize, k: usize, vocab: &StringChunked) -> Series {
     let batched = hamming::BatchComparator::new(s.chars());
     // Most similar == having smallest distance
     // A binary heap is a max heap. So we do -usize
@@ -104,7 +104,7 @@ fn hamming_knn(s: &str, cutoff: usize, k: usize, vocab: &Utf8Chunked) -> Series 
             }
         }
     });
-    let utf8 = Utf8Chunked::from_iter_values(
+    let utf8 = StringChunked::from_iter_values(
         "",
         heap.into_sorted_vec()
             .into_iter()
@@ -115,10 +115,10 @@ fn hamming_knn(s: &str, cutoff: usize, k: usize, vocab: &Utf8Chunked) -> Series 
     utf8.into_series()
 }
 
-#[polars_expr(output_type=Utf8)]
+#[polars_expr(output_type=String)]
 pub fn pl_nearest_str(inputs: &[Series], kwargs: KnnStrKwargs) -> PolarsResult<Series> {
-    let s = inputs[0].utf8()?;
-    let vocab = inputs[1].utf8()?;
+    let s = inputs[0].str()?;
+    let vocab = inputs[1].str()?;
 
     let parallel = kwargs.parallel;
     let cutoff = kwargs.threshold;
@@ -139,10 +139,10 @@ pub fn pl_nearest_str(inputs: &[Series], kwargs: KnnStrKwargs) -> PolarsResult<S
                 }
             })
             .collect();
-        let out = Utf8Chunked::from_iter(v);
+        let out = StringChunked::from_iter(v);
         Ok(out.into_series())
     } else {
-        let out: Utf8Chunked = s.apply_generic(|op_s| {
+        let out: StringChunked = s.apply_generic(|op_s| {
             let s = op_s?;
             func(s, cutoff, vocab)
         });
@@ -152,8 +152,8 @@ pub fn pl_nearest_str(inputs: &[Series], kwargs: KnnStrKwargs) -> PolarsResult<S
 
 #[polars_expr(output_type_func=list_str_output)]
 pub fn pl_knn_str(inputs: &[Series], kwargs: KnnStrKwargs) -> PolarsResult<Series> {
-    let s = inputs[0].utf8()?;
-    let vocab = inputs[1].utf8()?;
+    let s = inputs[0].str()?;
+    let vocab = inputs[1].str()?;
 
     let parallel = kwargs.parallel;
     let cutoff = kwargs.threshold;
@@ -163,7 +163,7 @@ pub fn pl_knn_str(inputs: &[Series], kwargs: KnnStrKwargs) -> PolarsResult<Serie
         "hamming" => hamming_knn,
         _ => levenshtein_knn,
     };
-    let mut builder = ListUtf8ChunkedBuilder::new("", s.len(), k);
+    let mut builder = ListStringChunkedBuilder::new("", s.len(), k);
     let out = if parallel {
         let v: Vec<Option<Series>> = s
             .par_iter()

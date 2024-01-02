@@ -22,14 +22,14 @@ pub fn snowball_stem(word: Option<&str>, no_stopwords: bool) -> Option<String> {
     }
 }
 
-#[polars_expr(output_type=Utf8)]
+#[polars_expr(output_type=String)]
 fn pl_snowball_stem(inputs: &[Series]) -> PolarsResult<Series> {
-    let ca = inputs[0].utf8()?;
+    let ca = inputs[0].str()?;
     let no_stop = inputs[1].bool()?;
     let no_stop = no_stop.get(0).unwrap();
     let parallel = inputs[2].bool()?;
     let parallel = parallel.get(0).unwrap();
-    let out: Utf8Chunked = if parallel {
+    let out: StringChunked = if parallel {
         ca.par_iter()
             .map(|op_s| snowball_stem(op_s, no_stop))
             .collect()

@@ -111,7 +111,7 @@ fn pl_ttest_2samp(inputs: &[Series]) -> PolarsResult<Series> {
     let n = inputs[4].u64()?;
     let n = n.get(0).unwrap() as f64;
 
-    let alt = inputs[5].utf8()?;
+    let alt = inputs[5].str()?;
     let alt = alt.get(0).unwrap();
     let alt = stats::Alternative::from(alt);
 
@@ -148,7 +148,7 @@ fn pl_welch_t(inputs: &[Series]) -> PolarsResult<Series> {
     let n2 = inputs[5].u64()?;
     let n2 = n2.get(0).unwrap() as f64;
 
-    let alt = inputs[6].utf8()?;
+    let alt = inputs[6].str()?;
     let alt = alt.get(0).unwrap();
     let alt = stats::Alternative::from(alt);
 
@@ -176,7 +176,7 @@ fn pl_ttest_1samp(inputs: &[Series]) -> PolarsResult<Series> {
     let n = inputs[3].u64()?;
     let n = n.get(0).unwrap() as f64;
 
-    let alt = inputs[4].utf8()?;
+    let alt = inputs[4].str()?;
     let alt = alt.get(0).unwrap();
     let alt = stats::Alternative::from(alt);
 

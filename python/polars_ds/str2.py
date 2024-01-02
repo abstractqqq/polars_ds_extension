@@ -630,14 +630,14 @@ class StrExt:
             when used with other expressions or in group_by/over context.
         """
         if metric not in ("lv", "hamming"):
-            raise ValueError(f"Unknown metric for close_words: {metric}")
+            raise ValueError(f"Unknown metric for similar_words: {metric}")
 
         if isinstance(vocab, pl.Expr):
             vb = vocab
         else:
             vb = pl.Series(values=vocab, dtype=pl.Utf8)
 
-        if k == 1:
+        if k == 1:  # k = 1, this is the fastest impl
             return self._expr.register_plugin(
                 lib=_lib,
                 symbol="pl_nearest_str",

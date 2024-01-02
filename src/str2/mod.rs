@@ -24,7 +24,7 @@ use polars::prelude::{DataType, Field, PolarsResult};
 fn list_str_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
         "list_str",
-        DataType::List(Box::new(DataType::Utf8)),
+        DataType::List(Box::new(DataType::String)),
     ))
 }
 

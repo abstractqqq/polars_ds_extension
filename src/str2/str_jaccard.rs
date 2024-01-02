@@ -20,8 +20,8 @@ fn optional_str_jaccard(op_w1: Option<&str>, op_w2: Option<&str>, n: usize) -> O
 
 #[polars_expr(output_type=Float64)]
 fn pl_str_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
-    let ca1 = inputs[0].utf8()?;
-    let ca2 = inputs[1].utf8()?;
+    let ca1 = inputs[0].str()?;
+    let ca2 = inputs[1].str()?;
 
     // gauranteed to have 4 input series by the input from Python side.
     // The 3rd input is size of substring length

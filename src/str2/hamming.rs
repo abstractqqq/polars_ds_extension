@@ -12,8 +12,8 @@ fn hamming(a: &str, b: &str, pad: bool) -> u32 {
 
 #[polars_expr(output_type=UInt32)]
 fn pl_hamming(inputs: &[Series]) -> PolarsResult<Series> {
-    let ca1 = inputs[0].utf8()?;
-    let ca2 = inputs[1].utf8()?;
+    let ca1 = inputs[0].str()?;
+    let ca2 = inputs[1].str()?;
     let pad = inputs[2].bool()?;
     let pad = pad.get(0).unwrap_or(false);
     let parallel = inputs[2].bool()?;

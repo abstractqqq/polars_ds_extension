@@ -11,8 +11,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = {version = "*", features = ["extension-module"]}
-pyo3-polars = {version = "*", features = ["derive"]}
-polars = {version = "0.35.4", features = ["performant", "lazy", "dtype-array", "ndarray", "log", "nightly"]}
+pyo3-polars = {version = "0.10", features = ["derive"]}
+polars = {version = "0.36.2", features = ["performant", "lazy", "dtype-array", "ndarray", "horizontal_concat","log", "nightly"]}
 num = "0.4.1"
 faer = {version = "0.16", features = ["ndarray", "nightly"]}
 serde = {version = "*", features=["derive"]}
