@@ -7,3 +7,8 @@ For all feature related work, it would be great to ask yourself the following qu
 3. Are you using a lot of unwraps in your code? Are these unwraps justified?
 4. If an additional dependency is needed, how much of it is really used? Will it bloat the package?
 5. Everything can be discussed. 
+
+
+## Remember to run these before committing:
+1. pre-commit. We use ruff.
+2. cargo fmt

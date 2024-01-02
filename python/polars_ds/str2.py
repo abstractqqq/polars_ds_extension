@@ -351,7 +351,7 @@ class StrExt:
                 is_elementwise=True,
             )
 
-    def levenshtein_within(
+    def levenshtein_filter(
         self,
         other: Union[str, pl.Expr],
         bound: int,
@@ -359,7 +359,7 @@ class StrExt:
     ) -> pl.Expr:
         """
         Returns whether the Levenshtein distance between self and other is <= bound. This is much
-        faster than computing levenshtein distance and then doing <= bound.
+        faster than computing levenshtein distance and then doing a filter.
 
         Parameters
         ----------
@@ -368,7 +368,7 @@ class StrExt:
             is an expression, then an element-wise Levenshtein distance computation between this column
             and the other (given by the expression) will be performed.
         bound
-            Closed upper bound. If levenshtein distance <= bound, return true and false otherwise.
+            Closed upper bound. If distance <= bound, return true and false otherwise.
         parallel
             Whether to run the comparisons in parallel. Note that this is not always faster, especially
             when used with other expressions or in group_by/over context.
@@ -381,7 +381,7 @@ class StrExt:
         bound = pl.lit(abs(bound), pl.UInt32)
         return self._expr.register_plugin(
             lib=_lib,
-            symbol="pl_levenshtein_within",
+            symbol="pl_levenshtein_filter",
             args=[other_, bound, pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
@@ -550,6 +550,44 @@ class StrExt:
             is_elementwise=True,
         )
 
+    def hamming_filter(
+        self, other: Union[str, pl.Expr], bound: int, pad: bool = False, parallel: bool = False
+    ) -> pl.Expr:
+        """
+        Returns whether the hamming distance between self and other is <= bound. This is much
+        faster than computing hamming distance and then doing a filter.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then an element-wise hamming distance computation between this column
+            and the other (given by the expression) will be performed.
+        bound
+            Closed upper bound. If distance <= bound, return true and false otherwise.
+        pad
+            Whether to pad the string when lengths are not equal.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other)
+        else:
+            other_ = other
+
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_hamming_filter",
+            args=[
+                other_,
+                pl.lit(bound, dtype=pl.UInt32),
+                pl.lit(pad, pl.Boolean),
+                pl.lit(parallel, pl.Boolean),
+            ],
+            is_elementwise=True,
+        )
+
     def similar_to_vocab(
         self,
         vocab: list[str],
@@ -609,7 +647,7 @@ class StrExt:
         Finds the k most similar words in vocab to each word in self. This works by computing
         Hamming/Levenshtein distances, instead of similarity, and then taking the smallest distance
         words as similar words. The result is correct because of the relationship between distance
-        and similarity.
+        and similarity. This will deduplicate words in vocab. In case of a tie, any one may be chosen.
 
         Comment: When k > 1, the algorithm is not the most efficient, since this is building a heap
         for each word in self in order to search for the top k in vocab.
@@ -633,11 +671,11 @@ class StrExt:
             raise ValueError(f"Unknown metric for similar_words: {metric}")
 
         if isinstance(vocab, pl.Expr):
-            vb = vocab
+            vb = vocab.unique()
         else:
-            vb = pl.Series(values=vocab, dtype=pl.Utf8)
+            vb = pl.Series(values=vocab, dtype=pl.Utf8).unique()
 
-        if k == 1:  # k = 1, this is the fastest impl
+        if k == 1:  # k = 1, this is a fast path (no heap)
             return self._expr.register_plugin(
                 lib=_lib,
                 symbol="pl_nearest_str",

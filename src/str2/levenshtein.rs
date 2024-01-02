@@ -77,7 +77,7 @@ fn pl_levenshtein(inputs: &[Series]) -> PolarsResult<Series> {
 }
 
 #[polars_expr(output_type=Boolean)]
-fn pl_levenshtein_within(inputs: &[Series]) -> PolarsResult<Series> {
+fn pl_levenshtein_filter(inputs: &[Series]) -> PolarsResult<Series> {
     let ca1 = inputs[0].str()?;
     let ca2 = inputs[1].str()?;
     let bound = inputs[2].u32()?;

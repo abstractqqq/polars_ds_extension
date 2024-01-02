@@ -406,18 +406,100 @@ def test_levenshtein(df, res):
         ),
     ],
 )
-def test_levenshtein_within(df, bound, res):
+def test_levenshtein_filter(df, bound, res):
     assert_frame_equal(
-        df.select(pl.col("a").str2.levenshtein_within(pl.col("b"), bound=bound)), res
+        df.select(pl.col("a").str2.levenshtein_filter(pl.col("b"), bound=bound)), res
     )
 
     assert_frame_equal(
-        df.select(pl.col("a").str2.levenshtein_within(pl.col("b"), bound=bound, parallel=True)),
+        df.select(pl.col("a").str2.levenshtein_filter(pl.col("b"), bound=bound, parallel=True)),
         res,
     )
 
     assert_frame_equal(
-        df.lazy().select(pl.col("a").str2.levenshtein_within(pl.col("b"), bound=bound)).collect(),
+        df.lazy().select(pl.col("a").str2.levenshtein_filter(pl.col("b"), bound=bound)).collect(),
+        res,
+    )
+
+
+@pytest.mark.parametrize(
+    "df, bound, res",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "a": ["AAAAA", "AAATT", "AATTT", "AAAAA", "AAAAA"],
+                    "b": ["AAAAT", "AAAAA", "ATATA", "AAAAA", "TTTTT"],
+                }
+            ),
+            2,
+            pl.DataFrame({"a": pl.Series([True, True, False, True, False])}),
+        ),
+    ],
+)
+def test_hamming_filter(df, bound, res):
+    assert_frame_equal(df.select(pl.col("a").str2.hamming_filter(pl.col("b"), bound=bound)), res)
+
+    assert_frame_equal(
+        df.select(pl.col("a").str2.hamming_filter(pl.col("b"), bound=bound, parallel=True)),
+        res,
+    )
+
+    assert_frame_equal(
+        df.lazy().select(pl.col("a").str2.hamming_filter(pl.col("b"), bound=bound)).collect(),
+        res,
+    )
+
+
+@pytest.mark.parametrize(
+    "df, vocab, k, metric, res",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "a": ["AAAAA", "AAATT", "ATTTT", "AAAAA", "AAAAA"],
+                }
+            ),
+            ["AAAAT", "AAAAA", "ATATA", "AAAAA", "TTTTT"],
+            1,
+            "hamming",
+            pl.DataFrame({"a": pl.Series(["AAAAA", "AAAAT", "TTTTT", "AAAAA", "AAAAA"])}),
+        ),
+        (
+            pl.DataFrame(
+                {
+                    "a": ["AAAAA", "AAATT", "ATTTT", "AAAAA", "AAAAA"],
+                }
+            ),
+            ["AAAAT", "AAAAA", "ATATA", "AAAAA", "TTTTT"],
+            2,
+            "hamming",
+            pl.DataFrame(
+                {
+                    "a": pl.Series(
+                        [
+                            ["AAAAA", "AAAAT"],
+                            ["AAAAT", "ATATA"],
+                            ["TTTTT", "ATATA"],
+                            ["AAAAA", "AAAAT"],
+                            ["AAAAA", "AAAAT"],
+                        ]
+                    )
+                }
+            ),
+        ),
+    ],
+)
+def test_similar_words(df, vocab, k, metric, res):
+    assert_frame_equal(df.select(pl.col("a").str2.similar_words(vocab, k=k, metric=metric)), res)
+
+    assert_frame_equal(
+        df.select(pl.col("a").str2.similar_words(vocab, k=k, parallel=True, metric=metric)),
+        res,
+    )
+
+    assert_frame_equal(
+        df.lazy().select(pl.col("a").str2.similar_words(vocab, k=k, metric=metric)).collect(),
         res,
     )
 
