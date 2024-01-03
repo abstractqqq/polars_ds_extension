@@ -5,7 +5,6 @@
 ///
 /// I think it is ok to use CSPRNGS because it is fast enough and we generally do not
 /// want output to be easily guessable.
-use itertools::Itertools;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use rand::distributions::Uniform;
@@ -44,8 +43,7 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
         });
         Ok(out.into_series())
     } else {
-        let sample: Vec<i32> = (&mut rng).sample_iter(dist).take(n).collect_vec();
-        let out = Int32Chunked::from_vec("", sample);
+        let out = Int32Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(n));
         Ok(out.into_series())
     }
 }
@@ -74,8 +72,7 @@ fn pl_sample_binomial(inputs: &[Series]) -> PolarsResult<Series> {
         });
         Ok(out.into_series())
     } else {
-        let sample: Vec<u64> = (&mut rng).sample_iter(dist).take(m).collect_vec();
-        let out = UInt64Chunked::from_vec("", sample);
+        let out = UInt64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(m));
         Ok(out.into_series())
     }
 }
@@ -102,8 +99,7 @@ fn pl_sample_exp(inputs: &[Series]) -> PolarsResult<Series> {
             });
             Ok(out.into_series())
         } else {
-            let sample: Vec<f64> = (&mut rng).sample_iter(Exp1).take(m).collect_vec();
-            let out = Float64Chunked::from_vec("", sample);
+            let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(Exp1).take(m));
             Ok(out.into_series())
         }
     } else {
@@ -119,8 +115,7 @@ fn pl_sample_exp(inputs: &[Series]) -> PolarsResult<Series> {
             });
             Ok(out.into_series())
         } else {
-            let sample: Vec<f64> = (&mut rng).sample_iter(dist).take(m).collect_vec();
-            let out = Float64Chunked::from_vec("", sample);
+            let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(m));
             Ok(out.into_series())
         }
     }
@@ -166,8 +161,7 @@ fn pl_sample_uniform(inputs: &[Series]) -> PolarsResult<Series> {
         });
         Ok(out.into_series())
     } else {
-        let sample: Vec<f64> = (&mut rng).sample_iter(dist).take(n).collect_vec();
-        let out = Float64Chunked::from_vec("", sample);
+        let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(n));
         Ok(out.into_series())
     }
 }
@@ -205,8 +199,7 @@ fn pl_sample_normal(inputs: &[Series]) -> PolarsResult<Series> {
             });
             Ok(out.into_series())
         } else {
-            let sample: Vec<f64> = (&mut rng).sample_iter(dist).take(n).collect_vec();
-            let out = Float64Chunked::from_vec("", sample);
+            let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(n));
             Ok(out.into_series())
         }
     } else {
@@ -224,8 +217,7 @@ fn pl_sample_normal(inputs: &[Series]) -> PolarsResult<Series> {
             });
             Ok(out.into_series())
         } else {
-            let sample: Vec<f64> = (&mut rng).sample_iter(dist).take(n).collect_vec();
-            let out = Float64Chunked::from_vec("", sample);
+            let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(n));
             Ok(out.into_series())
         }
     }
@@ -235,17 +227,13 @@ fn pl_sample_normal(inputs: &[Series]) -> PolarsResult<Series> {
 fn pl_sample_alphanumeric(inputs: &[Series]) -> PolarsResult<Series> {
     let reference = &inputs[0];
     let min_size = inputs[1].u32()?;
-    let mut min_size = min_size.get(0).unwrap() as usize;
+    let min_size = min_size.get(0).unwrap() as usize;
     let max_size = inputs[2].u32()?;
-    let mut max_size = max_size.get(0).unwrap() as usize;
+    let max_size = max_size.get(0).unwrap() as usize;
     let respect_null = inputs[3].bool()?;
     let respect_null = respect_null.get(0).unwrap();
 
     let n = reference.len();
-
-    if max_size < min_size {
-        std::mem::swap(&mut min_size, &mut max_size);
-    }
 
     let uniform = if min_size == max_size {
         Uniform::new_inclusive(min_size, min_size)
@@ -270,7 +258,7 @@ fn pl_sample_alphanumeric(inputs: &[Series]) -> PolarsResult<Series> {
             let length: usize = rng.sample(uniform);
             Alphanumeric.sample_string(&mut rng, length)
         });
-        let out = StringChunked::from_iter(sample);
+        let out = StringChunked::from_iter_values("", sample);
         Ok(out.into_series())
     }
 }
