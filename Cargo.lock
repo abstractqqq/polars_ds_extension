@@ -1498,7 +1498,6 @@ dependencies = [
 name = "polars_ds"
 version = "0.2.2"
 dependencies = [
- "aho-corasick",
  "faer",
  "hashbrown",
  "inflections",

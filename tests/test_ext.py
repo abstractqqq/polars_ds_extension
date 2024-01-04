@@ -262,64 +262,6 @@ def test_jaro(df, res):
 
 
 @pytest.mark.parametrize(
-    "df, pat, res",
-    [
-        (  # From Wikipedia
-            pl.DataFrame(
-                {
-                    "a": ["Nobody likes maple in their apple flavored Snapple."],
-                }
-            ),
-            ["apple", "maple", "snapple"],
-            [1, 0, 2],
-        ),
-    ],
-)
-def test_ac_match(df, pat, res):
-    ans = df.select(
-        pl.col("a").str2.ac_match(
-            patterns=pat, case_sensitive=True, match_kind="standard", return_str=False
-        )
-    ).item(0, 0)
-    ans = list(ans)
-
-    assert ans == res
-
-    ans_strs = [pat[i] for i in ans]
-    res_strs = [pat[i] for i in res]
-
-    assert ans_strs == res_strs
-
-
-@pytest.mark.parametrize(
-    "df, pat, repl, res",
-    [
-        (  # From Wikipedia
-            pl.DataFrame(
-                {
-                    "a": ["hate 123 hate, poor 123, sad !23dc"],
-                }
-            ),
-            ["hate", "poor", "sad"],
-            ["love", "wealthy", "happy"],
-            pl.DataFrame(
-                {
-                    "a": ["love 123 love, wealthy 123, happy !23dc"],
-                }
-            ),
-        ),
-    ],
-)
-def test_ac_replace(df, pat, repl, res):
-    assert_frame_equal(df.select(pl.col("a").str2.ac_replace(patterns=pat, replacements=repl)), res)
-
-    assert_frame_equal(
-        df.lazy().select(pl.col("a").str2.ac_replace(patterns=pat, replacements=repl)).collect(),
-        res,
-    )
-
-
-@pytest.mark.parametrize(
     "df, res",
     [
         (

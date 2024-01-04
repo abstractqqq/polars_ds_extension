@@ -1,4 +1,3 @@
-mod aho_corasick;
 mod consts;
 mod fuzz;
 mod hamming;
