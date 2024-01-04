@@ -1,6 +1,6 @@
 import polars as pl
 from .type_alias import Alternative
-from typing import Optional
+from typing import Optional, Union
 from polars.utils.udfs import _get_shared_lib_location
 # from polars.type_aliases import IntoExpr
 
@@ -165,7 +165,8 @@ class StatsExt:
 
     def ks_stats(self, var: pl.Expr) -> pl.Expr:
         """
-        Computes two-sided KS statistics with other. Currently it only returns the statistics.
+        Computes two-sided KS statistics with other. Currently it only returns the statistics. This will
+        sanitize data (only non-null finite values are used) before doing the computation.
 
         Parameters
         ----------
@@ -228,8 +229,8 @@ class StatsExt:
 
     def rand_int(
         self,
-        low: Optional[int] = 0,
-        high: Optional[int] = 10,
+        low: Union[int, pl.Expr] = 0,
+        high: Optional[Union[int, pl.Expr]] = 10,
         respect_null: bool = False,
         use_ref: bool = False,
     ) -> pl.Expr:
@@ -242,17 +243,31 @@ class StatsExt:
         Parameters
         ----------
         low
-            Lower end of random sample. None will be replaced 0.
+            Lower end of random sample. If high is none, low will be set to 0.
         high
-            Higher end of random sample. None will be replaced n_unique of reference.
+            Higher end of random sample. If this is None, then it will be replaced n_unique of reference.
         respect_null
             If true, null in reference column will be null in the new column
         """
-        if (low is None) & (high is None):
-            raise ValueError("Either low or high must be set.")
 
-        lo = pl.lit(low, dtype=pl.Int32)
-        hi = self._expr.n_unique.cast(pl.UInt32) if high is None else pl.lit(high, dtype=pl.Int32)
+        if high is None:
+            lo = pl.lit(0, dtype=pl.Int32)
+            hi = self._expr.n_unique.cast(pl.UInt32)
+        else:
+            if isinstance(low, pl.Expr):
+                lo = low
+            elif isinstance(low, int):
+                lo = pl.lit(low, dtype=pl.Int32)
+            else:
+                raise ValueError("Input `low` must be expression or int.")
+
+            if isinstance(high, pl.Expr):
+                hi = high
+            elif isinstance(high, int):
+                hi = pl.lit(high, dtype=pl.Int32)
+            else:
+                raise ValueError("Input `high` must be expression or int.")
+
         resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
             lib=_lib,
@@ -263,7 +278,10 @@ class StatsExt:
         )
 
     def sample_uniform(
-        self, low: Optional[float] = None, high: Optional[float] = None, respect_null: bool = False
+        self,
+        low: Optional[Union[float, pl.Expr]] = None,
+        high: Optional[Union[float, pl.Expr]] = None,
+        respect_null: bool = False,
     ) -> pl.Expr:
         """
         Creates self.len() many random points sampled from a uniform distribution within [low, high).
@@ -281,8 +299,20 @@ class StatsExt:
             If true, null in reference column will be null in the new column
         """
 
-        lo = self._expr.min() if low is None else pl.lit(low, dtype=pl.Float64)
-        hi = self._expr.max() if high is None else pl.lit(high, dtype=pl.Float64)
+        if isinstance(low, pl.Expr):
+            lo = low
+        elif isinstance(low, float):
+            lo = pl.lit(low, dtype=pl.Float64)
+        else:
+            lo = self._expr.min()
+
+        if isinstance(high, pl.Expr):
+            hi = high
+        elif isinstance(high, float):
+            hi = pl.lit(high, dtype=pl.Float64)
+        else:
+            hi = self._expr.max()
+
         resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
             lib=_lib,
@@ -319,7 +349,9 @@ class StatsExt:
             returns_scalar=False,
         )
 
-    def sample_exp(self, lam: Optional[float] = None, respect_null: bool = False) -> pl.Expr:
+    def sample_exp(
+        self, lambda_: Optional[Union[float, pl.Expr]] = None, respect_null: bool = False
+    ) -> pl.Expr:
         """
         Creates self.len() many random points sampled from a exponential distribution with n and p.
 
@@ -327,25 +359,33 @@ class StatsExt:
 
         Parameters
         ----------
-        lam
+        lambda_
             lambda in a exponential distribution. If none, it will be 1/reference col's mean. Note that if
             lambda < 0 will throw an error and lambda = 0 will only return infinity.
         respect_null
             If true, null in reference column will be null in the new column
         """
+        if isinstance(lambda_, pl.Expr):
+            la = lambda_
+        elif isinstance(lambda_, float):
+            la = pl.lit(lambda_, dtype=pl.Float64)
+        else:
+            la = 1.0 / self._expr.mean()
 
-        lamb = (1.0 / self._expr.mean()) if lam is None else pl.lit(lam, dtype=pl.Float64)
         resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_sample_exp",
-            args=[lamb, resp],
+            args=[la, resp],
             is_elementwise=True,
             returns_scalar=False,
         )
 
     def sample_normal(
-        self, mean: Optional[float] = None, std: Optional[float] = None, respect_null: bool = False
+        self,
+        mean: Optional[Union[float, pl.Expr]] = None,
+        std: Optional[Union[float, pl.Expr]] = None,
+        respect_null: bool = False,
     ) -> pl.Expr:
         """
         Creates self.len() many random points sampled from a normal distribution with the given
@@ -362,9 +402,20 @@ class StatsExt:
         respect_null
             If true, null in reference column will be null in the new column
         """
+        if isinstance(mean, pl.Expr):
+            me = mean
+        elif isinstance(mean, (float, int)):
+            me = pl.lit(mean, dtype=pl.Float64)
+        else:
+            me = self._expr.mean()
 
-        me = self._expr.mean() if mean is None else pl.lit(mean, dtype=pl.Float64)
-        st = self._expr.std() if std is None else pl.lit(std, dtype=pl.Float64)
+        if isinstance(std, pl.Expr):
+            st = std
+        elif isinstance(std, (float, int)):
+            st = pl.lit(std, dtype=pl.Float64)
+        else:
+            st = self._expr.std()
+
         resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
             lib=_lib,
@@ -395,8 +446,8 @@ class StatsExt:
         respect_null
             If true, null in reference column will be null in the new column
         """
-        if max_size <= 0:
-            raise ValueError("Input `max_size` must be positive.")
+        if min_size <= 0 or (max_size < min_size):
+            raise ValueError("String size must be positive and max_size must be >= min_size.")
 
         min_s = pl.lit(min_size, dtype=pl.UInt32)
         max_s = pl.lit(max_size, dtype=pl.UInt32)

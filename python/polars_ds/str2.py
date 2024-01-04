@@ -1,8 +1,6 @@
 import polars as pl
 from typing import Union, Optional, Literal
 from polars.utils.udfs import _get_shared_lib_location
-from .type_alias import AhoCorasickMatchKind
-import warnings
 
 _lib = _get_shared_lib_location(__file__)
 
@@ -777,95 +775,6 @@ class StrExt:
             lib=_lib,
             symbol="pl_snowball_stem",
             args=[pl.lit(no_stopwords, pl.Boolean), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
-        )
-
-    def ac_match(
-        self,
-        patterns: list[str],
-        case_sensitive: bool = False,
-        match_kind: AhoCorasickMatchKind = "standard",
-        return_str: bool = False,
-    ) -> pl.Expr:
-        """
-        Try to match the patterns using the Aho-Corasick algorithm. The matched pattern's indices will be
-        returned. E.g. If for string1, pattern 2, 1, 3 are matched in this order, then [1, 0, 2] are
-        returned. (Indices in pattern list)
-
-        Polars >= 0.20 now has native aho-corasick support. The backend package is the same, though the function
-        api is different. See polars's str.contains_any and str.replace_many.
-
-        Parameters
-        ----------
-        patterns
-            A list of strs, which are patterns to be matched
-        case_sensitive
-            Should this match be case sensitive? Default is false. Not working now.
-        match_kind
-            One of `standard`, `left_most_first`, or `left_most_longest`. For more information, see
-            https://docs.rs/aho-corasick/latest/aho_corasick/enum.MatchKind.html. Any other input will
-            be treated as standard.
-        """
-
-        # Currently value_capacity for each list is hard-coded to 20. If there are more than 20 matches,
-        # then this will be slow (doubling vec capacity)
-        warnings.warn("Argument `case_sensitive` does not seem to work right now.")
-        warnings.warn(
-            "This function is unstable and is subject to change and may not perform well if there are more than "
-            "20 matches. Read the source code or contact the author for more information. The most difficulty part "
-            "is to design an output API that works well with Polars, which is harder than one might think."
-        )
-
-        pat = pl.Series(patterns, dtype=pl.Utf8)
-        cs = pl.lit(case_sensitive, pl.Boolean)
-        mk = pl.lit(match_kind, pl.Utf8)
-        if return_str:
-            return self._expr.register_plugin(
-                lib=_lib,
-                symbol="pl_ac_match_str",
-                args=[pat, cs, mk],
-                is_elementwise=True,
-            )
-        else:
-            return self._expr.register_plugin(
-                lib=_lib,
-                symbol="pl_ac_match",
-                args=[pat, cs, mk],
-                is_elementwise=True,
-            )
-
-    def ac_replace(
-        self, patterns: list[str], replacements: list[str], parallel: bool = False
-    ) -> pl.Expr:
-        """
-        Try to replace the patterns using the Aho-Corasick algorithm. The length of patterns should match
-        the length of replacements. If not, both sequences will be capped at the shorter length. If an error
-        happens during replacement, None will be returned.
-
-        Polars >= 0.20 now has native aho-corasick support. The backend package is the same, though the function
-        api is different. See polars's str.contains_any and str.replace_many.
-
-        Parameters
-        ----------
-        patterns
-            A list of strs, which are patterns to be matched
-        replacements
-            A list of strs to replace the patterns with
-        parallel
-            Whether to run the comparisons in parallel. Note that this is not always faster, especially
-            when used with other expressions or in group_by/over context.
-        """
-        if (len(replacements) == 0) or (len(patterns) == 0):
-            return self._expr
-
-        mlen = min(len(patterns), len(replacements))
-        pat = pl.Series(patterns[:mlen], dtype=pl.Utf8)
-        rpl = pl.Series(replacements[:mlen], dtype=pl.Utf8)
-        par = pl.lit(parallel, pl.Boolean)
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_ac_replace",
-            args=[pat, rpl, par],
             is_elementwise=True,
         )
 

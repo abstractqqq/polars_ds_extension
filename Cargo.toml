@@ -19,7 +19,6 @@ serde = {version = "*", features=["derive"]}
 ndarray = {version="0.15.6", features=["rayon"]} # see if we can get rid of this
 hashbrown = {version = "0.14.2", features=["nightly"]}
 itertools = "0.12.0"
-aho-corasick = "1.1"
 rand = {version = "0.8.5"} # Simd support feature seems to be broken atm
 rand_distr = "0.4.3"
 realfft = "3.3.0"
