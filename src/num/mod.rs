@@ -12,6 +12,7 @@ mod jaccard;
 mod knn;
 mod lempel_ziv;
 mod ols;
+mod psi;
 mod tp_fp;
 mod trapz;
 

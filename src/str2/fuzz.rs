@@ -12,7 +12,7 @@ fn pl_fuzz(inputs: &[Series]) -> PolarsResult<Series> {
     let ca1 = inputs[0].str()?;
     let ca2 = inputs[1].str()?;
     let cutoff = inputs[2].f64()?;
-    let cutoff = cutoff.get(0).unwrap_or(0.);
+    let cutoff = cutoff.get(0).unwrap_or(f64::MAX);
     let args = Args::default().score_cutoff(cutoff);
     let parallel = inputs[3].bool()?;
     let parallel = parallel.get(0).unwrap();
