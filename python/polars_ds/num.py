@@ -655,6 +655,111 @@ class NumExt:
                 .entropy(base=base, normalize=True)
             )
 
+    def psi(
+        self,
+        ref: Union[pl.Expr, list[float], "np.ndarray", pl.Series],  # noqa: F821
+        n_bins: int = 10,
+    ) -> pl.Expr:
+        """
+        Compute the Population Stability Index between self (actual) and the reference column. The reference
+        column will be divided into n_bins quantile bins which will be used as basis of comparison.
+
+        Note this assumes values in self and ref are continuous. This will also remove all infinite, null, NA
+        values.
+
+        Also note that it will try to create `n_bins` many unique breakpoints. If input data has < n_bins
+        unique breakpoints, the repeated breakpoints will be grouped together, and the computation will be done
+        with < `n_bins` many bins. This happens when a single value appears too many times in data. This also
+        differs from the reference implementation by treating breakpoints as right-closed intervals with -inf
+        and inf being the first and last values of the intervals. This is because we need to accommodate all data
+        in the case when actual data's min and the reference data's min are not the same, which is common in reality.
+
+        Parameters
+        ----------
+        ref
+            An expression, or any iterable that can be turned into a Polars series
+        n_bins : int, > 1
+            The number of quantile bins to use
+
+        Reference
+        ---------
+        https://github.com/mwburke/population-stability-index/blob/master/psi.py
+        https://www.listendata.com/2015/05/population-stability-index.html
+        """
+        if n_bins <= 1:
+            raise ValueError("Input `n_bins` must be >= 2.")
+
+        valid_self = self._expr.filter(self._expr.is_finite()).cast(pl.Float64)
+        if isinstance(ref, pl.Expr):
+            valid_ref = ref.filter(ref.is_finite()).cast(pl.Float64)
+        else:
+            temp = pl.Series(values=ref, dtype=pl.Float64)
+            temp = temp.filter(temp.is_finite())
+            valid_ref = pl.lit(temp)
+
+        vc = (
+            valid_ref.qcut(n_bins, left_closed=False, allow_duplicates=True, include_breaks=True)
+            .struct.field("brk")
+            .value_counts()
+            .sort()
+        )
+        brk = vc.struct.field("brk")  # .cast(pl.Float64)
+        cnt_ref = vc.struct.field("count")  # .cast(pl.UInt32)
+
+        return valid_self.register_plugin(
+            lib=_lib,
+            symbol="pl_psi",
+            args=[brk, cnt_ref],
+            is_elementwise=False,
+            returns_scalar=True,
+        )
+
+    def psi_discrete(
+        self,
+        ref: Union[pl.Expr, list[float], "np.ndarray", pl.Series],  # noqa: F821
+    ) -> pl.Expr:
+        """
+        Compute the Population Stability Index between self (actual) and the reference column. The reference
+        column will be used as bins which are the basis of comparison.
+
+        Note this assumes values in self and ref are discrete columns. This will treat each value as a discrete
+        category, e.g. null will be treated as a category by itself. If a category exists in actual but not in
+        ref, then 0 is imputed, and 0.0001 is used to avoid numerical issue when computing psi. It is recommended
+        to use for str and str column PSI comparison, or discrete numerical column PSI comparison.
+
+        Also note that discrete columns must have the same type in order to be considered the same.
+
+        Parameters
+        ----------
+        ref
+            An expression, or any iterable that can be turned into a Polars series
+
+        Reference
+        ---------
+        https://www.listendata.com/2015/05/population-stability-index.html
+        """
+        if isinstance(ref, pl.Expr):
+            temp = ref.alias("__ref").value_counts()
+            ref_cnt = temp.struct.field("count")
+            ref_cats = temp.struct.field("__ref")
+        else:
+            temp = pl.Series(values=ref, dtype=pl.Float64)
+            temp = temp.value_counts()  # This is a df in this case
+            ref_cnt = temp.drop_in_place("count")
+            ref_cats = temp[temp.columns[0]]
+
+        vc = self._expr.alias("_self").value_counts()
+        data_cats = vc.struct.field("_self")
+        data_cnt = vc.struct.field("count")
+
+        return data_cats.register_plugin(
+            lib=_lib,
+            symbol="pl_psi_discrete",
+            args=[data_cnt, ref_cats, ref_cnt],
+            is_elementwise=False,
+            returns_scalar=True,
+        )
+
     def _haversine(
         self,
         x_long: pl.Expr,

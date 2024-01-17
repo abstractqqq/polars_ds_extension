@@ -1,6 +1,6 @@
 [package]
 name = "polars_ds"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 
 [lib]
@@ -12,7 +12,7 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = {version = "*", features = ["extension-module"]}
 pyo3-polars = {version = "0.10", features = ["derive"]}
-polars = {version = "0.36.2", features = ["performant", "lazy", "dtype-array", "ndarray", "horizontal_concat","log", "nightly"]}
+polars = {version = "0.36.2", features = ["performant", "lazy", "dtype-array", "ndarray", "horizontal_concat","log", "cutqcut","nightly"]}
 num = "0.4.1"
 faer = {version = "0.16", features = ["ndarray", "nightly"]}
 serde = {version = "*", features=["derive"]}

@@ -55,7 +55,7 @@ class StatsExt:
             return m1.register_plugin(
                 lib=_lib,
                 symbol="pl_ttest_2samp",
-                args=[m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.Utf8)],
+                args=[m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
                 is_elementwise=False,
                 returns_scalar=True,
             )
@@ -71,7 +71,7 @@ class StatsExt:
             return m1.register_plugin(
                 lib=_lib,
                 symbol="pl_welch_t",
-                args=[m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.Utf8)],
+                args=[m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
                 is_elementwise=False,
                 returns_scalar=True,
             )
@@ -93,7 +93,7 @@ class StatsExt:
         pm = pl.lit(pop_mean, dtype=pl.Float64)
         var = s1.var()
         cnt = s1.count().cast(pl.UInt64)
-        alt = pl.lit(alternative, dtype=pl.Utf8)
+        alt = pl.lit(alternative, dtype=pl.String)
         return sm.register_plugin(
             lib=_lib,
             symbol="pl_ttest_1samp",

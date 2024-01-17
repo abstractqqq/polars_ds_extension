@@ -194,7 +194,7 @@ fn pl_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
                 let out = Float64Chunked::from_iter([Some(out)]);
                 Ok(out.into_series())
             }
-            Utf8 => {
+            String => {
                 let ca1 = s1.str()?;
                 let ca2 = s2.str()?;
                 let out = jaccard_str(ca1, ca2);

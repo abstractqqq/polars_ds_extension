@@ -15,5 +15,4 @@ def lempel_ziv():
 
 if __name__ == "__main__":
     with memray.Tracker("test.bin"):
-        # lempel_ziv()
         df.select(pl.col("a") + pl.col("b"))
