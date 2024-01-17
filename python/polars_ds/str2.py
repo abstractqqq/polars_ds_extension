@@ -32,7 +32,7 @@ class StrExt:
         )
 
     def extract_numbers(
-        self, ignore_comma: bool = False, join_by: str = "", dtype: pl.DataType = pl.Utf8
+        self, ignore_comma: bool = False, join_by: str = "", dtype: pl.DataType = pl.String
     ) -> pl.Expr:
         """
         Extracts numbers from the string column, and stores them in a list.
@@ -42,10 +42,10 @@ class StrExt:
         ignore_comma
             Whether to remove all comma before matching for numbers
         join_by
-            If dtype is pl.Utf8, join the list of strings using the value given here
+            If dtype is pl.String, join the list of strings using the value given here
         dtype
             The desired inner dtype for the extracted data. Should either be one of
-            pl.NUMERIC_DTYPES or pl.Utf8
+            pl.NUMERIC_DTYPES or pl.String
 
         Examples
         --------
@@ -68,7 +68,7 @@ class StrExt:
         │ [75, 99]  │
         │ [50, 74]  │
         └───────────┘
-        >>> df.select(pl.col("survey").str_ext.extract_numbers(join_by="-", dtype=pl.Utf8))
+        >>> df.select(pl.col("survey").str_ext.extract_numbers(join_by="-", dtype=pl.String))
         shape: (6, 1)
         ┌────────┐
         │ survey │
@@ -91,7 +91,7 @@ class StrExt:
         expr = expr.str.extract_all("(\d*\.?\d+)")
         if dtype in pl.NUMERIC_DTYPES:
             expr = expr.list.eval(pl.element().cast(dtype))
-        elif dtype == pl.Utf8:  # As a list of strings
+        elif dtype == pl.String:  # As a list of strings
             if join_by != "":
                 expr = expr.list.join(join_by)
 
@@ -180,7 +180,7 @@ class StrExt:
 
         return (
             pl.when(self._expr.is_in(to_merge))
-            .then(to_merge.cast(pl.Utf8).fill_null("null").implode().first().list.join(separator))
+            .then(to_merge.cast(pl.String).fill_null("null").implode().first().list.join(separator))
             .otherwise(self._expr)
         )
 
@@ -203,7 +203,7 @@ class StrExt:
             when used with other expressions or in group_by/over context.
         """
         if isinstance(other, str):
-            other_ = pl.lit(other, dtype=pl.Utf8)
+            other_ = pl.lit(other, dtype=pl.String)
         else:
             other_ = other
 
@@ -236,7 +236,7 @@ class StrExt:
             when used with other expressions or in group_by/over context.
         """
         if isinstance(other, str):
-            other_ = pl.lit(other, dtype=pl.Utf8)
+            other_ = pl.lit(other, dtype=pl.String)
         else:
             other_ = other
 
@@ -268,7 +268,7 @@ class StrExt:
             when used with other expressions or in group_by/over context.
         """
         if isinstance(other, str):
-            other_ = pl.lit(other, dtype=pl.Utf8)
+            other_ = pl.lit(other, dtype=pl.String)
         else:
             other_ = other
 
@@ -300,7 +300,7 @@ class StrExt:
             when used with other expressions or in group_by/over context.
         """
         if isinstance(other, str):
-            other_ = pl.lit(other, pl.Utf8)
+            other_ = pl.lit(other, pl.String)
         else:
             other_ = other
 
@@ -330,7 +330,7 @@ class StrExt:
             If true, return normalized Levenshtein.
         """
         if isinstance(other, str):
-            other_ = pl.lit(other, dtype=pl.Utf8)
+            other_ = pl.lit(other, dtype=pl.String)
         else:
             other_ = other
 
@@ -372,7 +372,7 @@ class StrExt:
             when used with other expressions or in group_by/over context.
         """
         if isinstance(other, str):
-            other_ = pl.lit(other, pl.Utf8)
+            other_ = pl.lit(other, pl.String)
         else:
             other_ = other
 
@@ -403,7 +403,7 @@ class StrExt:
             If true, return normalized Damerau-Levenshtein.
         """
         if isinstance(other, str):
-            other_ = pl.lit(other, dtype=pl.Utf8)
+            other_ = pl.lit(other, dtype=pl.String)
         else:
             other_ = other
 
@@ -441,7 +441,7 @@ class StrExt:
             If true, return normalized OSA similarity.
         """
         if isinstance(other, str):
-            other_ = pl.lit(other, dtype=pl.Utf8)
+            other_ = pl.lit(other, dtype=pl.String)
         else:
             other_ = other
 
@@ -475,7 +475,7 @@ class StrExt:
             when used with other expressions or in group_by/over context.
         """
         if isinstance(other, str):
-            other_ = pl.lit(other, dtype=pl.Utf8)
+            other_ = pl.lit(other, dtype=pl.String)
         else:
             other_ = other
 
@@ -506,7 +506,7 @@ class StrExt:
             when used with other expressions or in group_by/over context.
         """
         if isinstance(other, str):
-            other_ = pl.lit(other, pl.Utf8)
+            other_ = pl.lit(other, pl.String)
         else:
             other_ = other
 
@@ -671,7 +671,7 @@ class StrExt:
         if isinstance(vocab, pl.Expr):
             vb = vocab.unique()
         else:
-            vb = pl.Series(values=vocab, dtype=pl.Utf8).unique()
+            vb = pl.Series(values=vocab, dtype=pl.String).unique()
 
         if k == 1:  # k = 1, this is a fast path (no heap)
             return self._expr.register_plugin(

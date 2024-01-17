@@ -684,6 +684,7 @@ class NumExt:
         Reference
         ---------
         https://github.com/mwburke/population-stability-index/blob/master/psi.py
+        https://www.listendata.com/2015/05/population-stability-index.html
         """
         if n_bins <= 1:
             raise ValueError("Input `n_bins` must be >= 2.")
@@ -693,7 +694,7 @@ class NumExt:
             valid_ref = ref.filter(ref.is_finite()).cast(pl.Float64)
         else:
             temp = pl.Series(values=ref, dtype=pl.Float64)
-            temp = temp.filter(temp.is_finite()).cast(pl.Float64)
+            temp = temp.filter(temp.is_finite())
             valid_ref = pl.lit(temp)
 
         vc = (
@@ -702,8 +703,8 @@ class NumExt:
             .value_counts()
             .sort()
         )
-        brk = vc.struct.field("brk")
-        cnt_ref = vc.struct.field("count")
+        brk = vc.struct.field("brk")  # .cast(pl.Float64)
+        cnt_ref = vc.struct.field("count")  # .cast(pl.UInt32)
 
         return valid_self.register_plugin(
             lib=_lib,
@@ -712,6 +713,50 @@ class NumExt:
             is_elementwise=False,
             returns_scalar=True,
         )
+
+    # def psi_discrete(
+    #     self,
+    #     ref: Union[pl.Expr, list[float], "np.ndarray", pl.Series],  # noqa: F821
+    # ) -> pl.Expr:
+    #     """
+    #     Compute the Population Stability Index between self (actual) and the reference column. The reference
+    #     column will be divided into n_bins quantile bins which will be used as basis of comparison.
+
+    #     Note this assumes values in self and ref are discrete columns. This will treat each value as a discrete
+    #     category, e.g. null will be treated as a category by itself. If a category exists in actual but not in
+    #     ref, then 0 is imputed, and 0.0001 is used to avoid numerical issue when computing psi. It is recommended
+    #     to use for str and str column PSI comparison, or discrete numerical column PSI comparison.
+
+    #     Parameters
+    #     ----------
+    #     ref
+    #         An expression, or any iterable that can be turned into a Polars series
+
+    #     Reference
+    #     ---------
+    #     https://www.listendata.com/2015/05/population-stability-index.html
+    #     """
+    #     if isinstance(ref, pl.Expr):
+    #         temp = ref.value_counts()
+    #         ref_cnt = temp.struct.field("count")
+    #         ref_cats = temp.struct.field(temp.meta.output_name())
+    #     else:
+    #         temp = pl.Series(values=ref, dtype=pl.Float64)
+    #         temp = temp.value_counts() # This is a df in this case
+    #         ref_cnt = temp.drop_in_place("count")
+    #         ref_cats = temp[temp.columns[0]]
+
+    #     vc = self._expr.value_counts()
+    #     data_cats = vc.struct.field(vc.meta.output_name())
+    #     data_cnt = vc.struct.field("count")
+
+    #     return data_cats.register_plugin(
+    #         lib=_lib,
+    #         symbol="pl_psi_discrete",
+    #         args=[data_cnt, ref_cats, ref_cnt],
+    #         is_elementwise=False,
+    #         returns_scalar=True,
+    #     )
 
     def _haversine(
         self,
