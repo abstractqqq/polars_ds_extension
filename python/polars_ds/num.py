@@ -322,7 +322,9 @@ class NumExt:
             returns_scalar=True,
         )
 
-    def lstsq(self, *vars: pl.Expr, add_bias: bool = False) -> pl.Expr:
+    def lstsq(
+        self, *variables: pl.Expr, add_bias: bool = False, return_pred: bool = False
+    ) -> pl.Expr:
         """
         Computes least squares solution to the equation Ax = y by treating self as y.
 
@@ -335,23 +337,35 @@ class NumExt:
         does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
 
         If add_bias is true, it will be the last coefficient in the output
-        and output will have len(vars) + 1
+        and output will have len(variables) + 1
 
         Parameters
         ----------
-        vars
+        variables
             The other variables used to predict target (self).
         add_bias
             Whether to add a bias term
+        return_pred
+            If true, return prediction and residue. If false, return coefficients. Note that
+            for coefficients, it reduces to one output (like max/min), but for predictions and
+            residue, it will return the same number of rows as in input.
         """
         y = self._expr.cast(pl.Float64)
-        return y.register_plugin(
-            lib=_lib,
-            symbol="pl_lstsq",
-            args=[pl.lit(add_bias, dtype=pl.Boolean)] + list(vars),
-            is_elementwise=False,
-            returns_scalar=True,
-        )
+        if return_pred:
+            return y.register_plugin(
+                lib=_lib,
+                symbol="pl_lstsq_pred",
+                args=list(variables) + [pl.lit(add_bias, dtype=pl.Boolean)],
+                is_elementwise=True,
+            )
+        else:
+            return y.register_plugin(
+                lib=_lib,
+                symbol="pl_lstsq",
+                args=list(variables) + [pl.lit(add_bias, dtype=pl.Boolean)],
+                is_elementwise=False,
+                returns_scalar=True,
+            )
 
     def detrend(self, method: DetrendMethod = "linear") -> pl.Expr:
         """
