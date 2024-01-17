@@ -28,7 +28,7 @@ fn pl_psi(inputs: &[Series]) -> PolarsResult<Series> {
         };
         cnt_data[idx] += 1;
     }
-    // Total cnt in ref 
+    // Total cnt in ref
     let ref_total = cnt_ref.sum().unwrap() as f64;
     // Total cnt in actual
     let act_total = cnt_data.iter().sum::<u32>() as f64;
@@ -45,36 +45,61 @@ fn pl_psi(inputs: &[Series]) -> PolarsResult<Series> {
     Ok(out.into_series())
 }
 
-// #[polars_expr(output_type=Float64)]
-// fn pl_psi_discrete(inputs: &[Series]) -> PolarsResult<Series> {
+#[polars_expr(output_type=Float64)]
+fn pl_psi_discrete(inputs: &[Series]) -> PolarsResult<Series> {
+    if inputs[0].len() == 1 && inputs[2].len() == 1 {
+        let v1 = inputs[0].get(0).unwrap();
+        let v2 = inputs[1].get(0).unwrap();
+        let psi: f64 = if v1.eq(&v2) {
+            0_f64
+        } else {
+            2.0_f64 * (1.0_f64 - 0.0001_f64) * (1.0_f64 / 0.0001_f64).ln()
+        };
+        let out = Float64Chunked::from_iter([Some(psi)]);
+        return Ok(out.into_series());
+    } else if inputs[0].len() < 2 || inputs[2].len() < 2 {
+        // Only possible when either one is length 0
+        return Err(PolarsError::ComputeError(
+            "PSI: At least one input column is empty.".into(),
+        ));
+    }
 
-//     let df1 = df!(
-//         "data_discrete" => &inputs[0], // data cats
-//         "data_cnt" => &inputs[1], // data cnt
-//     )?;
-//     let df2 = df!(
-//         "ref_discrete" => &inputs[2], // ref cats
-//         "ref_cnt" => &inputs[3], // ref cnt
-//     )?;
+    let df1 = df!(
+        "data_discrete" => &inputs[0], // data cats
+        "data_cnt" => &inputs[1], // data cnt
+    )?;
+    let df2 = df!(
+        "ref_discrete" => &inputs[2], // ref cats
+        "ref_cnt" => &inputs[3], // ref cnt
+    )?;
 
-//     let mut df = df1.lazy().join(df2.lazy(), [col("data_discrete")], [col("ref_discrete")], JoinArgs::new(JoinType::Outer { coalesce: false })).fill_null(0).collect()?;
+    let mut df = df1
+        .lazy()
+        .join(
+            df2.lazy(),
+            [col("data_discrete")],
+            [col("ref_discrete")],
+            JoinArgs::new(JoinType::Outer { coalesce: false }),
+        )
+        .with_columns([col("data_cnt").fill_null(0), col("ref_cnt").fill_null(0)])
+        .collect()?;
 
-//     let data_total = inputs[1].sum::<u32>().unwrap() as f64;
-//     let ref_total = inputs[3].sum::<u32>().unwrap() as f64;
+    let data_total = inputs[1].sum::<u32>().unwrap() as f64;
+    let ref_total = inputs[3].sum::<u32>().unwrap() as f64;
 
-//     let cnt_data = df.drop_in_place("data_cnt")?;
-//     let cnt_data = cnt_data.u32()?;
-//     let cnt_ref = df.drop_in_place("ref_cnt")?;
-//     let cnt_ref = cnt_ref.u32()?;
-//     // PSI
-//     let psi = cnt_ref
-//         .into_no_null_iter()
-//         .zip(cnt_data.into_no_null_iter())
-//         .fold(0., |acc, (a, b)| {
-//             let aa = (a as f64).clamp(0.0001, f64::MAX) / ref_total;
-//             let bb = (b as f64).clamp(0.0001, f64::MAX) / data_total;
-//             acc + (aa - bb) * (aa / bb).ln()
-//         });
-//     let out = Float64Chunked::from_iter([Some(psi)]);
-//     Ok(out.into_series())
-// }
+    let cnt_data = df.drop_in_place("data_cnt")?;
+    let cnt_data = cnt_data.u32()?;
+    let cnt_ref = df.drop_in_place("ref_cnt")?;
+    let cnt_ref = cnt_ref.u32()?;
+    // PSI
+    let psi = cnt_ref
+        .into_no_null_iter()
+        .zip(cnt_data.into_no_null_iter())
+        .fold(0., |acc, (a, b)| {
+            let aa = ((a as f64) / ref_total).max(0.0001_f64);
+            let bb = ((b as f64) / data_total).max(0.0001_f64);
+            acc + (aa - bb) * (aa / bb).ln()
+        });
+    let out = Float64Chunked::from_iter([Some(psi)]);
+    Ok(out.into_series())
+}

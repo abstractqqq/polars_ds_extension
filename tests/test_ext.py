@@ -1015,3 +1015,31 @@ def test_apprximate_entropy(s, m, r, scale, res):
 def test_psi(df, n_bins, res):
     ans = df.select(pl.col("act").num.psi(pl.col("ref"), n_bins=n_bins)).item(0, 0)
     assert np.isclose(ans, res)
+
+
+@pytest.mark.parametrize(
+    "df, res",
+    [
+        (  # discrete version of the above example
+            pl.DataFrame(
+                {
+                    "ref": [0] * 100
+                    + [1] * 100
+                    + [2] * 100
+                    + [3] * 100
+                    + [4] * 100
+                    + [5] * 100
+                    + [6] * 100
+                    + [7] * 100
+                    + [8] * 100
+                    + [9] * 100,
+                    "act": [0] * 100 + [1] * 100 + [2] * 100 + [3] * 100 + [4] * 100 + [6] * 500,
+                }
+            ),
+            3.4041141744549024,
+        ),
+    ],
+)
+def test_psi_discrete(df, res):
+    ans = df.select(pl.col("act").num.psi_discrete(pl.col("ref"))).item(0, 0)
+    assert np.isclose(ans, res)
