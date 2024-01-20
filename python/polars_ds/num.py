@@ -328,21 +328,21 @@ class NumExt:
         """
         Computes least squares solution to the equation Ax = y by treating self as y.
 
+        All positional arguments should be expressions representing predictive variables. This
+        does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
+
+        If add_bias is true, it will be the last coefficient in the output
+        and output will have len(variables) + 1.
+
         Note: if columns are not linearly independent, some numerical issue may occur. E.g
         you may see unrealistic coefficients in the output. It is possible to have
         `silent` numerical issue during computation. Also note that if any input column contains null,
         NaNs will be returned.
 
-        All positional arguments should be expressions representing predictive variables. This
-        does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
-
-        If add_bias is true, it will be the last coefficient in the output
-        and output will have len(variables) + 1
-
         Parameters
         ----------
         variables
-            The other variables used to predict target (self).
+            The variables used to predict target (self).
         add_bias
             Whether to add a bias term
         return_pred
@@ -367,6 +367,35 @@ class NumExt:
                 returns_scalar=True,
             )
 
+    def lstsq_report(self, *variables: pl.Expr, add_bias: bool = False) -> pl.Expr:
+        """
+        Creates a least square report with more stats about each coefficient.
+
+        Note: if columns are not linearly independent, some numerical issue may occur. E.g
+        you may see unrealistic coefficients in the output. It is possible to have
+        `silent` numerical issue during computation. For this report, input must not
+        contain nulls and there must be > # features number of records. This uses the closed
+        form solution to compute the least square report.
+
+        This functions returns a struct with the same length as the number of features used
+        in the linear regression, and +1 if add_bias is true.
+
+        Parameters
+        ----------
+        variables
+            The variables used to predict target (self).
+        add_bias
+            Whether to add a bias term. If bias is added, it is always the last feature.
+        """
+        y = self._expr.cast(pl.Float64)
+        return y.register_plugin(
+            lib=_lib,
+            symbol="pl_lstsq_report",
+            args=list(variables) + [pl.lit(add_bias, dtype=pl.Boolean)],
+            is_elementwise=False,
+            changes_length=True,
+        )
+
     def detrend(self, method: DetrendMethod = "linear") -> pl.Expr:
         """
         Detrends self using either linear/mean method. This does not persist.
@@ -376,7 +405,6 @@ class NumExt:
         method
             Either `linear` or `mean`
         """
-
         if method == "linear":
             N = self._expr.count()
             x = pl.int_range(0, N, eager=False)
