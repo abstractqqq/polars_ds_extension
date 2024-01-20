@@ -1,8 +1,7 @@
-use faer::{prelude::*, IntoNdarray, MatRef, Side};
 /// OLS using Faer.
+use faer::{prelude::*, MatRef, Side};
 use faer::{IntoFaer, Mat};
 use itertools::Itertools;
-use ndarray::Array2;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
@@ -25,25 +24,13 @@ fn pred_residue_output(_: &[Field]) -> PolarsResult<Field> {
 
 fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
     // Update to array
+    // DataType::Array(DataType::Float64, fields.len());
+    // fields.len() + 1 when an input is true
     Ok(Field::new(
         "coeffs",
         DataType::List(Box::new(DataType::Float64)),
     ))
 }
-
-// // Closed form. Likely don't need
-// fn faer_lstsq_cf(x: MatRef<f64>, y: MatRef<f64>) -> Result<Array2<f64>, String> {
-//     let xt = x.transpose();
-//     let xtx = xt * &x;
-//     let decomp = xtx.cholesky(Side::Lower);
-//     if let Ok(cholesky) = decomp {
-//         let xtx_inv = cholesky.inverse();
-//         let betas = xtx_inv * xt * y;
-//         Ok(betas.as_ref().into_ndarray().to_owned())
-//     } else {
-//         Err("Linear algebra error, likely caused by linear dependency".to_owned())
-//     }
-// }
 
 #[inline]
 fn faer_lstsq_qr(x: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
@@ -165,8 +152,8 @@ fn pl_lstsq_pred(inputs: &[Series]) -> PolarsResult<Series> {
 
             let predictions = Series::from_vec("pred", pred);
             let actuals = inputs[0].clone(); // ref counted
-            let residue = actuals - predictions.clone(); // ref counted
-            let out = StructChunked::new("pred", &[predictions, residue])?;
+            let residue = (actuals - predictions.clone()).with_name("resid"); // ref counted
+            let out = StructChunked::new("", &[predictions, residue])?;
             Ok(out.into_series())
         }
         Err(e) => Err(e),
