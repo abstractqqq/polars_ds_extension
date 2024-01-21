@@ -322,35 +322,78 @@ class NumExt:
             returns_scalar=True,
         )
 
-    def lstsq(self, *vars: pl.Expr, add_bias: bool = False) -> pl.Expr:
+    def lstsq(
+        self, *variables: pl.Expr, add_bias: bool = False, return_pred: bool = False
+    ) -> pl.Expr:
         """
         Computes least squares solution to the equation Ax = y by treating self as y.
+
+        All positional arguments should be expressions representing predictive variables. This
+        does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
+
+        If add_bias is true, it will be the last coefficient in the output
+        and output will have len(variables) + 1.
 
         Note: if columns are not linearly independent, some numerical issue may occur. E.g
         you may see unrealistic coefficients in the output. It is possible to have
         `silent` numerical issue during computation. Also note that if any input column contains null,
         NaNs will be returned.
 
-        All positional arguments should be expressions representing predictive variables. This
-        does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
+        Parameters
+        ----------
+        variables
+            The variables used to predict target (self).
+        add_bias
+            Whether to add a bias term
+        return_pred
+            If true, return prediction and residue. If false, return coefficients. Note that
+            for coefficients, it reduces to one output (like max/min), but for predictions and
+            residue, it will return the same number of rows as in input.
+        """
+        y = self._expr.cast(pl.Float64)
+        if return_pred:
+            return y.register_plugin(
+                lib=_lib,
+                symbol="pl_lstsq_pred",
+                args=list(variables) + [pl.lit(add_bias, dtype=pl.Boolean)],
+                is_elementwise=True,
+            )
+        else:
+            return y.register_plugin(
+                lib=_lib,
+                symbol="pl_lstsq",
+                args=list(variables) + [pl.lit(add_bias, dtype=pl.Boolean)],
+                is_elementwise=False,
+                returns_scalar=True,
+            )
 
-        If add_bias is true, it will be the last coefficient in the output
-        and output will have len(vars) + 1
+    def lstsq_report(self, *variables: pl.Expr, add_bias: bool = False) -> pl.Expr:
+        """
+        Creates a least square report with more stats about each coefficient.
+
+        Note: if columns are not linearly independent, some numerical issue may occur. E.g
+        you may see unrealistic coefficients in the output. It is possible to have
+        `silent` numerical issue during computation. For this report, input must not
+        contain nulls and there must be > # features number of records. This uses the closed
+        form solution to compute the least square report.
+
+        This functions returns a struct with the same length as the number of features used
+        in the linear regression, and +1 if add_bias is true.
 
         Parameters
         ----------
-        vars
-            The other variables used to predict target (self).
+        variables
+            The variables used to predict target (self).
         add_bias
-            Whether to add a bias term
+            Whether to add a bias term. If bias is added, it is always the last feature.
         """
         y = self._expr.cast(pl.Float64)
         return y.register_plugin(
             lib=_lib,
-            symbol="pl_lstsq",
-            args=[pl.lit(add_bias, dtype=pl.Boolean)] + list(vars),
+            symbol="pl_lstsq_report",
+            args=list(variables) + [pl.lit(add_bias, dtype=pl.Boolean)],
             is_elementwise=False,
-            returns_scalar=True,
+            changes_length=True,
         )
 
     def detrend(self, method: DetrendMethod = "linear") -> pl.Expr:
@@ -362,7 +405,6 @@ class NumExt:
         method
             Either `linear` or `mean`
         """
-
         if method == "linear":
             N = self._expr.count()
             x = pl.int_range(0, N, eager=False)
@@ -400,6 +442,7 @@ class NumExt:
         leaf_size: int = 40,
         dist: Distance = "l2",
         parallel: bool = False,
+        return_dist: bool = False,
     ) -> pl.Expr:
         """
         Treats self as an ID column, and uses other columns to determine the k nearest neighbors
@@ -427,19 +470,30 @@ class NumExt:
         parallel
             Whether to run the k-nearest neighbor query in parallel. This is recommended when you
             are running only this expression, and not in group_by context.
+        return_dist
+            If true, return a struct with indices and distances.
         """
         if k < 1:
             raise ValueError("Input `k` must be >= 1.")
 
         metric = str(dist).lower()
         index: pl.Expr = self._expr.cast(pl.UInt64)
-        return index.register_plugin(
-            lib=_lib,
-            symbol="pl_knn_ptwise",
-            args=list(others),
-            kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
-            is_elementwise=True,
-        )
+        if return_dist:
+            return index.register_plugin(
+                lib=_lib,
+                symbol="pl_knn_ptwise_w_dist",
+                args=list(others),
+                kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
+                is_elementwise=True,
+            )
+        else:
+            return index.register_plugin(
+                lib=_lib,
+                symbol="pl_knn_ptwise",
+                args=list(others),
+                kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
+                is_elementwise=True,
+            )
 
     def _knn_pt(
         self,

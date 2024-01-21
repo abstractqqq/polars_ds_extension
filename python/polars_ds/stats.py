@@ -102,7 +102,7 @@ class StatsExt:
             returns_scalar=True,
         )
 
-    def f_stats(self, *vars: pl.Expr) -> pl.Expr:
+    def f_stats(self, *variables: pl.Expr) -> pl.Expr:
         """
         Computes multiple F statistics at once by using self as the grouping (class) column. This
         does not output p values. If the p value is desired, use `f_test`. This will return
@@ -110,13 +110,13 @@ class StatsExt:
 
         Parameters
         ----------
-        *vars
+        *variables
             The variables (Polars df columns) to compute the F statistics
         """
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_f_stats",
-            args=list(vars),
+            args=list(variables),
             is_elementwise=False,
             returns_scalar=True,
         )
