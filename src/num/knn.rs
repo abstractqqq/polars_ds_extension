@@ -41,9 +41,17 @@ pub fn build_standard_kdtree<'a>(
 
 pub fn knn_index_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
-        "ids",
+        "idx",
         DataType::List(Box::new(DataType::UInt64)),
     ))
+}
+
+pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
+    let idx = Field::new("idx", DataType::List(Box::new(DataType::UInt64)));
+
+    let dist = Field::new("dist", DataType::List(Box::new(DataType::Float64)));
+    let v = vec![idx, dist];
+    Ok(Field::new("knn_w_dist", DataType::Struct(v)))
 }
 
 #[polars_expr(output_type_func=knn_index_output)]
@@ -84,7 +92,6 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
             .into_par_iter()
             .map(|p| {
                 let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
-                                               // tree.nearest(s, k+1, &dist_func)
                 if let Ok(v) = tree.nearest(s, k + 1, &dist_func) {
                     // By construction, this unwrap is safe.
                     // k+ 1 because we include the point itself, and ask for k more neighbors.
@@ -122,6 +129,97 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
     }
     let ca = builder.finish();
     Ok(ca.into_series())
+}
+
+#[polars_expr(output_type_func=knn_full_output)]
+fn pl_knn_ptwise_w_dist(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
+    // Set up params
+    let id = inputs[0].u64()?;
+    let dim = inputs[1..].len();
+    if dim == 0 {
+        return Err(PolarsError::ComputeError(
+            "KNN: No column to decide distance from.".into(),
+        ));
+    }
+    let mut vs: Vec<Series> = Vec::with_capacity(dim);
+    for (i, s) in inputs[1..].into_iter().enumerate() {
+        let news = s.rechunk().with_name(&i.to_string());
+        vs.push(news)
+    }
+    let data = DataFrame::new(vs)?;
+    let k = kwargs.k;
+    let leaf_size = kwargs.leaf_size;
+    let parallel = kwargs.parallel;
+    let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
+
+    // Need to use C order because C order is row-contiguous
+    let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
+
+    // Building the tree
+    let binding = data.view();
+    let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
+
+    // Building output
+    let mut builder =
+        ListPrimitiveChunkedBuilder::<UInt64Type>::new("", id.len(), k + 1, DataType::UInt64);
+
+    let mut builder_dist =
+        ListPrimitiveChunkedBuilder::<Float64Type>::new("", id.len(), k + 1, DataType::Float64);
+
+    if parallel {
+        let mut nbs: Vec<(Option<Vec<u64>>, Option<Vec<f64>>)> = Vec::with_capacity(id.len());
+        data.axis_iter(Axis(0))
+            .into_par_iter()
+            .map(|p| {
+                let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
+                if let Ok(v) = tree.nearest(s, k + 1, &dist_func) {
+                    // k+ 1 because we include the point itself, and ask for k more neighbors.
+                    let mut w_idx: Vec<u64> = Vec::with_capacity(k + 1);
+                    let mut w_dist: Vec<f64> = Vec::with_capacity(k + 1);
+                    // By construction, this unwrap is safe.
+                    for (d, i) in v.into_iter() {
+                        w_idx.push(id.get(*i).unwrap());
+                        w_dist.push(d);
+                    }
+                    (Some(w_idx), Some(w_dist))
+                } else {
+                    (None, None)
+                }
+            })
+            .collect_into_vec(&mut nbs);
+        for (op_s, op_d) in nbs {
+            if let (Some(s), Some(d)) = (op_s, op_d) {
+                builder.append_slice(&s);
+                builder_dist.append_slice(&d);
+            } else {
+                builder.append_null();
+                builder_dist.append_null();
+            }
+        }
+    } else {
+        for p in data.rows() {
+            let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
+            if let Ok(v) = tree.nearest(s, k + 1, &dist_func) {
+                // By construction, this unwrap is safe
+                let mut w_idx: Vec<u64> = Vec::with_capacity(k + 1);
+                let mut w_dist: Vec<f64> = Vec::with_capacity(k + 1);
+                for (d, i) in v.into_iter() {
+                    w_idx.push(id.get(*i).unwrap());
+                    w_dist.push(d);
+                }
+                builder.append_slice(w_idx.as_slice());
+                builder_dist.append_slice(w_dist.as_slice());
+            } else {
+                builder.append_null();
+            }
+        }
+    }
+    let ca1 = builder.finish();
+    let indices = ca1.with_name("idx").into_series();
+    let ca2 = builder_dist.finish();
+    let distances = ca2.with_name("dist").into_series();
+    let out = StructChunked::new("knn_full_output", &[indices, distances])?;
+    Ok(out.into_series())
 }
 
 /// Find all the rows that are the k-nearest neighbors to the point given.

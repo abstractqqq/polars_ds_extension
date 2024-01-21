@@ -442,6 +442,7 @@ class NumExt:
         leaf_size: int = 40,
         dist: Distance = "l2",
         parallel: bool = False,
+        return_dist: bool = False,
     ) -> pl.Expr:
         """
         Treats self as an ID column, and uses other columns to determine the k nearest neighbors
@@ -469,19 +470,30 @@ class NumExt:
         parallel
             Whether to run the k-nearest neighbor query in parallel. This is recommended when you
             are running only this expression, and not in group_by context.
+        return_dist
+            If true, return a struct with indices and distances.
         """
         if k < 1:
             raise ValueError("Input `k` must be >= 1.")
 
         metric = str(dist).lower()
         index: pl.Expr = self._expr.cast(pl.UInt64)
-        return index.register_plugin(
-            lib=_lib,
-            symbol="pl_knn_ptwise",
-            args=list(others),
-            kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
-            is_elementwise=True,
-        )
+        if return_dist:
+            return index.register_plugin(
+                lib=_lib,
+                symbol="pl_knn_ptwise_w_dist",
+                args=list(others),
+                kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
+                is_elementwise=True,
+            )
+        else:
+            return index.register_plugin(
+                lib=_lib,
+                symbol="pl_knn_ptwise",
+                args=list(others),
+                kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
+                is_elementwise=True,
+            )
 
     def _knn_pt(
         self,
