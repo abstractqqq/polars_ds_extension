@@ -24,16 +24,19 @@ fn get_woe_frame(inputs: &[Series]) -> PolarsResult<LazyFrame> {
         "target" => inputs[0].clone(),
         "values" => categories
     )?;
+    // Here we are adding 1 to make sure the event/non-event (goods/bads) are nonzero,
+    // so that the computation will not yield inf as output.
     let out = df
         .lazy()
         .group_by([col("values")])
         .agg([count().alias("cnt"), col("target").sum().alias("goods")])
         .select([
             col("values"),
-            (col("goods").cast(DataType::Float64) / col("goods").sum().cast(DataType::Float64))
-                .alias("good_pct"),
-            ((col("cnt") - col("goods")).cast(DataType::Float64)
-                / (col("cnt").sum() - col("goods").sum()).cast(DataType::Float64))
+            ((col("goods") + lit(1)).cast(DataType::Float64)
+                / (col("goods").sum() + lit(2)).cast(DataType::Float64))
+            .alias("good_pct"),
+            ((col("cnt") - col("goods") + lit(1)).cast(DataType::Float64)
+                / (col("cnt").sum() - col("goods").sum() + lit(2)).cast(DataType::Float64))
             .alias("bad_pct"),
         ])
         .with_column(

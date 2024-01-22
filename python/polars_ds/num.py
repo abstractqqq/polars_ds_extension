@@ -713,7 +713,8 @@ class NumExt:
         """
         Compute the Weight Of Evidence for the variable by treating self as the binary target of 0s
         and 1s. This assumes the variable is continuous. The output is a struct containing the ranges
-        and the corresponding WOEs.
+        and the corresponding WOEs. A value of 1 is added to all events/non-events (goods/bads)
+        to smooth the computation.
 
         Currently only quantile binning strategy is implemented.
 
@@ -741,7 +742,8 @@ class NumExt:
         """
         Compute the Weight Of Evidence for the variable by treating self as the binary target of 0s
         and 1s. This assumes the variable is discrete. The output is a struct containing the categories
-        and the corresponding WOEs.
+        and the corresponding WOEs. A value of 1 is added to all events/non-events (goods/bads)
+        to smooth the computation.
 
         Parameters
         ----------
@@ -759,7 +761,8 @@ class NumExt:
     def iv(self, variable: pl.Expr, n_bins: int = 10, return_sum: bool = True) -> pl.Expr:
         """
         Compute the Information Value for the variable by treating self as the binary target of 0s
-        and 1s. This assumes the variable is continuous.
+        and 1s. This assumes the variable is continuous. A value of 1 is added to all events/non-events
+        (goods/bads) to smooth the computation.
 
         Currently only quantile binning strategy is implemented.
 
@@ -789,7 +792,8 @@ class NumExt:
     def iv_discrete(self, discrete_var: pl.Expr, return_sum: bool = True) -> pl.Expr:
         """
         Compute the Information Value for the variable by treating self as the binary target of 0s
-        and 1s. This assumes the variable is discrete.
+        and 1s. This assumes the variable is discrete. A value of 1 is added to all events/non-events
+        (goods/bads) to smooth the computation.
 
         Parameters
         ----------
