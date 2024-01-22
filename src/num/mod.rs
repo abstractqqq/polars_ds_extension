@@ -15,6 +15,7 @@ mod ols;
 mod psi;
 mod tp_fp;
 mod trapz;
+mod woe_iv;
 
 // Collection of distances, most will be used as function pointers in kd tree related queries,
 // which may be bad for perf.
