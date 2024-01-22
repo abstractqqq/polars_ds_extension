@@ -709,6 +709,112 @@ class NumExt:
                 .entropy(base=base, normalize=True)
             )
 
+    def woe(self, variable: pl.Expr, n_bins: int = 10) -> pl.Expr:
+        """
+        Compute the Weight Of Evidence for the variable by treating self as the binary target of 0s
+        and 1s. This assumes the variable is continuous. The output is a struct containing the ranges
+        and the corresponding WOEs. A value of 1 is added to all events/non-events (goods/bads)
+        to smooth the computation.
+
+        Currently only quantile binning strategy is implemented.
+
+        Parameters
+        ----------
+        variable
+            The variable whose WOE you want to compute
+        n_bins
+            The number of bins to bin the variable.
+
+        Reference
+        ---------
+        https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
+        """
+        valid = variable.filter(variable.is_finite()).cast(pl.Float64)
+        brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True)
+        return self._expr.register_plugin(
+            lib=_lib, symbol="pl_woe_discrete", args=[brk], changes_length=True
+        )
+
+    def woe_discrete(
+        self,
+        discrete_var: pl.Expr,
+    ) -> pl.Expr:
+        """
+        Compute the Weight Of Evidence for the variable by treating self as the binary target of 0s
+        and 1s. This assumes the variable is discrete. The output is a struct containing the categories
+        and the corresponding WOEs. A value of 1 is added to all events/non-events (goods/bads)
+        to smooth the computation.
+
+        Parameters
+        ----------
+        discrete_var
+            The variable whose WOE you want to compute
+
+        Reference
+        ---------
+        https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
+        """
+        return self._expr.register_plugin(
+            lib=_lib, symbol="pl_woe_discrete", args=[discrete_var], changes_length=True
+        )
+
+    def iv(self, variable: pl.Expr, n_bins: int = 10, return_sum: bool = True) -> pl.Expr:
+        """
+        Compute the Information Value for the variable by treating self as the binary target of 0s
+        and 1s. This assumes the variable is continuous. A value of 1 is added to all events/non-events
+        (goods/bads) to smooth the computation.
+
+        Currently only quantile binning strategy is implemented.
+
+        Parameters
+        ----------
+        variable
+            The variable whose IV you want to compute
+        n_bins
+            The number of bins to bin the variable.
+        return_sum
+            If false, the output is a struct containing the ranges and the corresponding IVs. If true,
+            it is the sum of the individual information values.
+
+        Reference
+        ---------
+        https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
+        """
+        valid = variable.filter(variable.is_finite()).cast(pl.Float64)
+        brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True)
+
+        out = self._expr.register_plugin(lib=_lib, symbol="pl_iv", args=[brk], changes_length=True)
+        if return_sum:
+            return out.struct.field("iv").sum()
+        else:
+            return out
+
+    def iv_discrete(self, discrete_var: pl.Expr, return_sum: bool = True) -> pl.Expr:
+        """
+        Compute the Information Value for the variable by treating self as the binary target of 0s
+        and 1s. This assumes the variable is discrete. A value of 1 is added to all events/non-events
+        (goods/bads) to smooth the computation.
+
+        Parameters
+        ----------
+        discrete_var
+            The variable whose IV you want to compute
+        return_sum
+            If false, the output is a struct containing the categories and the corresponding IVs. If true,
+            it is the sum of the individual information values.
+
+        Reference
+        ---------
+        https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
+        """
+        out = self._expr.register_plugin(
+            lib=_lib, symbol="pl_iv", args=[discrete_var], changes_length=True
+        )
+        if return_sum:
+            return out.struct.field("iv").sum()
+        else:
+            return out
+
     def psi(
         self,
         ref: Union[pl.Expr, list[float], "np.ndarray", pl.Series],  # noqa: F821
