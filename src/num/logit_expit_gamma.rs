@@ -1,7 +1,7 @@
+use num::traits::Float;
 /// The logit, expit and gamma function as defined in SciPy
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
-use num::traits::Float;
 
 pub fn float_output(fields: &[Field]) -> PolarsResult<Field> {
     FieldsMapper::new(fields).map_to_float_dtype()
@@ -29,34 +29,32 @@ fn expit<T: Float>(x: T) -> T {
 fn pl_logit(inputs: &[Series]) -> PolarsResult<Series> {
     let s = &inputs[0];
     match s.dtype() {
-        DataType::UInt8 
-        | DataType::UInt16 
-        | DataType::UInt32 
+        DataType::UInt8
+        | DataType::UInt16
+        | DataType::UInt32
         | DataType::UInt64
-        | DataType::Int8 
-        | DataType::Int16 
-        | DataType::Int32 
+        | DataType::Int8
+        | DataType::Int16
+        | DataType::Int32
         | DataType::Int64 => {
             let ss = s.cast(&DataType::Float32)?;
             let ca = ss.f32()?;
             let out = ca.apply_values(logit);
             Ok(out.into_series())
-        },
+        }
         DataType::Float32 => {
             let ca = s.f32()?;
             let out = ca.apply_values(logit);
             Ok(out.into_series())
-        },
+        }
         DataType::Float64 => {
             let ca = s.f64()?;
             let out = ca.apply_values(logit);
             Ok(out.into_series())
-        },
-        _ => {
-            Err(PolarsError::ShapeMismatch(
-                "Input column must be numerical.".into(),
-            ))
         }
+        _ => Err(PolarsError::ShapeMismatch(
+            "Input column must be numerical.".into(),
+        )),
     }
 }
 
@@ -64,34 +62,32 @@ fn pl_logit(inputs: &[Series]) -> PolarsResult<Series> {
 fn pl_expit(inputs: &[Series]) -> PolarsResult<Series> {
     let s = &inputs[0];
     match s.dtype() {
-        DataType::UInt8 
-        | DataType::UInt16 
-        | DataType::UInt32 
+        DataType::UInt8
+        | DataType::UInt16
+        | DataType::UInt32
         | DataType::UInt64
-        | DataType::Int8 
-        | DataType::Int16 
-        | DataType::Int32 
+        | DataType::Int8
+        | DataType::Int16
+        | DataType::Int32
         | DataType::Int64 => {
             let ss = s.cast(&DataType::Float32)?;
             let ca = ss.f32()?;
             let out = ca.apply_values(expit);
             Ok(out.into_series())
-        },
+        }
         DataType::Float32 => {
             let ca = s.f32()?;
             let out = ca.apply_values(expit);
             Ok(out.into_series())
-        },
+        }
         DataType::Float64 => {
             let ca = s.f64()?;
             let out = ca.apply_values(expit);
             Ok(out.into_series())
-        },
-        _ => {
-            Err(PolarsError::ShapeMismatch(
-                "Input column must be numerical.".into(),
-            ))
         }
+        _ => Err(PolarsError::ShapeMismatch(
+            "Input column must be numerical.".into(),
+        )),
     }
 }
 
