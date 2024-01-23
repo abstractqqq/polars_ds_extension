@@ -322,6 +322,80 @@ class NumExt:
             returns_scalar=True,
         )
 
+    def rel_entropy(self, other: pl.Expr) -> pl.Expr:
+        """
+        Computes relative entropy between self and other. (self = x, other = y).
+
+        Parameters
+        ----------
+        other
+            A Polars expression
+
+        Reference
+        ---------
+        https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.rel_entr.html
+        """
+        return (
+            pl.when((self._expr > 0) & (other > 0))
+            .then(self._expr * (self._expr / other).log())
+            .when((self._expr == 0) & (other >= 0))
+            .then(pl.lit(0.0, dtype=pl.Float64))
+            .otherwise(pl.lit(float("inf"), dtype=pl.Float64))
+        )
+
+    def kl_div(self, other: pl.Expr) -> pl.Expr:
+        """
+        Computes Kullback-Leibler divergence between self and other. (self = x, other = y).
+
+        Parameters
+        ----------
+        other
+            A Polars expression
+
+        Reference
+        ---------
+        https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.kl_div.html
+        """
+        return (
+            pl.when((self._expr > 0) & (other > 0))
+            .then(self._expr * (self._expr / other).log() - self._expr + other)
+            .when((self._expr == 0) & (other >= 0))
+            .then(other)
+            .otherwise(pl.lit(float("inf"), dtype=pl.Float64))
+        )
+
+    def gamma(self) -> pl.Expr:
+        """
+        Applies the gamma function to self. Note, this will return NaN for negative values and inf when x = 0,
+        whereas SciPy's gamma function will return inf for all x <= 0.
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_gamma",
+            is_elementwise=True,
+        )
+
+    def expit(self) -> pl.Expr:
+        """
+        Applies the Expit function to self. Expit(x) = 1 / (1 + e^(-x))
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_expit",
+            is_elementwise=True,
+        )
+
+    def logit(self) -> pl.Expr:
+        """
+        Applies the logit function to self. Logit(x) = ln(x/(1-x)).
+        Note that logit(0) = -inf, logit(1) = inf, and logit(p) for p < 0 or p > 1 yields nan.
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_logit",
+            is_elementwise=True,
+        )
+
     def lstsq(
         self, *variables: pl.Expr, add_bias: bool = False, return_pred: bool = False
     ) -> pl.Expr:

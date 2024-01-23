@@ -24,6 +24,7 @@ fn get_woe_frame(inputs: &[Series]) -> PolarsResult<LazyFrame> {
         "target" => inputs[0].clone(),
         "values" => categories
     )?;
+
     // Here we are adding 1 to make sure the event/non-event (goods/bads) are nonzero,
     // so that the computation will not yield inf as output.
     let out = df
