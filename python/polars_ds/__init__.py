@@ -7,9 +7,11 @@ from polars_ds.complex import ComplexExt  # noqa: E402
 from polars_ds.str2 import StrExt  # noqa: E402
 from polars_ds.stats import StatsExt  # noqa: E402
 from polars_ds.metrics import MetricExt  # noqa: E402
+from polars_ds.graph import GraphExt  # noqa: E402
 
-version = "0.2.3"
-__all__ = ["NumExt", "StrExt", "StatsExt", "ComplexExt", "MetricExt"]
+version = "0.2.4"
+
+__all__ = ["NumExt", "StrExt", "StatsExt", "ComplexExt", "MetricExt", "GraphExt"]
 
 
 def query_radius(

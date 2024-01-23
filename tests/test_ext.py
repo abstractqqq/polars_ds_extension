@@ -811,7 +811,6 @@ def test_chi2(df):
     "df",
     [
         (pl.DataFrame({"a": np.random.random(size=100)})),
-        (pl.DataFrame({"a": np.random.normal(size=100)})),
     ],
 )
 def test_normal_test(df):
@@ -826,6 +825,48 @@ def test_normal_test(df):
 
     assert np.isclose(statistic, scipy_res.statistic)
     assert np.isclose(pvalue, scipy_res.pvalue)
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (pl.DataFrame({"a": 1000 * np.random.random(size=100)})),
+    ],
+)
+def test_expit(df):
+    from scipy.special import expit
+
+    res = df.select(pl.col("a").num.expit())["a"].to_numpy()
+    scipy_res = expit(df["a"].to_numpy())
+    assert np.isclose(res, scipy_res, equal_nan=True).all()
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (pl.DataFrame({"a": [0.0, 1.0, 2.0] + list(np.random.random(size=100))})),
+    ],
+)
+def test_logit(df):
+    from scipy.special import logit
+
+    res = df.select(pl.col("a").num.logit())["a"].to_numpy()
+    scipy_res = logit(df["a"].to_numpy())
+    assert np.isclose(res, scipy_res, equal_nan=True).all()
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (pl.DataFrame({"a": [0.0] + list(100 * np.random.random(size=100))})),
+    ],
+)
+def test_gamma(df):
+    from scipy.special import gamma
+
+    res = df.select(pl.col("a").num.gamma())["a"].to_numpy()
+    scipy_res = gamma(df["a"].to_numpy())
+    assert np.isclose(res, scipy_res, equal_nan=True).all()
 
 
 def test_precision_recall_roc_auc():

@@ -11,6 +11,7 @@ mod haversine;
 mod jaccard;
 mod knn;
 mod lempel_ziv;
+mod logit_expit_gamma;
 mod ols;
 mod psi;
 mod tp_fp;

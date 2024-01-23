@@ -1,3 +1,3 @@
 ## Extension for Complex Numbers
 
-::: polars_ds.complex.ComplexExt
+::: polars_ds.complex
