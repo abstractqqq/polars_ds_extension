@@ -35,14 +35,15 @@ pub fn pl_eigen_centrality(inputs: &[Series], kwargs: EigenKwargs) -> PolarsResu
     let edges = inputs[0].list()?;
     let nrows = edges.len();
     // Set up kwargs
-    let n_iters = kwargs.n_iter;
+    let n_iter = kwargs.n_iter;
     let normalize = kwargs.normalize;
 
     let mut incident: Array2<f64> = Array2::from_elem((nrows, nrows), 0.);
+    // slow. Sparse probably would be better.
     for (i, op_e) in edges.into_iter().enumerate() {
         if let Some(e) = op_e {
-            let cnodes = e.u64()?;
-            for op_j in cnodes.into_iter() {
+            let edges = e.u64()?;
+            for op_j in edges.into_iter() {
                 if let Some(j) = op_j {
                     match incident.get_mut([i, j as usize]) {
                         Some(pt) => {
@@ -60,7 +61,7 @@ pub fn pl_eigen_centrality(inputs: &[Series], kwargs: EigenKwargs) -> PolarsResu
     }
 
     let faer_incident = incident.view().into_faer();
-    let mut out = power_iteration(faer_incident, nrows, n_iters);
+    let mut out = power_iteration(faer_incident, nrows, n_iter);
     if normalize {
         let s: f64 = out.iter().sum();
         out.iter_mut().for_each(|x| *x = *x / s);

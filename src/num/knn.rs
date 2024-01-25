@@ -341,7 +341,7 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
         vs.push(news)
     }
     let data = DataFrame::new(vs)?;
-    let height = data.height();
+    let nrows = data.height();
     let dim = inputs[1..].len();
     let k = kwargs.k;
     let leaf_size = kwargs.leaf_size;
@@ -355,7 +355,7 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
 
     // Building the output
-    let mut out: Vec<bool> = vec![false; height];
+    let mut out: Vec<bool> = vec![false; nrows];
     match tree.nearest(p, k, &dist_func) {
         Ok(v) => {
             for (_, i) in v.into_iter() {
@@ -425,7 +425,7 @@ fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
         vs.push(news)
     }
     let data = DataFrame::new(vs)?;
-    let height = data.height();
+    let nrows = data.height();
     let parallel = kwargs.parallel;
     let leaf_size = kwargs.leaf_size;
     let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
@@ -440,7 +440,7 @@ fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
         let r = radius.get(0).unwrap();
         let ca = query_nb_cnt(&tree, data.view(), &dist_func, r, parallel);
         Ok(ca.into_series())
-    } else if radius.len() == height {
+    } else if radius.len() == nrows {
         if parallel {
             let ca = UInt32Chunked::from_par_iter(
                 radius

@@ -108,6 +108,46 @@ def query_nb_cnt(
     return rad.num._nb_cnt(*others, leaf_size=leaf_size, dist=dist, parallel=parallel)
 
 
+def knn(
+    x: Union[list[float], "np.ndarray", pl.Series],  # noqa: F821
+    *others: pl.Expr,
+    k: int = 5,
+    leaf_size: int = 40,
+    dist: Distance = "l2",
+) -> pl.Expr:
+    """
+    Returns an expression that queries the k nearest neighbors to a single point x.
+
+    Note that this internally builds a kd-tree for fast querying and deallocates it once we
+    are done. If you need to repeatedly run the same query on the same data, then it is not
+    ideal to use this. A specialized external kd-tree structure would be better in that case.
+
+    Parameters
+    ----------
+    x : A point
+        The point. It must be of the same length as the number of columns in `others`.
+    others : pl.Expr, positional arguments
+        Other columns used as features
+    k : int, > 0
+        Number of neighbors to query
+    leaf_size : int, > 0
+        Leaf size for the kd-tree. Tuning this might improve performance.
+    dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
+        Distance metric to use. Note `l2` is actually squared `l2` for computational
+        efficiency. It defaults to `l2`.
+    """
+    if k <= 0:
+        raise ValueError("Input `k` should be strictly positive.")
+
+    pt = pl.Series(x, dtype=pl.Float64)
+    return pl.lit(pt).num._knn_pt(
+        *others,
+        k=k,
+        leaf_size=leaf_size,
+        dist=dist,
+    )
+
+
 def haversine(
     x_lat: pl.Expr,
     x_long: pl.Expr,

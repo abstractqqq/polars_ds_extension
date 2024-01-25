@@ -31,9 +31,10 @@ class GraphExt:
     def eigen_centrality(self, n_iter: int = 20, normalize: bool = True) -> pl.Expr:
         """
         Treats self as a column of "edges" and computes the eigenvector centrality for the graph.
+        Self must be a column of list[u64].
 
-        Note that this will not sort the nodes for the user. If nodes are not sorted, the result may be
-        incorrect. In addition, self must be a column of list[u64].
+        Note that this will not sort the nodes for the user. If nodes are not sorted or if the u64
+        in edge list does not refer to the node's index, the result may be incorrect.
 
         Parameters
         ----------
