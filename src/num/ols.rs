@@ -149,7 +149,6 @@ fn pl_lstsq_pred(inputs: &[Series]) -> PolarsResult<Series> {
             for i in 0..rows {
                 pred.push(y_hat.read(i, 0));
             }
-
             let predictions = Series::from_vec("pred", pred);
             let actuals = inputs[0].clone(); // ref counted
             let residue = (actuals - predictions.clone()).with_name("resid"); // ref counted

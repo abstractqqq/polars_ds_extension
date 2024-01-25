@@ -1,5 +1,5 @@
 import polars as pl
-from typing import Union
+from typing import Union, Iterable
 from .type_alias import Distance
 
 from polars_ds.num import NumExt  # noqa: E402
@@ -15,7 +15,7 @@ __all__ = ["NumExt", "StrExt", "StatsExt", "ComplexExt", "MetricExt", "GraphExt"
 
 
 def query_radius(
-    x: Union[list[float], "np.ndarray", pl.Series],  # noqa: F821
+    x: Iterable[float],
     *others: pl.Expr,
     radius: Union[float, pl.Expr],
     dist: Distance = "l2",
@@ -42,30 +42,29 @@ def query_radius(
 
     if dist == "l1":
         return (
-            pl.sum_horizontal((e - pl.lit(x[i], dtype=pl.Float64)).abs() for i, e in enumerate(oth))
+            pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(x, oth))
             <= radius
         )
     elif dist == "inf":
         return (
-            pl.max_horizontal((e - pl.lit(x[i], dtype=pl.Float64)).abs() for i, e in enumerate(oth))
+            pl.max_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(x, oth))
             <= radius
         )
     elif dist in ("h", "haversine"):
-        if (len(x) != 2) or (len(oth) < 2):
+        x_list = list(x)
+        if (len(x_list) != 2) or (len(oth) < 2):
             raise ValueError(
                 "For Haversine distance, input x must have dimension 2 and 2 other columns"
                 " must be provided as lat and long."
             )
 
-        y_lat = pl.Series(values=[x[0]], dtype=pl.Float64)
-        y_long = pl.Series(values=[x[1]], dtype=pl.Float64)
+        y_lat = pl.Series(values=[x_list[0]], dtype=pl.Float64)
+        y_long = pl.Series(values=[x_list[1]], dtype=pl.Float64)
         dist = oth[0].num._haversine(oth[1], y_lat, y_long)
         return dist <= radius
     else:  # defaults to l2, actually squared l2
         return (
-            pl.sum_horizontal(
-                (e - pl.lit(x[i], dtype=pl.Float64)).pow(2) for i, e in enumerate(oth)
-            )
+            pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(x, oth))
             <= radius
         )
 
@@ -107,46 +106,6 @@ def query_nb_cnt(
         rad = pl.lit(pl.Series(values=radius, dtype=pl.Float64))
 
     return rad.num._nb_cnt(*others, leaf_size=leaf_size, dist=dist, parallel=parallel)
-
-
-def knn(
-    x: Union[list[float], "np.ndarray", pl.Series],  # noqa: F821
-    *others: pl.Expr,
-    k: int = 5,
-    leaf_size: int = 40,
-    dist: Distance = "l2",
-) -> pl.Expr:
-    """
-    Returns an expression that queries the k nearest neighbors to x.
-
-    Note that this internally builds a kd-tree for fast querying and deallocates it once we
-    are done. If you need to repeatedly run the same query on the same data, then it is not
-    ideal to use this. A specialized external kd-tree structure would be better in that case.
-
-    Parameters
-    ----------
-    x : A point
-        The point. It must be of the same length as the number of columns in `others`.
-    others : pl.Expr, positional arguments
-        Other columns used as features
-    k : int, > 0
-        Number of neighbors to query
-    leaf_size : int, > 0
-        Leaf size for the kd-tree. Tuning this might improve performance.
-    dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
-        Distance metric to use. Note `l2` is actually squared `l2` for computational
-        efficiency. It defaults to `l2`.
-    """
-    if k <= 0:
-        raise ValueError("Input `k` should be strictly positive.")
-
-    pt = pl.Series(x, dtype=pl.Float64)
-    return pl.lit(pt).num._knn_pt(
-        *others,
-        k=k,
-        leaf_size=leaf_size,
-        dist=dist,
-    )
 
 
 def haversine(

@@ -22,6 +22,14 @@ pub(crate) struct KdtreeKwargs {
     pub(crate) parallel: bool,
 }
 
+#[derive(Deserialize, Debug)]
+pub(crate) struct KdtreeRadiusKwargs {
+    pub(crate) r: f64,
+    pub(crate) leaf_size: usize,
+    pub(crate) metric: String,
+    pub(crate) parallel: bool,
+}
+
 #[inline]
 pub fn build_standard_kdtree<'a>(
     dim: usize,
@@ -122,6 +130,90 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
                     .map(|(_, i)| id.get(*i).unwrap())
                     .collect_vec();
                 builder.append_slice(w.as_slice());
+            } else {
+                builder.append_null();
+            }
+        }
+    }
+    let ca = builder.finish();
+    Ok(ca.into_series())
+}
+
+#[polars_expr(output_type_func=knn_index_output)]
+fn pl_query_radius_ptwise(inputs: &[Series], kwargs: KdtreeRadiusKwargs) -> PolarsResult<Series> {
+    // Set up params
+    let id = inputs[0].u64()?;
+
+    let dim = inputs[1..].len();
+    if dim == 0 {
+        return Err(PolarsError::ComputeError(
+            "KNN: No column to decide distance from.".into(),
+        ));
+    }
+    let mut vs: Vec<Series> = Vec::with_capacity(dim);
+    for (i, s) in inputs[1..].into_iter().enumerate() {
+        let news = s.rechunk().with_name(&i.to_string());
+        vs.push(news)
+    }
+    let data = DataFrame::new(vs)?;
+    let leaf_size = kwargs.leaf_size;
+    let parallel = kwargs.parallel;
+    let radius = kwargs.r;
+    let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
+
+    // Need to use C order because C order is row-contiguous
+    let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
+
+    // Building the tree
+    let binding = data.view();
+    let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
+
+    // Building output
+    let mut builder =
+        ListPrimitiveChunkedBuilder::<UInt64Type>::new("", id.len(), 32, DataType::UInt64);
+    if parallel {
+        let mut nbs: Vec<Option<Vec<u64>>> = Vec::with_capacity(id.len());
+        data.axis_iter(Axis(0))
+            .into_par_iter()
+            .map(|p| {
+                let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
+                if let Ok(v) = tree.iter_nearest(s, &dist_func) {
+                    let mut out: Vec<u64> = Vec::with_capacity(32);
+                    for (d, i) in v {
+                        if d < radius {
+                            out.push(id.get(*i).unwrap())
+                        } else {
+                            break;
+                        }
+                    }
+                    out.shrink_to_fit();
+                    Some(out)
+                } else {
+                    None
+                }
+            })
+            .collect_into_vec(&mut nbs);
+        for op_s in nbs {
+            if let Some(s) = op_s {
+                builder.append_slice(&s);
+            } else {
+                builder.append_null();
+            }
+        }
+    } else {
+        for p in data.rows() {
+            let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
+            if let Ok(v) = tree.iter_nearest(s, &dist_func) {
+                let mut out: Vec<u64> = Vec::with_capacity(32);
+                for (d, i) in v {
+                    if d < radius {
+                        out.push(id.get(*i).unwrap())
+                    } else {
+                        break;
+                    }
+                }
+                out.shrink_to_fit();
+                builder.append_slice(out.as_slice());
             } else {
                 builder.append_null();
             }
