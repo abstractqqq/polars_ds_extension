@@ -1,5 +1,6 @@
 #![feature(float_gamma)]
 
+mod graph;
 mod num;
 mod stats;
 mod stats_utils;

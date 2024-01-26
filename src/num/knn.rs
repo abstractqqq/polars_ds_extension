@@ -22,6 +22,14 @@ pub(crate) struct KdtreeKwargs {
     pub(crate) parallel: bool,
 }
 
+#[derive(Deserialize, Debug)]
+pub(crate) struct KdtreeRadiusKwargs {
+    pub(crate) r: f64,
+    pub(crate) leaf_size: usize,
+    pub(crate) metric: String,
+    pub(crate) parallel: bool,
+}
+
 #[inline]
 pub fn build_standard_kdtree<'a>(
     dim: usize,
@@ -131,6 +139,90 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
     Ok(ca.into_series())
 }
 
+#[polars_expr(output_type_func=knn_index_output)]
+fn pl_query_radius_ptwise(inputs: &[Series], kwargs: KdtreeRadiusKwargs) -> PolarsResult<Series> {
+    // Set up params
+    let id = inputs[0].u64()?;
+
+    let dim = inputs[1..].len();
+    if dim == 0 {
+        return Err(PolarsError::ComputeError(
+            "KNN: No column to decide distance from.".into(),
+        ));
+    }
+    let mut vs: Vec<Series> = Vec::with_capacity(dim);
+    for (i, s) in inputs[1..].into_iter().enumerate() {
+        let news = s.rechunk().with_name(&i.to_string());
+        vs.push(news)
+    }
+    let data = DataFrame::new(vs)?;
+    let leaf_size = kwargs.leaf_size;
+    let parallel = kwargs.parallel;
+    let radius = kwargs.r;
+    let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
+
+    // Need to use C order because C order is row-contiguous
+    let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
+
+    // Building the tree
+    let binding = data.view();
+    let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
+
+    // Building output
+    let mut builder =
+        ListPrimitiveChunkedBuilder::<UInt64Type>::new("", id.len(), 32, DataType::UInt64);
+    if parallel {
+        let mut nbs: Vec<Option<Vec<u64>>> = Vec::with_capacity(id.len());
+        data.axis_iter(Axis(0))
+            .into_par_iter()
+            .map(|p| {
+                let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
+                if let Ok(v) = tree.iter_nearest(s, &dist_func) {
+                    let mut out: Vec<u64> = Vec::with_capacity(32);
+                    for (d, i) in v {
+                        if d <= radius {
+                            out.push(id.get(*i).unwrap())
+                        } else {
+                            break;
+                        }
+                    }
+                    out.shrink_to_fit();
+                    Some(out)
+                } else {
+                    None
+                }
+            })
+            .collect_into_vec(&mut nbs);
+        for op_s in nbs {
+            if let Some(s) = op_s {
+                builder.append_slice(&s);
+            } else {
+                builder.append_null();
+            }
+        }
+    } else {
+        for p in data.rows() {
+            let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
+            if let Ok(v) = tree.iter_nearest(s, &dist_func) {
+                let mut out: Vec<u64> = Vec::with_capacity(32);
+                for (d, i) in v {
+                    if d <= radius {
+                        out.push(id.get(*i).unwrap())
+                    } else {
+                        break;
+                    }
+                }
+                out.shrink_to_fit();
+                builder.append_slice(out.as_slice());
+            } else {
+                builder.append_null();
+            }
+        }
+    }
+    let ca = builder.finish();
+    Ok(ca.into_series())
+}
+
 #[polars_expr(output_type_func=knn_full_output)]
 fn pl_knn_ptwise_w_dist(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     // Set up params
@@ -223,7 +315,7 @@ fn pl_knn_ptwise_w_dist(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult
 }
 
 /// Find all the rows that are the k-nearest neighbors to the point given.
-/// Note, k only points will be returned as true, because here the point is considered an "outside" point,
+/// Note, only k points will be returned as true, because here the point is considered an "outside" point,
 /// not a point in the data.
 #[polars_expr(output_type=Boolean)]
 fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
@@ -239,9 +331,7 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     }
     // Set up the point to query
     let binding = pt.rechunk();
-    let p = binding.to_ndarray()?;
-    let p = p.as_slice().unwrap(); // Rechunked, so safe to unwrap
-
+    let p = binding.cont_slice()?;
     // Set up params
     let mut vs: Vec<Series> = Vec::with_capacity(dim);
     for (i, s) in inputs[1..].into_iter().enumerate() {
@@ -249,7 +339,7 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
         vs.push(news)
     }
     let data = DataFrame::new(vs)?;
-    let height = data.height();
+    let nrows = data.height();
     let dim = inputs[1..].len();
     let k = kwargs.k;
     let leaf_size = kwargs.leaf_size;
@@ -263,7 +353,7 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
 
     // Building the output
-    let mut out: Vec<bool> = vec![false; height];
+    let mut out: Vec<bool> = vec![false; nrows];
     match tree.nearest(p, k, &dist_func) {
         Ok(v) => {
             for (_, i) in v.into_iter() {
@@ -333,7 +423,7 @@ fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
         vs.push(news)
     }
     let data = DataFrame::new(vs)?;
-    let height = data.height();
+    let nrows = data.height();
     let parallel = kwargs.parallel;
     let leaf_size = kwargs.leaf_size;
     let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
@@ -348,7 +438,7 @@ fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
         let r = radius.get(0).unwrap();
         let ca = query_nb_cnt(&tree, data.view(), &dist_func, r, parallel);
         Ok(ca.into_series())
-    } else if radius.len() == height {
+    } else if radius.len() == nrows {
         if parallel {
             let ca = UInt32Chunked::from_par_iter(
                 radius

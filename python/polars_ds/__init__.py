@@ -1,5 +1,5 @@
 import polars as pl
-from typing import Union
+from typing import Union, Iterable
 from .type_alias import Distance
 
 from polars_ds.num import NumExt  # noqa: E402
@@ -15,7 +15,7 @@ __all__ = ["NumExt", "StrExt", "StatsExt", "ComplexExt", "MetricExt", "GraphExt"
 
 
 def query_radius(
-    x: Union[list[float], "np.ndarray", pl.Series],  # noqa: F821
+    x: Iterable[float],
     *others: pl.Expr,
     radius: Union[float, pl.Expr],
     dist: Distance = "l2",
@@ -34,38 +34,48 @@ def query_radius(
         The radius to query with.
     dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
         Distance metric to use. Note `l2` is actually squared `l2` for computational
-        efficiency. It defaults to `l2`.
+        efficiency. It defaults to `l2`. Note `cosine` is not implemented for a single
+        point yet.
     """
+    # For a single point, it is faster to just do it in native polars
     oth = list(others)
     if len(x) != len(oth):
         raise ValueError("Dimension does not match.")
 
     if dist == "l1":
         return (
-            pl.sum_horizontal((e - pl.lit(x[i], dtype=pl.Float64)).abs() for i, e in enumerate(oth))
+            pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(x, oth))
             <= radius
         )
     elif dist == "inf":
         return (
-            pl.max_horizontal((e - pl.lit(x[i], dtype=pl.Float64)).abs() for i, e in enumerate(oth))
+            pl.max_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(x, oth))
             <= radius
         )
+    elif dist == "cosine":
+        x_list = list(x)
+        x_norm = sum(z * z for z in x_list)
+        oth_norm = pl.sum_horizontal([e * e for e in oth])
+        dist = (
+            1.0
+            - pl.sum_horizontal(xi * e for xi, e in zip(x_list, oth)) / (x_norm * oth_norm).sqrt()
+        )
+        return dist <= radius
     elif dist in ("h", "haversine"):
-        if (len(x) != 2) or (len(oth) < 2):
+        x_list = list(x)
+        if (len(x_list) != 2) or (len(oth) < 2):
             raise ValueError(
                 "For Haversine distance, input x must have dimension 2 and 2 other columns"
                 " must be provided as lat and long."
             )
 
-        y_lat = pl.Series(values=[x[0]], dtype=pl.Float64)
-        y_long = pl.Series(values=[x[1]], dtype=pl.Float64)
+        y_lat = pl.Series(values=[x_list[0]], dtype=pl.Float64)
+        y_long = pl.Series(values=[x_list[1]], dtype=pl.Float64)
         dist = oth[0].num._haversine(oth[1], y_lat, y_long)
         return dist <= radius
     else:  # defaults to l2, actually squared l2
         return (
-            pl.sum_horizontal(
-                (e - pl.lit(x[i], dtype=pl.Float64)).pow(2) for i, e in enumerate(oth)
-            )
+            pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(x, oth))
             <= radius
         )
 
@@ -92,7 +102,7 @@ def query_nb_cnt(
         Other columns used as features
     leaf_size : int, > 0
         Leaf size for the kd-tree. Tuning this might improve performance.
-    dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
+    dist : One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`
         Distance metric to use. Note `l2` is actually squared `l2` for computational
         efficiency. It defaults to `l2`.
     parallel : bool
@@ -117,7 +127,7 @@ def knn(
     dist: Distance = "l2",
 ) -> pl.Expr:
     """
-    Returns an expression that queries the k nearest neighbors to x.
+    Returns an expression that queries the k nearest neighbors to a single point x.
 
     Note that this internally builds a kd-tree for fast querying and deallocates it once we
     are done. If you need to repeatedly run the same query on the same data, then it is not
@@ -133,7 +143,7 @@ def knn(
         Number of neighbors to query
     leaf_size : int, > 0
         Leaf size for the kd-tree. Tuning this might improve performance.
-    dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
+    dist : One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`
         Distance metric to use. Note `l2` is actually squared `l2` for computational
         efficiency. It defaults to `l2`.
     """

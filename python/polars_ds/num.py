@@ -519,11 +519,11 @@ class NumExt:
         return_dist: bool = False,
     ) -> pl.Expr:
         """
-        Treats self as an ID column, and uses other columns to determine the k nearest neighbors
+        Treats self as an index column, and uses other columns to determine the k nearest neighbors
         to every id. By default, this will return self, and k more neighbors. So the output size
         is actually k + 1. This will throw an error if any null value is found.
 
-        Note that reference col/self must be convertible to u64. If you do not have a u64 ID column,
+        Note that the node index column must be convertible to u64. If you do not have a u64 ID column,
         you can generate one using pl.int_range(..), which should be a step before this.
 
         Also note that this internally builds a kd-tree for fast querying and deallocates it once we
@@ -539,7 +539,7 @@ class NumExt:
         leaf_size
             Leaf size for the kd-tree. Tuning this might improve runtime performance.
         dist
-            One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+            One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`, where h stands for haversine. Note
             `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
         parallel
             Whether to run the k-nearest neighbor query in parallel. This is recommended when you
@@ -569,6 +569,53 @@ class NumExt:
                 is_elementwise=True,
             )
 
+    def query_radius_ptwise(
+        self,
+        *others: pl.Expr,
+        r: float,
+        leaf_size: int = 40,
+        dist: Distance = "l2",
+        parallel: bool = False,
+    ) -> pl.Expr:
+        """
+        Treats self as an index column, and uses other columns to determine distance, and query all neighbors
+        within distance r from each node in ID.
+
+        Note that the index column must be convertible to u64. If you do not have a u64 ID column,
+        you can generate one using pl.int_range(..), which should be a step before this.
+
+        Also note that this internally builds a kd-tree for fast querying and deallocates it once we
+        are done. If you need to repeatedly run the same query on the same data, then it is not
+        ideal to use this. A specialized external kd-tree structure would be better in that case.
+
+        Parameters
+        ----------
+        others
+            Other columns used as features
+        r
+            The radius
+        leaf_size
+            Leaf size for the kd-tree. Tuning this might improve runtime performance.
+        dist
+            One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`, where h stands for haversine. Note
+            `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
+        parallel
+            Whether to run the k-nearest neighbor query in parallel. This is recommended when you
+            are running only this expression, and not in group_by context.
+        """
+        if r <= 0.0:
+            raise ValueError("Input `r` must be > 0.")
+
+        metric = str(dist).lower()
+        index: pl.Expr = self._expr.cast(pl.UInt64)
+        return index.register_plugin(
+            lib=_lib,
+            symbol="pl_query_radius_ptwise",
+            args=list(others),
+            kwargs={"r": r, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
+            is_elementwise=True,
+        )
+
     def _knn_pt(
         self,
         *others: pl.Expr,
@@ -593,7 +640,7 @@ class NumExt:
         leaf_size
             Leaf size for the kd-tree. Tuning this might improve performance.
         dist
-            One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+            One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`, where h stands for haversine. Note
             `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
         """
         if k < 1:
@@ -627,7 +674,7 @@ class NumExt:
         leaf_size
             Leaf size for the kd-tree. Tuning this might improve performance.
         dist
-            One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+            One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`, where h stands for haversine. Note
             `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
         parallel
             Whether to run the k-nearest neighbor query in parallel. This is recommended when you

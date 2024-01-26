@@ -937,6 +937,15 @@ def test_knn_ptwise(df, dist, k, res):
             3,
             pl.DataFrame({"id": [0, 1, 2]}),
         ),
+        (  # Only the first row is the nearest neighbor to [0.5, 0.5, 0.5]
+            pl.DataFrame(
+                {"id": [1, 2], "val1": [0.1, 0.2], "val2": [0.1, 0.3], "val3": [0.1, 0.4]}
+            ),
+            [0.5, 0.5, 0.5],
+            "cosine",
+            1,
+            pl.DataFrame({"id": [1]}),
+        ),
     ],
 )
 def test_knn_pt(df, x, dist, k, res):

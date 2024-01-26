@@ -37,7 +37,6 @@ dev = [
     "pre-commit",
     "scikit-learn",
     "scipy",
-    "sphinx"
 ]
 
 [tool.ruff]
