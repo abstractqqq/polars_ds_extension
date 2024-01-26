@@ -34,8 +34,10 @@ def query_radius(
         The radius to query with.
     dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
         Distance metric to use. Note `l2` is actually squared `l2` for computational
-        efficiency. It defaults to `l2`.
+        efficiency. It defaults to `l2`. Note `cosine` is not implemented for a single
+        point yet.
     """
+    # For a single point, it is faster to just do it in native polars
     oth = list(others)
     if len(x) != len(oth):
         raise ValueError("Dimension does not match.")
@@ -50,6 +52,15 @@ def query_radius(
             pl.max_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(x, oth))
             <= radius
         )
+    elif dist == "cosine":
+        x_list = list(x)
+        x_norm = sum(z * z for z in x_list)
+        oth_norm = pl.sum_horizontal([e * e for e in oth])
+        dist = (
+            1.0
+            - pl.sum_horizontal(xi * e for xi, e in zip(x_list, oth)) / (x_norm * oth_norm).sqrt()
+        )
+        return dist <= radius
     elif dist in ("h", "haversine"):
         x_list = list(x)
         if (len(x_list) != 2) or (len(oth) < 2):
@@ -91,7 +102,7 @@ def query_nb_cnt(
         Other columns used as features
     leaf_size : int, > 0
         Leaf size for the kd-tree. Tuning this might improve performance.
-    dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
+    dist : One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`
         Distance metric to use. Note `l2` is actually squared `l2` for computational
         efficiency. It defaults to `l2`.
     parallel : bool
@@ -132,7 +143,7 @@ def knn(
         Number of neighbors to query
     leaf_size : int, > 0
         Leaf size for the kd-tree. Tuning this might improve performance.
-    dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
+    dist : One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`
         Distance metric to use. Note `l2` is actually squared `l2` for computational
         efficiency. It defaults to `l2`.
     """

@@ -1,5 +1,5 @@
 use kdtree::distance::squared_euclidean;
-use num::{Float, Zero};
+use num::Float;
 use polars::error::PolarsError;
 
 mod complex;
@@ -28,7 +28,7 @@ pub fn l_inf_dist<T: Float>(a: &[T], b: &[T]) -> T {
     debug_assert_eq!(a.len(), b.len());
     a.iter()
         .zip(b.iter())
-        .fold(Zero::zero(), |acc, (x, y)| acc.max((*x - *y).abs()))
+        .fold(T::zero(), |acc, (x, y)| acc.max((*x - *y).abs()))
 }
 
 #[inline]
@@ -36,7 +36,20 @@ pub fn l1_dist<T: Float>(a: &[T], b: &[T]) -> T {
     debug_assert_eq!(a.len(), b.len());
     a.iter()
         .zip(b.iter())
-        .fold(Zero::zero(), |acc, (x, y)| acc + (*x - *y).abs())
+        .fold(T::zero(), |acc, (x, y)| acc + (*x - *y).abs())
+}
+
+#[inline]
+pub fn cosine_dist<T: Float>(a: &[T], b: &[T]) -> T {
+    debug_assert_eq!(a.len(), b.len());
+
+    let a_norm = a.iter().fold(T::zero(), |acc, x| acc + *x * *x);
+    let b_norm = b.iter().fold(T::zero(), |acc, x| acc + *x * *x);
+    let out = a
+        .iter()
+        .zip(b.iter())
+        .fold(T::zero(), |acc, (x, y)| acc + *x * *y);
+    T::one() - out / (a_norm * b_norm).sqrt()
 }
 
 #[inline]
@@ -77,6 +90,7 @@ pub fn which_distance(metric: &str, dim: usize) -> Result<fn(&[f64], &[f64]) -> 
                 )
             }
         }
+        "cosine" => Ok(cosine_dist),
         _ => Ok(squared_euclidean::<f64>),
     }
 }

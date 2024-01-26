@@ -539,7 +539,7 @@ class NumExt:
         leaf_size
             Leaf size for the kd-tree. Tuning this might improve runtime performance.
         dist
-            One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+            One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`, where h stands for haversine. Note
             `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
         parallel
             Whether to run the k-nearest neighbor query in parallel. This is recommended when you
@@ -597,7 +597,7 @@ class NumExt:
         leaf_size
             Leaf size for the kd-tree. Tuning this might improve runtime performance.
         dist
-            One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+            One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`, where h stands for haversine. Note
             `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
         parallel
             Whether to run the k-nearest neighbor query in parallel. This is recommended when you
@@ -640,7 +640,7 @@ class NumExt:
         leaf_size
             Leaf size for the kd-tree. Tuning this might improve performance.
         dist
-            One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+            One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`, where h stands for haversine. Note
             `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
         """
         if k < 1:
@@ -674,7 +674,7 @@ class NumExt:
         leaf_size
             Leaf size for the kd-tree. Tuning this might improve performance.
         dist
-            One of `l1`, `l2`, `inf` or `h` or `haversine`, where h stands for haversine. Note
+            One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`, where h stands for haversine. Note
             `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
         parallel
             Whether to run the k-nearest neighbor query in parallel. This is recommended when you

@@ -180,7 +180,7 @@ fn pl_query_radius_ptwise(inputs: &[Series], kwargs: KdtreeRadiusKwargs) -> Pola
                 if let Ok(v) = tree.iter_nearest(s, &dist_func) {
                     let mut out: Vec<u64> = Vec::with_capacity(32);
                     for (d, i) in v {
-                        if d < radius {
+                        if d <= radius {
                             out.push(id.get(*i).unwrap())
                         } else {
                             break;
@@ -206,7 +206,7 @@ fn pl_query_radius_ptwise(inputs: &[Series], kwargs: KdtreeRadiusKwargs) -> Pola
             if let Ok(v) = tree.iter_nearest(s, &dist_func) {
                 let mut out: Vec<u64> = Vec::with_capacity(32);
                 for (d, i) in v {
-                    if d < radius {
+                    if d <= radius {
                         out.push(id.get(*i).unwrap())
                     } else {
                         break;
@@ -315,7 +315,7 @@ fn pl_knn_ptwise_w_dist(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult
 }
 
 /// Find all the rows that are the k-nearest neighbors to the point given.
-/// Note, k only points will be returned as true, because here the point is considered an "outside" point,
+/// Note, only k points will be returned as true, because here the point is considered an "outside" point,
 /// not a point in the data.
 #[polars_expr(output_type=Boolean)]
 fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
@@ -331,9 +331,7 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     }
     // Set up the point to query
     let binding = pt.rechunk();
-    let p = binding.to_ndarray()?;
-    let p = p.as_slice().unwrap(); // Rechunked, so safe to unwrap
-
+    let p = binding.cont_slice()?;
     // Set up params
     let mut vs: Vec<Series> = Vec::with_capacity(dim);
     for (i, s) in inputs[1..].into_iter().enumerate() {
