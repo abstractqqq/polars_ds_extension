@@ -125,5 +125,4 @@ And a lot more!
 # Other related Projects
 
 1. Take a look at our friendly neighbor [functime](https://github.com/TracecatHQ/functime)
-2. My other project [dsds](https://github.com/abstractqqq/dsds). This is currently paused because I am developing polars-ds, but some modules in DSDS, such as the diagonsis one, is quite stable.
-3. String similarity metrics is soooo fast and easy to use because of [RapidFuzz](https://github.com/maxbachmann/rapidfuzz-rs)
+2. String similarity metrics is soooo fast and easy to use because of [RapidFuzz](https://github.com/maxbachmann/rapidfuzz-rs)
