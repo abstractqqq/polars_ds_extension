@@ -6,6 +6,29 @@ from polars.testing import assert_frame_equal
 
 
 @pytest.mark.parametrize(
+    "arr, n",
+    [
+        # n is Optional[int]
+        (np.random.normal(size=200), None),
+        (np.random.normal(size=200), 100),
+    ],
+)
+def test_fft(arr, n):
+    df = pl.DataFrame({"a": arr})
+    res = df.select(pl.col("a").num.rfft(n=n).alias("fft")).select(
+        pl.col("fft").list.first().alias("re"), pl.col("fft").list.last().alias("im")
+    )
+    real_test = res["re"].to_numpy()
+    im_test = res["im"].to_numpy()
+
+    ans = np.fft.rfft(arr, n=n)
+    real = ans.real
+    imag = ans.imag
+    assert np.isclose(real_test, real).all()
+    assert np.isclose(im_test, imag).all()
+
+
+@pytest.mark.parametrize(
     "df",
     [
         (
