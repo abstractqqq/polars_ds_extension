@@ -1,8 +1,7 @@
 /// Performs forward FFT.
 /// Since data in dataframe are always real numbers, only realfft
-/// is implemented and inverse fft is not implemented and even if it
-/// is eventually implemented, it would likely not be a dataframe
-/// operation.
+/// is implemented and. 5-10x slower than NumPy for small data (~ a few thousands rows)
+/// but is slighly faster once data gets bigger.
 use crate::complex_output;
 use itertools::Either;
 use polars::prelude::*;
@@ -15,7 +14,7 @@ fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
 
     let s = inputs[0].f64()?;
     let n = inputs[1].u32()?;
-    let n = n.get(0).unwrap_or(s.len() as u32) as usize;
+    let mut n = n.get(0).unwrap_or(s.len() as u32) as usize;
     let return_full = inputs[2].bool()?;
     let return_full = return_full.get(0).unwrap_or(false);
 
@@ -39,6 +38,11 @@ fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
     let mut spectrum = r2c.make_output_vec();
     let _ = r2c.process(&mut input_vec, &mut spectrum);
 
+    n = if return_full {
+        input_vec.len() // full length
+    } else {
+        spectrum.len() // simplified output of rfft
+    };
     let mut builder =
         ListPrimitiveChunkedBuilder::<Float64Type>::new("complex", n, 2, DataType::Float64);
 
