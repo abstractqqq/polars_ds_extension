@@ -3,7 +3,7 @@
 /// is implemented and inverse fft is not implemented and even if it
 /// is eventually implemented, it would likely not be a dataframe
 /// operation.
-use super::complex::complex_output;
+use crate::complex_output;
 use itertools::Either;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
@@ -41,11 +41,11 @@ fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
 
     let mut builder =
         ListPrimitiveChunkedBuilder::<Float64Type>::new("complex", n, 2, DataType::Float64);
-    for c in spectrum.iter() {
-        builder.append_slice(&[c.re, c.im])
-    }
 
     if return_full {
+        for c in spectrum.iter() {
+            builder.append_slice(&[c.re, c.im])
+        }
         if input_len % 2 == 0 {
             let take_n = (input_len >> 1).abs_diff(1);
             for c in spectrum.into_iter().rev().skip(1).take(take_n) {
@@ -56,6 +56,10 @@ fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
             for c in spectrum.into_iter().rev().take(take_n) {
                 builder.append_slice(&[c.re, -c.im]);
             }
+        }
+    } else {
+        for c in spectrum {
+            builder.append_slice(&[c.re, c.im])
         }
     }
 

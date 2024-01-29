@@ -598,7 +598,7 @@ class NumExt:
         others
             Other columns used as features
         r
-            The radius
+            The radius. Must be a scalar value now.
         leaf_size
             Leaf size for the kd-tree. Tuning this might improve runtime performance.
         dist

@@ -9,7 +9,7 @@ from polars_ds.stats import StatsExt  # noqa: E402
 from polars_ds.metrics import MetricExt  # noqa: E402
 from polars_ds.graph import GraphExt  # noqa: E402
 
-version = "0.2.4"
+version = "0.3.0"
 
 __all__ = ["NumExt", "StrExt", "StatsExt", "ComplexExt", "MetricExt", "GraphExt"]
 
@@ -17,12 +17,12 @@ __all__ = ["NumExt", "StrExt", "StatsExt", "ComplexExt", "MetricExt", "GraphExt"
 def query_radius(
     x: Iterable[float],
     *others: pl.Expr,
-    radius: Union[float, pl.Expr],
+    r: Union[float, pl.Expr],
     dist: Distance = "l2",
 ) -> pl.Expr:
     """
     Returns an expression that queries the neighbors within (<=) radius from x. Note that
-    this only queries around a single point x.
+    this only queries around a single point x and returns a boolean column.
 
     Parameters
     ----------
@@ -30,8 +30,8 @@ def query_radius(
         The point, at which we filter using the radius.
     others : pl.Expr, positional arguments
         Other columns used as features
-    radius : either a float or an expression
-        The radius to query with.
+    r : either a float or an expression
+        The radius to query with. If this is an expression, the radius will be applied row-wise.
     dist : One of `l1`, `l2`, `inf` or `h` or `haversine`
         Distance metric to use. Note `l2` is actually squared `l2` for computational
         efficiency. It defaults to `l2`. Note `cosine` is not implemented for a single
@@ -45,12 +45,12 @@ def query_radius(
     if dist == "l1":
         return (
             pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(x, oth))
-            <= radius
+            <= r
         )
     elif dist == "inf":
         return (
             pl.max_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(x, oth))
-            <= radius
+            <= r
         )
     elif dist == "cosine":
         x_list = list(x)
@@ -60,7 +60,7 @@ def query_radius(
             1.0
             - pl.sum_horizontal(xi * e for xi, e in zip(x_list, oth)) / (x_norm * oth_norm).sqrt()
         )
-        return dist <= radius
+        return dist <= r
     elif dist in ("h", "haversine"):
         x_list = list(x)
         if (len(x_list) != 2) or (len(oth) < 2):
@@ -72,32 +72,31 @@ def query_radius(
         y_lat = pl.Series(values=[x_list[0]], dtype=pl.Float64)
         y_long = pl.Series(values=[x_list[1]], dtype=pl.Float64)
         dist = oth[0].num._haversine(oth[1], y_lat, y_long)
-        return dist <= radius
+        return dist <= r
     else:  # defaults to l2, actually squared l2
         return (
             pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(x, oth))
-            <= radius
+            <= r
         )
 
 
 def query_nb_cnt(
-    radius: Union[float, pl.Expr, list[float], "np.ndarray", pl.Series],  # noqa: F821
+    r: Union[float, pl.Expr, list[float], "np.ndarray", pl.Series],  # noqa: F821
     *others: pl.Expr,
     leaf_size: int = 40,
     dist: Distance = "l2",
     parallel: bool = False,
 ) -> pl.Expr:
     """
-    Return the number of neighbors within (<=) radius for each row under the given distance
+    Return the number of neighbors within (<=) radius r for each row under the given distance
     metric. The point itself is always a neighbor of itself.
 
     Parameters
     ----------
-    radius : float | Iterable[float] | pl.Expr
+    r : float | Iterable[float] | pl.Expr
         If this is a scalar, then it will run the query with fixed radius for all rows. If
-        this is a list, then it must have the same height as the dataframe in which this is run. If
-        this is an expression, it must be a pl.col() representing radius in the dataframe.
-        A large radius (lots of neighbors) will slow down performance.
+        this is a list, then it must have the same height as the dataframe. If
+        this is an expression, it must be an expression representing radius.
     others : pl.Expr, positional arguments
         Other columns used as features
     leaf_size : int, > 0
@@ -109,12 +108,12 @@ def query_nb_cnt(
         Whether to run the distance query in parallel. This is recommended when you
         are running only this expression, and not in group_by context.
     """
-    if isinstance(radius, (float, int)):
-        rad = pl.lit(pl.Series(values=[radius], dtype=pl.Float64))
-    elif isinstance(radius, pl.Expr):
-        rad = radius
+    if isinstance(r, (float, int)):
+        rad = pl.lit(pl.Series(values=[r], dtype=pl.Float64))
+    elif isinstance(r, pl.Expr):
+        rad = r
     else:
-        rad = pl.lit(pl.Series(values=radius, dtype=pl.Float64))
+        rad = pl.lit(pl.Series(values=r, dtype=pl.Float64))
 
     return rad.num._nb_cnt(*others, leaf_size=leaf_size, dist=dist, parallel=parallel)
 
@@ -137,7 +136,7 @@ def knn(
     ----------
     x : A point
         The point. It must be of the same length as the number of columns in `others`.
-    others : pl.Expr, positional arguments
+    others : pl.Expr
         Other columns used as features
     k : int, > 0
         Number of neighbors to query

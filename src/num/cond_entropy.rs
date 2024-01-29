@@ -11,12 +11,12 @@ fn pl_conditional_entropy(inputs: &[Series]) -> PolarsResult<Series> {
     let mut out = df
         .lazy()
         .group_by([col(x), col(y)])
-        .agg([count()])
+        .agg([len().alias("cnt")])
         .with_columns([
-            (col("count").sum().cast(DataType::Float64).over([col(y)])
-                / col("count").sum().cast(DataType::Float64))
+            (col("cnt").sum().cast(DataType::Float64).over([col(y)])
+                / col("cnt").sum().cast(DataType::Float64))
             .alias("p(y)"),
-            (col("count").cast(DataType::Float64) / col("count").sum().cast(DataType::Float64))
+            (col("cnt").cast(DataType::Float64) / col("cnt").sum().cast(DataType::Float64))
                 .alias("p(x,y)"),
         ])
         .select([(lit(-1.0_f64)

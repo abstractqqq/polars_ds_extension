@@ -8,9 +8,8 @@ use pyo3_polars::export::polars_core::utils::rayon::prelude::ParallelIterator;
 pub fn snowball_stem(word: Option<&str>, no_stopwords: bool) -> Option<String> {
     match word {
         Some(w) => {
-            if (no_stopwords) & (EN_STOPWORDS.binary_search(&w).is_ok()) {
-                None
-            } else if w.parse::<f64>().is_ok() {
+            if w.parse::<f64>().is_ok() || (no_stopwords && EN_STOPWORDS.binary_search(&w).is_ok())
+            {
                 None
             } else {
                 let mut env: SnowballEnv<'_> = SnowballEnv::create(w);

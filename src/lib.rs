@@ -20,3 +20,30 @@ static ALLOC: Jemalloc = Jemalloc;
 fn _polars_ds(_py: Python<'_>, _m: &PyModule) -> PyResult<()> {
     Ok(())
 }
+
+// --------------------------------------------------------------------------------------
+// Shared output types
+use polars::{
+    datatypes::{DataType, Field},
+    error::PolarsResult,
+};
+pub fn list_u64_output(_: &[Field]) -> PolarsResult<Field> {
+    Ok(Field::new(
+        "nodes",
+        DataType::List(Box::new(DataType::UInt64)),
+    ))
+}
+
+pub fn complex_output(_: &[Field]) -> PolarsResult<Field> {
+    Ok(Field::new(
+        "complex",
+        DataType::Array(Box::new(DataType::Float64), 2),
+    ))
+}
+
+fn list_str_output(_: &[Field]) -> PolarsResult<Field> {
+    Ok(Field::new(
+        "list_str",
+        DataType::List(Box::new(DataType::String)),
+    ))
+}

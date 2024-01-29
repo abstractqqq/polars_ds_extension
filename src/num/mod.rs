@@ -1,8 +1,7 @@
 use kdtree::distance::squared_euclidean;
 use num::Float;
-use polars::error::PolarsError;
+use polars::error::{PolarsError, PolarsResult};
 
-mod complex;
 mod cond_entropy;
 mod entrophies;
 mod fft;
@@ -75,7 +74,7 @@ pub fn haversine<T: Float>(start: &[T], end: &[T]) -> T {
 }
 
 #[inline(always)]
-pub fn which_distance(metric: &str, dim: usize) -> Result<fn(&[f64], &[f64]) -> f64, PolarsError> {
+pub fn which_distance(metric: &str, dim: usize) -> PolarsResult<fn(&[f64], &[f64]) -> f64> {
     match metric {
         "l1" => Ok(l1_dist::<f64>),
         "inf" => Ok(l_inf_dist::<f64>),

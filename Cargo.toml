@@ -1,6 +1,6 @@
 [package]
 name = "polars_ds"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2021"
 
 [lib]
@@ -11,8 +11,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = {version = "*", features = ["extension-module"]}
-pyo3-polars = {version = "0.10", features = ["derive"]}
-polars = {version = "0.36.2", features = ["performant", "lazy", "dtype-array", "ndarray", "horizontal_concat","log", "cutqcut","nightly"]}
+pyo3-polars = {version = "0.11", features = ["derive"]}
+polars = {version = "0.37", features = ["performant", "lazy", "dtype-array", "ndarray","log", "cutqcut","nightly"]}
 num = "0.4.1"
 faer = {version = "0.16", features = ["ndarray", "nightly"]}
 serde = {version = "*", features=["derive"]}
@@ -26,6 +26,7 @@ rapidfuzz = "0.5.0"
 inflections = "1.1.1"
 kdtree = "0.7"
 pathfinding = "4.8.2"
+ordered-float = "4.2.0"
 
 [target.'cfg(any(not(target_os = "linux"), use_mimalloc))'.dependencies]
 mimalloc = { version = "0.1", default-features = false }

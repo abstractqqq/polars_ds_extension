@@ -1,6 +1,7 @@
 /// Performs KNN related search queries, classification and regression, and
 /// other features/entropies that require KNN to be efficiently computed.
 use super::which_distance;
+use crate::list_u64_output;
 use itertools::Itertools;
 use kdtree::KdTree;
 use ndarray::{ArrayView2, Axis};
@@ -47,13 +48,6 @@ pub fn build_standard_kdtree<'a>(
     Ok(tree)
 }
 
-pub fn knn_index_output(_: &[Field]) -> PolarsResult<Field> {
-    Ok(Field::new(
-        "idx",
-        DataType::List(Box::new(DataType::UInt64)),
-    ))
-}
-
 pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
     let idx = Field::new("idx", DataType::List(Box::new(DataType::UInt64)));
 
@@ -62,7 +56,7 @@ pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new("knn_w_dist", DataType::Struct(v)))
 }
 
-#[polars_expr(output_type_func=knn_index_output)]
+#[polars_expr(output_type_func=list_u64_output)]
 fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     // Set up params
     let id = inputs[0].u64()?;
@@ -139,10 +133,12 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
     Ok(ca.into_series())
 }
 
-#[polars_expr(output_type_func=knn_index_output)]
+#[polars_expr(output_type_func=list_u64_output)]
 fn pl_query_radius_ptwise(inputs: &[Series], kwargs: KdtreeRadiusKwargs) -> PolarsResult<Series> {
     // Set up params
     let id = inputs[0].u64()?;
+    let id = id.rechunk();
+    let sl = id.cont_slice()?;
 
     let dim = inputs[1..].len();
     if dim == 0 {
@@ -169,58 +165,38 @@ fn pl_query_radius_ptwise(inputs: &[Series], kwargs: KdtreeRadiusKwargs) -> Pola
     let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
 
     // Building output
-    let mut builder =
-        ListPrimitiveChunkedBuilder::<UInt64Type>::new("", id.len(), 32, DataType::UInt64);
     if parallel {
-        let mut nbs: Vec<Option<Vec<u64>>> = Vec::with_capacity(id.len());
-        data.axis_iter(Axis(0))
-            .into_par_iter()
-            .map(|p| {
-                let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
-                if let Ok(v) = tree.iter_nearest(s, &dist_func) {
-                    let mut out: Vec<u64> = Vec::with_capacity(32);
-                    for (d, i) in v {
-                        if d <= radius {
-                            out.push(id.get(*i).unwrap())
-                        } else {
-                            break;
-                        }
-                    }
-                    out.shrink_to_fit();
-                    Some(out)
-                } else {
-                    None
-                }
-            })
-            .collect_into_vec(&mut nbs);
-        for op_s in nbs {
-            if let Some(s) = op_s {
-                builder.append_slice(&s);
+        let out_par_iter = data.axis_iter(Axis(0)).into_par_iter().map(|p| {
+            let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
+            if let Ok(v) = tree.iter_nearest(s, &dist_func) {
+                let out = v.take_while(|(d, _)| d <= &radius).map(|(_, i)| sl[*i]);
+                let ca = UInt64Chunked::from_iter_values("", out);
+                Some(ca.into_series())
             } else {
-                builder.append_null();
+                None
             }
-        }
+        });
+        let ca = ListChunked::from_par_iter(out_par_iter);
+        Ok(ca.into_series())
     } else {
+        let mut builder =
+            ListPrimitiveChunkedBuilder::<UInt64Type>::new("", id.len(), 16, DataType::UInt64);
         for p in data.rows() {
             let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
             if let Ok(v) = tree.iter_nearest(s, &dist_func) {
-                let mut out: Vec<u64> = Vec::with_capacity(32);
-                for (d, i) in v {
-                    if d <= radius {
-                        out.push(id.get(*i).unwrap())
-                    } else {
-                        break;
-                    }
-                }
+                let mut out: Vec<u64> = v
+                    .take_while(|(d, _)| d <= &radius)
+                    .map(|(_, i)| id.get(*i).unwrap())
+                    .collect();
                 out.shrink_to_fit();
-                builder.append_slice(out.as_slice());
+                builder.append_slice(&out);
             } else {
                 builder.append_null();
             }
         }
+        let ca = builder.finish();
+        Ok(ca.into_series())
     }
-    let ca = builder.finish();
-    Ok(ca.into_series())
 }
 
 #[polars_expr(output_type_func=knn_full_output)]
@@ -299,8 +275,8 @@ fn pl_knn_ptwise_w_dist(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult
                     w_idx.push(id.get(*i).unwrap());
                     w_dist.push(d);
                 }
-                builder.append_slice(w_idx.as_slice());
-                builder_dist.append_slice(w_dist.as_slice());
+                builder.append_slice(&w_idx);
+                builder_dist.append_slice(&w_dist);
             } else {
                 builder.append_null();
             }

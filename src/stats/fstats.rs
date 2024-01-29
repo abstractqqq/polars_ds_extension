@@ -40,7 +40,7 @@ fn _f_stats(inputs: &[Series], return_p: bool) -> PolarsResult<Vec<f64>> {
     // inputs[0] is the group
     // all the rest should numerical
     let mut step_one: Vec<Expr> = Vec::with_capacity(inputs.len() * 2 - 1);
-    step_one.push(count().cast(DataType::Float64).alias("cnt"));
+    step_one.push(len().cast(DataType::Float64).alias("cnt"));
     let mut step_two: Vec<Expr> = Vec::with_capacity(inputs.len() + 1);
     step_two.push(col("cnt").sum().alias("n_samples").cast(DataType::UInt32));
     step_two.push(

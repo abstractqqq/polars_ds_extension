@@ -36,14 +36,11 @@ fn pl_logit(inputs: &[Series]) -> PolarsResult<Series> {
         | DataType::Int8
         | DataType::Int16
         | DataType::Int32
-        | DataType::Int64 => {
+        | DataType::Int64
+        | DataType::Float32 => {
+            // will only allocate a new Series when type != f32
             let ss = s.cast(&DataType::Float32)?;
             let ca = ss.f32()?;
-            let out = ca.apply_values(logit);
-            Ok(out.into_series())
-        }
-        DataType::Float32 => {
-            let ca = s.f32()?;
             let out = ca.apply_values(logit);
             Ok(out.into_series())
         }
@@ -52,7 +49,7 @@ fn pl_logit(inputs: &[Series]) -> PolarsResult<Series> {
             let out = ca.apply_values(logit);
             Ok(out.into_series())
         }
-        _ => Err(PolarsError::ShapeMismatch(
+        _ => Err(PolarsError::ComputeError(
             "Input column must be numerical.".into(),
         )),
     }
@@ -69,15 +66,11 @@ fn pl_expit(inputs: &[Series]) -> PolarsResult<Series> {
         | DataType::Int8
         | DataType::Int16
         | DataType::Int32
-        | DataType::Int64 => {
+        | DataType::Int64
+        | DataType::Float32 => {
             let ss = s.cast(&DataType::Float32)?;
             let ca = ss.f32()?;
-            let out = ca.apply_values(expit);
-            Ok(out.into_series())
-        }
-        DataType::Float32 => {
-            let ca = s.f32()?;
-            let out = ca.apply_values(expit);
+            let out: ChunkedArray<Float32Type> = ca.apply_values(expit);
             Ok(out.into_series())
         }
         DataType::Float64 => {
@@ -85,7 +78,7 @@ fn pl_expit(inputs: &[Series]) -> PolarsResult<Series> {
             let out = ca.apply_values(expit);
             Ok(out.into_series())
         }
-        _ => Err(PolarsError::ShapeMismatch(
+        _ => Err(PolarsError::ComputeError(
             "Input column must be numerical.".into(),
         )),
     }
@@ -94,9 +87,28 @@ fn pl_expit(inputs: &[Series]) -> PolarsResult<Series> {
 #[polars_expr(output_type=Float64)]
 fn pl_gamma(inputs: &[Series]) -> PolarsResult<Series> {
     let s = &inputs[0];
-    // Gamma is not a trait. So always cast.
-    let ss = s.cast(&DataType::Float64)?;
-    let ca = ss.f64()?;
-    let out = ca.apply_values(|x| x.gamma());
-    Ok(out.into_series())
+    match s.dtype() {
+        DataType::UInt8
+        | DataType::UInt16
+        | DataType::UInt32
+        | DataType::UInt64
+        | DataType::Int8
+        | DataType::Int16
+        | DataType::Int32
+        | DataType::Int64
+        | DataType::Float32 => {
+            let ss = s.cast(&DataType::Float32)?;
+            let ca = ss.f32()?;
+            let out = ca.apply_values(f32::gamma);
+            Ok(out.into_series())
+        }
+        DataType::Float64 => {
+            let ca = s.f64()?;
+            let out = ca.apply_values(f64::gamma);
+            Ok(out.into_series())
+        }
+        _ => Err(PolarsError::ComputeError(
+            "Input column must be numerical.".into(),
+        )),
+    }
 }
