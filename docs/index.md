@@ -2,6 +2,10 @@
 
 A Polars Plugin aiming to simplify common numerical/string data analysis procedures.
 
+A comprehensive [walkthrough](./examples/basics.ipynb).
+
+Read the [Docs](https://polars-ds-extension.readthedocs.io/en/latest/).
+
 # The Project
 
 Here are the current namespaces (Polars Extensions) provided by the package:
@@ -190,26 +194,32 @@ shape: (5, 6)
 
 Even in-dataframe nearest neighbors queries! 😲
 ```python
-df.with_columns(
-    pl.col("id").num.knn_ptwise(
-        pl.col("val1"), pl.col("val2"), 
-        k = 3, dist = "haversine", parallel = True
-    ).alias("nearest neighbor ids")
-)
+df.select(
+    pl.col("id"),
+    pl.col("id").num.query_radius_ptwise(
+        pl.col("val1"), pl.col("val2"), pl.col("val3"), # Columns used as the coordinates in n-d space
+        r = 0.1, 
+        dist = "l2", # actually this is squared l2
+        parallel = True
+    ).alias("best friends"),
+).with_columns( # -1 to remove the point itself
+    (pl.col("best friends").list.len() - 1).alias("best friends count")
+).head()
 
-shape: (5, 6)
-┌─────┬──────────┬──────────┬──────────┬──────────┬──────────────────────┐
-│ id  ┆ val1     ┆ val2     ┆ val3     ┆ val4     ┆ nearest neighbor ids │
-│ --- ┆ ---      ┆ ---      ┆ ---      ┆ ---      ┆ ---                  │
-│ i64 ┆ f64      ┆ f64      ┆ f64      ┆ f64      ┆ list[u64]            │
-╞═════╪══════════╪══════════╪══════════╪══════════╪══════════════════════╡
-│ 0   ┆ 0.804226 ┆ 0.937055 ┆ 0.401005 ┆ 0.119566 ┆ [0, 3, … 0]          │
-│ 1   ┆ 0.526691 ┆ 0.562369 ┆ 0.061444 ┆ 0.520291 ┆ [1, 4, … 4]          │
-│ 2   ┆ 0.225055 ┆ 0.080344 ┆ 0.425962 ┆ 0.924262 ┆ [2, 1, … 1]          │
-│ 3   ┆ 0.697264 ┆ 0.112253 ┆ 0.666238 ┆ 0.45823  ┆ [3, 1, … 0]          │
-│ 4   ┆ 0.227807 ┆ 0.734995 ┆ 0.225657 ┆ 0.668077 ┆ [4, 4, … 0]          │
-└─────┴──────────┴──────────┴──────────┴──────────┴──────────────────────┘
+shape: (5, 3)
+┌─────┬─────────────────┬────────────────────┐
+│ id  ┆ best friends    ┆ best friends count │
+│ --- ┆ ---             ┆ ---                │
+│ u64 ┆ list[u64]       ┆ u32                │
+╞═════╪═════════════════╪════════════════════╡
+│ 0   ┆ [0, 681, … 90]  ┆ 84                 │
+│ 1   ┆ [1, 232, … 20]  ┆ 144                │
+│ 2   ┆ [2, 565, … 168] ┆ 137                │
+│ 3   ┆ [3, 399, … 529] ┆ 58                 │
+│ 4   ┆ [4, 389, … 898] ┆ 88                 │
+└─────┴─────────────────┴────────────────────┘
 ```
+
 # Disclaimers
 
 **Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars and will try to be as stable as possible for polars>=0.20.6. Exceptions will be made when Polars's update forces changes in the plugins.**

@@ -594,7 +594,7 @@ class StrExt:
         strategy: Literal["avg", "all", "any"] = "avg",
     ) -> pl.Expr:
         """
-        Compare each word in the vocab with the each word in self. Filters self to the words
+        Compare each word in the vocab with each word in self. Filters self to the words
         that are most similar to the words in the vocab.
 
         Parameters

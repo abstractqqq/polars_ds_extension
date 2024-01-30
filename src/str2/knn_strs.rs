@@ -45,17 +45,17 @@ fn levenshtein_knn(s: &str, cutoff: usize, k: usize, vocab: &StringChunked) -> S
     let batched = levenshtein::BatchComparator::new(s.chars());
     // Most similar == having smallest distance
     // A binary heap is a max heap. So we do -usize
-    let mut heap: BinaryHeap<(isize, &str)> = BinaryHeap::new();
+    // Vocab is gauranteed to contain no null
+    let mut heap: BinaryHeap<(isize, &str)> = BinaryHeap::with_capacity(vocab.len());
     vocab.into_iter().for_each(|op_w| {
-        if let Some(w) = op_w {
-            if let Some(d) = batched.distance_with_args(
-                w.chars(),
-                &levenshtein::Args::default().score_cutoff(cutoff),
-            ) {
-                // all distances are negative in heap. md = minus d
-                let md = -(d as isize);
-                heap.push((md, w));
-            }
+        let w = op_w.unwrap();
+        if let Some(d) = batched.distance_with_args(
+            w.chars(),
+            &levenshtein::Args::default().score_cutoff(cutoff),
+        ) {
+            // all distances are negative in heap. md = minus d
+            let md = -(d as isize);
+            heap.push((md, w));
         }
     });
     let ca: ChunkedArray<StringType> = StringChunked::from_iter_values(
@@ -94,16 +94,16 @@ fn hamming_knn(s: &str, cutoff: usize, k: usize, vocab: &StringChunked) -> Serie
     let batched = hamming::BatchComparator::new(s.chars());
     // Most similar == having smallest distance
     // A binary heap is a max heap. So we do -usize
-    let mut heap: BinaryHeap<(isize, &str)> = BinaryHeap::new();
+    // Vocab is gauranteed to contain no null
+    let mut heap: BinaryHeap<(isize, &str)> = BinaryHeap::with_capacity(vocab.len());
     vocab.into_iter().for_each(|op_w| {
-        if let Some(w) = op_w {
-            if let Ok(dd) = batched
-                .distance_with_args(w.chars(), &hamming::Args::default().score_cutoff(cutoff))
-            {
-                if let Some(d) = dd {
-                    let md = -(d as isize);
-                    heap.push((md, w));
-                }
+        let w = op_w.unwrap();
+        if let Ok(dd) =
+            batched.distance_with_args(w.chars(), &hamming::Args::default().score_cutoff(cutoff))
+        {
+            if let Some(d) = dd {
+                let md = -(d as isize);
+                heap.push((md, w));
             }
         }
     });
@@ -147,7 +147,8 @@ pub fn pl_nearest_str(inputs: &[Series], kwargs: KnnStrKwargs) -> PolarsResult<S
 #[polars_expr(output_type_func=list_str_output)]
 pub fn pl_knn_str(inputs: &[Series], kwargs: KnnStrKwargs) -> PolarsResult<Series> {
     let s = inputs[0].str()?;
-    let vocab = inputs[1].str()?;
+    let binding = inputs[1].drop_nulls();
+    let vocab = binding.str()?;
 
     let parallel = kwargs.parallel;
     let cutoff = kwargs.threshold;
