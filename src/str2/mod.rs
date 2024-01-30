@@ -13,16 +13,6 @@ mod snowball_stem;
 mod sorensen_dice;
 mod str_jaccard;
 
-use polars::prelude::{DataType, Field, PolarsResult};
-
-// Output functions
-fn list_str_output(_: &[Field]) -> PolarsResult<Field> {
-    Ok(Field::new(
-        "list_str",
-        DataType::List(Box::new(DataType::String)),
-    ))
-}
-
 // Hashbrown has better perf than Rust's HashSet
 use hashbrown::HashSet;
 

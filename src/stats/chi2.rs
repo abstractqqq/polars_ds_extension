@@ -23,7 +23,7 @@ fn pl_chi2(inputs: &[Series]) -> PolarsResult<Series> {
     let df3 = df!(s1_name => s1, s2_name => s2)?
         .lazy()
         .group_by([col(s1_name), col(s2_name)])
-        .agg([count().alias("ob")]);
+        .agg([len().alias("ob")]);
 
     let df4 = cross
         .join(

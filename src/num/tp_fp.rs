@@ -2,7 +2,7 @@
 /// ROC AUC, Average Precision, precision, recall, etc.
 ///
 use ndarray::ArrayView1;
-use polars::{lazy::dsl::count, prelude::*};
+use polars::{lazy::dsl::len, prelude::*};
 use pyo3_polars::derive::polars_expr;
 
 fn combo_output(_: &[Field]) -> PolarsResult<Field> {
@@ -31,7 +31,7 @@ fn tp_fp_frame(predicted: Series, actual: Series, as_ratio: bool) -> PolarsResul
         .lazy()
         .group_by([col("threshold")])
         .agg([
-            count().alias("cnt"),
+            len().alias("cnt"),
             col("actual").sum().alias("pos_cnt_at_threshold"),
         ])
         .sort("threshold", Default::default())

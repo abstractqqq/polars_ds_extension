@@ -1,12 +1,18 @@
 # Polars Extension for General Data Science Use
 
-A Polars Plugin aiming to simplify common numerical/string data analysis procedures. This means that the most basic data science, stats, NLP related tasks can be done natively inside a dataframe, thus minimizing the number of dependencies.
+A Polars Plugin aiming to simplify common numerical/string data analysis procedures.
 
-Its goal is not to replace SciPy, or NumPy, but rather it tries to improve runtime for common tasks, reduce Python code and UDFs.
+# Purpose
 
-See examples [here](https://github.com/abstractqqq/polars_ds_extension/blob/main/examples/basics.ipynb).
+The goal of the package is to facilitate data processes and analysis that go beyond standard SQL queries. It incorproates parts of SciPy, NumPy, Scikit-learn, and NLP (NLTK), etc., and treats them as Polars queries so that they can be run in parallel, in group_by contexts, etc. 
 
-**Currently in Beta. Feel free to submit feature requests in the issues section of the repo.**
+This package does not attempt to replace any of the aforementioned libraries. Only a small subset of commonly used and suitable functions will be implemented. 
+
+All the queries provided by this package should work with eager and lazy Polars. By relying on the power of Rust and Polars, we can thus keep the number of dependencies at a minimum (most dependency issues are checked at compile time and all builds must pass tests on all platforms), keep our code as clean as possible while getting better runtime performance in most cases.
+
+**Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars and will try to be as stable as possible for polars?=0.20.6. Exceptions will be made when Polars's update forces changes in the plugins.**
+
+Disclaimer: this package is not tested with Polars streaming mode and is not designed to work with data so big that data has to be streamed. The recommended usage will be for datasets of size 1k to 2-3mm rows. Performance problems within this range will be given more priority than performance problems for data outside this range.
 
 ## Getting Started
 ```bash

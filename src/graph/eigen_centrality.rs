@@ -28,7 +28,7 @@ fn power_iteration(a: MatRef<f64>, n: usize, n_iter: usize) -> Vec<f64> {
 }
 
 #[polars_expr(output_type=Float64)]
-pub fn pl_eigen_centrality(inputs: &[Series], kwargs: EigenKwargs) -> PolarsResult<Series> {
+fn pl_eigen_centrality(inputs: &[Series], kwargs: EigenKwargs) -> PolarsResult<Series> {
     // Use this function for now. I think sparse matrices work better for such problems.
     // However, Faer's sparse module is too hard to use right now.
 

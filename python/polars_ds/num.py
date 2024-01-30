@@ -245,7 +245,7 @@ class NumExt:
         df_tot = self._expr.count() - 1
         return 1.0 - (ss_res / df_res) / (ss_tot / df_tot)
 
-    def jaccard(self, other: pl.Expr, include_null: bool = False) -> pl.Expr:
+    def jaccard(self, other: pl.Expr, count_null: bool = False) -> pl.Expr:
         """
         Computes jaccard similarity between this column and the other. This will hash entire
         columns and compares the two hashsets. Note: only integer/str columns can be compared.
@@ -254,13 +254,13 @@ class NumExt:
         ----------
         other
             Either an int or a Polars expression
-        include_null
-            Whether to include null as a distinct element.
+        count_null
+            Whether to count null as a distinct element.
         """
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_jaccard",
-            args=[other, pl.lit(include_null, dtype=pl.Boolean)],
+            args=[other, pl.lit(count_null, dtype=pl.Boolean)],
             is_elementwise=False,
             returns_scalar=True,
         )
@@ -490,23 +490,28 @@ class NumExt:
         else:
             raise ValueError(f"Unknown detrend method: {method}")
 
-    def rfft(self, length: Optional[int] = None) -> pl.Expr:
+    def rfft(self, n: Optional[int] = None, return_full: bool = False) -> pl.Expr:
         """
         Computes the DFT transform of a real-valued input series using FFT Algorithm. Note that
-        a series of length (length // 2 + 1) will be returned.
+        by default a series of length (length // 2 + 1) will be returned.
 
         Parameters
         ----------
-        length
-            A positive integer. If none, the input series's length will be used.
+        n
+            The number of points to use. If n is smaller than the length of the input,
+            the input is cropped. If it is larger, the input is padded with zeros.
+            If n is not given, the length of the input is used.
+        return_full
+            If true, output will have the same length as determined by n.
         """
-        if length is not None and length <= 1:
-            raise ValueError("Input `length` should be > 1.")
+        if n is not None and n <= 1:
+            raise ValueError("Input `n` should be > 1.")
 
-        le = pl.lit(length, dtype=pl.UInt32)
+        full = pl.lit(return_full, pl.Boolean)
+        nn = pl.lit(n, pl.UInt32)
         x: pl.Expr = self._expr.cast(pl.Float64)
         return x.register_plugin(
-            lib=_lib, symbol="pl_rfft", args=[le], is_elementwise=False, changes_length=True
+            lib=_lib, symbol="pl_rfft", args=[nn, full], is_elementwise=False, changes_length=True
         )
 
     def knn_ptwise(
@@ -593,7 +598,7 @@ class NumExt:
         others
             Other columns used as features
         r
-            The radius
+            The radius. Must be a scalar value now.
         leaf_size
             Leaf size for the kd-tree. Tuning this might improve runtime performance.
         dist

@@ -30,7 +30,7 @@ fn get_woe_frame(inputs: &[Series]) -> PolarsResult<LazyFrame> {
     let out = df
         .lazy()
         .group_by([col("values")])
-        .agg([count().alias("cnt"), col("target").sum().alias("goods")])
+        .agg([len().alias("cnt"), col("target").sum().alias("goods")])
         .select([
             col("values"),
             ((col("goods") + lit(1)).cast(DataType::Float64)
