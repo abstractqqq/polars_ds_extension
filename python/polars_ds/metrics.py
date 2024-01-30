@@ -114,6 +114,40 @@ class MetricExt:
         """
         return self.l_inf_dist(pred, normalize)
 
+    def r2(self, pred: pl.Expr) -> pl.Expr:
+        """
+        Returns the coefficient of determineation for a regression model.
+
+        Parameters
+        ----------
+        pred
+            A Polars expression representing predictions
+        """
+        diff = self._expr - pred
+        ss_res = diff.dot(diff)
+        diff2 = self._expr - self._expr.mean()
+        ss_tot = diff2.dot(diff2)
+        return 1.0 - ss_res / ss_tot
+
+    def adjusted_r2(self, pred: pl.Expr, p: int) -> pl.Expr:
+        """
+        Returns the adjusted r2 for a regression model.
+
+        Parameters
+        ----------
+        pred
+            A Polars expression representing predictions
+        p
+            The total number of explanatory variables in the model
+        """
+        diff = self._expr - pred
+        ss_res = diff.dot(diff)
+        diff2 = self._expr - self._expr.mean()
+        ss_tot = diff2.dot(diff2)
+        df_res = self._expr.count() - p
+        df_tot = self._expr.count() - 1
+        return 1.0 - (ss_res / df_res) / (ss_tot / df_tot)
+
     def l_inf_loss(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
         Computes L^infinity loss between this and the other `pred` expression

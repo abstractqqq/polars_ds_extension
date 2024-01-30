@@ -19,7 +19,7 @@ class NumExt:
 
     Example: pl.col("a").num.range_over_mean()
 
-    It currently contains some time series stuff such as detrend, rfft, and time series metrics like SMAPE.
+    It currently contains some time series stuff such as detrend, rfft, and entropies, and other common numerical quantities.
     """
 
     def __init__(self, expr: pl.Expr):
@@ -210,40 +210,6 @@ class NumExt:
             is_elementwise=False,
             returns_scalar=True,
         )
-
-    def r2(self, pred: pl.Expr) -> pl.Expr:
-        """
-        Returns the coefficient of determineation for a regression model.
-
-        Parameters
-        ----------
-        pred
-            A Polars expression representing predictions
-        """
-        diff = self._expr - pred
-        ss_res = diff.dot(diff)
-        diff2 = self._expr - self._expr.mean()
-        ss_tot = diff2.dot(diff2)
-        return 1.0 - ss_res / ss_tot
-
-    def adjusted_r2(self, pred: pl.Expr, p: int) -> pl.Expr:
-        """
-        Returns the adjusted r2 for a regression model.
-
-        Parameters
-        ----------
-        pred
-            A Polars expression representing predictions
-        p
-            The total number of explanatory variables in the model
-        """
-        diff = self._expr - pred
-        ss_res = diff.dot(diff)
-        diff2 = self._expr - self._expr.mean()
-        ss_tot = diff2.dot(diff2)
-        df_res = self._expr.count() - p
-        df_tot = self._expr.count() - 1
-        return 1.0 - (ss_res / df_res) / (ss_tot / df_tot)
 
     def jaccard(self, other: pl.Expr, count_null: bool = False) -> pl.Expr:
         """

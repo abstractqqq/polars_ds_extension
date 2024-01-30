@@ -10,6 +10,7 @@ nav:
 - Stats Extension: stats.md
 - String Extension: str2.md
 - ML Metrics/Loss Extension: metrics.md
+- Graph Extension: graph.md
 - Additional Expressions: polars_ds.md
 
 theme:
