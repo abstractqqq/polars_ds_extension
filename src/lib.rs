@@ -26,11 +26,20 @@ fn _polars_ds(_py: Python<'_>, _m: &PyModule) -> PyResult<()> {
 use polars::{
     datatypes::{DataType, Field},
     error::PolarsResult,
+    lazy::dsl::FieldsMapper,
 };
+
 pub fn list_u64_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
         "nodes",
         DataType::List(Box::new(DataType::UInt64)),
+    ))
+}
+
+pub fn list_f64_output(_: &[Field]) -> PolarsResult<Field> {
+    Ok(Field::new(
+        "floats",
+        DataType::List(Box::new(DataType::Float64)),
     ))
 }
 
@@ -41,9 +50,13 @@ pub fn complex_output(_: &[Field]) -> PolarsResult<Field> {
     ))
 }
 
-fn list_str_output(_: &[Field]) -> PolarsResult<Field> {
+pub fn list_str_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
         "list_str",
         DataType::List(Box::new(DataType::String)),
     ))
+}
+
+pub fn float_output(fields: &[Field]) -> PolarsResult<Field> {
+    FieldsMapper::new(fields).map_to_float_dtype()
 }

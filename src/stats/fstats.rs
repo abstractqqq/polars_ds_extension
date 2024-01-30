@@ -1,6 +1,6 @@
 /// Multiple F-statistics at once and F test
-use super::{list_float_output, simple_stats_output, StatsResult};
-use crate::stats_utils::beta::fisher_snedecor_sf;
+use super::{simple_stats_output, StatsResult};
+use crate::{list_f64_output, stats_utils::beta::fisher_snedecor_sf};
 use itertools::Itertools;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
@@ -21,6 +21,8 @@ fn ftest(x: f64, f1: f64, f2: f64) -> Result<StatsResult, String> {
 /// When return_p is true, returns a Vec that has x_0, .., x_{n-1} = f_0, .., f_{n-1}
 /// where n = inputs.len() - 1 = number of features
 /// And additionally x_n, .., x_{2n - 2} = p_0, .., p_{n-1}, are the p values.
+///
+/// Refactor?
 fn _f_stats(inputs: &[Series], return_p: bool) -> PolarsResult<Vec<f64>> {
     let target = "target";
     let v = inputs
@@ -125,7 +127,7 @@ fn _f_stats(inputs: &[Series], return_p: bool) -> PolarsResult<Vec<f64>> {
 /// Use inputs[0] as the grouping column
 /// and inputs[1..] as other columns. Compute F statistic for other columns w.r.t the grouping column.
 /// Outputs a list of floats, in the order of other columns.
-#[polars_expr(output_type_func=list_float_output)]
+#[polars_expr(output_type_func=list_f64_output)]
 fn pl_f_stats(inputs: &[Series]) -> PolarsResult<Series> {
     let stats = _f_stats(inputs, false)?;
     let mut builder = ListPrimitiveChunkedBuilder::<Float64Type>::new(

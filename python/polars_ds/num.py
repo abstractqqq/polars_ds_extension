@@ -245,7 +245,7 @@ class NumExt:
         df_tot = self._expr.count() - 1
         return 1.0 - (ss_res / df_res) / (ss_tot / df_tot)
 
-    def jaccard(self, other: pl.Expr, include_null: bool = False) -> pl.Expr:
+    def jaccard(self, other: pl.Expr, count_null: bool = False) -> pl.Expr:
         """
         Computes jaccard similarity between this column and the other. This will hash entire
         columns and compares the two hashsets. Note: only integer/str columns can be compared.
@@ -254,13 +254,13 @@ class NumExt:
         ----------
         other
             Either an int or a Polars expression
-        include_null
-            Whether to include null as a distinct element.
+        count_null
+            Whether to count null as a distinct element.
         """
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_jaccard",
-            args=[other, pl.lit(include_null, dtype=pl.Boolean)],
+            args=[other, pl.lit(count_null, dtype=pl.Boolean)],
             is_elementwise=False,
             returns_scalar=True,
         )

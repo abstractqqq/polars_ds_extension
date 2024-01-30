@@ -1,11 +1,8 @@
-use num::traits::Float;
+use crate::float_output;
 /// The logit, expit and gamma function as defined in SciPy
+use num::traits::Float;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
-
-pub fn float_output(fields: &[Field]) -> PolarsResult<Field> {
-    FieldsMapper::new(fields).map_to_float_dtype()
-}
 
 #[inline]
 fn logit<T: Float>(x: T) -> T {
@@ -37,15 +34,15 @@ fn pl_logit(inputs: &[Series]) -> PolarsResult<Series> {
         | DataType::Int16
         | DataType::Int32
         | DataType::Int64
-        | DataType::Float32 => {
-            // will only allocate a new Series when type != f32
-            let ss = s.cast(&DataType::Float32)?;
-            let ca = ss.f32()?;
+        | DataType::Float64 => {
+            // will only allocate a new Series when type != f64
+            let ss = s.cast(&DataType::Float64)?;
+            let ca = ss.f64().unwrap();
             let out = ca.apply_values(logit);
             Ok(out.into_series())
         }
-        DataType::Float64 => {
-            let ca = s.f64()?;
+        DataType::Float32 => {
+            let ca = s.f32().unwrap();
             let out = ca.apply_values(logit);
             Ok(out.into_series())
         }
@@ -67,14 +64,15 @@ fn pl_expit(inputs: &[Series]) -> PolarsResult<Series> {
         | DataType::Int16
         | DataType::Int32
         | DataType::Int64
-        | DataType::Float32 => {
-            let ss = s.cast(&DataType::Float32)?;
-            let ca = ss.f32()?;
-            let out: ChunkedArray<Float32Type> = ca.apply_values(expit);
+        | DataType::Float64 => {
+            // will only allocate a new Series when type != f64
+            let ss = s.cast(&DataType::Float64)?;
+            let ca = ss.f64().unwrap();
+            let out = ca.apply_values(expit);
             Ok(out.into_series())
         }
-        DataType::Float64 => {
-            let ca = s.f64()?;
+        DataType::Float32 => {
+            let ca = s.f32().unwrap();
             let out = ca.apply_values(expit);
             Ok(out.into_series())
         }
@@ -96,15 +94,16 @@ fn pl_gamma(inputs: &[Series]) -> PolarsResult<Series> {
         | DataType::Int16
         | DataType::Int32
         | DataType::Int64
-        | DataType::Float32 => {
-            let ss = s.cast(&DataType::Float32)?;
-            let ca = ss.f32()?;
-            let out = ca.apply_values(f32::gamma);
+        | DataType::Float64 => {
+            // will only allocate a new Series when type != f64
+            let ss = s.cast(&DataType::Float64)?;
+            let ca = ss.f64().unwrap();
+            let out = ca.apply_values(f64::gamma);
             Ok(out.into_series())
         }
-        DataType::Float64 => {
-            let ca = s.f64()?;
-            let out = ca.apply_values(f64::gamma);
+        DataType::Float32 => {
+            let ca = s.f32().unwrap();
+            let out = ca.apply_values(f32::gamma);
             Ok(out.into_series())
         }
         _ => Err(PolarsError::ComputeError(

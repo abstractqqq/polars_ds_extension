@@ -504,8 +504,7 @@ pub fn sf_unchecked(x: f64, mean: f64, std_dev: f64) -> f64 {
     0.5 * erfc((x - mean) / (std_dev * std::f64::consts::SQRT_2))
 }
 
-/// `erfc` calculates the complementary error function
-/// at `x`.
+/// `erfc` calculates the complementary error function at `x`.
 fn erfc(x: f64) -> f64 {
     if x.is_nan() {
         f64::NAN

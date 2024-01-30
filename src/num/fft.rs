@@ -10,8 +10,6 @@ use realfft::RealFftPlanner;
 
 #[polars_expr(output_type_func=complex_output)]
 fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
-    // Take a step argument
-
     let s = inputs[0].f64()?;
     let n = inputs[1].u32()?;
     let mut n = n.get(0).unwrap_or(s.len() as u32) as usize;
