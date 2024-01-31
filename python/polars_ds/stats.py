@@ -21,6 +21,62 @@ class StatsExt:
     def __init__(self, expr: pl.Expr):
         self._expr: pl.Expr = expr
 
+    def ttest_ind_from_stats(
+        self,
+        other_mean: float,
+        other_var: float,
+        other_cnt: int,
+        alternative: Alternative = "two-sided",
+        equal_var: bool = False,
+    ) -> pl.Expr:
+        """
+        Performs 2 sample student's t test or Welch's t test, using only scalar statistics from other.
+        This is more suitable for t-tests between rolling data and some other fixed data, from which you
+        can compute the mean, var, and count only once.
+
+        Parameters
+        ----------
+        other_mean
+            The mean of other
+        other_var
+            The var of other
+        other_cnt
+            The count of other, used only in welch's t test
+        alternative : {"two-sided", "less", "greater"}
+            Alternative of the hypothesis test
+        equal_var
+            If true, perform standard student t 2 sample test. Otherwise, perform Welch's
+            t test.
+        """
+        if equal_var:
+            m1 = self._expr.mean()
+            m2 = pl.lit(other_mean, pl.Float64)
+            v1 = self._expr.var()
+            v2 = pl.lit(other_var, pl.Float64)
+            cnt = self._expr.count().cast(pl.UInt64)
+            return m1.register_plugin(
+                lib=_lib,
+                symbol="pl_ttest_2samp",
+                args=[m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
+                is_elementwise=False,
+                returns_scalar=True,
+            )
+        else:
+            s1 = self._expr.filter(self._expr.is_finite())
+            m1 = s1.mean()
+            m2 = pl.lit(other_mean, pl.Float64)
+            v1 = s1.var()
+            v2 = pl.lit(other_var, pl.Float64)
+            n1 = s1.count().cast(pl.UInt64)
+            n2 = pl.lit(other_cnt, pl.UInt64)
+            return m1.register_plugin(
+                lib=_lib,
+                symbol="pl_welch_t",
+                args=[m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
+                is_elementwise=False,
+                returns_scalar=True,
+            )
+
     def ttest_ind(
         self, other: pl.Expr, alternative: Alternative = "two-sided", equal_var: bool = False
     ) -> pl.Expr:
@@ -185,8 +241,8 @@ class StatsExt:
 
     def ks_binary_classif(self, target: pl.Expr) -> pl.Expr:
         """
-        Given a binary target, compute the ks statistics by comparing the feature where target = 1
-        with the same feature where target != 1.
+        Given a binary target, compute the ks statistics by comparing the feature when target = 1
+        with the same feature when target != 1.
 
         Parameters
         ----------
@@ -353,15 +409,15 @@ class StatsExt:
         self, lambda_: Optional[Union[float, pl.Expr]] = None, respect_null: bool = False
     ) -> pl.Expr:
         """
-        Creates self.len() many random points sampled from a exponential distribution with n and p.
+        Creates self.len() many random points sampled from a exponential distribution with parameter `lambda_`.
 
         This treats self as the reference column.
 
         Parameters
         ----------
         lambda_
-            lambda in a exponential distribution. If none, it will be 1/reference col's mean. Note that if
-            lambda < 0 will throw an error and lambda = 0 will only return infinity.
+            If none, it will be 1/reference col's mean. Note that if
+            lambda < 0 this will throw an error and lambda = 0 will only return infinity.
         respect_null
             If true, null in reference column will be null in the new column
         """
@@ -459,3 +515,45 @@ class StatsExt:
             is_elementwise=True,
             returns_scalar=False,
         )
+
+    def w_mean(self, weights: pl.Expr, is_normalized: bool = False) -> pl.Expr:
+        """
+        Computes the weighted mean of self, where weights is an expr represeting
+        a weight column. The weights column must have the same length as self.
+
+        All weights are assumed to be > 0. This will not check if weight is zero.
+
+        Parameters
+        ----------
+        weights
+            An expr representing weights
+        is_normalized
+            If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
+        """
+        out = self._expr.dot(weights)
+        if is_normalized:
+            return out
+        return out / weights.sum()
+
+    def w_var(self, weights: pl.Expr, is_normalized: bool = False) -> pl.Expr:
+        """
+        Computes the weighted var of self, where weights is an expr represeting
+        a weight column. The weights column must have the same length as self.
+
+        All weights are assumed to be > 0. This will not check if weight is zero.
+
+        Parameters
+        ----------
+        weights
+            An expr representing weights
+        is_normalized
+            If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
+        """
+        centered_squared = (self._expr - self._expr.mean()).pow(2)
+        out = weights.dot(centered_squared)
+        if is_normalized:
+            denom = (self._expr.count() - 1) / self._expr.count()
+        else:
+            denom = weights.sum() * (self._expr.count() - 1) / self._expr.count()
+
+        return out / denom
