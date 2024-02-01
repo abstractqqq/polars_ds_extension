@@ -1,10 +1,15 @@
-# Polars Extension for General Data Science Use
+<h1 align="center">
+  <b>Polars for Data Science</b>
+  <br>
+</h1>
 
-A Polars Plugin aiming to simplify common numerical/string data analysis procedures.
-
-A comprehensive [walkthrough](./examples/basics.ipynb).
-
-Read the [Docs](https://polars-ds-extension.readthedocs.io/en/latest/).
+<p align="center">
+  <a href="https://polars-ds-extension.readthedocs.io/en/latest/">Documentation</a>
+  |
+  <a href="https://github.com/abstractqqq/polars_ds_extension/blob/main/examples/basics.ipynb">User Guide</a>
+<br>
+<b>pip install polars-ds</b>
+</p>
 
 # The Project
 
@@ -113,11 +118,6 @@ The end result is simpler, more intuitive code that is also easier to reason abo
 **Performance and elegance - something that is quite rare in the Python world.**
 
 ## Getting Started
-```bash
-pip install polars_ds
-```
-
-and 
 
 ```python
 import polars_ds as pld
@@ -220,7 +220,7 @@ shape: (5, 3)
 └─────┴─────────────────┴────────────────────┘
 ```
 
-# Disclaimers
+# Disclaimer
 
 **Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars and will try to be as stable as possible for polars>=0.20.6. Exceptions will be made when Polars's update forces changes in the plugins.**
 

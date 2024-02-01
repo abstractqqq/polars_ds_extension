@@ -14,6 +14,8 @@ from polars.testing import assert_frame_equal
     ],
 )
 def test_fft(arr, n):
+    import scipy as sp
+
     df = pl.DataFrame({"a": arr})
     res = df.select(pl.col("a").num.rfft(n=n).alias("fft")).select(
         pl.col("fft").list.first().alias("re"), pl.col("fft").list.last().alias("im")
@@ -22,6 +24,18 @@ def test_fft(arr, n):
     im_test = res["im"].to_numpy()
 
     ans = np.fft.rfft(arr, n=n)
+    real = ans.real
+    imag = ans.imag
+    assert np.isclose(real_test, real).all()
+    assert np.isclose(im_test, imag).all()
+
+    # Always run a check against scipy, with return_full=True as well
+    res2 = df.select(pl.col("a").num.rfft(return_full=True).alias("fft")).select(
+        pl.col("fft").list.first().alias("re"), pl.col("fft").list.last().alias("im")
+    )
+    real_test = res2["re"].to_numpy()
+    im_test = res2["im"].to_numpy()
+    ans = sp.fft.fft(arr)
     real = ans.real
     imag = ans.imag
     assert np.isclose(real_test, real).all()
