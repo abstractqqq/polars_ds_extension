@@ -6,8 +6,7 @@ use polars::prelude::*;
 use pyo3_polars::{
     derive::polars_expr,
     export::polars_core::utils::rayon::iter::{
-        FromParallelIterator, IndexedParallelIterator, IntoParallelIterator, ParallelBridge,
-        ParallelIterator,
+        FromParallelIterator, IndexedParallelIterator, IntoParallelIterator, ParallelIterator,
     },
 };
 
@@ -104,6 +103,7 @@ fn pl_shortest_path_const_cost(inputs: &[Series]) -> PolarsResult<Series> {
         }
         // constant, just use cost = 1
         // Construct the graph. Copying, expensive.
+
         let graph: Vec<Vec<u64>> = if parallel {
             let mut gh: Vec<Vec<u64>> = Vec::with_capacity(edges.len());
             let mut owned_edges = edges.clone(); //cheap

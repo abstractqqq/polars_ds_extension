@@ -24,7 +24,7 @@ rand_distr = "0.4.3"
 realfft = "3.3.0"
 rapidfuzz = "0.5.0"
 inflections = "1.1.1"
-kdtree = "0.7"
+kdtree = {git = "https://github.com/mrhooray/kdtree-rs.git"}
 pathfinding = "4.8.2"
 ordered-float = "4.2.0"
 

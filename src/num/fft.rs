@@ -44,6 +44,8 @@ fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
     let mut builder =
         ListPrimitiveChunkedBuilder::<Float64Type>::new("complex", n, 2, DataType::Float64);
 
+    // ArrayChunked::from_chunk_iter(name, iter)
+
     if return_full {
         for c in spectrum.iter() {
             builder.append_slice(&[c.re, c.im])

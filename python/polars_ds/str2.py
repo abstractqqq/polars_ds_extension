@@ -647,8 +647,8 @@ class StrExt:
         words as similar words. The result is correct because of the relationship between distance
         and similarity. This will deduplicate words in vocab. In case of a tie, any one may be chosen.
 
-        Comment: When k > 1, the algorithm is not the most efficient, since this is building a heap
-        for each word in self in order to search for the top k in vocab.
+        Comment: This can be very slow due to underlying data structure problems. When nothing fits inside
+        the threshold, None will be returned.
 
         Parameters
         ----------
