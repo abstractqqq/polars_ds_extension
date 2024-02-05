@@ -253,7 +253,7 @@ class NumExt:
 
     def lempel_ziv_complexity(self, as_ratio: bool = True) -> pl.Expr:
         """
-        Computes Lempel Ziv complexity on a boolean column.
+        Computes Lempel Ziv complexity on a boolean column. None will be mapped to False.
 
         Parameters
         ----------
@@ -263,7 +263,6 @@ class NumExt:
         out = self._expr.register_plugin(
             lib=_lib,
             symbol="pl_lempel_ziv_complexity",
-            args=[],
             is_elementwise=False,
             returns_scalar=True,
         )
@@ -495,7 +494,8 @@ class NumExt:
         is actually k + 1. This will throw an error if any null value is found.
 
         Note that the node index column must be convertible to u64. If you do not have a u64 ID column,
-        you can generate one using pl.int_range(..), which should be a step before this.
+        you can generate one using pl.int_range(..), which should be a step before this. The index column
+        must not contain nulls.
 
         Also note that this internally builds a kd-tree for fast querying and deallocates it once we
         are done. If you need to repeatedly run the same query on the same data, then it is not

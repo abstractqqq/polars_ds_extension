@@ -18,11 +18,12 @@ pub(crate) struct KnnStrKwargs {
 
 // Can we improve performance by removing the function pointers?
 
-fn levenshtein_nearest<'a>(s: &str, cutoff: usize, vocab: &'a StringChunked) -> &'a str {
+fn levenshtein_nearest<'a>(s: &str, cutoff: usize, vocab: &'a StringChunked) -> Option<&'a str> {
     let batched = levenshtein::BatchComparator::new(s.chars());
     // Most similar == having smallest distance
     let mut best: usize = usize::MAX;
-    let mut nearest_str: &str = "";
+    let mut nearest_str: Option<&str> = None;
+
     vocab.into_iter().for_each(|op_w| {
         if let Some(w) = op_w {
             if let Some(d) = batched.distance_with_args(
@@ -31,7 +32,7 @@ fn levenshtein_nearest<'a>(s: &str, cutoff: usize, vocab: &'a StringChunked) -> 
             ) {
                 if d < best {
                     best = d;
-                    nearest_str = w;
+                    nearest_str = Some(w);
                 }
             }
         }
@@ -69,10 +70,10 @@ fn levenshtein_knn(s: &str, cutoff: usize, k: usize, vocab: &StringChunked) -> S
     ca.into_series()
 }
 
-fn hamming_nearest<'a>(s: &str, cutoff: usize, vocab: &'a StringChunked) -> &'a str {
+fn hamming_nearest<'a>(s: &str, cutoff: usize, vocab: &'a StringChunked) -> Option<&'a str> {
     let batched = hamming::BatchComparator::new(s.chars());
     let mut best: usize = usize::MAX;
-    let mut nearest_str: &str = "";
+    let mut nearest_str: Option<&str> = None;
     vocab.into_iter().for_each(|op_w| {
         if let Some(w) = op_w {
             if let Ok(ss) = batched
@@ -81,7 +82,7 @@ fn hamming_nearest<'a>(s: &str, cutoff: usize, vocab: &'a StringChunked) -> &'a 
                 if let Some(d) = ss {
                     if d < best {
                         best = d;
-                        nearest_str = w;
+                        nearest_str = Some(w);
                     }
                 }
             }
@@ -134,12 +135,15 @@ pub fn pl_nearest_str(inputs: &[Series], kwargs: KnnStrKwargs) -> PolarsResult<S
     if parallel {
         let out_par_iter = s.par_iter().map(|op_s| {
             let s = op_s?;
-            Some(func(s, cutoff, vocab))
+            func(s, cutoff, vocab)
         });
         let out = StringChunked::from_par_iter(out_par_iter);
         Ok(out.into_series())
     } else {
-        let out = s.apply_values(|s| func(s, cutoff, vocab).into());
+        let out: StringChunked = s.apply_generic(|op_s| {
+            let s = op_s?;
+            func(s, cutoff, vocab)
+        });
         Ok(out.into_series())
     }
 }

@@ -12,7 +12,6 @@ fn pl_lempel_ziv_complexity(inputs: &[Series]) -> PolarsResult<Series> {
 
     let mut ind: usize = 0;
     let mut inc: usize = 1;
-
     let mut sub_strings: HashSet<&[bool]> = HashSet::new();
     while ind + inc <= bits.len() {
         let subseq: &[bool] = &bits[ind..ind + inc];

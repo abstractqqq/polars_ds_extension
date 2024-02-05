@@ -94,32 +94,23 @@ fn pl_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
 
     let (s1, s2) = (inputs[0].clone(), inputs[1].clone());
 
-    let (len1, len2, adj) = if count_null {
-        (
-            s1.len(),
-            s2.len(),
-            (s1.null_count() > 0 && s2.null_count() > 0) as usize,
-        )
+    let adj = if count_null {
+        (s1.null_count() > 0 && s2.null_count() > 0) as usize // adjust for null
     } else {
-        (
-            s1.len().abs_diff((s1.null_count() > 0) as usize),
-            s2.len().abs_diff((s2.null_count() > 0) as usize),
-            0,
-        )
+        0
     };
-    if len1 == 0 || len2 == 0 {
-        return Ok(Series::from_iter([0_f64]));
-    }
+
+    // All computation below assumes the input has no nulls, that is why we have the adj
 
     // God, help me with this unholy mess,
-    let intersection_size = if s1.dtype().is_integer() && s1.dtype() != s2.dtype() {
+    let (len1, len2, intersection_size) = if s1.dtype().is_integer() && s1.dtype() != s2.dtype() {
         let ca1 = s1.cast(&DataType::Int64)?;
         let ca1 = ca1.i64().unwrap();
         let ca2 = s2.cast(&DataType::Int64)?;
         let ca2 = ca2.i64().unwrap();
         let hs1 = ca1.into_no_null_iter().collect::<PlHashSet<_>>();
         let hs2 = ca2.into_no_null_iter().collect::<PlHashSet<_>>();
-        hs1.intersection(&hs2).count()
+        (hs1.len(), hs2.len(), hs1.intersection(&hs2).count())
     } else if s1.dtype() == s2.dtype() {
         match s1.dtype() {
             Int8 => {
@@ -127,63 +118,63 @@ fn pl_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
                 let ca2 = s2.i8().unwrap();
                 let hs1 = ca1.into_no_null_iter().collect::<PlHashSet<_>>();
                 let hs2 = ca2.into_no_null_iter().collect::<PlHashSet<_>>();
-                hs1.intersection(&hs2).count()
+                (hs1.len(), hs2.len(), hs1.intersection(&hs2).count())
             }
             Int16 => {
                 let ca1 = s1.i16().unwrap();
                 let ca2 = s2.i16().unwrap();
                 let hs1 = ca1.into_no_null_iter().collect::<PlHashSet<_>>();
                 let hs2 = ca2.into_no_null_iter().collect::<PlHashSet<_>>();
-                hs1.intersection(&hs2).count()
+                (hs1.len(), hs2.len(), hs1.intersection(&hs2).count())
             }
             Int32 => {
                 let ca1 = s1.i32().unwrap();
                 let ca2 = s2.i32().unwrap();
                 let hs1 = ca1.into_no_null_iter().collect::<PlHashSet<_>>();
                 let hs2 = ca2.into_no_null_iter().collect::<PlHashSet<_>>();
-                hs1.intersection(&hs2).count()
+                (hs1.len(), hs2.len(), hs1.intersection(&hs2).count())
             }
             Int64 => {
                 let ca1 = s1.i64().unwrap();
                 let ca2 = s2.i64().unwrap();
                 let hs1 = ca1.into_no_null_iter().collect::<PlHashSet<_>>();
                 let hs2 = ca2.into_no_null_iter().collect::<PlHashSet<_>>();
-                hs1.intersection(&hs2).count()
+                (hs1.len(), hs2.len(), hs1.intersection(&hs2).count())
             }
             UInt8 => {
                 let ca1 = s1.u8().unwrap();
                 let ca2 = s2.u8().unwrap();
                 let hs1 = ca1.into_no_null_iter().collect::<PlHashSet<_>>();
                 let hs2 = ca2.into_no_null_iter().collect::<PlHashSet<_>>();
-                hs1.intersection(&hs2).count()
+                (hs1.len(), hs2.len(), hs1.intersection(&hs2).count())
             }
             UInt16 => {
                 let ca1 = s1.u16().unwrap();
                 let ca2 = s2.u16().unwrap();
                 let hs1 = ca1.into_no_null_iter().collect::<PlHashSet<_>>();
                 let hs2 = ca2.into_no_null_iter().collect::<PlHashSet<_>>();
-                hs1.intersection(&hs2).count()
+                (hs1.len(), hs2.len(), hs1.intersection(&hs2).count())
             }
             UInt32 => {
                 let ca1 = s1.u32().unwrap();
                 let ca2 = s2.u32().unwrap();
                 let hs1 = ca1.into_no_null_iter().collect::<PlHashSet<_>>();
                 let hs2 = ca2.into_no_null_iter().collect::<PlHashSet<_>>();
-                hs1.intersection(&hs2).count()
+                (hs1.len(), hs2.len(), hs1.intersection(&hs2).count())
             }
             UInt64 => {
                 let ca1 = s1.u64().unwrap();
                 let ca2 = s2.u64().unwrap();
                 let hs1 = ca1.into_no_null_iter().collect::<PlHashSet<_>>();
                 let hs2 = ca2.into_no_null_iter().collect::<PlHashSet<_>>();
-                hs1.intersection(&hs2).count()
+                (hs1.len(), hs2.len(), hs1.intersection(&hs2).count())
             }
             String => {
                 let ca1 = s1.str().unwrap();
                 let ca2 = s2.str().unwrap();
                 let hs1 = ca1.into_no_null_iter().collect::<PlHashSet<_>>();
                 let hs2 = ca2.into_no_null_iter().collect::<PlHashSet<_>>();
-                hs1.intersection(&hs2).count()
+                (hs1.len(), hs2.len(), hs1.intersection(&hs2).count())
             }
             Float32 => {
                 let ca1 = s1.f32().unwrap();
@@ -196,7 +187,7 @@ fn pl_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
                     .into_no_null_iter()
                     .map(|x| OrderedFloat::from(x))
                     .collect::<PlHashSet<_>>();
-                hs1.intersection(&hs2).count()
+                (hs1.len(), hs2.len(), hs1.intersection(&hs2).count())
             }
             Float64 => {
                 let ca1 = s1.f64().unwrap();
@@ -209,7 +200,7 @@ fn pl_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
                     .into_no_null_iter()
                     .map(|x| OrderedFloat::from(x))
                     .collect::<PlHashSet<_>>();
-                hs1.intersection(&hs2).count()
+                (hs1.len(), hs2.len(), hs1.intersection(&hs2).count())
             }
             _ => {
                 return Err(PolarsError::ComputeError(

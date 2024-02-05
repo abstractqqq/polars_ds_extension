@@ -81,8 +81,7 @@ fn pl_normal_test(inputs: &[Series]) -> PolarsResult<Series> {
     // Define gamma
     // Shape = (degree of freedom (2) / 2, rate = 0.5)
     let (shape, rate) = (1., 0.5);
-    let p = gamma::sf(k2, shape, rate).map_err(|e| PolarsError::ComputeError(e.into()));
-    let p = p?;
+    let p = gamma::sf(k2, shape, rate).map_err(|e| PolarsError::ComputeError(e.into()))?;
 
     let s = Series::from_vec("statistic", vec![k2]);
     let p = Series::from_vec("pvalue", vec![p]);

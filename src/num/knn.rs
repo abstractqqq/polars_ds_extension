@@ -39,7 +39,7 @@ pub fn build_standard_kdtree<'a>(
 ) -> Result<KdTree<f64, usize, &'a [f64]>, PolarsError> {
     // Building the tree
     let mut tree = KdTree::with_capacity(dim, leaf_size);
-    for (i, p) in data.rows().into_iter().enumerate() {
+    for (i, p) in data.axis_iter(Axis(0)).enumerate() {
         let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
         let _is_ok = tree
             .add(s, i)
@@ -60,6 +60,8 @@ pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
 fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     // Set up params
     let id = inputs[0].u64()?;
+    let id = id.rechunk();
+    let id = id.cont_slice()?;
 
     let dim = inputs[1..].len();
     if dim == 0 {
@@ -85,9 +87,9 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
     let binding = data.view();
     let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
 
-    // Building output
     let mut builder =
         ListPrimitiveChunkedBuilder::<UInt64Type>::new("", id.len(), k + 1, DataType::UInt64);
+    // Building output
     if parallel {
         let mut nbs: Vec<Option<Vec<u64>>> = Vec::with_capacity(id.len());
         data.axis_iter(Axis(0))
@@ -97,11 +99,7 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
                 if let Ok(v) = tree.nearest(s, k + 1, &dist_func) {
                     // By construction, this unwrap is safe.
                     // k+ 1 because we include the point itself, and ask for k more neighbors.
-                    Some(
-                        v.into_iter()
-                            .map(|(_, i)| id.get(*i).unwrap())
-                            .collect_vec(),
-                    )
+                    Some(v.into_iter().map(|(_, i)| id[*i]).collect_vec())
                 } else {
                     None
                 }
@@ -118,12 +116,8 @@ fn pl_knn_ptwise(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
         for p in data.rows() {
             let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
             if let Ok(v) = tree.nearest(s, k + 1, &dist_func) {
-                // By construction, this unwrap is safe
-                let w: Vec<u64> = v
-                    .into_iter()
-                    .map(|(_, i)| id.get(*i).unwrap())
-                    .collect_vec();
-                builder.append_slice(w.as_slice());
+                let sl = v.into_iter().map(|(_, i)| id[*i]).collect_vec();
+                builder.append_slice(&sl);
             } else {
                 builder.append_null();
             }
@@ -358,23 +352,29 @@ where
     F: Fn(&[f64], &[f64]) -> f64 + std::marker::Sync,
 {
     if parallel {
-        UInt32Chunked::from_par_iter(data.axis_iter(Axis(0)).into_par_iter().map(|pt| {
-            let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
-            if let Ok(v) = tree.within(s, r, dist_func) {
-                Some(v.len() as u32)
-            } else {
-                None
-            }
-        }))
+        let mut output: Vec<Option<u32>> = Vec::with_capacity(data.shape()[0]);
+        data.axis_iter(Axis(0))
+            .into_par_iter()
+            .map(|pt| {
+                let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
+                if let Ok(cnt) = tree.within_count(s, r, dist_func) {
+                    Some(cnt as u32)
+                } else {
+                    None
+                }
+            })
+            .collect_into_vec(&mut output);
+        UInt32Chunked::from_iter(output)
     } else {
-        UInt32Chunked::from_iter(data.axis_iter(Axis(0)).map(|pt| {
+        let output = data.axis_iter(Axis(0)).map(|pt| {
             let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
-            if let Ok(v) = tree.within(s, r, dist_func) {
-                Some(v.len() as u32)
+            if let Ok(cnt) = tree.within_count(s, r, dist_func) {
+                Some(cnt as u32)
             } else {
                 None
             }
-        }))
+        });
+        UInt32Chunked::from_iter(output)
     }
 }
 
@@ -424,8 +424,8 @@ fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
                     .map(|(rad, pt)| {
                         let r = rad?;
                         let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
-                        if let Ok(v) = tree.within(s, r, &dist_func) {
-                            Some(v.len() as u32)
+                        if let Ok(cnt) = tree.within_count(s, r, &dist_func) {
+                            Some(cnt as u32)
                         } else {
                             None
                         }
@@ -437,8 +437,8 @@ fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
                 |(rad, pt)| {
                     let r = rad?;
                     let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
-                    if let Ok(v) = tree.within(s, r, &dist_func) {
-                        Some(v.len() as u32)
+                    if let Ok(cnt) = tree.within_count(s, r, &dist_func) {
+                        Some(cnt as u32)
                     } else {
                         None
                     }

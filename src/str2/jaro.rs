@@ -49,7 +49,7 @@ fn pl_jaro(inputs: &[Series]) -> PolarsResult<Series> {
                 })
                 .collect()
         } else {
-            binary_elementwise_values(ca1, ca2, |x, y| jaro_sim(x, y))
+            binary_elementwise_values(ca1, ca2, jaro_sim)
         };
         Ok(out.into_series())
     } else {

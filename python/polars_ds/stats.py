@@ -229,8 +229,8 @@ class StatsExt:
         var
             The column to run KS statistic on
         """
-        y = self._expr.filter(self._expr.is_finite()).cast(pl.Float64)
-        other_ = var.filter(var.is_finite()).cast(pl.Float64)
+        y = self._expr.filter(self._expr.is_finite()).sort().cast(pl.Float64)
+        other_ = var.filter(var.is_finite()).sort().cast(pl.Float64)
         return y.register_plugin(
             lib=_lib,
             symbol="pl_ks_2samp",

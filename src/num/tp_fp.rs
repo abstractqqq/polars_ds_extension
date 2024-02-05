@@ -15,8 +15,20 @@ fn combo_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new("", DataType::Struct(v)))
 }
 
-fn tp_fp_frame(predicted: Series, actual: Series, as_ratio: bool) -> PolarsResult<LazyFrame> {
+fn tp_fp_frame(predicted: &Series, actual: &Series, as_ratio: bool) -> PolarsResult<LazyFrame> {
     let n = predicted.len() as u32;
+
+    if (actual.len() != predicted.len())
+        || actual.is_empty()
+        || predicted.is_empty()
+        || ((actual.null_count() + predicted.null_count()) > 0)
+    {
+        return Err(PolarsError::ComputeError(
+            "ROC AUC: Input columns must be the same length, non-empty, and shouldn't contain nulls."
+            .into(),
+        ));
+    }
+
     let df = df!(
         "threshold" => predicted.clone(),
         "actual" => actual.clone()
@@ -69,34 +81,23 @@ fn tp_fp_frame(predicted: Series, actual: Series, as_ratio: bool) -> PolarsResul
 #[polars_expr(output_type_func=combo_output)]
 fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     // actual, when passed in, is always u32 (done in Python extension side)
-    let actual = inputs[0].rechunk();
-    let predicted = inputs[1].rechunk();
+    let actual = &inputs[0];
+    let predicted = &inputs[1];
     // Threshold for precision and recall
     let threshold = inputs[2].f64()?;
     let threshold = threshold.get(0).unwrap();
-
-    if (actual.len() != predicted.len())
-        || actual.is_empty()
-        || predicted.is_empty()
-        || ((actual.null_count() + predicted.null_count()) > 0)
-    {
-        return Err(PolarsError::ComputeError(
-            "Binary Metrics Combo: Input columns must be the same length, non-empty, and shouldn't contain nulls."
-            .into(),
-        ));
-    }
 
     let mut frame = tp_fp_frame(predicted, actual, true)?
         .collect()?
         .agg_chunks();
 
-    let tpr = frame.drop_in_place("tpr")?;
-    let fpr = frame.drop_in_place("fpr")?;
+    let tpr = frame.drop_in_place("tpr").unwrap();
+    let fpr = frame.drop_in_place("fpr").unwrap();
 
-    let precision = frame.drop_in_place("precision")?;
+    let precision = frame.drop_in_place("precision").unwrap();
     let precision = precision.f64()?;
 
-    let probs = frame.drop_in_place("threshold")?;
+    let probs = frame.drop_in_place("threshold").unwrap();
     let probs = probs.f64()?;
     let probs = probs.to_ndarray()?;
     let probs = probs.as_slice().unwrap();
@@ -106,9 +107,8 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     };
 
     // ROC AUC
-
-    let y = tpr.f64()?;
-    let x = fpr.f64()?;
+    let y = tpr.f64().unwrap();
+    let x = fpr.f64().unwrap();
 
     let y: ArrayView1<f64> = y.to_ndarray()?; // Zero copy
     let x: ArrayView1<f64> = x.to_ndarray()?; // Zero copy
@@ -141,31 +141,20 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
 #[polars_expr(output_type=Float64)]
 fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
     // actual, when passed in, is always u32 (done in Python extension side)
-    let actual = inputs[0].rechunk();
-    let predicted = inputs[1].rechunk();
-
-    if (actual.len() != predicted.len())
-        | actual.is_empty()
-        | predicted.is_empty()
-        | (actual.null_count() + predicted.null_count() > 0)
-    {
-        return Err(PolarsError::ComputeError(
-            "ROC AUC: Input columns must be the same length, cannot be empty, and shouldn't contain nulls."
-                .into(),
-        ));
-    }
+    let actual = &inputs[0];
+    let predicted = &inputs[1];
 
     let mut frame = tp_fp_frame(predicted, actual, true)?
         .select([col("tpr"), col("fpr")])
         .collect()?
         .agg_chunks();
 
-    let tpr = frame.drop_in_place("tpr")?;
-    let fpr = frame.drop_in_place("fpr")?;
+    let tpr = frame.drop_in_place("tpr").unwrap();
+    let fpr = frame.drop_in_place("fpr").unwrap();
 
     // Should be contiguous. No need to rechunk
-    let y = tpr.f64()?;
-    let x = fpr.f64()?;
+    let y = tpr.f64().unwrap();
+    let x = fpr.f64().unwrap();
 
     let y: ArrayView1<f64> = y.to_ndarray()?;
     let x: ArrayView1<f64> = x.to_ndarray()?;
