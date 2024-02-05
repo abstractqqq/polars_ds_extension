@@ -22,12 +22,11 @@ class StrExt:
 
     def is_stopword(self) -> pl.Expr:
         """
-        Checks whether the string is a stopword or not.
+        Checks whether the string is a stopword in English or not.
         """
         self._expr.register_plugin(
             lib=_lib,
             symbol="pl_is_stopword",
-            args=[],
             is_elementwise=True,
         )
 
@@ -45,7 +44,7 @@ class StrExt:
             If dtype is pl.String, join the list of strings using the value given here
         dtype
             The desired inner dtype for the extracted data. Should either be one of
-            pl.NUMERIC_DTYPES or pl.String
+            one of Polars' numerical types or pl.String
 
         Examples
         --------
@@ -97,12 +96,6 @@ class StrExt:
 
         return expr
 
-    def line_count(self) -> pl.Expr:
-        """
-        Return the line count of the string column.
-        """
-        return self._expr.str.count_matches(pattern="\n")
-
     def infer_infreq(
         self,
         *,
@@ -147,9 +140,8 @@ class StrExt:
     ) -> pl.Expr:
         """
         Merge infrequent categories (strings) in the column into one category (string) separated by a
-        separator. This is useful when you want to do one-hot-encoding but do not want too many distinct
-        values because of low count values. However, this does not mean that the categories are similar
-        with respect to the your modelling problem.
+        separator. This is useful when you want to do one-hot-encoding but not too many distinct
+        values because of low value counts. This does not mean that infreq categories are similar, however.
 
         Parameters
         ----------
@@ -194,7 +186,7 @@ class StrExt:
         ----------
         other
             If this is a string, then the entire column will be compared with this string. If this
-            is an expression, then perform element-wise jaccard similarity computation between this column
+            is an expression, then perform element-wise fuzz computation between this column
             and the other (given by the expression).
         cutoff
             If this is provided, it has to be between 0 and 1. If sim < cutoff, then Null will be returned.
@@ -220,14 +212,16 @@ class StrExt:
     ) -> pl.Expr:
         """
         Treats substrings of size `substr_size` as a set. And computes the jaccard similarity between
-        this word and the other. This is not the same as comparing bigrams.
+        this word and the other.
+
+        Note this treats substrings at the byte level under the hood, not at the char level. So non-ASCII
+        characters may have problems.
 
         Parameters
         ----------
         other
             If this is a string, then the entire column will be compared with this string. If this
-            is an expression, then perform element-wise jaccard similarity computation between this column
-            and the other (given by the expression).
+            is an expression, then perform row wise jaccard similarity
         substr_size
             The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
             the set ('ap', 'pp', 'pl', 'le') before being compared.
@@ -252,14 +246,16 @@ class StrExt:
     ) -> pl.Expr:
         """
         Treats substrings of size `substr_size` as a set. And computes the Sorensen-Dice similarity between
-        this word and the other. This is not the same as comparing bigrams.
+        this word and the other.
+
+        Note this treats substrings at the byte level under the hood, not at the char level. So non-ASCII
+        characters may have problems.
 
         Parameters
         ----------
         other
             If this is a string, then the entire column will be compared with this string. If this
-            is an expression, then perform element-wise jaccard similarity computation between this column
-            and the other (given by the expression).
+            is an expression, then perform row wise sorensen_dice similarity
         substr_size
             The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
             the set ('ap', 'pp', 'pl', 'le') before being compared.
@@ -284,14 +280,16 @@ class StrExt:
     ) -> pl.Expr:
         """
         Treats substrings of size `substr_size` as a set. And computes the overlap coefficient as
-        similarity between this word and the other. This is not the same as comparing bigrams.
+        similarity between this word and the other.
+
+        Note this treats substrings at the byte level under the hood, not at the char level. So non-ASCII
+        characters may have problems.
 
         Parameters
         ----------
         other
             If this is a string, then the entire column will be compared with this string. If this
-            is an expression, then perform element-wise jaccard similarity computation between this column
-            and the other (given by the expression).
+            is an expression, then perform row wise overlap_coefficient.
         substr_size
             The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
             the set ('ap', 'pp', 'pl', 'le') before being compared.
@@ -647,8 +645,8 @@ class StrExt:
         words as similar words. The result is correct because of the relationship between distance
         and similarity. This will deduplicate words in vocab. In case of a tie, any one may be chosen.
 
-        Comment: This can be very slow due to underlying data structure problems. When nothing fits inside
-        the threshold, None will be returned.
+        Comment: This can be very slow due to underlying data structure problems. Setting a threshold
+        may speed up the process.
 
         Parameters
         ----------
@@ -657,8 +655,8 @@ class StrExt:
         k : int, >0
             k most similar words will be found
         threshold : int, >0
-            A word in the vocab has to be within threshold distance to a word in self to be considered. This is
-            a positive integer because all the distances output integers.
+            A word in the vocab has to be within threshold distance from words in self to be considered.
+            This is a positive integer because all the distances output integers.
         metric
             Which similarity metric to use. One of `lv`, `hamming`
         parallel
@@ -669,9 +667,9 @@ class StrExt:
             raise ValueError(f"Unknown metric for similar_words: {metric}")
 
         if isinstance(vocab, pl.Expr):
-            vb = vocab.unique()
+            vb = vocab.unique().drop_nulls()
         else:
-            vb = pl.Series(values=vocab, dtype=pl.String).unique()
+            vb = pl.Series(values=vocab, dtype=pl.String).unique().drop_nulls()
 
         if k == 1:  # k = 1, this is a fast path (no heap)
             return self._expr.register_plugin(

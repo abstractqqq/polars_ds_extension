@@ -32,13 +32,13 @@ fn pl_str_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
     let parallel = parallel.get(0).unwrap();
 
     if ca2.len() == 1 {
-        let r = ca2.get(0); // .unwrap();
+        let r = ca2.get(0).unwrap(); // .unwrap();
         let out: Float64Chunked = if parallel {
             ca1.par_iter()
-                .map(|op_s| optional_str_jaccard(op_s, r, n))
+                .map(|op_s| optional_str_jaccard(op_s, Some(r), n))
                 .collect()
         } else {
-            ca1.apply_generic(|op_s| optional_str_jaccard(op_s, r, n))
+            ca1.apply_nonnull_values_generic(DataType::Float64, |s| str_jaccard(s, r, n))
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -53,7 +53,7 @@ fn pl_str_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
         Ok(out.into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "Inputs must have the same length or the second of them must be a scalar.".into(),
         ))
     }
 }

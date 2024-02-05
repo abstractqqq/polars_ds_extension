@@ -5,8 +5,6 @@ use pyo3_polars::{
     export::polars_core::utils::rayon::prelude::{IndexedParallelIterator, ParallelIterator},
 };
 
-// This is a different implementation than Sorensen Dice from strsim package.
-
 fn sorensen_dice(w1: &str, w2: &str, n: usize) -> f64 {
     let (s1, s2, intersect) = str_set_sim_helper(w1, w2, n);
     ((2 * intersect) as f64) / ((s1 + s2) as f64)
@@ -34,13 +32,13 @@ fn pl_sorensen_dice(inputs: &[Series]) -> PolarsResult<Series> {
     let parallel = parallel.get(0).unwrap();
 
     if ca2.len() == 1 {
-        let r = ca2.get(0); // .unwrap();
+        let r = ca2.get(0).unwrap();
         let out: Float64Chunked = if parallel {
             ca1.par_iter()
-                .map(|op_s| optional_sorensen_dice(op_s, r, n))
+                .map(|op_s| optional_sorensen_dice(op_s, Some(r), n))
                 .collect()
         } else {
-            ca1.apply_generic(|op_s| optional_sorensen_dice(op_s, r, n))
+            ca1.apply_nonnull_values_generic(DataType::Float64, |s| sorensen_dice(s, r, n))
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -55,7 +53,7 @@ fn pl_sorensen_dice(inputs: &[Series]) -> PolarsResult<Series> {
         Ok(out.into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "Inputs must have the same length or the second of them must be a scalar.".into(),
         ))
     }
 }

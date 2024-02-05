@@ -39,7 +39,7 @@ pub fn build_standard_kdtree<'a>(
 ) -> Result<KdTree<f64, usize, &'a [f64]>, PolarsError> {
     // Building the tree
     let mut tree = KdTree::with_capacity(dim, leaf_size);
-    for (i, p) in data.rows().into_iter().enumerate() {
+    for (i, p) in data.axis_iter(Axis(0)).enumerate() {
         let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
         let _is_ok = tree
             .add(s, i)
@@ -424,8 +424,8 @@ fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
                     .map(|(rad, pt)| {
                         let r = rad?;
                         let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
-                        if let Ok(v) = tree.within(s, r, &dist_func) {
-                            Some(v.len() as u32)
+                        if let Ok(cnt) = tree.within_count(s, r, &dist_func) {
+                            Some(cnt as u32)
                         } else {
                             None
                         }
@@ -437,8 +437,8 @@ fn pl_nb_cnt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
                 |(rad, pt)| {
                     let r = rad?;
                     let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
-                    if let Ok(v) = tree.within(s, r, &dist_func) {
-                        Some(v.len() as u32)
+                    if let Ok(cnt) = tree.within_count(s, r, &dist_func) {
+                        Some(cnt as u32)
                     } else {
                         None
                     }
