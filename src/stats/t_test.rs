@@ -123,8 +123,7 @@ fn pl_ttest_2samp(inputs: &[Series]) -> PolarsResult<Series> {
     }
 
     let res = ttest_ind(mean1, mean2, var1, var2, n, alt)
-        .map_err(|e| PolarsError::ComputeError(e.into()));
-    let res = res?;
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
     let s = Series::from_vec("statistic", vec![res.statistic]);
     let pchunked = Float64Chunked::from_iter_options("pvalue", [res.p].into_iter());
@@ -155,8 +154,7 @@ fn pl_welch_t(inputs: &[Series]) -> PolarsResult<Series> {
     // No need to check for validity because input is sanitized.
 
     let res = welch_t(mean1, mean2, var1, var2, n1, n2, alt)
-        .map_err(|e| PolarsError::ComputeError(e.into()));
-    let res = res?;
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
     let s = Series::from_vec("statistic", vec![res.statistic]);
     let pchunked = Float64Chunked::from_iter_options("pvalue", [res.p].into_iter());
@@ -182,9 +180,8 @@ fn pl_ttest_1samp(inputs: &[Series]) -> PolarsResult<Series> {
 
     // No need to check for validity because input is sanitized.
 
-    let res =
-        ttest_1samp(mean, pop_mean, var, n, alt).map_err(|e| PolarsError::ComputeError(e.into()));
-    let res = res?;
+    let res = ttest_1samp(mean, pop_mean, var, n, alt)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
     let s = Series::from_vec("statistic", vec![res.statistic]);
     let pchunked = Float64Chunked::from_iter_options("pvalue", [res.p].into_iter());

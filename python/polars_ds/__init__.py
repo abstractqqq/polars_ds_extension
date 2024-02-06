@@ -9,7 +9,7 @@ from polars_ds.stats import StatsExt  # noqa: E402
 from polars_ds.metrics import MetricExt  # noqa: E402
 from polars_ds.graph import GraphExt  # noqa: E402
 
-version = "0.3.0"
+version = "0.3.1"
 
 __all__ = ["NumExt", "StrExt", "StatsExt", "ComplexExt", "MetricExt", "GraphExt"]
 

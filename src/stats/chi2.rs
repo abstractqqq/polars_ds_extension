@@ -50,7 +50,7 @@ fn pl_chi2(inputs: &[Series]) -> PolarsResult<Series> {
         .collect()?;
 
     // Get the statistic
-    let out = final_df.drop_in_place("output")?;
+    let out = final_df.drop_in_place("output").unwrap();
     let stats = out.f64()?;
     let stats = stats.get(0).unwrap_or(f64::NAN);
     // Compute p value. It is a special case of Gamma distribution

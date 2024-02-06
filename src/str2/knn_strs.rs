@@ -24,8 +24,8 @@ fn levenshtein_nearest<'a>(s: &str, cutoff: usize, vocab: &'a StringChunked) -> 
     let mut best: usize = usize::MAX;
     let mut nearest_str: Option<&str> = None;
 
-    vocab.into_iter().for_each(|op_w| {
-        if let Some(w) = op_w {
+    for arr in vocab.downcast_iter() {
+        for w in arr.values_iter() {
             if let Some(d) = batched.distance_with_args(
                 w.chars(),
                 &levenshtein::Args::default().score_cutoff(cutoff),
@@ -36,7 +36,7 @@ fn levenshtein_nearest<'a>(s: &str, cutoff: usize, vocab: &'a StringChunked) -> 
                 }
             }
         }
-    });
+    }
     nearest_str
 }
 
@@ -48,17 +48,18 @@ fn levenshtein_knn(s: &str, cutoff: usize, k: usize, vocab: &StringChunked) -> S
     // A binary heap is a max heap. So we do -usize
     // Vocab is gauranteed to contain no null
     let mut heap: BinaryHeap<(isize, &str)> = BinaryHeap::with_capacity(vocab.len());
-    vocab.into_iter().for_each(|op_w| {
-        let w = op_w.unwrap();
-        if let Some(d) = batched.distance_with_args(
-            w.chars(),
-            &levenshtein::Args::default().score_cutoff(cutoff),
-        ) {
-            // all distances are negative in heap. md = minus d
-            let md = -(d as isize);
-            heap.push((md, w));
+    for arr in vocab.downcast_iter() {
+        for w in arr.values_iter() {
+            if let Some(d) = batched.distance_with_args(
+                w.chars(),
+                &levenshtein::Args::default().score_cutoff(cutoff),
+            ) {
+                // all distances are negative in heap. md = minus d
+                let md = -(d as isize);
+                heap.push((md, w));
+            }
         }
-    });
+    }
     let ca: ChunkedArray<StringType> = StringChunked::from_iter_values(
         "",
         heap.into_sorted_vec()
@@ -74,8 +75,9 @@ fn hamming_nearest<'a>(s: &str, cutoff: usize, vocab: &'a StringChunked) -> Opti
     let batched = hamming::BatchComparator::new(s.chars());
     let mut best: usize = usize::MAX;
     let mut nearest_str: Option<&str> = None;
-    vocab.into_iter().for_each(|op_w| {
-        if let Some(w) = op_w {
+
+    for arr in vocab.downcast_iter() {
+        for w in arr.values_iter() {
             if let Ok(ss) = batched
                 .distance_with_args(w.chars(), &hamming::Args::default().score_cutoff(cutoff))
             {
@@ -87,7 +89,7 @@ fn hamming_nearest<'a>(s: &str, cutoff: usize, vocab: &'a StringChunked) -> Opti
                 }
             }
         }
-    });
+    }
     nearest_str
 }
 
@@ -97,17 +99,18 @@ fn hamming_knn(s: &str, cutoff: usize, k: usize, vocab: &StringChunked) -> Serie
     // A binary heap is a max heap. So we do -usize
     // Vocab is gauranteed to contain no null
     let mut heap: BinaryHeap<(isize, &str)> = BinaryHeap::with_capacity(vocab.len());
-    vocab.into_iter().for_each(|op_w| {
-        let w = op_w.unwrap();
-        if let Ok(dd) =
-            batched.distance_with_args(w.chars(), &hamming::Args::default().score_cutoff(cutoff))
-        {
-            if let Some(d) = dd {
-                let md = -(d as isize);
-                heap.push((md, w));
+    for arr in vocab.downcast_iter() {
+        for w in arr.values_iter() {
+            if let Ok(dd) = batched
+                .distance_with_args(w.chars(), &hamming::Args::default().score_cutoff(cutoff))
+            {
+                if let Some(d) = dd {
+                    let md = -(d as isize);
+                    heap.push((md, w));
+                }
             }
         }
-    });
+    }
     let ca: ChunkedArray<StringType> = StringChunked::from_iter_values(
         "",
         heap.into_sorted_vec()
@@ -171,12 +174,15 @@ pub fn pl_knn_str(inputs: &[Series], kwargs: KnnStrKwargs) -> PolarsResult<Serie
         ListChunked::from_par_iter(out_par_iter)
     } else {
         let mut builder = ListStringChunkedBuilder::new("", s.len(), k);
-        for op_s in s.into_iter() {
-            if let Some(w) = op_s {
-                let neighbors = func(w, cutoff, k, vocab);
-                let _ = builder.append_series(&neighbors);
-            } else {
-                builder.append_null()
+        for arr in s.downcast_iter() {
+            for op_w in arr.iter() {
+                match op_w {
+                    Some(w) => {
+                        let neighbors = func(w, cutoff, k, vocab);
+                        let _ = builder.append_series(&neighbors);
+                    }
+                    None => builder.append_null(),
+                }
             }
         }
         builder.finish()

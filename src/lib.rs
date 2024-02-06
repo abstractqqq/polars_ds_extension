@@ -29,6 +29,10 @@ use polars::{
     lazy::dsl::FieldsMapper,
 };
 
+pub fn first_field_output(fields: &[Field]) -> PolarsResult<Field> {
+    Ok(fields[0].clone())
+}
+
 pub fn list_u64_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
         "nodes",

@@ -76,11 +76,11 @@ pub fn haversine<T: Float>(start: &[T], end: &[T]) -> T {
 #[inline(always)]
 pub fn which_distance(metric: &str, dim: usize) -> PolarsResult<fn(&[f64], &[f64]) -> f64> {
     match metric {
-        "l1" => Ok(l1_dist::<f64>),
-        "inf" => Ok(l_inf_dist::<f64>),
+        "l1" => Ok(l1_dist),
+        "inf" => Ok(l_inf_dist),
         "h" | "haversine" => {
             if dim == 2 {
-                Ok(haversine::<f64>)
+                Ok(haversine)
             } else {
                 Err(
                     PolarsError::ComputeError(
@@ -90,6 +90,6 @@ pub fn which_distance(metric: &str, dim: usize) -> PolarsResult<fn(&[f64], &[f64
             }
         }
         "cosine" => Ok(cosine_dist),
-        _ => Ok(squared_euclidean::<f64>),
+        _ => Ok(squared_euclidean),
     }
 }

@@ -1,3 +1,4 @@
+use itertools::Itertools;
 /// Generates random sample from distributions for Polars DataFrame
 ///
 /// We are sacrificing speed and memory usage a little bit here by using CSPRNSGs. See
@@ -33,12 +34,12 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
     let dist = Uniform::new(low, high);
     let mut rng = rand::thread_rng();
     if respect_null && (reference.null_count() > 0) {
-        let ca = reference.is_not_null();
+        let ca = reference.is_null();
         let out: Int32Chunked = ca.apply_generic(|x| {
-            if x.unwrap_or(false) {
-                Some(rng.sample(dist))
-            } else {
+            if x.unwrap_or(true) {
                 None
+            } else {
+                Some(rng.sample(dist))
             }
         });
         Ok(out.into_series())
@@ -62,12 +63,12 @@ fn pl_sample_binomial(inputs: &[Series]) -> PolarsResult<Series> {
     let dist = Binomial::new(n, p).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
     let mut rng = rand::thread_rng();
     if respect_null && (reference.null_count() > 0) {
-        let ca = reference.is_not_null();
+        let ca = reference.is_null();
         let out: UInt64Chunked = ca.apply_generic(|x| {
-            if x.unwrap_or(false) {
-                Some(rng.sample(dist))
-            } else {
+            if x.unwrap_or(true) {
                 None
+            } else {
+                Some(rng.sample(dist))
             }
         });
         Ok(out.into_series())
@@ -89,12 +90,12 @@ fn pl_sample_exp(inputs: &[Series]) -> PolarsResult<Series> {
     let mut rng = rand::thread_rng();
     if lambda == 1.0 {
         if respect_null && (reference.null_count() > 0) {
-            let ca = reference.is_not_null();
+            let ca = reference.is_null();
             let out: Float64Chunked = ca.apply_generic(|x| {
-                if x.unwrap_or(false) {
-                    Some(rng.sample(Exp1))
-                } else {
+                if x.unwrap_or(true) {
                     None
+                } else {
+                    Some(rng.sample(Exp1))
                 }
             });
             Ok(out.into_series())
@@ -105,12 +106,12 @@ fn pl_sample_exp(inputs: &[Series]) -> PolarsResult<Series> {
     } else {
         let dist = Exp::new(lambda).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
         if respect_null && (reference.null_count() > 0) {
-            let ca = reference.is_not_null();
+            let ca = reference.is_null();
             let out: Float64Chunked = ca.apply_generic(|x| {
-                if x.unwrap_or(false) {
-                    Some(rng.sample(dist))
-                } else {
+                if x.unwrap_or(true) {
                     None
+                } else {
+                    Some(rng.sample(dist))
                 }
             });
             Ok(out.into_series())
@@ -151,12 +152,12 @@ fn pl_sample_uniform(inputs: &[Series]) -> PolarsResult<Series> {
     if respect_null && (reference.null_count() > 0) {
         // Create a dummy. I just need to access the apply_nonnull_values_generic method
         // on chunked arrays.
-        let ca = reference.is_not_null();
+        let ca = reference.is_null();
         let out: Float64Chunked = ca.apply_generic(|x| {
-            if x.unwrap_or(false) {
-                Some(rng.sample(dist))
-            } else {
+            if x.unwrap_or(true) {
                 None
+            } else {
+                Some(rng.sample(dist))
             }
         });
         Ok(out.into_series())
@@ -189,12 +190,12 @@ fn pl_sample_normal(inputs: &[Series]) -> PolarsResult<Series> {
         let dist = StandardNormal;
         let mut rng = rand::thread_rng();
         if respect_null && (reference.null_count() > 0) {
-            let ca = reference.is_not_null();
+            let ca = reference.is_null();
             let out: Float64Chunked = ca.apply_generic(|x| {
-                if x.unwrap_or(false) {
-                    Some(rng.sample(dist))
-                } else {
+                if x.unwrap_or(true) {
                     None
+                } else {
+                    Some(rng.sample(dist))
                 }
             });
             Ok(out.into_series())
@@ -207,12 +208,12 @@ fn pl_sample_normal(inputs: &[Series]) -> PolarsResult<Series> {
         let dist = Normal::new(mean, std_).unwrap();
         let mut rng = rand::thread_rng();
         if respect_null && (reference.null_count() > 0) {
-            let ca = reference.is_not_null();
+            let ca = reference.is_null();
             let out: Float64Chunked = ca.apply_generic(|x| {
-                if x.unwrap_or(false) {
-                    Some(rng.sample(dist))
-                } else {
+                if x.unwrap_or(true) {
                     None
+                } else {
+                    Some(rng.sample(dist))
                 }
             });
             Ok(out.into_series())
@@ -243,13 +244,13 @@ fn pl_sample_alphanumeric(inputs: &[Series]) -> PolarsResult<Series> {
 
     let mut rng = rand::thread_rng();
     if respect_null && reference.has_validity() {
-        let ca = reference.is_not_null();
+        let ca = reference.is_null();
         let out: StringChunked = ca.apply_generic(|x| {
-            if x.unwrap_or(false) {
+            if x.unwrap_or(true) {
+                None
+            } else {
                 let length: usize = rng.sample(uniform);
                 Some(Alphanumeric.sample_string(&mut rng, length))
-            } else {
-                None
             }
         });
         Ok(out.into_series())
