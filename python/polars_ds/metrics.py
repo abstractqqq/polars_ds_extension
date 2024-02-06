@@ -1,6 +1,5 @@
+from __future__ import annotations
 import polars as pl
-# from typing import Union, Optional
-
 from polars.utils.udfs import _get_shared_lib_location
 
 _lib = _get_shared_lib_location(__file__)

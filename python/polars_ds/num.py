@@ -1,3 +1,4 @@
+from __future__ import annotations
 import math
 import polars as pl
 from typing import Union, Optional
