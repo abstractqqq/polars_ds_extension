@@ -1,6 +1,7 @@
+from __future__ import annotations
 import math
 import polars as pl
-from typing import Union, Optional
+from typing import Union, Optional, List
 from .type_alias import DetrendMethod, Distance
 from polars.utils.udfs import _get_shared_lib_location
 
@@ -909,7 +910,7 @@ class NumExt:
 
     def psi(
         self,
-        ref: Union[pl.Expr, list[float], "np.ndarray", pl.Series],  # noqa: F821
+        ref: Union[pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
         n_bins: int = 10,
     ) -> pl.Expr:
         """
@@ -968,7 +969,7 @@ class NumExt:
 
     def psi_discrete(
         self,
-        ref: Union[pl.Expr, list[float], "np.ndarray", pl.Series],  # noqa: F821
+        ref: Union[pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
     ) -> pl.Expr:
         """
         Compute the Population Stability Index between self (actual) and the reference column. The reference

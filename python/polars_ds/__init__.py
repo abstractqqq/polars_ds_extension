@@ -1,5 +1,5 @@
 import polars as pl
-from typing import Union, Iterable
+from typing import Union, Iterable, List
 from .type_alias import Distance
 
 from polars_ds.num import NumExt  # noqa: E402
@@ -81,7 +81,7 @@ def query_radius(
 
 
 def query_nb_cnt(
-    r: Union[float, pl.Expr, list[float], "np.ndarray", pl.Series],  # noqa: F821
+    r: Union[float, pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
     *others: pl.Expr,
     leaf_size: int = 40,
     dist: Distance = "l2",
@@ -119,7 +119,7 @@ def query_nb_cnt(
 
 
 def knn(
-    x: Union[list[float], "np.ndarray", pl.Series],  # noqa: F821
+    x: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
     *others: pl.Expr,
     k: int = 5,
     leaf_size: int = 40,
