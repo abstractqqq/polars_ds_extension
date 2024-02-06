@@ -41,10 +41,9 @@ fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
     } else {
         spectrum.len() // simplified output of rfft
     };
+
     let mut builder =
         ListPrimitiveChunkedBuilder::<Float64Type>::new("complex", n, 2, DataType::Float64);
-
-    // ArrayChunked::from_chunk_iter(name, iter)
 
     if return_full {
         for c in spectrum.iter() {
@@ -62,6 +61,12 @@ fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
             }
         }
     } else {
+        // let lc = ChunkedArray<FixedSizeListType>>::from_iter_and_args();
+        // let pa = PrimitiveArray::new(
+        //     ArrowDataType::Float64,
+        //     vec![c.re, c.im].into(),
+        //     None
+        // );
         for c in spectrum {
             builder.append_slice(&[c.re, c.im])
         }

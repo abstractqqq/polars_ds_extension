@@ -2,7 +2,6 @@ import polars as pl
 from .type_alias import Alternative
 from typing import Optional, Union
 from polars.utils.udfs import _get_shared_lib_location
-# from polars.type_aliases import IntoExpr
 
 _lib = _get_shared_lib_location(__file__)
 
@@ -434,7 +433,6 @@ class StatsExt:
             symbol="pl_sample_exp",
             args=[la, resp],
             is_elementwise=True,
-            returns_scalar=False,
         )
 
     def sample_normal(
@@ -478,8 +476,25 @@ class StatsExt:
             symbol="pl_sample_normal",
             args=[me, st, resp],
             is_elementwise=True,
-            returns_scalar=False,
         )
+
+    def rand_null(self, pct: float) -> pl.Expr:
+        """
+        Creates random null values in self. If self contains nulls originally, they
+        will stay null.
+
+        Parameters
+        ----------
+        pct
+            Percentage of nulls to randomly generate. This percentage is based on the
+            length of the column, so may not be the actual percentage of nulls depending
+            on how many values are originally null.
+        """
+        if pct <= 0.0 or pct >= 1.0:
+            raise ValueError("Input `pct` must be > 0 and < 1")
+
+        to_null = self.sample_uniform(0.0, 1.0) < pct
+        return pl.when(to_null).then(None).otherwise(self._expr)
 
     def rand_str(
         self, min_size: int = 1, max_size: int = 10, respect_null: bool = False
@@ -513,7 +528,6 @@ class StatsExt:
             symbol="pl_sample_alphanumeric",
             args=[min_s, max_s, resp],
             is_elementwise=True,
-            returns_scalar=False,
         )
 
     def w_mean(self, weights: pl.Expr, is_normalized: bool = False) -> pl.Expr:

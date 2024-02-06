@@ -76,8 +76,8 @@ fn _f_stats(inputs: &[Series], return_p: bool) -> PolarsResult<Vec<f64>> {
         .select(step_two)
         .collect()?;
 
-    let n_samples = reference.drop_in_place("n_samples")?;
-    let n_classes = reference.drop_in_place("n_classes")?;
+    let n_samples = reference.drop_in_place("n_samples").unwrap();
+    let n_classes = reference.drop_in_place("n_classes").unwrap();
     let n_samples = n_samples.u32()?;
     let n_classes = n_classes.u32()?;
     let n_samples = n_samples.get(0).unwrap_or(0);

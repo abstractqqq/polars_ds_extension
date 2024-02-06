@@ -1,7 +1,7 @@
 use faer::{scale, IntoFaer, Mat, MatRef};
 use ndarray::Array2;
 use polars::prelude::*;
-use pyo3_polars::derive::polars_expr;
+use pyo3_polars::{derive::polars_expr, export::polars_core::utils::arrow::array::PrimitiveArray};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
@@ -38,28 +38,21 @@ fn pl_eigen_centrality(inputs: &[Series], kwargs: EigenKwargs) -> PolarsResult<S
     let n_iter = kwargs.n_iter;
     let normalize = kwargs.normalize;
 
-    let mut incident: Array2<f64> = Array2::from_elem((nrows, nrows), 0.);
     // slow. Sparse probably would be better.
-    for (i, op_e) in edges.into_iter().enumerate() {
-        if let Some(e) = op_e {
-            let edges = e.u64()?;
-            for op_j in edges.into_iter() {
-                if let Some(j) = op_j {
-                    match incident.get_mut([i, j as usize]) {
-                        Some(pt) => {
-                            *pt = 1.;
-                        }
-                        None => {
-                            return Err(PolarsError::ComputeError(
-                                "Edge list contains out-of-bounds index.".into(),
-                            ))
+    let mut incident: Array2<f64> = Array2::from_elem((nrows, nrows), 0.);
+    for arr in edges.downcast_iter() {
+        for (i, op_arr) in arr.iter().enumerate() {
+            if let Some(arr2) = op_arr {
+                if let Some(indices) = arr2.as_any().downcast_ref::<PrimitiveArray<u64>>() {
+                    for j in indices.non_null_values_iter() {
+                        if let Some(pt) = incident.get_mut([i, j as usize]) {
+                            *pt = 1.0;
                         }
                     }
                 }
             }
         }
     }
-
     let faer_incident = incident.view().into_faer();
     let mut out = power_iteration(faer_incident, nrows, n_iter);
     if normalize {

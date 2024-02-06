@@ -916,7 +916,7 @@ class NumExt:
         Compute the Population Stability Index between self (actual) and the reference column. The reference
         column will be divided into n_bins quantile bins which will be used as basis of comparison.
 
-        Note this assumes values in self and ref are continuous. This will also remove all infinite, null, NA
+        Note this assumes values in self and ref are continuous. This will also remove all infinite, null, NA.
         values.
 
         Also note that it will try to create `n_bins` many unique breakpoints. If input data has < n_bins
