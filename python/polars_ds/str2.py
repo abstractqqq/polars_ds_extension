@@ -1,6 +1,6 @@
 from __future__ import annotations
 import polars as pl
-from typing import Union, Optional, Literal
+from typing import Union, Optional, Literal, List
 from polars.utils.udfs import _get_shared_lib_location
 
 _lib = _get_shared_lib_location(__file__)
@@ -587,7 +587,7 @@ class StrExt:
 
     def similar_to_vocab(
         self,
-        vocab: list[str],
+        vocab: List[str],
         threshold: float,
         metric: Literal["lv", "dlv", "jw", "osa"] = "lv",
         strategy: Literal["avg", "all", "any"] = "avg",
@@ -634,7 +634,7 @@ class StrExt:
 
     def similar_words(
         self,
-        vocab: Union[pl.Expr, list[str]],
+        vocab: Union[pl.Expr, List[str]],
         k: int = 1,
         threshold: int = 100,
         metric: Literal["lv", "hamming"] = "lv",
