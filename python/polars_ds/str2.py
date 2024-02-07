@@ -177,9 +177,7 @@ class StrExt:
             .otherwise(self._expr)
         )
 
-    def fuzz(
-        self, other: Union[str, pl.Expr], cutoff: Optional[float] = None, parallel: bool = False
-    ) -> pl.Expr:
+    def fuzz(self, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
         """
         A string similarity based on Longest Common Subsequence.
 
@@ -189,8 +187,6 @@ class StrExt:
             If this is a string, then the entire column will be compared with this string. If this
             is an expression, then perform element-wise fuzz computation between this column
             and the other (given by the expression).
-        cutoff
-            If this is provided, it has to be between 0 and 1. If sim < cutoff, then Null will be returned.
         parallel
             Whether to run the comparisons in parallel. Note that this is not always faster, especially
             when used with other expressions or in group_by/over context.
@@ -200,11 +196,10 @@ class StrExt:
         else:
             other_ = other
 
-        cutoff_ = pl.lit(cutoff, dtype=pl.Float64)
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_fuzz",
-            args=[other_, cutoff_, pl.lit(parallel, pl.Boolean)],
+            args=[other_, pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
 
@@ -540,19 +535,28 @@ class StrExt:
         else:
             other_ = other
 
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_hamming",
-            args=[other_, pl.lit(pad, pl.Boolean), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
-        )
+        if pad:
+            return self._expr.register_plugin(
+                lib=_lib,
+                symbol="pl_hamming_padded",
+                args=[other_, pl.lit(parallel, pl.Boolean)],
+                is_elementwise=True,
+            )
+        else:
+            return self._expr.register_plugin(
+                lib=_lib,
+                symbol="pl_hamming",
+                args=[other_, pl.lit(parallel, pl.Boolean)],
+                is_elementwise=True,
+            )
 
     def hamming_filter(
         self, other: Union[str, pl.Expr], bound: int, pad: bool = False, parallel: bool = False
     ) -> pl.Expr:
         """
-        Returns whether the hamming distance between self and other is <= bound. This is much
-        faster than computing hamming distance and then doing a filter.
+        Returns whether the hamming distance between self and other is <= bound. This is
+        faster than computing hamming distance and then doing a filter. Note this does not pad
+        the strings. If the lengths of the two strings do not match, they will be filtered out.
 
         Parameters
         ----------
@@ -562,8 +566,6 @@ class StrExt:
             and the other (given by the expression) will be performed.
         bound
             Closed upper bound. If distance <= bound, return true and false otherwise.
-        pad
-            Whether to pad the string when lengths are not equal.
         parallel
             Whether to run the comparisons in parallel. Note that this is not always faster, especially
             when used with other expressions or in group_by/over context.
@@ -579,7 +581,6 @@ class StrExt:
             args=[
                 other_,
                 pl.lit(bound, dtype=pl.UInt32),
-                pl.lit(pad, pl.Boolean),
                 pl.lit(parallel, pl.Boolean),
             ],
             is_elementwise=True,

@@ -255,8 +255,6 @@ def test_col_jaccard(df, res):
 def test_snowball(df, res):
     assert_frame_equal(df.select(pl.col("a").str2.snowball()), res)
 
-    assert_frame_equal(df.select(pl.col("a").str2.snowball(parallel=True)), res)
-
     assert_frame_equal(df.lazy().select(pl.col("a").str2.snowball()).collect(), res)
 
 

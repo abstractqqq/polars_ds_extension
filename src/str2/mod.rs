@@ -16,7 +16,7 @@ mod str_jaccard;
 // Hashbrown has better perf than Rust's HashSet
 use hashbrown::HashSet;
 
-#[inline]
+#[inline(always)]
 pub fn str_set_sim_helper(w1: &str, w2: &str, n: usize) -> (usize, usize, usize) {
     // output: set 1 size, set 2 size, intersection size
 
