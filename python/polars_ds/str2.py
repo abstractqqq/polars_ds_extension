@@ -721,9 +721,9 @@ class StrExt:
                 .register_plugin(
                     lib=_lib,
                     symbol="pl_snowball_stem",
-                    args=[pl.lit(True, pl.Boolean), pl.lit(False, pl.Boolean)],
+                    args=[pl.lit(True, pl.Boolean)],
                     is_elementwise=True,
-                )  # True to no stop word, False to Parallel
+                )  # True to no stop word
                 .drop_nulls()
             )
         return out
@@ -758,22 +758,21 @@ class StrExt:
 
         return self._expr.list.set_difference(remove)
 
-    def snowball(self, no_stopwords: bool = True, parallel: bool = False) -> pl.Expr:
+    def snowball(self, no_stopwords: bool = True) -> pl.Expr:
         """
         Applies the snowball stemmer for the column. The column is supposed to be a column of single words.
+        Numbers will be stemmed to the empty string.
 
         Parameters
         ----------
         no_stopwords
-            If true, stopwords will be mapped to None. If false, stopwords will be stemmed.
-        parallel
-            Whether to run the comparisons in parallel. Note that this is not always faster, especially
-            when used with other expressions or in group_by/over context.
+            If true, stopwords will be mapped to the empty string. If false, stopwords will remain. Removing
+            stopwords may impact performance.
         """
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_snowball_stem",
-            args=[pl.lit(no_stopwords, pl.Boolean), pl.lit(parallel, pl.Boolean)],
+            args=[pl.lit(no_stopwords, pl.Boolean)],
             is_elementwise=True,
         )
 
@@ -782,7 +781,6 @@ class StrExt:
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_to_camel",
-            args=[],
             is_elementwise=True,
         )
 
@@ -791,7 +789,6 @@ class StrExt:
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_to_snake",
-            args=[],
             is_elementwise=True,
         )
 
@@ -800,7 +797,6 @@ class StrExt:
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_to_pascal",
-            args=[],
             is_elementwise=True,
         )
 
@@ -809,6 +805,5 @@ class StrExt:
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_to_constant",
-            args=[],
             is_elementwise=True,
         )

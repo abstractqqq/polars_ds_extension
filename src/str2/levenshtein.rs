@@ -5,31 +5,32 @@ use pyo3_polars::{
 };
 use rapidfuzz::distance::{damerau_levenshtein, levenshtein};
 
-#[inline]
-fn levenshtein(s1: &str, s2: &str, bound: Option<usize>) -> Option<u32> {
-    if let Some(b) = bound {
-        levenshtein::distance_with_args(
-            s1.chars(),
-            s2.chars(),
-            &levenshtein::Args::default().score_cutoff(b),
-        )
-        .map_or(None, |x| Some(x as u32))
-    } else {
-        Some(levenshtein::distance(s1.chars(), s2.chars()) as u32)
-    }
+#[inline(always)]
+fn levenshtein(s1: &str, s2: &str) -> u32 {
+    levenshtein::distance(s1.chars(), s2.chars()) as u32
 }
 
-#[inline]
+#[inline(always)]
+fn levenshtein_within_bound(s1: &str, s2: &str, bound: usize) -> bool {
+    levenshtein::distance_with_args(
+        s1.chars(),
+        s2.chars(),
+        &levenshtein::Args::default().score_cutoff(bound),
+    )
+    .is_some()
+}
+
+#[inline(always)]
 fn levenshtein_sim(s1: &str, s2: &str) -> f64 {
     levenshtein::normalized_similarity(s1.chars(), s2.chars())
 }
 
-#[inline]
+#[inline(always)]
 fn d_levenshtein(s1: &str, s2: &str) -> u32 {
     damerau_levenshtein::distance(s1.chars(), s2.chars()) as u32
 }
 
-#[inline]
+#[inline(always)]
 fn d_levenshtein_sim(s1: &str, s2: &str) -> f64 {
     damerau_levenshtein::normalized_similarity(s1.chars(), s2.chars())
 }
@@ -62,11 +63,11 @@ fn pl_levenshtein(inputs: &[Series]) -> PolarsResult<Series> {
                 .zip(ca2.par_iter_indexed())
                 .map(|(op_w1, op_w2)| {
                     let (w1, w2) = (op_w1?, op_w2?);
-                    levenshtein(w1, w2, None)
+                    Some(levenshtein(w1, w2))
                 })
                 .collect()
         } else {
-            binary_elementwise_values(ca1, ca2, |x, y| levenshtein(x, y, None))
+            binary_elementwise_values(ca1, ca2, levenshtein)
         };
         Ok(out.into_series())
     } else {
@@ -117,12 +118,12 @@ fn pl_levenshtein_filter(inputs: &[Series]) -> PolarsResult<Series> {
             ca1.par_iter_indexed()
                 .zip(ca2.par_iter_indexed())
                 .map(|(op_w1, op_w2)| {
-                    let (w1, w2) = (op_w1?, op_w2?);
-                    Some(levenshtein(w1, w2, Some(bound)).is_some())
+                    let (x, y) = (op_w1?, op_w2?);
+                    Some(levenshtein_within_bound(x, y, bound))
                 })
                 .collect()
         } else {
-            binary_elementwise_values(ca1, ca2, |x, y| levenshtein(x, y, Some(bound)).is_some())
+            binary_elementwise_values(ca1, ca2, |x, y| levenshtein_within_bound(x, y, bound))
         };
         Ok(out.into_series())
     } else {
