@@ -247,14 +247,14 @@ fn pl_sample_alphanumeric(inputs: &[Series]) -> PolarsResult<Series> {
             if x.unwrap_or(true) {
                 None
             } else {
-                let length: usize = rng.sample(uniform);
+                let length = rng.sample(uniform);
                 Some(Alphanumeric.sample_string(&mut rng, length))
             }
         });
         Ok(out.into_series())
     } else {
         let sample = (0..n).map(|_| {
-            let length: usize = rng.sample(uniform);
+            let length = rng.sample(uniform);
             Alphanumeric.sample_string(&mut rng, length)
         });
         let out = StringChunked::from_iter_values("", sample);
