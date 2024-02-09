@@ -9,10 +9,7 @@ use polars::prelude::*;
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
     export::polars_core::{
-        utils::rayon::{
-            iter::{FromParallelIterator, IndexedParallelIterator, ParallelBridge},
-            prelude::{IntoParallelIterator, ParallelIterator},
-        },
+        utils::rayon::prelude::{IntoParallelIterator, ParallelIterator},
         POOL,
     },
 };

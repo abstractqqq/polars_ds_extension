@@ -25,7 +25,7 @@ realfft = "3.3.0"
 rapidfuzz = "0.5.0"
 inflections = "1.1.1"
 kdtree = {git = "https://github.com/mrhooray/kdtree-rs.git"}
-pathfinding = "4.8.2"
+petgraph = "0.6.4"
 ordered-float = "4.2.0"
 
 [target.'cfg(any(not(target_os = "linux"), use_mimalloc))'.dependencies]

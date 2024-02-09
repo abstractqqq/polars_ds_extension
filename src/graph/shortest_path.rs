@@ -1,226 +1,180 @@
 use crate::list_u64_output;
 use itertools::Itertools;
-use ordered_float::OrderedFloat;
-use pathfinding::directed::dijkstra;
+use petgraph::algo::astar;
+use petgraph::Directed;
+use petgraph::{stable_graph::NodeIndex, Graph};
 use polars::prelude::*;
 use pyo3_polars::{
-    derive::polars_expr,
-    export::polars_core::utils::rayon::iter::{
-        FromParallelIterator, IndexedParallelIterator, IntoParallelIterator, ParallelIterator,
+    derive::{polars_expr, CallerContext},
+    export::polars_core::{
+        utils::rayon::prelude::{IntoParallelIterator, ParallelIterator},
+        POOL,
     },
 };
 
-// Will likely refactor
+// What is the proper heuristic to use?
 
-// These are very ad-hoc functions that are used at least twice. They serve no other
-// purpose than making the code cleaner.
-#[inline(always)]
-fn _u64_vec(op_s: Option<Series>) -> Vec<u64> {
-    if let Some(s) = op_s {
-        match s.u64() {
-            Ok(u) => u.into_no_null_iter().collect(),
-            Err(_) => Vec::new(),
-        }
-    } else {
-        Vec::new()
-    }
+pub fn shortest_path_output(_: &[Field]) -> PolarsResult<Field> {
+    let path = Field::new("nodes", DataType::List(Box::new(DataType::UInt64)));
+    let cost = Field::new("cost", DataType::Float64);
+    let v = vec![path, cost];
+    Ok(Field::new("shortest_path", DataType::Struct(v)))
 }
 
 #[inline(always)]
-fn _u64_f64_vec(opt: (Option<Series>, Option<Series>)) -> Vec<(u64, f64)> {
-    if let (Some(s), Some(c)) = opt {
-        match (s.u64(), c.f64()) {
-            (Ok(s), Ok(d)) => {
-                if s.len() != d.len() || s.null_count() > 0 || d.null_count() > 0 {
-                    Vec::new()
-                } else {
-                    // Safe
-                    s.into_iter()
-                        .zip(d.into_iter())
-                        .map(|(uu, dd)| (uu.unwrap(), dd.unwrap()))
-                        .collect()
-                }
+fn astar_i_in_range_const_cost(
+    gh: &Graph<usize, f64, Directed>,
+    i_start: usize,
+    i_end: usize,
+    target: NodeIndex,
+    nrows: usize,
+) -> ListChunked {
+    let mut builder =
+        ListPrimitiveChunkedBuilder::<UInt64Type>::new("", nrows, 8, DataType::UInt64);
+    for i in i_start..i_end {
+        let ii = NodeIndex::new(i);
+        match astar(gh, ii, |idx| idx == target, |_| 1_u32, |_| 0_u32) {
+            Some((_, path)) => {
+                let steps = path
+                    .into_iter()
+                    .skip(1)
+                    .map(|n| n.index() as u64)
+                    .collect_vec();
+                builder.append_slice(&steps);
             }
-            _ => Vec::new(),
+            None => builder.append_null(),
         }
-    } else {
-        Vec::new()
     }
+    builder.finish()
 }
 
+// This assumes the graph is constructed with weights! See how graphs are constructed in mod.rs
 #[inline(always)]
-fn _dijkstra_const(graph: &Vec<Vec<u64>>, i: u64, target: u64) -> Option<Series> {
-    let result = dijkstra::dijkstra(
-        &i,
-        |i| {
-            graph[*i as usize]
-                .iter()
-                .map(|j| (*j, 1_usize))
-                .collect::<Vec<_>>()
-        },
-        |i| *i == target,
-    );
-    match result {
-        Some((mut path, _)) => {
-            path.shrink_to_fit();
-            Some(Series::from_vec("", path))
-        }
-        None => None,
-    }
-}
+fn astar_i_in_range(
+    gh: &Graph<usize, f64, Directed>,
+    i_start: usize,
+    i_end: usize,
+    target: NodeIndex,
+    nrows: usize,
+) -> (ListChunked, Float64Chunked) {
+    let mut builder =
+        ListPrimitiveChunkedBuilder::<UInt64Type>::new("", nrows, 8, DataType::UInt64);
+    let mut cost_builder: PrimitiveChunkedBuilder<Float64Type> =
+        PrimitiveChunkedBuilder::new("", nrows);
 
-#[inline(always)]
-fn _dijkstra_w_cost(graph: &Vec<Vec<(u64, f64)>>, i: u64, target: u64) -> Option<(Vec<u64>, f64)> {
-    let result = dijkstra::dijkstra(
-        &i,
-        |i| {
-            graph[*i as usize]
-                .iter()
-                .map(|tup| (tup.0, OrderedFloat::from(tup.1)))
-                .collect::<Vec<_>>()
-        },
-        |i| *i == target,
-    );
-    match result {
-        Some((mut path, c)) => {
-            path.shrink_to_fit();
-            Some((path, c.into()))
+    for i in i_start..i_end {
+        let ii = NodeIndex::new(i);
+        match astar(
+            gh,
+            ii,
+            |idx| idx == target,
+            |e| e.weight().clone(),
+            |_| 0_f64,
+        ) {
+            Some((c, path)) => {
+                let steps = path
+                    .into_iter()
+                    .skip(1)
+                    .map(|n| n.index() as u64)
+                    .collect_vec();
+                builder.append_slice(&steps);
+                cost_builder.append_value(c);
+            }
+            None => {
+                builder.append_null();
+                cost_builder.append_null();
+            }
         }
-        None => None,
     }
+    (builder.finish(), cost_builder.finish())
 }
 
 #[polars_expr(output_type_func=list_u64_output)]
-fn pl_shortest_path_const_cost(inputs: &[Series]) -> PolarsResult<Series> {
+fn pl_shortest_path_const_cost(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
     let edges = inputs[0].list()?;
+    let nrows = edges.len();
     let target = inputs[1].u64()?;
     let parallel = inputs[2].bool()?;
     let parallel = parallel.get(0).unwrap_or(false);
+    let can_parallel = parallel && !context.parallel();
+
+    let gh = super::create_graph(edges, None)?;
     if target.len() == 1 {
-        let target = target.get(0).unwrap();
-        if target as usize >= edges.len() {
+        let target = target.get(0).unwrap_or(u64::MAX) as usize;
+        if target >= edges.len() {
             return Err(PolarsError::ShapeMismatch(
                 "Shortest path: Target index is out of bounds.".into(),
             ));
         }
-        // constant, just use cost = 1
-        // Construct the graph. Copying, expensive.
-
-        let graph: Vec<Vec<u64>> = if parallel {
-            let mut gh: Vec<Vec<u64>> = Vec::with_capacity(edges.len());
-            let mut owned_edges = edges.clone(); //cheap
-            owned_edges
-                .par_iter_indexed()
-                .map(_u64_vec)
-                .collect_into_vec(&mut gh);
-            gh
-        } else {
-            edges.into_iter().map(_u64_vec).collect_vec()
-        };
-
-        let path = if parallel {
-            ListChunked::from_par_iter(
-                (0..edges.len() as u64)
+        let target = NodeIndex::new(target);
+        let ca = if can_parallel {
+            POOL.install(|| {
+                let n_threads = POOL.current_num_threads();
+                let splits = crate::split_offsets(nrows, n_threads);
+                let chunks: Vec<_> = splits
                     .into_par_iter()
-                    .map(|i| _dijkstra_const(&graph, i, target)),
-            )
+                    .map(|(offset, len)| {
+                        let out =
+                            astar_i_in_range_const_cost(&gh, offset, offset + len, target, len);
+                        out.downcast_iter().cloned().collect::<Vec<_>>()
+                    })
+                    .collect();
+                ListChunked::from_chunk_iter("path", chunks.into_iter().flatten())
+            })
         } else {
-            ListChunked::from_iter(
-                (0..edges.len() as u64).map(|i| _dijkstra_const(&graph, i, target)),
-            )
+            astar_i_in_range_const_cost(&gh, 0, nrows, target, nrows)
         };
-        let path = path.into_series();
-        Ok(path.into_series())
-    } else if target.len() == edges.len() {
-        Err(PolarsError::ShapeMismatch("Not implemented yet.".into()))
+        Ok(ca.into_series())
     } else {
-        Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or target must be a scalar.".into(),
-        ))
+        Err(PolarsError::ComputeError("Not implemented yet.".into()))
     }
 }
 
-#[polars_expr(output_type_func=list_u64_output)]
-fn pl_shortest_path(inputs: &[Series]) -> PolarsResult<Series> {
+#[polars_expr(output_type_func=shortest_path_output)]
+fn pl_shortest_path(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
     let edges = inputs[0].list()?;
-    let costs = inputs[1].list()?;
+    let dist = inputs[1].list()?;
+    let nrows = edges.len();
     let target = inputs[2].u64()?;
     let parallel = inputs[3].bool()?;
     let parallel = parallel.get(0).unwrap_or(false);
+    let can_parallel = parallel && !context.parallel();
+
+    let gh = super::create_graph(edges, Some(dist))?;
     if target.len() == 1 {
-        let target = target.get(0).unwrap();
-        if target as usize >= edges.len() {
+        let target = target.get(0).unwrap_or(u64::MAX) as usize;
+        if target >= edges.len() {
             return Err(PolarsError::ShapeMismatch(
                 "Shortest path: Target index is out of bounds.".into(),
             ));
         }
-        // constant, just use cost = 1
-        // Construct the graph. Copying, expensive.
-        let graph = if parallel {
-            let mut gh = Vec::with_capacity(edges.len());
-            let mut owned_edges = edges.clone(); //cheap
-            let mut owned_costs = costs.clone(); //cheap
-            owned_edges
-                .par_iter_indexed()
-                .zip(owned_costs.par_iter_indexed())
-                .map(_u64_f64_vec)
-                .collect_into_vec(&mut gh);
-            gh
+        let target = NodeIndex::new(target);
+        let (ca1, ca2) = if can_parallel {
+            POOL.install(|| {
+                let n_threads = POOL.current_num_threads();
+                let splits = crate::split_offsets(nrows, n_threads);
+                let chunks: (Vec<_>, Vec<_>) = splits
+                    .into_par_iter()
+                    .map(|(offset, len)| {
+                        let (path, cost) = astar_i_in_range(&gh, offset, offset + len, target, len);
+                        (
+                            path.downcast_iter().cloned().collect::<Vec<_>>(),
+                            cost.downcast_iter().cloned().collect::<Vec<_>>(),
+                        )
+                    })
+                    .collect();
+                let ca1 = ListChunked::from_chunk_iter("path", chunks.0.into_iter().flatten());
+                let ca2 = Float64Chunked::from_chunk_iter("cost", chunks.1.into_iter().flatten());
+                (ca1, ca2)
+            })
         } else {
-            edges
-                .into_iter()
-                .zip(costs.into_iter())
-                .map(_u64_f64_vec)
-                .collect_vec()
+            astar_i_in_range(&gh, 0, nrows, target, nrows)
         };
-
-        let mut path_builder: ListPrimitiveChunkedBuilder<UInt64Type> =
-            ListPrimitiveChunkedBuilder::new("path", edges.len(), 8, DataType::UInt64);
-        let mut cost_builder: PrimitiveChunkedBuilder<Float64Type> =
-            PrimitiveChunkedBuilder::new("cost", edges.len());
-
-        let (path, cost) = if parallel {
-            let buffer: Vec<u64> = (0..edges.len() as u64).collect();
-            let mut out: Vec<Option<(Vec<u64>, f64)>> = Vec::with_capacity(edges.len());
-            buffer
-                .into_par_iter()
-                .map(|i| _dijkstra_w_cost(&graph, i, target))
-                .collect_into_vec(&mut out);
-            for opt in out {
-                match opt {
-                    Some((p, c)) => {
-                        path_builder.append_slice(&p);
-                        cost_builder.append_value(c);
-                    }
-                    None => {
-                        path_builder.append_null();
-                        cost_builder.append_null();
-                    }
-                }
-            }
-            (path_builder.finish(), cost_builder.finish())
-        } else {
-            (0..edges.len() as u64).for_each(|i| match _dijkstra_w_cost(&graph, i, target) {
-                Some((p, c)) => {
-                    path_builder.append_slice(&p);
-                    cost_builder.append_value(c);
-                }
-                None => {
-                    path_builder.append_null();
-                    cost_builder.append_null();
-                }
-            });
-            (path_builder.finish(), cost_builder.finish())
-        };
-        let path = path.into_series();
-        let cost = cost.into_series();
-        let out = StructChunked::new("shortest_path", &[path, cost])?;
+        let s1 = ca1.with_name("path").into_series();
+        let s2 = ca2.with_name("cost").into_series();
+        let out = StructChunked::new("shortest_path", &[s1, s2]).unwrap();
         Ok(out.into_series())
-    } else if target.len() == edges.len() {
-        Err(PolarsError::ShapeMismatch("Not implemented yet.".into()))
     } else {
-        Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or target must be a scalar.".into(),
-        ))
+        Err(PolarsError::ComputeError("Not implemented yet.".into()))
     }
 }

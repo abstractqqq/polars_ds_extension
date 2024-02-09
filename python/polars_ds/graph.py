@@ -11,9 +11,15 @@ class GraphExt:
     """
     This class contains tools for working with graphs inside a dataframe. Graphs are represented by two columns:
     one node column (index, u64), which is usually implicit, and one edge column (list[u64]). Most algorithms
-    here implicitly assumes the nodes are indexed by row number starting from 0.
+    here implicitly assumes the nodes are indexed by row number starting from 0. On row 5, say the value of the
+    column of edges is [1,6,13], that means we have a connection from 5 to 1, 5 to 6, and 5 to 13.
 
-    This module will only focus on undirected graph for now.
+    This module will only focus on undirected graph for now. Also note that this module is very slow and is transcient,
+    meaning that each query will create a graph and use it only for the duration of the query. It does not persist
+    the graph. So it will be very slow if you are running multiple graph methods. This module mainly provides the
+    convenience. As a result, a lot of graph algorithms will not be implemented and won't have the most versatile API.
+
+    To be decided: a separate, dedicated Graph module might be appropriate.
 
     Polars Namespace: graph
 
@@ -25,10 +31,31 @@ class GraphExt:
 
     def deg(self) -> pl.Expr:
         """
-        Treat self as a column of "edges" and return the degree of each node in self. Note that this
-        is simply an alias of `pl.col("edges").list.len()`.
+        Computes degree of each node. This will treat self as a column of "edges" and considers the graph undirected.
+
+        Note that this will not sort the nodes for the user. This assumes that nodes
+        are indexed by the natural numbers: 0, 1, ... If nodes are not sorted or if the u64 in edge list does not refer to
+        the node's index, the result may be incorrect or may throw an error.
         """
-        return self._expr.list.len()
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_graph_deg",
+            is_elementwise=True,
+        )
+
+    def in_out_deg(self) -> pl.Expr:
+        """
+        Computes in and out degree of each node. This will treat self as a column of "edges" and considers the graph directed.
+
+        Note that this will not sort the nodes for the user. This assumes that nodes
+        are indexed by the natural numbers: 0, 1, ... If nodes are not sorted or if the u64 in edge list does not refer to
+        the node's index, the result may be incorrect or may throw an error.
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_graph_in_out_deg",
+            is_elementwise=True,
+        )
 
     def eigen_centrality(self, n_iter: int = 15, normalize: bool = True) -> pl.Expr:
         """
@@ -61,8 +88,6 @@ class GraphExt:
         Treats self as a column of "edges" and computes the shortest path to the target assuming that
         the cost of traveling every edge is constant.
 
-        Self must be a column of list[u64].
-
         Note that this will not sort the nodes for the user. This assumes that nodes are indexed by the
         row numbers: 0, 1, ...
 
@@ -94,9 +119,8 @@ class GraphExt:
     ) -> pl.Expr:
         """
         Treats self as a column of "edges" and computes the shortest path to the target by using the
-        cost provided.
-
-        Self must be a column of list[u64].
+        cost provided. This will treat the graph as a directed graph, and the edge (i, j) may have different
+        cost than (j, i), depending on the data.
 
         Note that this will not sort the nodes for the user. This assumes that nodes are indexed by the
         row numbers: 0, 1, ...

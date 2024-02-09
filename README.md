@@ -226,6 +226,8 @@ shape: (5, 3)
 
 This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. The recommended usage will be for datasets of size 1k to 2-3mm rows. Performance will only be a priority for datasets within this size.
 
+Str-knn and Graph queries are suitable for smaller data, of size ~1-5k for common computers.
+
 # Credits
 
 1. Rust Snowball Stemmer is taken from Tsoding's Seroost project (MIT). See [here](https://github.com/tsoding/seroost)
