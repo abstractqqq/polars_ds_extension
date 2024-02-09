@@ -1,6 +1,5 @@
 /// All things true positive, false positive related.
-/// ROC AUC, Average Precision, precision, recall, etc.
-///
+/// ROC AUC, Average Precision, precision, recall, etc. m
 use ndarray::ArrayView1;
 use polars::{lazy::dsl::len, prelude::*};
 use pyo3_polars::derive::polars_expr;
@@ -16,28 +15,32 @@ fn combo_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 fn tp_fp_frame(predicted: &Series, actual: &Series, as_ratio: bool) -> PolarsResult<LazyFrame> {
-    let n = predicted.len() as u32;
-
+    // Checking for data quality issues
     if (actual.len() != predicted.len())
         || actual.is_empty()
         || predicted.is_empty()
+        || !predicted.dtype().is_numeric()
         || ((actual.null_count() + predicted.null_count()) > 0)
     {
         return Err(PolarsError::ComputeError(
-            "ROC AUC: Input columns must be the same length, non-empty, and shouldn't contain nulls."
+            "ROC AUC: Input columns must be the same length, non-empty, numeric, and shouldn't contain nulls."
             .into(),
         ));
     }
 
-    let df = df!(
-        "threshold" => predicted.clone(),
-        "actual" => actual.clone()
-    )?;
-
     let positive_counts = actual.sum::<u32>().unwrap_or(0);
     if positive_counts == 0 {
-        return Err(PolarsError::ComputeError("No positives in actual.".into()));
+        return Err(PolarsError::ComputeError(
+            "No positives in actual, or actual cannot be turned into integers.".into(),
+        ));
     }
+
+    // Start computing
+    let n = predicted.len() as u32;
+    let df = df!(
+        "threshold" => predicted,
+        "actual" => actual
+    )?;
 
     let temp = df
         .lazy()
@@ -63,7 +66,6 @@ fn tp_fp_frame(predicted: &Series, actual: &Series, as_ratio: bool) -> PolarsRes
     // col("cnt"),
     // col("predicted_positive")
     // col("pos_cnt_at_threshold"),
-
     if as_ratio {
         Ok(temp.select([
             col("threshold"),
@@ -85,7 +87,7 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     let predicted = &inputs[1];
     // Threshold for precision and recall
     let threshold = inputs[2].f64()?;
-    let threshold = threshold.get(0).unwrap();
+    let threshold = threshold.get(0).unwrap_or(0.5);
 
     let mut frame = tp_fp_frame(predicted, actual, true)?
         .collect()?
@@ -96,11 +98,11 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
 
     let precision = frame.drop_in_place("precision").unwrap();
     let precision = precision.f64()?;
+    let precision = precision.cont_slice().unwrap();
 
     let probs = frame.drop_in_place("threshold").unwrap();
     let probs = probs.f64()?;
-    let probs = probs.to_ndarray()?;
-    let probs = probs.as_slice().unwrap();
+    let probs = probs.cont_slice().unwrap();
     let index = match probs.binary_search_by(|x| x.partial_cmp(&threshold).unwrap()) {
         Ok(i) => i,
         Err(i) => i,
@@ -121,14 +123,12 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
         * y.iter()
             .zip(y.iter().skip(1))
             .zip(precision)
-            .fold(0., |acc, ((y, y_next), p)| {
-                (y_next - y).mul_add(p.unwrap_or(0.), acc)
-            });
+            .fold(0., |acc, ((y, y_next), p)| (y_next - y).mul_add(*p, acc));
     let ap: Series = Series::from_vec("average_precision", vec![ap]);
 
     // Precision & Recall & F
     let recall = y[index];
-    let precision = precision.get(index).unwrap();
+    let precision = precision[index];
     let f: f64 = (precision * recall) / (precision + recall);
     let recall: Series = Series::from_vec("recall", vec![recall]);
     let precision: Series = Series::from_vec("precision", vec![precision]);

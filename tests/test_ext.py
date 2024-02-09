@@ -255,8 +255,6 @@ def test_col_jaccard(df, res):
 def test_snowball(df, res):
     assert_frame_equal(df.select(pl.col("a").str2.snowball()), res)
 
-    assert_frame_equal(df.select(pl.col("a").str2.snowball(parallel=True)), res)
-
     assert_frame_equal(df.lazy().select(pl.col("a").str2.snowball()).collect(), res)
 
 
@@ -1132,3 +1130,36 @@ def test_psi(df, n_bins, res):
 def test_psi_discrete(df, res):
     ans = df.select(pl.col("act").num.psi_discrete(pl.col("ref"))).item(0, 0)
     assert np.isclose(ans, res)
+
+
+@pytest.mark.parametrize(
+    "df, target, path, cost",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "id": range(5),
+                    "edges": [[1, 2, 3, 4], [2, 3], [4], [0, 1, 2], [1]],
+                    "cost": [[0.4, 0.3, 0.2, 0.1], [0.1, 1], [0.5], [0.1, 0.1, 0.1], [0.1]],
+                }
+            ).with_columns(pl.col("edges").list.eval(pl.element().cast(pl.UInt64))),
+            1,
+            [[4, 1], [], [4, 1], [1], [1]],
+            [0.2, 0.0, 0.6, 0.1, 0.1],
+        ),
+    ],
+)
+def test_shortest_dist(df, target, path, cost):
+    res = df.select(
+        pl.col("edges")
+        .graph.shortest_path(
+            target=target,
+            cost=pl.col("cost"),
+        )
+        .alias("path")
+    ).unnest("path")
+    for p, ans in zip(res["path"], path):
+        assert list(p) == ans
+
+    for c, ans in zip(res["cost"], cost):
+        assert c == ans

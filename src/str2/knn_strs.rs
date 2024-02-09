@@ -1,8 +1,11 @@
 use crate::list_str_output;
 use polars::prelude::*;
 use pyo3_polars::{
-    derive::polars_expr,
-    export::polars_core::utils::rayon::{iter::FromParallelIterator, prelude::ParallelIterator},
+    derive::{polars_expr, CallerContext},
+    export::polars_core::{
+        utils::rayon::prelude::{IntoParallelIterator, ParallelIterator},
+        POOL,
+    },
 };
 use rapidfuzz::distance::{hamming, levenshtein};
 use serde::Deserialize;
@@ -123,24 +126,40 @@ fn hamming_knn(s: &str, cutoff: usize, k: usize, vocab: &StringChunked) -> Serie
 }
 
 #[polars_expr(output_type=String)]
-pub fn pl_nearest_str(inputs: &[Series], kwargs: KnnStrKwargs) -> PolarsResult<Series> {
+pub fn pl_nearest_str(
+    inputs: &[Series],
+    context: CallerContext,
+    kwargs: KnnStrKwargs,
+) -> PolarsResult<Series> {
     let s = inputs[0].str()?;
     let vocab = inputs[1].str()?;
 
     let parallel = kwargs.parallel;
+    let can_parallel = parallel && !context.parallel();
     let cutoff = kwargs.threshold;
-    // This is a function pointer hmm
+
     let func = match kwargs.metric.as_str() {
         "hamming" => hamming_nearest,
         _ => levenshtein_nearest,
     };
 
-    if parallel {
-        let out_par_iter = s.par_iter().map(|op_s| {
-            let s = op_s?;
-            func(s, cutoff, vocab)
+    if can_parallel {
+        let out = POOL.install(|| {
+            let n_threads = POOL.current_num_threads();
+            let splits = crate::split_offsets(s.len(), n_threads);
+            let chunks: Vec<_> = splits
+                .into_par_iter()
+                .map(|(offset, len)| {
+                    let ca = s.slice(offset as i64, len);
+                    let out: StringChunked = ca.apply_generic(|op_s| {
+                        let s = op_s?;
+                        func(s, cutoff, vocab)
+                    });
+                    out.downcast_iter().cloned().collect::<Vec<_>>()
+                })
+                .collect();
+            StringChunked::from_chunk_iter(s.name(), chunks.into_iter().flatten())
         });
-        let out = StringChunked::from_par_iter(out_par_iter);
         Ok(out.into_series())
     } else {
         let out: StringChunked = s.apply_generic(|op_s| {
@@ -152,12 +171,17 @@ pub fn pl_nearest_str(inputs: &[Series], kwargs: KnnStrKwargs) -> PolarsResult<S
 }
 
 #[polars_expr(output_type_func=list_str_output)]
-pub fn pl_knn_str(inputs: &[Series], kwargs: KnnStrKwargs) -> PolarsResult<Series> {
+pub fn pl_knn_str(
+    inputs: &[Series],
+    context: CallerContext,
+    kwargs: KnnStrKwargs,
+) -> PolarsResult<Series> {
     let s = inputs[0].str()?;
     let binding = inputs[1].drop_nulls();
     let vocab = binding.str()?;
 
     let parallel = kwargs.parallel;
+    let can_parallel = parallel && !context.parallel();
     let cutoff = kwargs.threshold;
     let k = kwargs.k;
     // This is a function pointer hmm
@@ -166,12 +190,32 @@ pub fn pl_knn_str(inputs: &[Series], kwargs: KnnStrKwargs) -> PolarsResult<Serie
         _ => levenshtein_knn,
     };
 
-    let out = if parallel {
-        let out_par_iter = s.par_iter().map(|op_w| {
-            let w = op_w?;
-            Some(func(w, cutoff, k, vocab))
-        });
-        ListChunked::from_par_iter(out_par_iter)
+    let out = if can_parallel {
+        POOL.install(|| {
+            let n_threads = POOL.current_num_threads();
+            let splits = crate::split_offsets(s.len(), n_threads);
+            let chunks: Vec<_> = splits
+                .into_par_iter()
+                .map(|(offset, len)| {
+                    let ca = s.slice(offset as i64, len);
+                    let mut builder = ListStringChunkedBuilder::new("", ca.len(), k);
+                    for arr in ca.downcast_iter() {
+                        for op_s in arr.iter() {
+                            match op_s {
+                                Some(s) => {
+                                    let series = func(s, cutoff, k, vocab);
+                                    let _ = builder.append_series(&series);
+                                }
+                                None => builder.append_null(),
+                            }
+                        }
+                    }
+                    let out = builder.finish();
+                    out.downcast_iter().cloned().collect::<Vec<_>>()
+                })
+                .collect();
+            ListChunked::from_chunk_iter(s.name(), chunks.into_iter().flatten())
+        })
     } else {
         let mut builder = ListStringChunkedBuilder::new("", s.len(), k);
         for arr in s.downcast_iter() {

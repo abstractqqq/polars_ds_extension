@@ -177,9 +177,7 @@ class StrExt:
             .otherwise(self._expr)
         )
 
-    def fuzz(
-        self, other: Union[str, pl.Expr], cutoff: Optional[float] = None, parallel: bool = False
-    ) -> pl.Expr:
+    def fuzz(self, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
         """
         A string similarity based on Longest Common Subsequence.
 
@@ -189,8 +187,6 @@ class StrExt:
             If this is a string, then the entire column will be compared with this string. If this
             is an expression, then perform element-wise fuzz computation between this column
             and the other (given by the expression).
-        cutoff
-            If this is provided, it has to be between 0 and 1. If sim < cutoff, then Null will be returned.
         parallel
             Whether to run the comparisons in parallel. Note that this is not always faster, especially
             when used with other expressions or in group_by/over context.
@@ -200,11 +196,10 @@ class StrExt:
         else:
             other_ = other
 
-        cutoff_ = pl.lit(cutoff, dtype=pl.Float64)
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_fuzz",
-            args=[other_, cutoff_, pl.lit(parallel, pl.Boolean)],
+            args=[other_, pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
 
@@ -540,19 +535,28 @@ class StrExt:
         else:
             other_ = other
 
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_hamming",
-            args=[other_, pl.lit(pad, pl.Boolean), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
-        )
+        if pad:
+            return self._expr.register_plugin(
+                lib=_lib,
+                symbol="pl_hamming_padded",
+                args=[other_, pl.lit(parallel, pl.Boolean)],
+                is_elementwise=True,
+            )
+        else:
+            return self._expr.register_plugin(
+                lib=_lib,
+                symbol="pl_hamming",
+                args=[other_, pl.lit(parallel, pl.Boolean)],
+                is_elementwise=True,
+            )
 
     def hamming_filter(
         self, other: Union[str, pl.Expr], bound: int, pad: bool = False, parallel: bool = False
     ) -> pl.Expr:
         """
-        Returns whether the hamming distance between self and other is <= bound. This is much
-        faster than computing hamming distance and then doing a filter.
+        Returns whether the hamming distance between self and other is <= bound. This is
+        faster than computing hamming distance and then doing a filter. Note this does not pad
+        the strings. If the lengths of the two strings do not match, they will be filtered out.
 
         Parameters
         ----------
@@ -562,8 +566,6 @@ class StrExt:
             and the other (given by the expression) will be performed.
         bound
             Closed upper bound. If distance <= bound, return true and false otherwise.
-        pad
-            Whether to pad the string when lengths are not equal.
         parallel
             Whether to run the comparisons in parallel. Note that this is not always faster, especially
             when used with other expressions or in group_by/over context.
@@ -579,7 +581,6 @@ class StrExt:
             args=[
                 other_,
                 pl.lit(bound, dtype=pl.UInt32),
-                pl.lit(pad, pl.Boolean),
                 pl.lit(parallel, pl.Boolean),
             ],
             is_elementwise=True,
@@ -721,9 +722,9 @@ class StrExt:
                 .register_plugin(
                     lib=_lib,
                     symbol="pl_snowball_stem",
-                    args=[pl.lit(True, pl.Boolean), pl.lit(False, pl.Boolean)],
+                    args=[pl.lit(True, pl.Boolean)],
                     is_elementwise=True,
-                )  # True to no stop word, False to Parallel
+                )  # True to no stop word
                 .drop_nulls()
             )
         return out
@@ -758,22 +759,21 @@ class StrExt:
 
         return self._expr.list.set_difference(remove)
 
-    def snowball(self, no_stopwords: bool = True, parallel: bool = False) -> pl.Expr:
+    def snowball(self, no_stopwords: bool = True) -> pl.Expr:
         """
         Applies the snowball stemmer for the column. The column is supposed to be a column of single words.
+        Numbers will be stemmed to the empty string.
 
         Parameters
         ----------
         no_stopwords
-            If true, stopwords will be mapped to None. If false, stopwords will be stemmed.
-        parallel
-            Whether to run the comparisons in parallel. Note that this is not always faster, especially
-            when used with other expressions or in group_by/over context.
+            If true, stopwords will be mapped to the empty string. If false, stopwords will remain. Removing
+            stopwords may impact performance.
         """
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_snowball_stem",
-            args=[pl.lit(no_stopwords, pl.Boolean), pl.lit(parallel, pl.Boolean)],
+            args=[pl.lit(no_stopwords, pl.Boolean)],
             is_elementwise=True,
         )
 
@@ -782,7 +782,6 @@ class StrExt:
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_to_camel",
-            args=[],
             is_elementwise=True,
         )
 
@@ -791,7 +790,6 @@ class StrExt:
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_to_snake",
-            args=[],
             is_elementwise=True,
         )
 
@@ -800,7 +798,6 @@ class StrExt:
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_to_pascal",
-            args=[],
             is_elementwise=True,
         )
 
@@ -809,6 +806,5 @@ class StrExt:
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_to_constant",
-            args=[],
             is_elementwise=True,
         )

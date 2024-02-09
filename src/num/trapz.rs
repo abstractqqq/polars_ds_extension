@@ -6,6 +6,7 @@ use polars::{
 };
 use pyo3_polars::derive::polars_expr;
 
+#[inline(always)]
 pub fn trapz(y: ArrayView1<f64>, x: ArrayView1<f64>) -> f64 {
     let y_s = &y.slice(s![1..]) + &y.slice(s![..-1]);
     let x_d = &x.slice(s![1..]) - &x.slice(s![..-1]);

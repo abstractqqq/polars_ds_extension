@@ -1,4 +1,3 @@
-use itertools::Itertools;
 /// Generates random sample from distributions for Polars DataFrame
 ///
 /// We are sacrificing speed and memory usage a little bit here by using CSPRNSGs. See
@@ -228,19 +227,18 @@ fn pl_sample_normal(inputs: &[Series]) -> PolarsResult<Series> {
 fn pl_sample_alphanumeric(inputs: &[Series]) -> PolarsResult<Series> {
     let reference = &inputs[0];
     let min_size = inputs[1].u32()?;
-    let min_size = min_size.get(0).unwrap() as usize;
+    let mut min_size = min_size.get(0).unwrap() as usize;
     let max_size = inputs[2].u32()?;
-    let max_size = max_size.get(0).unwrap() as usize;
+    let mut max_size = max_size.get(0).unwrap() as usize;
     let respect_null = inputs[3].bool()?;
     let respect_null = respect_null.get(0).unwrap();
 
     let n = reference.len();
 
-    let uniform = if min_size == max_size {
-        Uniform::new_inclusive(min_size, min_size)
-    } else {
-        Uniform::new(min_size, max_size)
-    };
+    if min_size > max_size {
+        std::mem::swap(&mut min_size, &mut max_size);
+    }
+    let uniform = Uniform::new_inclusive(min_size, max_size);
 
     let mut rng = rand::thread_rng();
     if respect_null && reference.has_validity() {
@@ -249,14 +247,14 @@ fn pl_sample_alphanumeric(inputs: &[Series]) -> PolarsResult<Series> {
             if x.unwrap_or(true) {
                 None
             } else {
-                let length: usize = rng.sample(uniform);
+                let length = rng.sample(uniform);
                 Some(Alphanumeric.sample_string(&mut rng, length))
             }
         });
         Ok(out.into_series())
     } else {
         let sample = (0..n).map(|_| {
-            let length: usize = rng.sample(uniform);
+            let length = rng.sample(uniform);
             Alphanumeric.sample_string(&mut rng, length)
         });
         let out = StringChunked::from_iter_values("", sample);
