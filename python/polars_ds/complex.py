@@ -14,7 +14,7 @@ class ComplexExt:
 
     Example: pl.col("a").c.modulus()
 
-    Complex number columns are represented as a column of size-2 lists. By default, an element will look like [re, im],
+    Complex number columns are represented as a column of size-2 Arrays. By default, an element will look like [re, im],
     which is in coordinate form. All operations (except powi, which turns it into polar form internally) assume the number
     is in coordinate form. There is a to_coord function provided for complex numbers in polar form [r, theta].
     """
@@ -24,15 +24,15 @@ class ComplexExt:
 
     def re(self) -> pl.Expr:
         """Returns the real part of the complex number."""
-        return self._expr.list.first()
+        return self._expr.arr.first()
 
     def im(self) -> pl.Expr:
         """Returns the imaginary part of the complex number."""
-        return self._expr.list.last()
+        return self._expr.arr.last()
 
     def to_complex(self) -> pl.Expr:
         """Turns a column of floats into a column of complex with im = 0."""
-        return pl.concat_list(self._expr, pl.lit(0.0, dtype=pl.Float64))
+        return pl.concat_list(self._expr, pl.lit(0.0, dtype=pl.Float64)).list.to_array()
 
     def with_imag(self, im: pl.Expr) -> pl.Expr:
         """
@@ -44,15 +44,15 @@ class ComplexExt:
         im
             Another polars expression represeting imaginary part
         """
-        return pl.concat_list(self._expr, im)
+        return pl.concat_list(self._expr, im).list.to_array()
 
     def modulus(self) -> pl.Expr:
         """Returns the modulus of the complex number."""
-        return self._expr.list.eval(pl.element().dot(pl.element()).sqrt()).list.first()
+        return (self._expr.arr.first().pow(2) + self._expr.arr.last().pow(2)).sqrt()
 
     def squared_modulus(self) -> pl.Expr:
         """Returns the squared modulus of the complex number."""
-        return self._expr.list.eval(pl.element().dot(pl.element())).list.first()
+        return self._expr.arr.first().pow(2) + self._expr.arr.last().pow(2)
 
     def theta(self, degree: bool = False) -> pl.Expr:
         """
@@ -63,8 +63,8 @@ class ComplexExt:
         degree
             If true, use degree. If false, use radians.
         """
-        x = self._expr.list.first()
-        y = self._expr.list.last()
+        x = self._expr.arr.first()
+        y = self._expr.arr.last()
         if degree:
             return (
                 pl.when((x > 0) | (y != 0))
@@ -84,17 +84,17 @@ class ComplexExt:
 
     def to_polar(self) -> pl.Expr:
         """Turns a complex number in coordinate form into polar form."""
-        return pl.concat_list(self.modulus(), self.theta())
+        return pl.concat_list(self.modulus(), self.theta()).list.to_array()
 
     def to_coord(self) -> pl.Expr:
         """Turns a complex number in polar form into coordinate form."""
-        r = self._expr.list.first()
-        theta = self._expr.list.last()
-        return pl.concat_list(r * theta.cos(), r * theta.sin())
+        r = self._expr.arr.first()
+        theta = self._expr.arr.last()
+        return pl.concat_list(r * theta.cos(), r * theta.sin()).list.to_array()
 
     def conj(self) -> pl.Expr:
         """Returns complex conjugate."""
-        return pl.concat_list(self._expr.list.first(), -self._expr.list.last())
+        return pl.concat_list(self._expr.arr.first(), -self._expr.arr.last()).list.to_array()
 
     def add(self, rhs: Union[float, complex, pl.Expr]) -> pl.Expr:
         """
@@ -106,15 +106,17 @@ class ComplexExt:
         rhs
             The right hand side.
         """
+        x = self._expr.arr.first()
+        y = self._expr.arr.last()
         if isinstance(rhs, float):
-            return self._expr.list.eval(pl.element() + pl.Series([rhs, 0]))
+            return pl.concat_list(x + rhs, y).list.to_array()
         if isinstance(rhs, complex):
-            return self._expr.list.eval(pl.element() + pl.Series([rhs.real, rhs.imag]))
+            return pl.concat_list(x + rhs.real, y + rhs.imag).list.to_array()
         else:  # Expression must be another complex col
             return pl.concat_list(
-                self._expr.list.first() + rhs.list.first(),
-                self._expr.list.last() + rhs.list.last(),
-            )
+                x + rhs.arr.first(),
+                y + rhs.arr.last(),
+            ).list.to_array()
 
     def sub(self, rhs: Union[float, complex, pl.Expr]) -> pl.Expr:
         """
@@ -126,15 +128,7 @@ class ComplexExt:
         rhs
             The right hand side.
         """
-        if isinstance(rhs, float):
-            return self._expr.list.eval(pl.element() - pl.Series([rhs, 0]))
-        if isinstance(rhs, complex):
-            return self._expr.list.eval(pl.element() - pl.Series([rhs.real, rhs.imag]))
-        else:
-            return pl.concat_list(
-                self._expr.list.first() - rhs.list.first(),
-                self._expr.list.last() - rhs.list.last(),
-            )
+        return self.add(-rhs)
 
     def mul(self, rhs: Union[float, complex, pl.Expr]) -> pl.Expr:
         """
@@ -146,29 +140,27 @@ class ComplexExt:
         rhs
             The right hand side.
         """
+        x = self._expr.arr.first()
+        y = self._expr.arr.last()
         if isinstance(rhs, float):
-            return self._expr.list.eval(pl.element() * pl.lit(rhs))
+            return pl.concat_list(x * rhs, y * rhs).list.to_array()
         if isinstance(rhs, complex):
-            x = self._expr.list.first()
-            y = self._expr.list.last()
             new_real = x * rhs.real - y * rhs.imag
             new_imag = x * rhs.imag + y * rhs.real
-            return pl.concat_list(new_real, new_imag)
+            return pl.concat_list(new_real, new_imag).list.to_array()
         else:
-            x = self._expr.list.first()
-            y = self._expr.list.last()
-            x2 = rhs.list.first()
-            y2 = rhs.list.last()
+            x2 = rhs.arr.first()
+            y2 = rhs.arr.last()
             new_real = x * x2 - y * y2
             new_imag = x * y2 + y * x2
-            return pl.concat_list(new_real, new_imag)
+            return pl.concat_list(new_real, new_imag).list.to_array()
 
     def inv(self) -> pl.Expr:
         """Returns 1/z for a complex number z."""
-        x = self._expr.list.first()
-        y = self._expr.list.last()
+        x = self._expr.arr.first()
+        y = self._expr.arr.last()
         denom = x.pow(2) + y.pow(2)
-        return pl.concat_list(x / denom, -y / denom)
+        return pl.concat_list(x / denom, -y / denom).list.to_array()
 
     def div(self, rhs: Union[float, complex, pl.Expr]) -> pl.Expr:
         """
@@ -180,32 +172,13 @@ class ComplexExt:
         rhs
             The right hand side.
         """
-        if isinstance(rhs, float):
-            return self._expr.list.eval(pl.element() / pl.lit(rhs))
-        if isinstance(rhs, complex):
-            x = self._expr.list.first()
-            y = self._expr.list.last()
-            inverse = 1 / rhs
-            new_real = x * inverse.real - y * inverse.imag
-            new_imag = x * inverse.imag + y * inverse.real
-            return pl.concat_list(new_real, new_imag)
-        else:
-            x = self._expr.list.first()
-            y = self._expr.list.last()
-            x2 = rhs.list.first()
-            y2 = rhs.list.last()
-            denom = x2.pow(2) + y2.pow(2)
-            x_inv = x2 / denom
-            y_inv = -y2 / denom
-            new_real = x * x_inv - y * y_inv
-            new_imag = x * y_inv + y * x_inv
-            return pl.concat_list(new_real, new_imag)
+        return self.mul(1 / rhs)
 
     def mul_by_i(self) -> pl.Expr:
         """Multiplies self by i."""
-        x = self._expr.list.first()
-        y = self._expr.list.last()
-        return pl.concat_list(-y, x)
+        x = self._expr.arr.first()
+        y = self._expr.arr.last()
+        return pl.concat_list(-y, x).list.to_array()
 
     def pow(self, x: float) -> pl.Expr:
         """
@@ -220,7 +193,7 @@ class ComplexExt:
             return pl.concat_list(
                 pl.when(self.modulus() == 0.0).then(math.nan).otherwise(1.0),
                 pl.lit(0.0, dtype=pl.Float64),
-            )
+            ).list.to_array()
         elif x == 1.0:
             return self._expr
         elif x == 2.0:
@@ -229,6 +202,8 @@ class ComplexExt:
             return self.inv()
         else:
             polar = self.to_polar()
-            r = polar.list.first()
-            theta = polar.list.last()
-            return pl.concat_list(r.pow(x) * (x * theta).cos(), r.pow(x) * (x * theta).sin())
+            r = polar.arr.first()
+            theta = polar.arr.last()
+            return pl.concat_list(
+                r.pow(x) * (x * theta).cos(), r.pow(x) * (x * theta).sin()
+            ).list.to_array()
