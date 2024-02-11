@@ -1,6 +1,6 @@
 from __future__ import annotations
 import polars as pl
-from typing import Union
+from typing import Union, Optional
 from polars.utils.udfs import _get_shared_lib_location
 
 _lib = _get_shared_lib_location(__file__)
@@ -81,46 +81,39 @@ class GraphExt:
             is_elementwise=True,
         )
 
-    def shortest_path_const_cost(
-        self, target: Union[int, pl.Expr], parallel: bool = False
-    ) -> pl.Expr:
+    def reachable(self, node: int) -> pl.Expr:
         """
-        Treats self as a column of "edges" and computes the shortest path to the target assuming that
-        the cost of traveling every edge is constant.
+        Determines whether the `node` is reachable starting from all other nodes. It will return a
+        struct with 2 fields: the first (reachable) tells if the node is reachable, the other(steps)
+        tells the length of the shortest path assuming constant edge cost.
 
-        Note that this will not sort the nodes for the user. This assumes that nodes are indexed by the
-        row numbers: 0, 1, ...
+        If the node is reachable and has steps = 0, the node must be the node in question itself.
+        If reachable = False, and steps = 0, then it simply means the node is not reachable.
 
         Parameters
         ----------
-        target
-            If this is an int, then will try to find the shortest path from this node to the node with
-            index = target. (NOT YET DECIDED): If this is an expression, then the expression must be a column
-            of u64 representing points go from this node.
-        parallel
-            Whether to run the algorithm in parallel. The same cavaet as the one in value_counts() applies.
+        node
+            An integer index for the node that we are insterested in testing reachability.
         """
 
-        par = pl.lit(parallel, pl.Boolean)
-        if isinstance(target, int):
-            to = pl.lit(target, pl.UInt64)
-        else:
-            return NotImplemented
+        if node < 0:
+            raise ValueError("Value for `node` can only be non-negative integer.")
 
+        n = pl.lit(node, pl.UInt64)
         return self._expr.register_plugin(
             lib=_lib,
-            symbol="pl_shortest_path_const_cost",
-            args=[to, par],
+            symbol="pl_shortest_path_dijkstra",
+            args=[n],
             is_elementwise=True,
         )
 
     def shortest_path(
-        self, target: Union[int, pl.Expr], cost: pl.Expr, parallel: bool = False
+        self, target: Union[int, pl.Expr], cost: Optional[pl.Expr] = None, parallel: bool = False
     ) -> pl.Expr:
         """
         Treats self as a column of "edges" and computes the shortest path to the target by using the
         cost provided. This will treat the graph as a directed graph, and the edge (i, j) may have different
-        cost than (j, i), depending on the data.
+        cost than (j, i), depending on the data. This assumes all costs are positive.
 
         Note that this will not sort the nodes for the user. This assumes that nodes are indexed by the
         row numbers: 0, 1, ...
@@ -135,10 +128,12 @@ class GraphExt:
             If this is an int, then will try to find the shortest path from this node to the node with
             index = target. (NOT YET DECIDED): If this is an expression, then the expression must be a column
             of u64 representing points go from this node.
-        distance
-            An expression representing a column of list[f64], with each list having the same length as
-            the edge list. The values in the list will represent the cost (distance) to go from this node
-            to the node in the edge list.
+        cost
+            If none, will use constant 1 cost for travelling from any edge. If this is an expression, it should
+            represent a column of list[f64], with each list having the same length as
+            the edge list, and they must not contain nulls. If these conditions are not met, this node will be
+            treated as having no edges going from it. The values in the list will represent the cost (distance) to go
+            from this node to the nodes in the edge list.
         parallel
             Whether to run the algorithm in parallel. The same cavaet as the one in value_counts() applies.
         """
@@ -149,9 +144,17 @@ class GraphExt:
         else:
             return NotImplemented
 
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_shortest_path",
-            args=[cost, to, par],
-            is_elementwise=True,
-        )
+        if cost is None:  # use const cost impl
+            return self._expr.register_plugin(
+                lib=_lib,
+                symbol="pl_shortest_path_const_cost",
+                args=[to, par],
+                is_elementwise=True,
+            )
+        else:
+            return self._expr.register_plugin(
+                lib=_lib,
+                symbol="pl_shortest_path",
+                args=[cost, to, par],
+                is_elementwise=True,
+            )
