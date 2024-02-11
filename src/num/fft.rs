@@ -4,12 +4,9 @@
 /// but is slighly faster once data gets bigger.
 use crate::complex_output;
 use itertools::Either;
-use num::{complex::Complex64, Complex, ToPrimitive};
+use num::complex::Complex64;
 use polars::prelude::*;
-use pyo3_polars::{
-    derive::polars_expr,
-    export::polars_core::utils::arrow::{array::PrimitiveArray, buffer::Buffer, ffi::ArrowArray},
-};
+use pyo3_polars::derive::polars_expr;
 use realfft::RealFftPlanner;
 
 #[polars_expr(output_type_func=complex_output)]

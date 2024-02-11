@@ -33,7 +33,7 @@ def test_fft(arr, n):
 
     # Always run a check against scipy, with return_full=True as well
     res2 = df.select(pl.col("a").num.rfft(return_full=True).alias("fft")).select(
-        pl.col("fft").list.first().alias("re"), pl.col("fft").list.last().alias("im")
+        pl.col("fft").arr.first().alias("re"), pl.col("fft").arr.last().alias("im")
     )
     real_test = res2["re"].to_numpy()
     im_test = res2["im"].to_numpy()
