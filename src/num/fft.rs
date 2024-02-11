@@ -4,6 +4,7 @@
 /// but is slighly faster once data gets bigger.
 use crate::complex_output;
 use itertools::Either;
+use num::complex::Complex64;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use realfft::RealFftPlanner;
@@ -33,7 +34,7 @@ fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
     let mut planner = RealFftPlanner::<f64>::new();
     let r2c = planner.plan_fft_forward(input_len);
 
-    let mut spectrum = r2c.make_output_vec();
+    let mut spectrum: Vec<Complex64> = r2c.make_output_vec();
     let _ = r2c.process(&mut input_vec, &mut spectrum);
 
     n = if return_full {
@@ -61,17 +62,12 @@ fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
             }
         }
     } else {
-        // let lc = ChunkedArray<FixedSizeListType>>::from_iter_and_args();
-        // let pa = PrimitiveArray::new(
-        //     ArrowDataType::Float64,
-        //     vec![c.re, c.im].into(),
-        //     None
-        // );
         for c in spectrum {
             builder.append_slice(&[c.re, c.im])
         }
     }
 
     let out = builder.finish();
-    Ok(out.into_series())
+    out.cast(&DataType::Array(Box::new(DataType::Float64), 2))
+    // Ok(out.into_series())
 }
