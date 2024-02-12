@@ -1,6 +1,6 @@
 use crate::list_u64_output;
 use itertools::Itertools;
-use petgraph::algo::astar;
+use petgraph::algo::{astar, dijkstra};
 use petgraph::Directed;
 use petgraph::{stable_graph::NodeIndex, Graph};
 use polars::prelude::*;
@@ -14,6 +14,13 @@ use pyo3_polars::{
 
 // What is the proper heuristic to use?
 
+pub fn dijkstra_output(_: &[Field]) -> PolarsResult<Field> {
+    let reachable = Field::new("reachable", DataType::Boolean);
+    let cost = Field::new("steps", DataType::UInt32);
+    let v = vec![reachable, cost];
+    Ok(Field::new("", DataType::Struct(v)))
+}
+
 pub fn shortest_path_output(_: &[Field]) -> PolarsResult<Field> {
     let path = Field::new("nodes", DataType::List(Box::new(DataType::UInt64)));
     let cost = Field::new("cost", DataType::Float64);
@@ -23,7 +30,7 @@ pub fn shortest_path_output(_: &[Field]) -> PolarsResult<Field> {
 
 #[inline(always)]
 fn astar_i_in_range_const_cost(
-    gh: &Graph<usize, f64, Directed>,
+    gh: &Graph<(), f64, Directed>,
     i_start: usize,
     i_end: usize,
     target: NodeIndex,
@@ -51,7 +58,7 @@ fn astar_i_in_range_const_cost(
 // This assumes the graph is constructed with weights! See how graphs are constructed in mod.rs
 #[inline(always)]
 fn astar_i_in_range(
-    gh: &Graph<usize, f64, Directed>,
+    gh: &Graph<(), f64, Directed>,
     i_start: usize,
     i_end: usize,
     target: NodeIndex,
@@ -177,4 +184,32 @@ fn pl_shortest_path(inputs: &[Series], context: CallerContext) -> PolarsResult<S
     } else {
         Err(PolarsError::ComputeError("Not implemented yet.".into()))
     }
+}
+
+#[polars_expr(output_type_func=dijkstra_output)]
+fn pl_shortest_path_dijkstra(inputs: &[Series]) -> PolarsResult<Series> {
+    let edges = inputs[0].list()?;
+    let target = inputs[1].u64()?;
+    let target = target.get(0).unwrap();
+    let target = NodeIndex::new(target as usize);
+
+    let gh = super::create_graph(edges, None)?;
+
+    let mut out: Vec<bool> = vec![false; edges.len()];
+    let mut out_steps: Vec<u32> = vec![0; edges.len()];
+    let results = dijkstra(&gh, target, None, |_| 1_u32);
+
+    for (ni, steps) in results.into_iter() {
+        let i = ni.index();
+        out[i] = true;
+        out_steps[i] = steps;
+    }
+
+    let s1 = BooleanChunked::from_slice("reachable", &out);
+    let s1 = s1.into_series();
+    let s2 = UInt32Chunked::from_slice("steps", &out_steps);
+    let s2 = s2.into_series();
+
+    let out = StructChunked::new("", &[s1, s2])?;
+    Ok(out.into_series())
 }
