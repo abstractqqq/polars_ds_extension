@@ -1,4 +1,4 @@
-use crate::list_str_output;
+use crate::utils::{list_str_output, split_offsets};
 use polars::prelude::*;
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
@@ -146,7 +146,7 @@ pub fn pl_nearest_str(
     if can_parallel {
         let out = POOL.install(|| {
             let n_threads = POOL.current_num_threads();
-            let splits = crate::split_offsets(s.len(), n_threads);
+            let splits = split_offsets(s.len(), n_threads);
             let chunks: Vec<_> = splits
                 .into_par_iter()
                 .map(|(offset, len)| {
@@ -193,7 +193,7 @@ pub fn pl_knn_str(
     let out = if can_parallel {
         POOL.install(|| {
             let n_threads = POOL.current_num_threads();
-            let splits = crate::split_offsets(s.len(), n_threads);
+            let splits = split_offsets(s.len(), n_threads);
             let chunks: Vec<_> = splits
                 .into_par_iter()
                 .map(|(offset, len)| {

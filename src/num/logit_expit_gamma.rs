@@ -1,5 +1,5 @@
-use crate::float_output;
 /// The logit, expit and gamma function as defined in SciPy
+use crate::utils::float_output;
 use num::traits::Float;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;

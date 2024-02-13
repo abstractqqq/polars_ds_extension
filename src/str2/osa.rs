@@ -1,3 +1,4 @@
+use crate::utils::split_offsets;
 use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
@@ -31,7 +32,7 @@ fn pl_osa(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
         let out: UInt32Chunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
@@ -55,7 +56,7 @@ fn pl_osa(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
         let out: UInt32Chunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
@@ -91,7 +92,7 @@ fn pl_osa_sim(inputs: &[Series], context: CallerContext) -> PolarsResult<Series>
         let out: Float64Chunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
@@ -115,7 +116,7 @@ fn pl_osa_sim(inputs: &[Series], context: CallerContext) -> PolarsResult<Series>
         let out: Float64Chunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {

@@ -577,6 +577,8 @@ class NumExt:
         """
         if r <= 0.0:
             raise ValueError("Input `r` must be > 0.")
+        elif isinstance(r, pl.Expr):
+            raise ValueError("Input `r` must be a scalar now. Expression input is not implemented.")
 
         metric = str(dist).lower()
         index: pl.Expr = self._expr.cast(pl.UInt64)

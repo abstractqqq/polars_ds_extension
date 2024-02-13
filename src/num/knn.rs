@@ -1,7 +1,7 @@
 /// Performs KNN related search queries, classification and regression, and
 /// other features/entropies that require KNN to be efficiently computed.
 use super::which_distance;
-use crate::list_u64_output;
+use crate::utils::{list_u64_output, split_offsets, rechunk_to_frame};
 use itertools::Itertools;
 use kdtree::KdTree;
 use ndarray::{s, ArrayView2, Axis};
@@ -71,12 +71,8 @@ fn pl_knn_ptwise(
     if dim == 0 {
         return Err(PolarsError::ComputeError("KNN: No column found.".into()));
     }
-    let mut vs: Vec<Series> = Vec::with_capacity(dim);
-    for (i, s) in inputs[1..].into_iter().enumerate() {
-        let news = s.rechunk().with_name(&i.to_string());
-        vs.push(news)
-    }
-    let data = DataFrame::new(vs)?;
+
+    let data = rechunk_to_frame(&inputs[1..])?;
     let nrows = data.height();
     let k = kwargs.k;
     let leaf_size = kwargs.leaf_size;
@@ -96,7 +92,7 @@ fn pl_knn_ptwise(
     let ca = if can_parallel {
         POOL.install(|| {
             let n_threads = POOL.current_num_threads();
-            let splits = crate::split_offsets(nrows, n_threads);
+            let splits = split_offsets(nrows, n_threads);
             let chunks: Vec<_> = splits
                 .into_par_iter()
                 .map(|(offset, len)| {
@@ -158,12 +154,8 @@ fn pl_query_radius_ptwise(
             "KNN: No column to decide distance from.".into(),
         ));
     }
-    let mut vs: Vec<Series> = Vec::with_capacity(dim);
-    for (i, s) in inputs[1..].into_iter().enumerate() {
-        let news = s.rechunk().with_name(&i.to_string());
-        vs.push(news)
-    }
-    let data = DataFrame::new(vs)?;
+
+    let data= rechunk_to_frame(&inputs[1..])?;
     let nrows = data.height();
     let leaf_size = kwargs.leaf_size;
     let parallel = kwargs.parallel;
@@ -182,7 +174,7 @@ fn pl_query_radius_ptwise(
     if can_parallel {
         let ca = POOL.install(|| {
             let n_threads = POOL.current_num_threads();
-            let splits = crate::split_offsets(nrows, n_threads);
+            let splits = split_offsets(nrows, n_threads);
             let chunks: Vec<_> = splits
                 .into_par_iter()
                 .map(|(offset, len)| {
@@ -245,12 +237,8 @@ fn pl_knn_ptwise_w_dist(
             "KNN: No column to decide distance from.".into(),
         ));
     }
-    let mut vs: Vec<Series> = Vec::with_capacity(dim);
-    for (i, s) in inputs[1..].into_iter().enumerate() {
-        let news = s.rechunk().with_name(&i.to_string());
-        vs.push(news)
-    }
-    let data = DataFrame::new(vs)?;
+
+    let data= rechunk_to_frame(&inputs[1..])?;
     let nrows = data.height();
     let k = kwargs.k;
     let leaf_size = kwargs.leaf_size;
@@ -269,7 +257,7 @@ fn pl_knn_ptwise_w_dist(
     if can_parallel {
         POOL.install(|| {
             let n_threads = POOL.current_num_threads();
-            let splits = crate::split_offsets(nrows, n_threads);
+            let splits = split_offsets(nrows, n_threads);
             let chunks: (Vec<_>, Vec<_>) = splits
                 .into_par_iter()
                 .map(|(offset, len)| {
@@ -370,12 +358,7 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     let binding = pt.rechunk();
     let p = binding.cont_slice()?;
     // Set up params
-    let mut vs: Vec<Series> = Vec::with_capacity(dim);
-    for (i, s) in inputs[1..].into_iter().enumerate() {
-        let news = s.rechunk().with_name(&i.to_string());
-        vs.push(news)
-    }
-    let data = DataFrame::new(vs)?;
+    let data= rechunk_to_frame(&inputs[1..])?;
     let nrows = data.height();
     let dim = inputs[1..].len();
     let k = kwargs.k;
@@ -423,7 +406,7 @@ where
         let dim = data.shape()[1];
         POOL.install(|| {
             let n_threads = POOL.current_num_threads();
-            let splits = crate::split_offsets(nrows, n_threads);
+            let splits = split_offsets(nrows, n_threads);
             let chunks: Vec<_> = splits
                 .into_par_iter()
                 .map(|(offset, len)| {
@@ -474,12 +457,7 @@ fn pl_nb_cnt(
         ));
     }
 
-    let mut vs: Vec<Series> = Vec::with_capacity(dim);
-    for (i, s) in inputs[1..].into_iter().enumerate() {
-        let news = s.rechunk().with_name(&i.to_string());
-        vs.push(news)
-    }
-    let data = DataFrame::new(vs)?;
+    let data= rechunk_to_frame(&inputs[1..])?;
     let nrows = data.height();
     let parallel = kwargs.parallel;
     let can_parallel = parallel && !context.parallel();
@@ -502,7 +480,7 @@ fn pl_nb_cnt(
             let dim = data.shape()[1];
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(nrows, n_threads);
+                let splits = split_offsets(nrows, n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {

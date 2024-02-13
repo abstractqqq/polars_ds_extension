@@ -1,3 +1,4 @@
+use crate::utils::split_offsets;
 use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
@@ -51,7 +52,7 @@ fn pl_levenshtein(inputs: &[Series], context: CallerContext) -> PolarsResult<Ser
         let out: UInt32Chunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
@@ -75,7 +76,7 @@ fn pl_levenshtein(inputs: &[Series], context: CallerContext) -> PolarsResult<Ser
         let out: UInt32Chunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
@@ -113,7 +114,7 @@ fn pl_levenshtein_filter(inputs: &[Series], context: CallerContext) -> PolarsRes
         let out: BooleanChunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
@@ -147,7 +148,7 @@ fn pl_levenshtein_filter(inputs: &[Series], context: CallerContext) -> PolarsRes
         let out: BooleanChunked = if parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
@@ -186,7 +187,7 @@ fn pl_levenshtein_sim(inputs: &[Series], context: CallerContext) -> PolarsResult
         let out: Float64Chunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
@@ -210,7 +211,7 @@ fn pl_levenshtein_sim(inputs: &[Series], context: CallerContext) -> PolarsResult
         let out: Float64Chunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
@@ -247,7 +248,7 @@ fn pl_d_levenshtein(inputs: &[Series], context: CallerContext) -> PolarsResult<S
         let out: UInt32Chunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
@@ -271,7 +272,7 @@ fn pl_d_levenshtein(inputs: &[Series], context: CallerContext) -> PolarsResult<S
         let out: UInt32Chunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
@@ -307,7 +308,7 @@ fn pl_d_levenshtein_sim(inputs: &[Series], context: CallerContext) -> PolarsResu
         let out: Float64Chunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
@@ -331,7 +332,7 @@ fn pl_d_levenshtein_sim(inputs: &[Series], context: CallerContext) -> PolarsResu
         let out: Float64Chunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
