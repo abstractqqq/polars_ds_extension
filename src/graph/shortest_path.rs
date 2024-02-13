@@ -1,4 +1,4 @@
-use crate::list_u64_output;
+use crate::utils::{list_u64_output, split_offsets};
 use itertools::Itertools;
 use petgraph::algo::{astar, dijkstra};
 use petgraph::Directed;
@@ -117,7 +117,7 @@ fn pl_shortest_path_const_cost(inputs: &[Series], context: CallerContext) -> Pol
         let ca = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(nrows, n_threads);
+                let splits = split_offsets(nrows, n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
@@ -159,7 +159,7 @@ fn pl_shortest_path(inputs: &[Series], context: CallerContext) -> PolarsResult<S
         let (ca1, ca2) = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(nrows, n_threads);
+                let splits = split_offsets(nrows, n_threads);
                 let chunks: (Vec<_>, Vec<_>) = splits
                     .into_par_iter()
                     .map(|(offset, len)| {

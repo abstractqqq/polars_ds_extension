@@ -1,4 +1,5 @@
 use super::str_set_sim_helper;
+use crate::utils::split_offsets;
 use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
@@ -35,7 +36,7 @@ fn pl_sorensen_dice(inputs: &[Series], context: CallerContext) -> PolarsResult<S
         let out: Float64Chunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {
@@ -57,7 +58,7 @@ fn pl_sorensen_dice(inputs: &[Series], context: CallerContext) -> PolarsResult<S
         let out: Float64Chunked = if can_parallel {
             POOL.install(|| {
                 let n_threads = POOL.current_num_threads();
-                let splits = crate::split_offsets(ca1.len(), n_threads);
+                let splits = split_offsets(ca1.len(), n_threads);
                 let chunks: Vec<_> = splits
                     .into_par_iter()
                     .map(|(offset, len)| {

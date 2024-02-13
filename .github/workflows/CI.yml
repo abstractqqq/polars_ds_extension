@@ -35,7 +35,7 @@ jobs:
           pip install pytest
           pip install .
           pip install -r tests/requirements-test.txt
-          pytest tests/test_ext.py
+          pytest tests/test_correctness.py
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:

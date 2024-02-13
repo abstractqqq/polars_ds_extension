@@ -10,7 +10,7 @@ use petgraph::{stable_graph::NodeIndex, Directed, Graph};
 use polars::{datatypes::ListChunked, error::PolarsResult};
 
 // Here internally I am using an edge's weight to represent the cost.
-// Graph<(), f64, Undirected>, where f64 is edge weight.
+// Graph<(), f64, Directed>, where f64 is edge weight.
 
 pub fn create_graph(
     edges: &ListChunked,
