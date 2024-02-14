@@ -80,6 +80,16 @@ class NumExt:
         """
         return (self._expr - self._expr.min()) / (self._expr.max() - self._expr.min())
 
+    def exp2(self) -> pl.Expr:
+        """
+        Returns 2^x.
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_exp2",
+            is_elementwise=True,
+        )
+
     def fract(self) -> pl.Expr:
         """
         Returns the fractional part of the input values. E.g. fractional part of 1.1 is 0.1
