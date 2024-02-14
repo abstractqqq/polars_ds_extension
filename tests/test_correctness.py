@@ -74,6 +74,48 @@ def test_f_test(df):
 
 
 @pytest.mark.parametrize(
+    "df, res",
+    [
+        (
+            pl.DataFrame({"a": [2.0, None, -2.0, float("nan")]}),
+            pl.DataFrame({"a": [1.0, None, -1.0, float("nan")]}),
+        ),
+    ],
+)
+def test_signum(df, res):
+    assert_frame_equal(df.select(pl.col("a").num.signum()), res)
+    assert_frame_equal(df.lazy().select(pl.col("a").num.signum()).collect(), res)
+
+
+@pytest.mark.parametrize(
+    "df, res",
+    [
+        (
+            pl.DataFrame({"a": [2.123, None, -2.111, float("nan")]}),
+            pl.DataFrame({"a": [2.0, None, -2.0, float("nan")]}),
+        ),
+    ],
+)
+def test_trunc(df, res):
+    assert_frame_equal(df.select(pl.col("a").num.trunc()), res)
+    assert_frame_equal(df.lazy().select(pl.col("a").num.trunc()).collect(), res)
+
+
+@pytest.mark.parametrize(
+    "df, res",
+    [
+        (
+            pl.DataFrame({"a": [2.123, None, -2.111, float("nan")]}),
+            pl.DataFrame({"a": [0.123, None, -0.111, float("nan")]}),
+        ),
+    ],
+)
+def test_fract(df, res):
+    assert_frame_equal(df.select(pl.col("a").num.fract()), res)
+    assert_frame_equal(df.lazy().select(pl.col("a").num.fract()).collect(), res)
+
+
+@pytest.mark.parametrize(
     "df, other, res",
     [
         (
