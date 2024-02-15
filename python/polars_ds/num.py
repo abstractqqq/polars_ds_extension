@@ -365,6 +365,13 @@ class NumExt:
             .otherwise(pl.lit(float("inf"), dtype=pl.Float64))
         )
 
+    def sinc(self) -> pl.Expr:
+        """
+        Computes the sinc function normalized by pi.
+        """
+        y = math.pi * pl.when(self._expr == 0).then(1e-20).otherwise(self._expr)
+        return y.sin() / y
+
     def gamma(self) -> pl.Expr:
         """
         Applies the gamma function to self. Note, this will return NaN for negative values and inf when x = 0,

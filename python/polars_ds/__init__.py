@@ -157,6 +157,60 @@ def knn(
     )
 
 
+def l_inf_horizontal(*v: pl.Expr, normalize: bool = False) -> pl.Expr:
+    """
+    Horizontally L inf norm. Shorthand for pl.max_horizontal(pl.col(x).abs() for x in exprs).
+
+    Parameters
+    ----------
+    *v
+        Expressions to compute horizontal L infinity.
+    normalize
+        Whether to divide by the dimension
+    """
+    if normalize:
+        exprs = list(v)
+        return pl.max_horizontal(pl.col(x).abs() for x in exprs) / len(exprs)
+    else:
+        return pl.max_horizontal(pl.col(x).abs() for x in v)
+
+
+def l2_sq_horizontal(*v: pl.Expr, normalize: bool = False) -> pl.Expr:
+    """
+    Horizontally computes L2 norm squared. Shorthand for pl.sum_horizontal(pl.col(x).pow(2) for x in exprs).
+
+    Parameters
+    ----------
+    *v
+        Expressions to compute horizontal L2.
+    normalize
+        Whether to divide by the dimension
+    """
+    if normalize:
+        exprs = list(v)
+        return pl.sum_horizontal(pl.col(x).pow(2) for x in exprs) / len(exprs)
+    else:
+        return pl.sum_horizontal(pl.col(x).pow(2) for x in v)
+
+
+def l1_horizontal(*v: pl.Expr, normalize: bool = False) -> pl.Expr:
+    """
+    Horizontally computes L1 norm. Shorthand for pl.sum_horizontal(pl.col(x).abs() for x in exprs).
+
+    Parameters
+    ----------
+    *v
+        Expressions to compute horizontal L1.
+    normalize
+        Whether to divide by the dimension
+    """
+    if normalize:
+        exprs = list(v)
+        return pl.sum_horizontal(pl.col(x).abs() for x in exprs) / len(exprs)
+    else:
+        return pl.sum_horizontal(pl.col(x).abs() for x in v)
+
+
 def haversine(
     x_lat: pl.Expr,
     x_long: pl.Expr,
