@@ -80,11 +80,46 @@ class NumExt:
         """
         return (self._expr - self._expr.min()) / (self._expr.max() - self._expr.min())
 
-    def frac(self) -> pl.Expr:
+    def exp2(self) -> pl.Expr:
+        """
+        Returns 2^x.
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_exp2",
+            is_elementwise=True,
+        )
+
+    def fract(self) -> pl.Expr:
         """
         Returns the fractional part of the input values. E.g. fractional part of 1.1 is 0.1
         """
-        return self._expr.mod(1.0)
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_fract",
+            is_elementwise=True,
+        )
+
+    def trunc(self) -> pl.Expr:
+        """
+        Returns the integer part of the input values. E.g. integer part of 1.1 is 1.0
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_trunc",
+            is_elementwise=True,
+        )
+
+    def signum(self) -> pl.Expr:
+        """
+        Returns sign of the input values. Note: NaN is returned for NaN. This is faster
+        and more accurate than doing pl.when(..).then().otherwise().
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_signum",
+            is_elementwise=True,
+        )
 
     def max_abs(self) -> pl.Expr:
         """
