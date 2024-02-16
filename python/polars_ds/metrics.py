@@ -1,5 +1,6 @@
 from __future__ import annotations
 import polars as pl
+from .type_alias import ROCAUCStrategy
 from polars.utils.udfs import _get_shared_lib_location
 
 _lib = _get_shared_lib_location(__file__)
@@ -302,6 +303,38 @@ class MetricExt:
             is_elementwise=False,
             returns_scalar=True,
         )
+
+    def multiclass_roc_auc(
+        self, pred: pl.Expr, n_classes: int, strategy: ROCAUCStrategy = "weighted"
+    ) -> pl.Expr:
+        """
+        Computes multiclass ROC AUC. Self (actuals) must be labels represented by integer values
+        ranging in the range [0, n_classes), and pred must be a column of list[f64] with size `n_classes`.
+
+        Parameters
+        ----------
+        pred
+            The multilabel prediction column
+        n_classes
+            The number of classes
+        strategy
+            Either `macro` or `weighted`, which are defined the same as in Scikit-learn.
+        """
+        if strategy == "macro":
+            actuals = [self._expr == i for i in range(n_classes)]
+            preds = [pred.list.get(i) for i in range(n_classes)]
+            return (
+                pl.sum_horizontal(a.metric.roc_auc(p) for a, p in zip(actuals, preds)) / n_classes
+            )
+        elif strategy == "weighted":
+            actuals = [self._expr == i for i in range(n_classes)]
+            preds = [pred.list.get(i) for i in range(n_classes)]
+            return (
+                pl.sum_horizontal(a.sum() * a.metric.roc_auc(p) for a, p in zip(actuals, preds))
+                / pl.len()
+            )
+        else:
+            raise NotImplementedError
 
     def gini(self, pred: pl.Expr) -> pl.Expr:
         """
