@@ -948,6 +948,58 @@ def test_gamma(df):
     assert np.isclose(res, scipy_res, equal_nan=True).all()
 
 
+def test_multiclass_roc_auc():
+    from sklearn.metrics import roc_auc_score
+
+    def roc_auc_random_data(size: int = 2000) -> pl.DataFrame:
+        df = pl.DataFrame(
+            {
+                "id": range(size),
+            }
+        ).with_columns(
+            pl.col("id").cast(pl.UInt64),
+            pl.col("id").stats.sample_uniform(low=0.0, high=1.0).alias("val1"),
+            pl.col("id").stats.sample_uniform(low=0.0, high=1.0).alias("val2"),
+            pl.col("id").stats.sample_uniform(low=0.0, high=1.0).alias("val3"),
+            pl.col("id").mod(3).alias("actuals"),
+        )
+        return (
+            df.lazy()
+            .with_columns(
+                pl.concat_list(
+                    pl.col("val1")
+                    / pl.sum_horizontal(pl.col("val1"), pl.col("val2"), pl.col("val3")),
+                    pl.col("val2")
+                    / pl.sum_horizontal(pl.col("val1"), pl.col("val2"), pl.col("val3")),
+                    pl.col("val3")
+                    / pl.sum_horizontal(pl.col("val1"), pl.col("val2"), pl.col("val3")),
+                ).alias("pred")
+            )
+            .select(
+                pl.col("actuals"),
+                pl.col("pred"),
+            )
+            .collect()
+        )
+
+    df = roc_auc_random_data()
+    y_pred = np.stack(df["pred"].to_numpy())
+    y_true = df["actuals"]
+
+    macro = df.select(pl.col("actuals").metric.multiclass_roc_auc(pl.col("pred"), 3, "macro")).item(
+        0, 0
+    )
+    macro_sklearn = roc_auc_score(y_true, y_pred, average="macro", multi_class="ovr")
+
+    weighted = df.select(
+        pl.col("actuals").metric.multiclass_roc_auc(pl.col("pred"), 3, "weighted")
+    ).item(0, 0)
+    weighted_sklearn = roc_auc_score(y_true, y_pred, average="weighted", multi_class="ovr")
+
+    assert np.isclose(macro, macro_sklearn, rtol=1e-10, atol=1e-12)
+    assert np.isclose(weighted, weighted_sklearn, rtol=1e-10, atol=1e-10)
+
+
 def test_precision_recall_roc_auc():
     import numpy as np
     from sklearn.metrics import roc_auc_score

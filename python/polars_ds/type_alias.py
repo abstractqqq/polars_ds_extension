@@ -10,4 +10,5 @@ else:  # 3.9, 3.8
 
 DetrendMethod: TypeAlias = Literal["linear", "mean"]
 Alternative: TypeAlias = Literal["two-sided", "less", "greater"]
-Distance = Literal["l1", "l2", "inf", "h", "haversine"]
+ROCAUCStrategy: TypeAlias = Literal["macro", "weighted"]
+Distance: TypeAlias = Literal["l1", "l2", "inf", "h", "cosine", "haversine"]
