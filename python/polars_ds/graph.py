@@ -11,11 +11,13 @@ class GraphExt:
     """
     This class contains tools for working with graphs inside a dataframe. Graphs are represented by two columns:
     one node column (index, u64), which is usually implicit, and one edge column (list[u64]). ALL algorithms
-    here implicitly assumes the nodes are indexed by row number starting from 0. E.g. row #5, say the value of the
-    column of edges is [1,6,13], that means we have a connection from 5 to 1, 5 to 6, and 5 to 13.
+    here implicitly assumes the nodes are indexed by row number starting from 0. E.g. row_number = 5, and the
+    corresponding value of the edge list is [1,6,13], then it means we have a connection from 5 to 1, 5 to 6,
+    and 5 to 13.
 
     It is the user's responsibility to ensure that edge list does not contain duplicate values and values should
-    be type u64. Values will be casted to u64 is possible.
+    be type u64. Values will NOT be casted to u64 for the user. One can use pl.list.eval(pl.element().cast(...))
+    to cast once for all graph related queries.
 
     Also note that some queries (e.g. shortest path) in this module is slow and is transcient, meaning that each
     query will create a graph and use it only for the duration of the query. It does not persist
@@ -87,10 +89,10 @@ class GraphExt:
             is_elementwise=True,
         )
 
-    def reachable(self, node: int) -> pl.Expr:
+    def reachable(self, target: int) -> pl.Expr:
         """
-        Determines whether the `node` is reachable starting from all other nodes. It will return a
-        struct with 2 fields: the first (reachable) tells if the node is reachable, the other(steps)
+        Determines whether the `target` node is reachable starting from all other nodes. It will return
+        a struct with 2 fields: the first (reachable) tells if the node is reachable, the other(steps)
         tells the length of the shortest path assuming constant edge cost.
 
         If the node is reachable and has steps = 0, the node must be the node in question itself.
@@ -101,15 +103,14 @@ class GraphExt:
         node
             An integer index for the node that we are insterested in testing reachability.
         """
+        if target < 0:
+            raise ValueError("Value for `target` can only be non-negative integer.")
 
-        if node < 0:
-            raise ValueError("Value for `node` can only be non-negative integer.")
-
-        n = pl.lit(node, pl.UInt64)
+        t = pl.lit(target, pl.UInt64)
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_shortest_path_dijkstra",
-            args=[n],
+            args=[t],
             is_elementwise=True,
         )
 
@@ -127,6 +128,12 @@ class GraphExt:
         Also note that if in a row, we have len(edges) != len(dist) or if either edge list has null or
         cost list has null, then this row will be disqualified, meaning that the node will be
         treated as having no connected edges.
+
+        If you
+        (1) do not need the actual path,
+        (2) is fine with having constant cost for all edges, and
+        (3) only cares about the cost of the shortest path,
+        then `reachable` may be a better and much faster approach.
 
         Parameters
         ----------
