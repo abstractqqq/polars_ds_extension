@@ -10,14 +10,18 @@ _lib = _get_shared_lib_location(__file__)
 class GraphExt:
     """
     This class contains tools for working with graphs inside a dataframe. Graphs are represented by two columns:
-    one node column (index, u64), which is usually implicit, and one edge column (list[u64]). Most algorithms
-    here implicitly assumes the nodes are indexed by row number starting from 0. On row 5, say the value of the
+    one node column (index, u64), which is usually implicit, and one edge column (list[u64]). ALL algorithms
+    here implicitly assumes the nodes are indexed by row number starting from 0. E.g. row #5, say the value of the
     column of edges is [1,6,13], that means we have a connection from 5 to 1, 5 to 6, and 5 to 13.
 
-    This module will only focus on undirected graph for now. Also note that this module is very slow and is transcient,
-    meaning that each query will create a graph and use it only for the duration of the query. It does not persist
-    the graph. So it will be very slow if you are running multiple graph methods. This module mainly provides the
-    convenience. As a result, a lot of graph algorithms will not be implemented and won't have the most versatile API.
+    It is the user's responsibility to ensure that edge list does not contain duplicate values and values should
+    be type u64. Values will be casted to u64 is possible.
+
+    Also note that some queries (e.g. shortest path) in this module is slow and is transcient, meaning that each
+    query will create a graph and use it only for the duration of the query. It does not persist
+    the graph. So it will be very slow if you are running multiple graph methods. The focus is not full coverage
+    of graph algorithms, because not all are suitable for dataframe queries. This module mainly provides the
+    convenience for common queires like deg, shortest path, etc.
 
     To be decided: a separate, dedicated Graph module might be appropriate.
 
@@ -57,15 +61,14 @@ class GraphExt:
             is_elementwise=True,
         )
 
-    def eigen_centrality(self, n_iter: int = 15, normalize: bool = True) -> pl.Expr:
+    def eigen_centrality(
+        self, n_iter: int = 15, normalize: bool = True, sparse: bool = True
+    ) -> pl.Expr:
         """
         Treats self as a column of "edges" and computes the eigenvector centrality for the graph.
 
-        Self must be a column of list[u64].
-
-        Note that this will not sort the nodes for the user. This assumes that nodes are indexed by the
-        natural numbers: 0, 1, ... If nodes are not sorted or if the u64 in edge list does not refer to
-        the node's index, the result may be incorrect or may throw an error.
+        Self must be a column of list[u64]. It is the user's responsibility to ensure that edge list
+        does not contain duplicate node ids.
 
         Parameters
         ----------
@@ -73,11 +76,14 @@ class GraphExt:
             The number of iterations for the power iteration algorithm to compute eigenvecor centrality
         normalize
             Whether to normalize the eigenvector's elements by dividing by their sum
+        sparse
+            Whether the underlying adjacent matrix will be sparse or not. This is usually the case, and
+            using sparse matrix we can compute this significantly faster.
         """
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_eigen_centrality",
-            kwargs={"n_iter": n_iter, "normalize": normalize},
+            kwargs={"n_iter": n_iter, "normalize": normalize, "sparse": sparse},
             is_elementwise=True,
         )
 
