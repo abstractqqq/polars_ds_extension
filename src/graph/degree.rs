@@ -1,5 +1,6 @@
 use petgraph::{
     stable_graph::NodeIndex,
+    visit::GetAdjacencyMatrix,
     Direction::{Incoming, Outgoing},
 };
 use polars::prelude::*;
