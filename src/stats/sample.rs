@@ -1,3 +1,4 @@
+use crate::utils::float_output;
 /// Generates random sample from distributions for Polars DataFrame
 ///
 /// We are sacrificing speed and memory usage a little bit here by using CSPRNSGs. See
@@ -9,7 +10,7 @@ use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use rand::distributions::Uniform;
 use rand::{distributions::DistString, Rng};
-use rand_distr::{Alphanumeric, Binomial, Exp, Exp1, Normal, StandardNormal};
+use rand_distr::{Alphanumeric, Binomial, Distribution, Exp, Exp1, Normal, StandardNormal};
 
 #[polars_expr(output_type=Int32)]
 fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
@@ -163,6 +164,36 @@ fn pl_sample_uniform(inputs: &[Series]) -> PolarsResult<Series> {
     } else {
         let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(n));
         Ok(out.into_series())
+    }
+}
+
+#[polars_expr(output_type_func=float_output)]
+fn pl_perturb(inputs: &[Series]) -> PolarsResult<Series> {
+    let reference = &inputs[0];
+    let low = inputs[1].f64()?;
+    let low = low.get(0).unwrap();
+    let high = inputs[2].f64()?;
+    let high = high.get(0).unwrap();
+    match reference.dtype() {
+        DataType::Float32 => {
+            let dist: Uniform<f32> = Uniform::new(low as f32, high as f32);
+            let mut rng = rand::thread_rng();
+            let ca = reference.f32().unwrap();
+            // Have to use _generic here to avoid the Copy trait
+            let out: Float32Chunked = ca.apply_values_generic(|x| x + dist.sample(&mut rng));
+            Ok(out.into_series())
+        }
+        DataType::Float64 => {
+            let dist: Uniform<f64> = Uniform::new(low, high);
+            let mut rng = rand::thread_rng();
+            let ca = reference.f64().unwrap();
+            // Have to use _generic here to avoid the Copy trait
+            let out: Float64Chunked = ca.apply_values_generic(|x| x + dist.sample(&mut rng));
+            Ok(out.into_series())
+        }
+        _ => Err(PolarsError::ComputeError(
+            "Input column must be floats.".into(),
+        )),
     }
 }
 
