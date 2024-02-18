@@ -1,5 +1,5 @@
 import polars as pl
-from typing import Union, Iterable, List
+from typing import Union, Iterable, List, Optional
 from .type_alias import Distance
 
 from polars_ds.num import NumExt  # noqa: E402
@@ -223,3 +223,41 @@ def haversine(
     ylat = pl.lit(y_lat) if isinstance(y_lat, float) else y_lat
     ylong = pl.lit(y_long) if isinstance(y_long, float) else y_long
     return x_lat.num._haversine(x_long, ylat, ylong)
+
+
+def random_data(
+    size: int = 2_000, n_cols: int = 3, null_pct: Optional[float] = None
+) -> pl.DataFrame:
+    """
+    Generates a random eager Polars Dataframe with 1 column as row_num, and `n_cols` columns
+    random features. Random features will be uniformly generated.
+
+    Parameters
+    ----------
+    size
+        The total number of rows in this dataframe
+    n_cols
+        The total number of uniformly (range = [0, 1)) generated features
+    null_pct
+        If none, no null values will be present. If it is a float, then each feature column
+        will have this much percentage of nulls.
+    """
+    if null_pct is None:
+        rand_cols = (
+            pl.col("row_num").stats.sample_uniform(low=0.0, high=1.0).alias(f"feature_{i+1}")
+            for i in range(n_cols)
+        )
+    else:
+        rand_cols = (
+            pl.col("row_num")
+            .stats.sample_uniform(low=0.0, high=1.0)
+            .stats.rand_null(null_pct)
+            .alias(f"feature_{i+1}")
+            for i in range(n_cols)
+        )
+
+    return pl.DataFrame(
+        {
+            "row_num": pl.Series(values=range(size), dtype=pl.UInt64),
+        }
+    ).with_columns(*rand_cols)

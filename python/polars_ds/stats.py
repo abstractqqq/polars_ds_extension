@@ -1,5 +1,6 @@
 from __future__ import annotations
 import polars as pl
+import math
 from .type_alias import Alternative
 from typing import Optional, Union
 from polars.utils.udfs import _get_shared_lib_location
@@ -326,11 +327,7 @@ class StatsExt:
 
         resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_rand_int",
-            args=[lo, hi, resp],
-            is_elementwise=True,
-            returns_scalar=False,
+            lib=_lib, symbol="pl_rand_int", args=[lo, hi, resp], is_elementwise=True
         )
 
     def sample_uniform(
@@ -371,11 +368,38 @@ class StatsExt:
 
         resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
+            lib=_lib, symbol="pl_sample_uniform", args=[lo, hi, resp], is_elementwise=True
+        )
+
+    def perturb(self, epsilon: float, positive: bool = False):
+        """
+        Perturb self by a small amount. This only applies to float columns.
+
+        Parameters
+        ----------
+        epsilon
+            The small amount to perturb.
+        positive
+            If true, randomly add a small amount in [0, epsilon). If false, it will use the range
+            [-epsilon/2, epsilon/2)
+        """
+        if math.isinf(epsilon) or math.isnan(epsilon):
+            raise ValueError("Input `epsilon should be a valid finite value.`")
+
+        ep = abs(epsilon)
+        if positive:
+            lo = pl.lit(0.0, dtype=pl.Float64)
+            hi = pl.lit(ep, dtype=pl.Float64)
+        else:
+            half = ep / 2
+            lo = pl.lit(-half, dtype=pl.Float64)
+            hi = pl.lit(half, dtype=pl.Float64)
+
+        return self._expr.register_plugin(
             lib=_lib,
-            symbol="pl_sample_uniform",
-            args=[lo, hi, resp],
+            symbol="pl_perturb",
+            args=[lo, hi],
             is_elementwise=True,
-            returns_scalar=False,
         )
 
     def sample_binomial(self, n: int, p: float, respect_null: bool = False) -> pl.Expr:
@@ -402,7 +426,6 @@ class StatsExt:
             symbol="pl_sample_binomial",
             args=[nn, pp, resp],
             is_elementwise=True,
-            returns_scalar=False,
         )
 
     def sample_exp(
