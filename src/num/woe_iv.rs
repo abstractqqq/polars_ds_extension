@@ -16,13 +16,16 @@ fn iv_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 /// Get a lazyframe needed to compute WOE.
-/// Inputs[0] by default is the target (0s and 1s)
-/// Inputs[1] by default is the discrete bins / categories
-fn get_woe_frame(inputs: &[Series]) -> PolarsResult<LazyFrame> {
-    let categories = &inputs[1].cast(&DataType::String)?;
+/// Inputs[0] by default is the discrete bins / categories
+/// Inputs[1] by default is the target (0s and 1s)
+fn get_woe_frame(
+    discrete_col:&Series,
+    target:&Series
+) -> PolarsResult<LazyFrame> {
+    // let categories = &inputs[1].cast(&DataType::String)?;
     let df = df!(
-        "target" => inputs[0].clone(),
-        "values" => categories
+        "values" => discrete_col.cast(&DataType::String)?,
+        "target" => target,
     )?;
     // Here we are adding 1 to make sure the event/non-event (goods/bads) are nonzero,
     // so that the computation will not yield inf as output.
@@ -50,25 +53,23 @@ fn get_woe_frame(inputs: &[Series]) -> PolarsResult<LazyFrame> {
 /// WOE for each bin/category
 #[polars_expr(output_type_func=woe_output)]
 fn pl_woe_discrete(inputs: &[Series]) -> PolarsResult<Series> {
-    let df = get_woe_frame(inputs)?
+    let df = get_woe_frame(&inputs[0], &inputs[1])?
         .select([col("values"), col("woe")])
         .collect()?;
 
-    let out = df.into_struct("woe_output");
-    Ok(out.into_series())
+    Ok(df.into_struct("woe_output").into_series())
 }
 
 /// Information Value for each bin/category
 /// The information value for this column/feature will be the sum.
 #[polars_expr(output_type_func=iv_output)]
 fn pl_iv(inputs: &[Series]) -> PolarsResult<Series> {
-    let df = get_woe_frame(inputs)?
+    let df = get_woe_frame(&inputs[0], &inputs[1])?
         .select([
             col("values"),
             ((col("bad_pct") - col("good_pct")) * col("woe")).alias("iv"),
         ])
         .collect()?;
 
-    let out = df.into_struct("iv_output");
-    Ok(out.into_series())
+    Ok(df.into_struct("iv_output").into_series())
 }
