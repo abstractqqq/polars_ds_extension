@@ -1075,6 +1075,14 @@ class NumExt:
             returns_scalar=True,
         )
 
+    def matrix_profile(self, m: int, leaf_size: int = 40, parallel: bool = False) -> pl.Expr:
+        return self._expr.cast(pl.Float64).register_plugin(
+            lib=_lib,
+            symbol="pl_matrix_profile",
+            kwargs={"window_size": m, "leaf_size": leaf_size, "parallel": parallel},
+            changes_length=True,
+        )
+
     def _haversine(
         self,
         x_long: pl.Expr,
