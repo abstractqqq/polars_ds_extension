@@ -554,6 +554,32 @@ class StatsExt:
             is_elementwise=True,
         )
 
+    def t_mean(self, lower: float, upper: float) -> pl.Expr:
+        """
+        Computes the trimmed mean of the variable.
+
+        Parameters
+        ----------
+        lower
+            The lower end, smaller values will be trimmed
+        upper
+            The upper end, larger values will be trimmed
+        """
+        return self._expr.filter(self._expr.is_between(lower, upper)).mean()
+
+    def t_var(self, lower: float, upper: float, ddof: int = 1) -> pl.Expr:
+        """
+        Computes the trimmed var of the variable.
+
+        Parameters
+        ----------
+        lower
+            The lower end, smaller values will be trimmed
+        upper
+            The upper end, larger values will be trimmed
+        """
+        return self._expr.filter(self._expr.is_between(lower, upper)).var(ddof)
+
     def w_mean(self, weights: pl.Expr, is_normalized: bool = False) -> pl.Expr:
         """
         Computes the weighted mean of self, where weights is an expr represeting
@@ -564,7 +590,7 @@ class StatsExt:
         Parameters
         ----------
         weights
-            An expr representing weights
+            An expr representing weights. Must be of same length as self.
         is_normalized
             If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
         """
@@ -583,7 +609,7 @@ class StatsExt:
         Parameters
         ----------
         weights
-            An expr representing weights
+            An expr representing weights. Must be of same length as self.
         is_normalized
             If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
         """
@@ -595,3 +621,19 @@ class StatsExt:
             denom = weights.sum() * (self._expr.count() - 1) / self._expr.count()
 
         return out / denom
+
+    def w_gmean(self, weights: pl.Expr, is_normalized: bool = False) -> pl.Expr:
+        """
+        Computes the weighted geometric mean.
+
+        Parameters
+        ----------
+        weights
+            An expr representing weights. Must be of same length as self.
+        is_normalized
+            If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
+        """
+        if is_normalized:
+            return (self._expr.ln().dot(weights)).exp()
+        else:
+            return (self._expr.ln().dot(weights) / (weights.sum())).exp()

@@ -44,17 +44,17 @@ class NumExt:
         """
         return (self._expr.dot(self._expr) / self._expr.count()).sqrt()
 
-    def harmonic_mean(self) -> pl.Expr:
+    def hmean(self) -> pl.Expr:
         """
         Returns the harmonic mean of the expression
         """
         return self._expr.count() / (1.0 / self._expr).sum()
 
-    def geometric_mean(self) -> pl.Expr:
+    def gmean(self) -> pl.Expr:
         """
         Returns the geometric mean of the expression
         """
-        return self._expr.product().pow(1.0 / self._expr.count())
+        return self._expr.ln().mean().exp()
 
     def cv(self, ddof: int = 1) -> pl.Expr:
         """
