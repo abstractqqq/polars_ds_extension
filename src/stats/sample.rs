@@ -33,6 +33,7 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
     let n = reference.len();
     let dist = Uniform::new(low, high);
     let mut rng = rand::thread_rng();
+
     if respect_null && (reference.null_count() > 0) {
         let ca = reference.is_null();
         let out: Int32Chunked = ca.apply_generic(|x| {
