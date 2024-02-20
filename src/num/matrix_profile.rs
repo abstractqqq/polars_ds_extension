@@ -1,6 +1,6 @@
 /// Creating matrix profile for a time series.
 /// This is significantly faster than STUMPY when m (window size) is small, and
-/// when n (total data points) is large.
+/// when n (total data points) is large. But is significantly slower when m is large.
 use crate::utils::split_offsets;
 use kdtree::KdTree;
 use num::ToPrimitive;
@@ -28,7 +28,12 @@ pub(crate) struct MatrixProfileKwargs {
     pub(crate) parallel: bool,
 }
 
+// Comments on Performance
 // Can be made much faster if kd-tree has add_unchecked, or other ways that bypass the point's finite checks.
+// Comments on variations
+// We can add a approximate option, which then will still have output of length len - m + 1, but we only
+// add x% of data points to the kd-tree. We can easily do this when we add points to tree
+
 #[polars_expr(output_type_func=matrix_profile_output)]
 fn pl_matrix_profile(
     inputs: &[Series],
@@ -99,12 +104,10 @@ fn pl_matrix_profile(
                     let start_idx = offset * m;
                     let end_idx = (offset + len) * m;
                     let piece = &points[start_idx..end_idx];
-
                     let mut dist_builder: PrimitiveChunkedBuilder<Float64Type> =
                         PrimitiveChunkedBuilder::new("", len);
                     let mut idx_builder: PrimitiveChunkedBuilder<UInt32Type> =
                         PrimitiveChunkedBuilder::new("", len);
-
                     for (i, pt) in piece.chunks_exact(m).enumerate() {
                         let mut dist: Option<f64> = None;
                         let mut id: Option<u32> = None;
@@ -136,9 +139,9 @@ fn pl_matrix_profile(
         })
     } else {
         let mut dist_builder: PrimitiveChunkedBuilder<Float64Type> =
-            PrimitiveChunkedBuilder::new("squared_znorm", ts.len());
+            PrimitiveChunkedBuilder::new("squared_znorm", output_size);
         let mut idx_builder: PrimitiveChunkedBuilder<UInt32Type> =
-            PrimitiveChunkedBuilder::new("index", ts.len());
+            PrimitiveChunkedBuilder::new("index", output_size);
         for (i, pt) in points.chunks_exact(m).enumerate() {
             let mut dist: Option<f64> = None;
             let mut id: Option<u32> = None;
