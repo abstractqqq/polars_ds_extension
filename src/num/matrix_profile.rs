@@ -12,6 +12,8 @@ use pyo3_polars::{
         POOL,
     },
 };
+use rand::distributions::Uniform;
+use rand::Rng;
 use serde::Deserialize;
 
 pub fn matrix_profile_output(_: &[Field]) -> PolarsResult<Field> {
@@ -25,14 +27,19 @@ pub fn matrix_profile_output(_: &[Field]) -> PolarsResult<Field> {
 pub(crate) struct MatrixProfileKwargs {
     pub(crate) window_size: usize,
     pub(crate) leaf_size: usize,
+    pub(crate) sample: f64,
     pub(crate) parallel: bool,
 }
 
 // Comments on Performance
 // Can be made much faster if kd-tree has add_unchecked, or other ways that bypass the point's finite checks.
-// Comments on variations
-// We can add a approximate option, which then will still have output of length len - m + 1, but we only
-// add x% of data points to the kd-tree. We can easily do this when we add points to tree
+// Right now kd-tree is very slow when window-size is large. I wonder why.
+
+#[inline(always)]
+fn equiv_dist(a: &[f64], b: &[f64]) -> f64 {
+    let d = a.iter().zip(b.iter()).fold(0., |acc, (x, y)| acc + x * y);
+    2.0 * (a.len() as f64 - d)
+}
 
 #[polars_expr(output_type_func=matrix_profile_output)]
 fn pl_matrix_profile(
@@ -45,11 +52,12 @@ fn pl_matrix_profile(
     let m = kwargs.window_size;
     let mf64 = m as f64;
     let leaf_size = kwargs.leaf_size;
+    let sample = kwargs.sample;
     let parallel = kwargs.parallel;
     let can_parallel = parallel && !context.parallel();
-    if ts.null_count() > 0 || ts.len() <= m || m < 4 {
+    if ts.null_count() > 0 || ts.len() <= m || m < 4 || sample.abs() > 1.0 || sample <= 0. {
         return Err(PolarsError::ComputeError(
-            "Matrix Profile: Input must not contain nulls and must have length > window size > 4."
+            "Matrix Profile: Input must not contain nulls and must have length > window size > 4. If approximate, the % must be in (0, 1]."
                 .into(),
         ));
     }
@@ -60,30 +68,43 @@ fn pl_matrix_profile(
     // Build the kd-tree
     let mut points: Vec<f64> = Vec::with_capacity(output_size * m);
     // // Creating Z-normalized Points
-    // // Init for the rolling stats
-    let mut rolling_mean: f64 = ts[..m].iter().sum::<f64>() / mf64;
-    let mut old: f64 = ts[0];
-    let mut rolling_var = ts[..m]
+    // // Init for the rolling stats, mean, var
+    let mut rolling = [0f64, 0f64];
+    rolling[0] = ts[..m].iter().sum::<f64>() / mf64;
+    rolling[1] = ts[..m]
         .iter()
-        .fold(0., |acc, x| acc + (x - rolling_mean).powi(2))
-        / (mf64 - 1.0);
-    let std = rolling_var.sqrt();
-    points.extend(ts[..m].iter().map(|x| (x - rolling_mean) / std));
+        .fold(0., |acc, x| acc + (x - rolling[0]).powi(2))
+        / mf64;
+    let std = rolling[1].sqrt();
+    points.extend(ts[..m].iter().map(|x| (x - rolling[0]) / std));
+    let mut old: f64 = ts[0];
     // // Build the rolling stats
     for sl in ts[1..].windows(m) {
         let new = sl[m - 1];
-        let old_mean = rolling_mean.clone();
-        rolling_mean += (new - old) / mf64;
-        rolling_var += (new - old) * (new - rolling_mean + old - old_mean) / (mf64 - 1.0);
+        let old_mean = rolling[0].clone();
+        rolling[0] += (new - old) / mf64;
+        rolling[1] += (new - old) * (new - rolling[0] + old - old_mean) / mf64;
         old = sl[0];
-        let std = rolling_var.sqrt();
-        points.extend(sl.iter().map(|x| (x - rolling_mean) / std))
+        let std = rolling[1].sqrt();
+        points.extend(sl.iter().map(|x| (x - rolling[0]) / std))
     }
     // // Inserting points into tree
     let mut tree: KdTree<f64, usize, &[f64]> = KdTree::with_capacity(m, leaf_size);
-    for (i, p) in points.chunks_exact(m).enumerate() {
-        tree.add(p, i)
-            .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
+    if sample < 1. {
+        // don't add all points to sample, only some
+        let dist = Uniform::new(0., 1.);
+        let mut rng = rand::thread_rng();
+        for (i, p) in points.chunks_exact(m).enumerate() {
+            if rng.sample(dist) < sample {
+                tree.add(p, i)
+                    .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
+            }
+        }
+    } else {
+        for (i, p) in points.chunks_exact(m).enumerate() {
+            tree.add(p, i)
+                .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
+        }
     }
 
     // Query and build output
@@ -111,7 +132,7 @@ fn pl_matrix_profile(
                     for (i, pt) in piece.chunks_exact(m).enumerate() {
                         let mut dist: Option<f64> = None;
                         let mut id: Option<u32> = None;
-                        if let Ok(v) = tree.nearest(&pt, k, &super::squared_euclidean) {
+                        if let Ok(v) = tree.nearest(&pt, k, &equiv_dist) {
                             for (d, j) in v {
                                 if (i + offset).abs_diff(*j) > exclusion {
                                     dist = Some(d);
@@ -145,7 +166,7 @@ fn pl_matrix_profile(
         for (i, pt) in points.chunks_exact(m).enumerate() {
             let mut dist: Option<f64> = None;
             let mut id: Option<u32> = None;
-            if let Ok(v) = tree.nearest(&pt, k, &super::squared_euclidean) {
+            if let Ok(v) = tree.nearest(&pt, k, &equiv_dist) {
                 for (d, j) in v {
                     if i.abs_diff(*j) > exclusion {
                         dist = Some(d);
@@ -161,9 +182,7 @@ fn pl_matrix_profile(
     };
 
     let s_dist = ca_dist.into_series();
-    // let s_dist = s_dist.extend_constant(AnyValue::Null, m - 1)?;
     let s_id = ca_id.into_series();
-    // let s_id = s_id.extend_constant(AnyValue::Null, m - 1)?;
     let out = StructChunked::new("profile", &[s_dist, s_id])?;
     Ok(out.into_series())
 }

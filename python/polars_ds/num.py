@@ -1075,11 +1075,27 @@ class NumExt:
             returns_scalar=True,
         )
 
-    def matrix_profile(self, m: int, leaf_size: int = 40, parallel: bool = False) -> pl.Expr:
+    def matrix_profile(self, m: int, sample: float = 1.0, parallel: bool = False) -> pl.Expr:
+        """
+        Computes the matrix profile of the time series. Currently, a default exclusion zone
+        of ceil(m/4) around every index is implemented. Only the closet neighbor's index is
+        returned.
+
+        Parameters
+        ----------
+        m
+            The window size for matrix profile computation
+        sample
+            The sample rate. If > 0 and < 1, will sample this & of all windows when comparing distance.
+            If = 1, will run the exact matrix profile search.
+        parallel
+            Whether to run this in parallel or not. This is recommended when you
+            are running only this expression, and not in group_by context.
+        """
         return self._expr.cast(pl.Float64).register_plugin(
             lib=_lib,
             symbol="pl_matrix_profile",
-            kwargs={"window_size": m, "leaf_size": leaf_size, "parallel": parallel},
+            kwargs={"window_size": m, "leaf_size": 40, "sample": sample, "parallel": parallel},
             changes_length=True,
         )
 
