@@ -28,6 +28,7 @@ pub(crate) struct MatrixProfileKwargs {
     pub(crate) window_size: usize,
     pub(crate) leaf_size: usize,
     pub(crate) sample: f64,
+    pub(crate) dist: String,
     pub(crate) parallel: bool,
 }
 
@@ -35,8 +36,11 @@ pub(crate) struct MatrixProfileKwargs {
 // Can be made much faster if kd-tree has add_unchecked, or other ways that bypass the point's finite checks.
 // Right now kd-tree is very slow when window-size is large. I wonder why.
 
+// Later: this deserves a persistent version outside Polars DF.
+
 #[inline(always)]
 fn equiv_dist(a: &[f64], b: &[f64]) -> f64 {
+    // The is the equivalent Z-norm Euclidean distance for a, b when they are normalized already.
     let d = a.iter().zip(b.iter()).fold(0., |acc, (x, y)| acc + x * y);
     2.0 * (a.len() as f64 - d)
 }
@@ -55,9 +59,9 @@ fn pl_matrix_profile(
     let sample = kwargs.sample;
     let parallel = kwargs.parallel;
     let can_parallel = parallel && !context.parallel();
-    if ts.null_count() > 0 || ts.len() <= m || m < 4 || sample.abs() > 1.0 || sample <= 0. {
+    if ts.null_count() > 0 || ts.len() <= m || m < 2 || sample > 1.0 || sample <= 0. {
         return Err(PolarsError::ComputeError(
-            "Matrix Profile: Input must not contain nulls and must have length > window size > 4. If approximate, the % must be in (0, 1]."
+            "Matrix Profile: Input must not contain nulls and must have length > window size > 1. If approximate, the % must be in (0, 1]."
                 .into(),
         ));
     }
@@ -75,7 +79,7 @@ fn pl_matrix_profile(
         .iter()
         .fold(0., |acc, x| acc + (x - rolling[0]).powi(2))
         / mf64;
-    let std = rolling[1].sqrt();
+    let std = rolling[1].max(1e-10).sqrt();
     points.extend(ts[..m].iter().map(|x| (x - rolling[0]) / std));
     let mut old: f64 = ts[0];
     // // Build the rolling stats
@@ -85,7 +89,7 @@ fn pl_matrix_profile(
         rolling[0] += (new - old) / mf64;
         rolling[1] += (new - old) * (new - rolling[0] + old - old_mean) / mf64;
         old = sl[0];
-        let std = rolling[1].sqrt();
+        let std = rolling[1].max(1e-10).sqrt();
         points.extend(sl.iter().map(|x| (x - rolling[0]) / std))
     }
     // // Inserting points into tree
@@ -167,6 +171,131 @@ fn pl_matrix_profile(
             let mut dist: Option<f64> = None;
             let mut id: Option<u32> = None;
             if let Ok(v) = tree.nearest(&pt, k, &equiv_dist) {
+                for (d, j) in v {
+                    if i.abs_diff(*j) > exclusion {
+                        dist = Some(d);
+                        id = Some(*j as u32);
+                        break;
+                    } // <= means in exclusion zone. > means good
+                }
+            }
+            dist_builder.append_option(dist);
+            idx_builder.append_option(id);
+        }
+        (dist_builder.finish(), idx_builder.finish())
+    };
+
+    let s_dist = ca_dist.into_series();
+    let s_id = ca_id.into_series();
+    let out = StructChunked::new("profile", &[s_dist, s_id])?;
+    Ok(out.into_series())
+}
+
+#[polars_expr(output_type_func=matrix_profile_output)]
+fn pl_matrix_profile_any_dist(
+    inputs: &[Series],
+    context: CallerContext,
+    kwargs: MatrixProfileKwargs,
+) -> PolarsResult<Series> {
+    // Set up
+    let ts = inputs[0].f64()?;
+    let m = kwargs.window_size;
+    let mf64 = m as f64;
+    let leaf_size = kwargs.leaf_size;
+    let sample = kwargs.sample;
+    let parallel = kwargs.parallel;
+    let can_parallel = parallel && !context.parallel();
+    if ts.null_count() > 0 || ts.len() <= m || m < 2 || sample > 1.0 || sample <= 0. {
+        return Err(PolarsError::ComputeError(
+            "Matrix Profile: Input must not contain nulls and must have length > window size > 1. If approximate, the % must be in (0, 1]."
+                .into(),
+        ));
+    }
+    let ts = ts.rechunk();
+    let ts = ts.cont_slice().unwrap();
+    let output_size = ts.len() - m + 1;
+
+    // Distance
+    let metric = kwargs.dist;
+    let dist_func = super::which_distance(&metric, m)?;
+    // Need this to use in parallel mode.
+    let points = ts.windows(m).collect::<Vec<_>>();
+    // // Inserting points into tree
+    let mut tree: KdTree<f64, usize, &[f64]> = KdTree::with_capacity(m, leaf_size);
+    if sample < 1. {
+        let dist = Uniform::new(0., 1.);
+        let mut rng = rand::thread_rng();
+        for (i, p) in ts.windows(m).enumerate() {
+            if rng.sample(dist) < sample {
+                tree.add(p, i)
+                    .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
+            }
+        }
+    } else {
+        for (i, p) in ts.windows(m).enumerate() {
+            tree.add(p, i)
+                .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
+        }
+    }
+
+    // Query and build output
+    // Exclusion zone default is: i +- ceil(m/4)
+    let exclusion = (mf64 / 4.0).ceil().to_usize().unwrap();
+
+    // Need at least exclusion * 2 + 2 points to ensure at least 1 pt to be outside exclusion. Pigeon hole.
+    // We can be faster if we can make k smaller.
+    let k = exclusion * 2 + 2;
+
+    let (ca_dist, ca_id) = if can_parallel {
+        POOL.install(|| {
+            let n_threads = POOL.current_num_threads();
+            let splits = split_offsets(output_size, n_threads);
+            let chunks: (Vec<_>, Vec<_>) = splits
+                .into_par_iter()
+                .map(|(offset, len)| {
+                    let piece = &points[offset..offset + len];
+                    let mut dist_builder: PrimitiveChunkedBuilder<Float64Type> =
+                        PrimitiveChunkedBuilder::new("", len);
+                    let mut idx_builder: PrimitiveChunkedBuilder<UInt32Type> =
+                        PrimitiveChunkedBuilder::new("", len);
+                    for (i, pt) in piece.into_iter().enumerate() {
+                        let mut dist: Option<f64> = None;
+                        let mut id: Option<u32> = None;
+                        if let Ok(v) = tree.nearest(*pt, k, &dist_func) {
+                            for (d, j) in v {
+                                if (i + offset).abs_diff(*j) > exclusion {
+                                    dist = Some(d);
+                                    id = Some(*j as u32);
+                                    break;
+                                } // <= means in exclusion zone. > means good
+                            }
+                        }
+                        dist_builder.append_option(dist);
+                        idx_builder.append_option(id);
+                    }
+                    let ca1 = dist_builder.finish();
+                    let ca2 = idx_builder.finish();
+                    (
+                        ca1.downcast_iter().cloned().collect::<Vec<_>>(),
+                        ca2.downcast_iter().cloned().collect::<Vec<_>>(),
+                    )
+                })
+                .collect();
+
+            (
+                Float64Chunked::from_chunk_iter("squared_znorm", chunks.0.into_iter().flatten()),
+                UInt32Chunked::from_chunk_iter("index", chunks.1.into_iter().flatten()),
+            )
+        })
+    } else {
+        let mut dist_builder: PrimitiveChunkedBuilder<Float64Type> =
+            PrimitiveChunkedBuilder::new("squared_znorm", output_size);
+        let mut idx_builder: PrimitiveChunkedBuilder<UInt32Type> =
+            PrimitiveChunkedBuilder::new("index", output_size);
+        for (i, pt) in ts.windows(m).enumerate() {
+            let mut dist: Option<f64> = None;
+            let mut id: Option<u32> = None;
+            if let Ok(v) = tree.nearest(pt, k, &dist_func) {
                 for (d, j) in v {
                     if i.abs_diff(*j) > exclusion {
                         dist = Some(d);

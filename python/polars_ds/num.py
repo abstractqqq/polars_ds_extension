@@ -2,7 +2,7 @@ from __future__ import annotations
 import math
 import polars as pl
 from typing import Union, Optional, List
-from .type_alias import DetrendMethod, Distance
+from .type_alias import DetrendMethod, Distance, MatrixProfileDistance
 from polars.utils.udfs import _get_shared_lib_location
 
 _lib = _get_shared_lib_location(__file__)
@@ -1075,29 +1075,71 @@ class NumExt:
             returns_scalar=True,
         )
 
-    def matrix_profile(self, m: int, sample: float = 1.0, parallel: bool = False) -> pl.Expr:
+    def matrix_profile(
+        self, m: int, dist: MatrixProfileDistance = "z", sample: float = 1.0, parallel: bool = False
+    ) -> pl.Expr:
         """
-        Computes the matrix profile of the time series. Currently, a default exclusion zone
-        of ceil(m/4) around every index is implemented. Only the closet neighbor's index is
-        returned.
+        Computes the matrix profile for the data. Most of the times, the data will be a time series.
+        Currently, a default exclusion zone of ceil(m/4) around every index is implemented. Only the
+        closet neighbor's distance and index are returned.
+
+        This implementation does not work with Nulls, NaN, or Inf values. A good
+        idea is to impute all of these values to a very large value beforehand, so that windows
+        containing these values will be considered anomalies.
+
+        When distance = z, variance is capped at 1e-10 to avoid numerical issues with 0 variance.
+
+        Note: this implementation (with dist = "z") is faster than STUMPY when m is small, but can be
+        much slower when m is large. The internal distance calculations are meant to be one-time use only,
+        and will not be persistent. This is more useful if you are running reports on medium sized data
+        with small m.
 
         Parameters
         ----------
         m
             The window size for matrix profile computation
+        dist
+            The distance used in matrix profile calculation. One of
+            ["l1", "l2", "inf", "cosine", "z"], where "l2" means squared L2 (Euclidean), and "z"
+            means z-normalized squared Euclidean. Due to implementation details and the nature of
+            matrix profiles, using "z" is the most optimized method as of now.
         sample
-            The sample rate. If > 0 and < 1, will sample this & of all windows when comparing distance.
-            If = 1, will run the exact matrix profile search.
+            The sample rate. If > 0 and < 1, will sample this % of all windows when comparing distance.
+            If sample = 1, will run the exact matrix profile search.
         parallel
             Whether to run this in parallel or not. This is recommended when you
             are running only this expression, and not in group_by context.
         """
-        return self._expr.cast(pl.Float64).register_plugin(
-            lib=_lib,
-            symbol="pl_matrix_profile",
-            kwargs={"window_size": m, "leaf_size": 40, "sample": sample, "parallel": parallel},
-            changes_length=True,
-        )
+        good_dists = ["l1", "l2", "inf", "cosine", "z"]
+        if dist not in good_dists:
+            raise ValueError(f"Invalid matrix profile distance. Valid distances are : {good_dists}")
+
+        if dist == "z":
+            return self._expr.cast(pl.Float64).register_plugin(
+                lib=_lib,
+                symbol="pl_matrix_profile",
+                kwargs={
+                    "window_size": m,
+                    "leaf_size": 40,
+                    "sample": sample,
+                    "dist": dist,
+                    "parallel": parallel,
+                },
+                changes_length=True,
+            )
+        else:
+            return self._expr.cast(pl.Float64).register_plugin(
+                lib=_lib,
+                symbol="pl_matrix_profile_any_dist",
+                kwargs={
+                    "window_size": m,
+                    "leaf_size": 40,
+                    "sample": sample,
+                    "dist": dist,
+                    "parallel": parallel,
+                },
+                changes_length=True,
+            )
 
     def _haversine(
         self,

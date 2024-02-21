@@ -84,14 +84,15 @@ pub fn which_distance(metric: &str, dim: usize) -> PolarsResult<fn(&[f64], &[f64
             if dim == 2 {
                 Ok(haversine)
             } else {
-                Err(
-                    PolarsError::ComputeError(
-                        "KNN: Haversine distance must take 2 columns as features, one for lat and one for long.".into()
-                    )
-                )
+                Err(PolarsError::ComputeError(
+                    "Invalid distance metric for the case.".into(),
+                ))
             }
         }
         "cosine" => Ok(cosine_dist),
-        _ => Ok(squared_euclidean),
+        "l2" | "sq_l2" => Ok(squared_euclidean),
+        _ => Err(PolarsError::ComputeError(
+            "Invalid distance metric for the case.".into(),
+        )),
     }
 }
