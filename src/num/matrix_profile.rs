@@ -29,17 +29,23 @@ pub(crate) struct MatrixProfileKwargs {
     pub(crate) leaf_size: usize,
     pub(crate) sample: f64,
     pub(crate) dist: String,
+    pub(crate) exclude: usize,
     pub(crate) parallel: bool,
 }
 
 // Comments on Performance
-// Can be made much faster if kd-tree has add_unchecked, or other ways that bypass the point's finite checks.
-// Right now kd-tree is very slow when window-size is large. I wonder why.
+// Can be made much faster if kd-tree has add_unchecked, or other ways that bypass the point's finiteness checks.
+// Right now kd-tree is very slow when window-size is large. The reason is somewhat associated with
+// the exclusion zone. If we run k = 1 KNN queries it is much faster. But because of the exclusion zone,
+// we have to run k = 2 * EXCLUSION ZONE + 2 query to gaurantee the existence of a point outside the zone.
+// More performance gain can be achieved if we customize a Kd-tree for this.
 
-// Later: this deserves a persistent version outside Polars DF.
+// We might want to support f32 (without casting everything to f64) because this consumes quite a bit memory?
+
+// Later: this deserves a persistent version outside Polars DF, so that it can be mutated and persisted.
 
 #[inline(always)]
-fn equiv_dist(a: &[f64], b: &[f64]) -> f64 {
+fn znorm_simplified(a: &[f64], b: &[f64]) -> f64 {
     // The is the equivalent Z-norm Euclidean distance for a, b when they are normalized already.
     let d = a.iter().zip(b.iter()).fold(0., |acc, (x, y)| acc + x * y);
     2.0 * (a.len() as f64 - d)
@@ -112,9 +118,8 @@ fn pl_matrix_profile(
     }
 
     // Query and build output
-    // Exclusion zone default is: i +- ceil(m/4)
-    let exclusion = (mf64 / 4.0).ceil().to_usize().unwrap();
-
+    // let exclusion = (mf64 / 4.0).ceil().to_usize().unwrap(); // This is a good default
+    let exclusion = kwargs.exclude;
     // Need at least exclusion * 2 + 2 points to ensure at least 1 pt to be outside exclusion. Pigeon hole.
     // We can be faster if we can make k smaller.
     let k = exclusion * 2 + 2;
@@ -136,7 +141,7 @@ fn pl_matrix_profile(
                     for (i, pt) in piece.chunks_exact(m).enumerate() {
                         let mut dist: Option<f64> = None;
                         let mut id: Option<u32> = None;
-                        if let Ok(v) = tree.nearest(&pt, k, &equiv_dist) {
+                        if let Ok(v) = tree.nearest(&pt, k, &znorm_simplified) {
                             for (d, j) in v {
                                 if (i + offset).abs_diff(*j) > exclusion {
                                     dist = Some(d);
@@ -170,7 +175,7 @@ fn pl_matrix_profile(
         for (i, pt) in points.chunks_exact(m).enumerate() {
             let mut dist: Option<f64> = None;
             let mut id: Option<u32> = None;
-            if let Ok(v) = tree.nearest(&pt, k, &equiv_dist) {
+            if let Ok(v) = tree.nearest(&pt, k, &znorm_simplified) {
                 for (d, j) in v {
                     if i.abs_diff(*j) > exclusion {
                         dist = Some(d);

@@ -1076,7 +1076,12 @@ class NumExt:
         )
 
     def matrix_profile(
-        self, m: int, dist: MatrixProfileDistance = "z", sample: float = 1.0, parallel: bool = False
+        self,
+        m: int,
+        dist: MatrixProfileDistance = "z",
+        sample: float = 1.0,
+        exclude: Optional[int] = None,
+        parallel: bool = False,
     ) -> pl.Expr:
         """
         Computes the matrix profile for the data. Most of the times, the data will be a time series.
@@ -1087,12 +1092,17 @@ class NumExt:
         idea is to impute all of these values to a very large value beforehand, so that windows
         containing these values will be considered anomalies.
 
-        When distance = z, variance is capped at 1e-10 to avoid numerical issues with 0 variance.
+        When dist = "z", variance is capped at 1e-10 to avoid numerical issues with 0 variance.
 
-        Note: this implementation (with dist = "z") is faster than STUMPY when m is small, but can be
-        much slower when m is large. The internal distance calculations are meant to be one-time use only,
-        and will not be persistent. This is more useful if you are running reports on medium sized data
-        with small m.
+        Note 1: this implementation (with dist = "z") is faster than STUMPY when m is small (<10) and when n
+        is large, but can be much slower when m is large. The internal distance calculations are meant to
+        be one-time use only, and will not be persistent.
+
+        Note 2: this implementation (with dist = "z") will allocate a Vec<f64> with length = (len - m + 1) * m.
+        Please be aware of the potential memory usage. Other distances do not require this extra allocation.
+
+        Note 3: To normalize the distance to between 0 and 1, first take square root, then divide it by
+        2 * sqrt(m).
 
         Parameters
         ----------
@@ -1106,38 +1116,49 @@ class NumExt:
         sample
             The sample rate. If > 0 and < 1, will sample this % of all windows when comparing distance.
             If sample = 1, will run the exact matrix profile search.
+        exclude
+            If exclude = 2, then for window i, the nearest neighbor j will be selected so that |i-j|>2.
+            This prohibits adjacent subsequences to be the nearest neighbor. If none, this will default to
+            int(ceil(m/4)). Note: exclusion zone is domain dependent. Having a small exclusion zone may
+            speed up performance.
         parallel
             Whether to run this in parallel or not. This is recommended when you
             are running only this expression, and not in group_by context.
+
+        Reference
+        ---------
+        https://stumpy.readthedocs.io/en/latest/Tutorial_The_Matrix_Profile.html
         """
         good_dists = ["l1", "l2", "inf", "cosine", "z"]
         if dist not in good_dists:
             raise ValueError(f"Invalid matrix profile distance. Valid distances are : {good_dists}")
 
+        if exclude is None:
+            ex = int(math.ceil(m / 4))
+        else:
+            ex = exclude
+
+        kwargs = {
+            "window_size": m,
+            "leaf_size": 40,
+            "sample": sample,
+            "dist": dist,
+            "exclude": ex,
+            "parallel": parallel,
+        }
+
         if dist == "z":
             return self._expr.cast(pl.Float64).register_plugin(
                 lib=_lib,
                 symbol="pl_matrix_profile",
-                kwargs={
-                    "window_size": m,
-                    "leaf_size": 40,
-                    "sample": sample,
-                    "dist": dist,
-                    "parallel": parallel,
-                },
+                kwargs=kwargs,
                 changes_length=True,
             )
         else:
             return self._expr.cast(pl.Float64).register_plugin(
                 lib=_lib,
                 symbol="pl_matrix_profile_any_dist",
-                kwargs={
-                    "window_size": m,
-                    "leaf_size": 40,
-                    "sample": sample,
-                    "dist": dist,
-                    "parallel": parallel,
-                },
+                kwargs=kwargs,
                 changes_length=True,
             )
 
