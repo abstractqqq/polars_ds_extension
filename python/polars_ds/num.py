@@ -2,7 +2,9 @@ from __future__ import annotations
 import math
 import polars as pl
 from typing import Union, Optional, List
-from .type_alias import DetrendMethod, Distance, MatrixProfileDistance
+
+# MatrixProfileDistance
+from .type_alias import DetrendMethod, Distance
 from polars.utils.udfs import _get_shared_lib_location
 
 _lib = _get_shared_lib_location(__file__)
@@ -1078,7 +1080,6 @@ class NumExt:
     def matrix_profile(
         self,
         m: int,
-        dist: MatrixProfileDistance = "z",
         sample: float = 1.0,
         exclude: Optional[int] = None,
         parallel: bool = False,
@@ -1108,11 +1109,6 @@ class NumExt:
         ----------
         m
             The window size for matrix profile computation
-        dist
-            The distance used in matrix profile calculation. One of
-            ["l1", "l2", "inf", "cosine", "z"], where "l2" means squared L2 (Euclidean), and "z"
-            means z-normalized squared Euclidean. Due to implementation details and the nature of
-            matrix profiles, using "z" is the most optimized method as of now.
         sample
             The sample rate. If > 0 and < 1, will sample this % of all windows when comparing distance.
             If sample = 1, will run the exact matrix profile search.
@@ -1129,38 +1125,47 @@ class NumExt:
         ---------
         https://stumpy.readthedocs.io/en/latest/Tutorial_The_Matrix_Profile.html
         """
-        good_dists = ["l1", "l2", "inf", "cosine", "z"]
-        if dist not in good_dists:
-            raise ValueError(f"Invalid matrix profile distance. Valid distances are : {good_dists}")
+        # good_dists = ["l1", "l2", "inf", "cosine", "z"]
+        # if dist not in good_dists:
+        #     raise ValueError(f"Invalid matrix profile distance. Valid distances are : {good_dists}")
 
         if exclude is None:
             ex = int(math.ceil(m / 4))
         else:
             ex = exclude
 
-        kwargs = {
-            "window_size": m,
-            "leaf_size": 40,
-            "sample": sample,
-            "dist": dist,
-            "exclude": ex,
-            "parallel": parallel,
-        }
+        return self._expr.cast(pl.Float64).register_plugin(
+            lib=_lib,
+            symbol="pl_matrix_profile",
+            kwargs={
+                "window_size": m,
+                "leaf_size": 32,
+                "sample": sample,
+                "exclude": ex,
+                "parallel": parallel,
+            },
+            changes_length=True,
+        )
 
-        if dist == "z":
-            return self._expr.cast(pl.Float64).register_plugin(
-                lib=_lib,
-                symbol="pl_matrix_profile",
-                kwargs=kwargs,
-                changes_length=True,
-            )
-        else:
-            return self._expr.cast(pl.Float64).register_plugin(
-                lib=_lib,
-                symbol="pl_matrix_profile_any_dist",
-                kwargs=kwargs,
-                changes_length=True,
-            )
+    def matrix_profile2(
+        self,
+        m: int,
+        parallel: bool = False,
+    ) -> pl.Expr:
+        """ """
+        return self._expr.cast(pl.Float64).register_plugin(
+            lib=_lib,
+            symbol="pl_matrix_profile_big",
+            kwargs={
+                "window_size": m,
+                "leaf_size": 32,
+                "sample": 1.0,
+                "dist": "z",
+                "exclude": 0,
+                "parallel": parallel,
+            },
+            changes_length=True,
+        )
 
     def _haversine(
         self,

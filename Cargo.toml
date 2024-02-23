@@ -27,6 +27,7 @@ inflections = "1.1.1"
 kdtree = {git = "https://github.com/mrhooray/kdtree-rs.git"}
 petgraph = "0.6.4"
 ordered-float = "4.2.0"
+argminmax = "0.6.1"
 
 [target.'cfg(any(not(target_os = "linux"), use_mimalloc))'.dependencies]
 mimalloc = { version = "0.1", default-features = false }
@@ -38,4 +39,4 @@ jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }
 [profile.release]
 codegen-units = 1
 strip = "symbols" 
-lto = "fat"
+lto = "thin"

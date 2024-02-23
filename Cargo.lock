@@ -1622,6 +1622,7 @@ dependencies = [
 name = "polars_ds"
 version = "0.3.3"
 dependencies = [
+ "argminmax",
  "faer",
  "hashbrown",
  "inflections",
