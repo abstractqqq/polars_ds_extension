@@ -1150,18 +1150,25 @@ class NumExt:
     def matrix_profile2(
         self,
         m: int,
+        exclude: Optional[int] = None,
         parallel: bool = False,
     ) -> pl.Expr:
         """ """
+
+        if exclude is None:
+            ex = int(math.ceil(m / 4))
+        else:
+            ex = exclude
+
         return self._expr.cast(pl.Float64).register_plugin(
             lib=_lib,
-            symbol="pl_matrix_profile_big",
+            symbol="pl_matrix_profile2",
             kwargs={
                 "window_size": m,
                 "leaf_size": 32,
                 "sample": 1.0,
                 "dist": "z",
-                "exclude": 0,
+                "exclude": ex,
                 "parallel": parallel,
             },
             changes_length=True,
