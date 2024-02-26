@@ -2,7 +2,7 @@ from __future__ import annotations
 import math
 import polars as pl
 from typing import Union, Optional, List
-from .type_alias import DetrendMethod, Distance
+from .type_alias import DetrendMethod, Distance, ConvMode
 from polars.utils.udfs import _get_shared_lib_location
 
 _lib = _get_shared_lib_location(__file__)
@@ -1073,6 +1073,36 @@ class NumExt:
             args=[data_cnt, ref_cats, ref_cnt],
             is_elementwise=False,
             returns_scalar=True,
+        )
+
+    def convolve(
+        self,
+        other: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
+        mode: ConvMode = "full",
+    ) -> pl.Expr:
+        """
+        Performs a convolution with the filter via FFT. The current implementation's performance is worse
+        than SciPy but offers parallelization within Polars Context.
+
+        parameters
+        ----------
+        other
+            The filter for the convolution. Anything that can be turned into a Polars Series will work.
+        mode
+            Please check the reference. One of `same`, `left` (left-aligned same), `right` (right-aligned same),
+            `valid` or `full`.
+
+        Reference
+        ---------
+        https://brianmcfee.net/dstbook-site/content/ch03-convolution/Modes.html
+        """
+
+        filter_ = pl.Series(values=other, dtype=pl.Float64)
+        return self._expr.cast(pl.Float64).register_plugin(
+            lib=_lib,
+            symbol="pl_fft_convolve",
+            args=[filter_, pl.lit(mode, dtype=pl.String)],
+            changes_length=True,
         )
 
     def _haversine(

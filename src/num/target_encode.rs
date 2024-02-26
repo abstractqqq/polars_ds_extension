@@ -17,36 +17,38 @@ pub(crate) struct TargetEncodeKwargs {
 
 #[inline(always)]
 fn get_target_encode_frame(
-    discrete_col:&Series, 
-    target:&Series,
-    target_mean:f64,
-    min_samples_leaf:f64, 
-    smoothing:f64
+    discrete_col: &Series,
+    target: &Series,
+    target_mean: f64,
+    min_samples_leaf: f64,
+    smoothing: f64,
 ) -> PolarsResult<LazyFrame> {
-
     let df = df!(
         "values" => discrete_col.cast(&DataType::String)?,
         "target" => target
     )?;
 
-    Ok(
-        df.lazy().group_by([col("values")]).agg([
-            len().alias("cnt"),
-            col("target").mean().alias("cond_p")
-        ]).with_column(
-            (lit(1f64) 
-            / (lit(1f64) + ((-(col("cnt").cast(DataType::Float64) - lit(min_samples_leaf))/lit(smoothing)).exp()))).alias("alpha")
-        ).select([
+    Ok(df
+        .lazy()
+        .group_by([col("values")])
+        .agg([len().alias("cnt"), col("target").mean().alias("cond_p")])
+        .with_column(
+            (lit(1f64)
+                / (lit(1f64)
+                    + ((-(col("cnt").cast(DataType::Float64) - lit(min_samples_leaf))
+                        / lit(smoothing))
+                    .exp())))
+            .alias("alpha"),
+        )
+        .select([
             col("values"),
-            (col("alpha") * col("cond_p") + (lit(1f64) - col("alpha")) * lit(target_mean)).alias("to")
-        ])
-    )
-
+            (col("alpha") * col("cond_p") + (lit(1f64) - col("alpha")) * lit(target_mean))
+                .alias("to"),
+        ]))
 }
 
 #[polars_expr(output_type_func=target_encode_output)]
 fn pl_target_encode(inputs: &[Series], kwargs: TargetEncodeKwargs) -> PolarsResult<Series> {
-
     // Inputs[0] and inputs[1] are the string column and the target respectively
 
     let target_mean = inputs[2].f64()?;
@@ -60,9 +62,9 @@ fn pl_target_encode(inputs: &[Series], kwargs: TargetEncodeKwargs) -> PolarsResu
         &inputs[1],
         target_mean,
         min_samples_leaf,
-        smoothing
-    )?.collect()?;
+        smoothing,
+    )?
+    .collect()?;
 
     Ok(encoding_frame.into_struct("target_encoded").into_series())
-
 }
