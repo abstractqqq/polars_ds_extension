@@ -288,8 +288,8 @@ class StatsExt:
         self,
         low: Union[int, pl.Expr] = 0,
         high: Optional[Union[int, pl.Expr]] = 10,
+        seed: Optional[int] = None,
         respect_null: bool = False,
-        use_ref: bool = False,
     ) -> pl.Expr:
         """
         Generates random integers uniformly from the range [low, high). Throws an error if low == high
@@ -303,6 +303,8 @@ class StatsExt:
             Lower end of random sample. If high is none, low will be set to 0.
         high
             Higher end of random sample. If this is None, then it will be replaced n_unique of reference.
+        seed
+            A seed to fix the random numbers. If none, use the system's entropy.
         respect_null
             If true, null in reference column will be null in the new column
         """
@@ -325,15 +327,19 @@ class StatsExt:
             else:
                 raise ValueError("Input `high` must be expression or int.")
 
-        resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
-            lib=_lib, symbol="pl_rand_int", args=[lo, hi, resp], is_elementwise=True
+            lib=_lib,
+            symbol="pl_rand_int",
+            args=[lo, hi],
+            kwargs={"seed": seed, "respect_null": respect_null},
+            is_elementwise=True,
         )
 
     def sample_uniform(
         self,
-        low: Optional[Union[float, pl.Expr]] = None,
-        high: Optional[Union[float, pl.Expr]] = None,
+        low: Optional[Union[float, pl.Expr]] = 0.0,
+        high: Optional[Union[float, pl.Expr]] = 1.0,
+        seed: Optional[int] = None,
         respect_null: bool = False,
     ) -> pl.Expr:
         """
@@ -348,6 +354,8 @@ class StatsExt:
             Lower end of random sample. If none, use reference col's min.
         high
             Higher end of random sample. If none, use reference col's max.
+        seed
+            A seed to fix the random numbers. If none, use the system's entropy.
         respect_null
             If true, null in reference column will be null in the new column
         """
@@ -357,18 +365,21 @@ class StatsExt:
         elif isinstance(low, float):
             lo = pl.lit(low, dtype=pl.Float64)
         else:
-            lo = self._expr.min()
+            lo = self._expr.min().cast(pl.Float64)
 
         if isinstance(high, pl.Expr):
             hi = high
         elif isinstance(high, float):
             hi = pl.lit(high, dtype=pl.Float64)
         else:
-            hi = self._expr.max()
+            hi = self._expr.max().cast(pl.Float64)
 
-        resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
-            lib=_lib, symbol="pl_sample_uniform", args=[lo, hi, resp], is_elementwise=True
+            lib=_lib,
+            symbol="pl_sample_uniform",
+            args=[lo, hi],
+            kwargs={"seed": seed, "respect_null": respect_null},
+            is_elementwise=True,
         )
 
     def perturb(self, epsilon: float, positive: bool = False):
@@ -402,7 +413,9 @@ class StatsExt:
             is_elementwise=True,
         )
 
-    def sample_binomial(self, n: int, p: float, respect_null: bool = False) -> pl.Expr:
+    def sample_binomial(
+        self, n: int, p: float, seed: Optional[int] = None, respect_null: bool = False
+    ) -> pl.Expr:
         """
         Creates self.len() many random points sampled from a binomial distribution with n and p.
 
@@ -414,22 +427,27 @@ class StatsExt:
             n in a binomial distribution
         p
             p in a binomial distribution
+        seed
+            A seed to fix the random numbers. If none, use the system's entropy.
         respect_null
             If true, null in reference column will be null in the new column
         """
 
         nn = pl.lit(n, dtype=pl.UInt64)
         pp = pl.lit(p, dtype=pl.Float64)
-        resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_sample_binomial",
-            args=[nn, pp, resp],
+            args=[nn, pp],
+            kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
         )
 
     def sample_exp(
-        self, lambda_: Optional[Union[float, pl.Expr]] = None, respect_null: bool = False
+        self,
+        lambda_: Optional[Union[float, pl.Expr]] = None,
+        seed: Optional[int] = None,
+        respect_null: bool = False,
     ) -> pl.Expr:
         """
         Creates self.len() many random points sampled from a exponential distribution with parameter `lambda_`.
@@ -441,6 +459,8 @@ class StatsExt:
         lambda_
             If none, it will be 1/reference col's mean. Note that if
             lambda < 0 this will throw an error and lambda = 0 will only return infinity.
+        seed
+            A seed to fix the random numbers. If none, use the system's entropy.
         respect_null
             If true, null in reference column will be null in the new column
         """
@@ -451,11 +471,11 @@ class StatsExt:
         else:
             la = 1.0 / self._expr.mean()
 
-        resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_sample_exp",
-            args=[la, resp],
+            args=[la],
+            kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
         )
 
@@ -463,6 +483,7 @@ class StatsExt:
         self,
         mean: Optional[Union[float, pl.Expr]] = None,
         std: Optional[Union[float, pl.Expr]] = None,
+        seed: Optional[int] = None,
         respect_null: bool = False,
     ) -> pl.Expr:
         """
@@ -477,6 +498,8 @@ class StatsExt:
             Mean of the normal distribution. If none, use reference col's mean.
         std
             Std of the normal distribution. If none, use reference col's std.
+        seed
+            A seed to fix the random numbers. If none, use the system's entropy.
         respect_null
             If true, null in reference column will be null in the new column
         """
@@ -494,15 +517,15 @@ class StatsExt:
         else:
             st = self._expr.std()
 
-        resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_sample_normal",
-            args=[me, st, resp],
+            args=[me, st],
+            kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
         )
 
-    def rand_null(self, pct: float) -> pl.Expr:
+    def rand_null(self, pct: float, seed: Optional[int] = None) -> pl.Expr:
         """
         Creates random null values in self. If self contains nulls originally, they
         will stay null.
@@ -513,15 +536,21 @@ class StatsExt:
             Percentage of nulls to randomly generate. This percentage is based on the
             length of the column, so may not be the actual percentage of nulls depending
             on how many values are originally null.
+        seed
+            A seed to fix the random numbers. If none, use the system's entropy.
         """
         if pct <= 0.0 or pct >= 1.0:
             raise ValueError("Input `pct` must be > 0 and < 1")
 
-        to_null = self.sample_uniform(0.0, 1.0) < pct
+        to_null = self.sample_uniform(0.0, 1.0, seed=seed) < pct
         return pl.when(to_null).then(None).otherwise(self._expr)
 
     def rand_str(
-        self, min_size: int = 1, max_size: int = 10, respect_null: bool = False
+        self,
+        min_size: int = 1,
+        max_size: int = 10,
+        seed: Optional[int] = None,
+        respect_null: bool = False,
     ) -> pl.Expr:
         """
         Creates self.len() many random strings with alpha-numerical values. Unfortunately that
@@ -538,6 +567,8 @@ class StatsExt:
             which case only fixed length strings will be generated.
         max_size
             The maximum length of the string to be generated.
+        seed
+            A seed to fix the random numbers. If none, use the system's entropy.
         respect_null
             If true, null in reference column will be null in the new column
         """
@@ -546,11 +577,11 @@ class StatsExt:
 
         min_s = pl.lit(min_size, dtype=pl.UInt32)
         max_s = pl.lit(max_size, dtype=pl.UInt32)
-        resp = pl.lit(respect_null, dtype=pl.Boolean)
         return self._expr.register_plugin(
             lib=_lib,
             symbol="pl_sample_alphanumeric",
-            args=[min_s, max_s, resp],
+            args=[min_s, max_s],
+            kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
         )
 
