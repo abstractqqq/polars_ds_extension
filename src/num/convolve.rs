@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use realfft::RealFftPlanner;
