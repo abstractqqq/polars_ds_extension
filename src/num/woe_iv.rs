@@ -18,10 +18,7 @@ fn iv_output(_: &[Field]) -> PolarsResult<Field> {
 /// Get a lazyframe needed to compute WOE.
 /// Inputs[0] by default is the discrete bins / categories
 /// Inputs[1] by default is the target (0s and 1s)
-fn get_woe_frame(
-    discrete_col:&Series,
-    target:&Series
-) -> PolarsResult<LazyFrame> {
+fn get_woe_frame(discrete_col: &Series, target: &Series) -> PolarsResult<LazyFrame> {
     // let categories = &inputs[1].cast(&DataType::String)?;
     let df = df!(
         "values" => discrete_col.cast(&DataType::String)?,

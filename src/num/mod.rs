@@ -3,7 +3,7 @@ use num::Float;
 use polars::error::{PolarsError, PolarsResult};
 
 mod cond_entropy;
-mod target_encode;
+mod convolve;
 mod entrophies;
 mod fft;
 mod float_extras;
@@ -14,6 +14,7 @@ mod knn;
 mod lempel_ziv;
 mod ols;
 mod psi;
+mod target_encode;
 mod tp_fp;
 mod trapz;
 mod woe_iv;
