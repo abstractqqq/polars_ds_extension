@@ -1,23 +1,29 @@
 SHELL=/bin/bash
 
-venv:  ## Set up virtual environment
-	python3 -m venv .venv
-	.venv/bin/pip install -r requirements.txt
+VENV=.venv
 
-install: venv
-	unset CONDA_PREFIX && \
-	source .venv/bin/activate && maturin develop -m Cargo.toml
+ifeq ($(OS),Windows_NT)
+	VENV_BIN=$(VENV)/Scripts
+else
+	VENV_BIN=$(VENV)/bin
+endif
 
-dev-release: venv
+.venv:
+	python3 -m venv $(VENV)
+	$(MAKE) dev-requirements
+
+requirements: .venv
+	@unset CONDA_PREFIX \
+	&& $(VENV_BIN)/python -m pip install --upgrade uv \
+	&& $(VENV_BIN)/uv pip install --upgrade -r requirements.txt \
+	&& $(VENV_BIN)/uv pip install --upgrade -r requirements.txt \
+	&& $(VENV_BIN)/uv pip install --upgrade -r tests/requirements-test.txt \
+	&& $(VENV_BIN)/uv pip install --upgrade -r docs/requirements-docs.txt \
+
+dev-release: .venv
 	unset CONDA_PREFIX && \
 	source .venv/bin/activate && maturin develop --release -m Cargo.toml
 
-pre-commit: venv
+pre-commit: .venv
 	cargo fmt
 	pre-commit run --all-files
-
-# run: install
-# 	source .venv/bin/activate && python run.py
-
-# run-release: install-release
-# 	source venv/bin/activate && python run.py
