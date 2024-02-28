@@ -1055,7 +1055,6 @@ dependencies = [
  "num-integer",
  "num-traits",
  "rawpointer",
- "rayon",
 ]
 
 [[package]]
@@ -1620,7 +1619,7 @@ dependencies = [
 
 [[package]]
 name = "polars_ds"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "faer",
  "hashbrown",
