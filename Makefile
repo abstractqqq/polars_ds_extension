@@ -11,7 +11,7 @@ endif
 .venv:
 	python3 -m venv $(VENV)
 	$(MAKE) dev-requirements
-
+	
 requirements: .venv
 	@unset CONDA_PREFIX \
 	&& $(VENV_BIN)/python -m pip install --upgrade uv \

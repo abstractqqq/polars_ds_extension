@@ -13,23 +13,23 @@
 
 # The Project
 
-Here are the current namespaces (Polars Extensions) provided by the package:
+The goal of the project is to **reduce dependencies**, **improve code organization**, **simplify data pipelines** and overall **faciliate analysis of various kinds of tabular data** that a data scientist may encounter. It is a package built around your favorite **Polars dataframe**. Here are the current namespaces (Polars Extensions) provided by the package:
 
 1. A numerical extension (num), which focuses on numerical quantities common in many fields of data analysis (credit modelling, time series, other well-known quantities, etc.), such as rfft, entropies, k-nearest-neighbors queries, Population Stability Index, Information Value, etc.
 
-2. A metrics extension (metric), which contains a lot of common error/loss functions, model evaluation metrics. This module is mostly designed to generate model performance monitoring
+2. A metrics extension (metric), which contains a lot of common error/loss functions, model evaluation metrics. This module is mostly designed to generate model performance monitoring data.
 
 3. A str extension (str2), which focuses on str distances/similarities, and other commonly used string manipulation procedures.
 
-4. A stats extension (stats), which has common statistical tests such as t-test, chi2, and f-test, etc., and random sampling from a distribution without leaving dataframes.
+4. A stats extension (stats), which has common statistical tests such as t-test, chi2, and f-test, etc., and random sampling from a distribution, etc.
 
 5. A complex extension (c), which treats complex numbers as a column of array of size 2. Sometimes complex numbers are needed for processing FFT outputs.
 
-6. A graph extension (graph) for very simple graph queries, such as shortest path queries, eigenvector centrality computations. More will be added.
+6. A graph extension (graph) for very simple graph queries, such as shortest path queries, eigenvector centrality computations. More will be added. (Usable but limited. Will to be refactored/redesigned.)
 
 # But why? Why not use Sklearn? SciPy? NumPy?
 
-The goal of the package is to **facilitate** data processes and analysis that go beyond standard SQL queries. It incorproates parts of SciPy, NumPy, Scikit-learn, and NLP (NLTK), etc., and treats them as Polars queries so that they can be run in parallel, in group_by contexts, even in LazyFrames. 
+The goal of the package is to **facilitate** data processes and analysis that go beyond standard SQL queries, and to **reduce** the number of dependencies in your project. It incorproates parts of SciPy, NumPy, Scikit-learn, and NLP (NLTK), etc., and treats them as Polars queries so that they can be run in parallel, in group_by contexts, all for almost no extra engineering effort. 
 
 Let's see an example. Say we want to generate a model performance report. In our data, we have segments. We are not only interested in the ROC AUC of our model on the entire dataset, but we are also interested in the model's performance on different segments.
 
@@ -120,9 +120,9 @@ The end result is simpler, more intuitive code that is also easier to reason abo
 ## Getting Started
 
 ```python
-import polars_ds as pld
+import polars_ds as pds
 ```
-when you want to use the namespaces provided by the package.
+when you want to access the namespaces provided by the package.
 
 ## Examples
 
@@ -224,14 +224,16 @@ shape: (5, 3)
 
 **Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars and will try to be as stable as possible for polars>=0.20.6. Exceptions will be made when Polars's update forces changes in the plugins.**
 
-This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. The recommended usage will be for datasets of size 1k to 2-3mm rows. Performance will only be a priority for datasets within this size.
+This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. 
 
-Str-knn and Graph queries are suitable for smaller data, of size ~1-5k for common computers.
+The recommended usage will be for datasets of size 1k to 2-3mm rows, but actual performance will vary depending on dataset and hardware. Performance will only be a priority for datasets that fit in memory. It is a known fact that knn performance suffers greatly with a large k. Str-knn and Graph queries are only suitable for smaller data, of size ~1-5k for common computers.
 
 # Credits
 
 1. Rust Snowball Stemmer is taken from Tsoding's Seroost project (MIT). See [here](https://github.com/tsoding/seroost)
-2. Some statistics functions are taken from Statrs (MIT). See [here](https://github.com/statrs-dev/statrs/tree/master)
+2. Some statistics functions are taken from Statrs (MIT) and internalized. See [here](https://github.com/statrs-dev/statrs/tree/master)
+3. Graph functionalities are powered by the petgragh crate. See [here](https://crates.io/crates/petgraph)
+4. Linear algebra routines are powered partly by [faer](https://crates.io/crates/faer)
 
 # Other related Projects
 
