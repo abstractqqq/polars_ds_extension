@@ -66,7 +66,7 @@ shape: (5, 8)
 
 Traditionally, using the Pandas + Sklearn stack, we would do:
 
-```
+```python
 import pandas as pd
 from sklearn.metrics import roc_auc_score
 
@@ -94,7 +94,7 @@ print(report)
 
 This is ok, but not great, because (1) we are running for loops in Python, which tends to be slow. (2) We are writing more Python code, which leaves more room for errors in bigger projects. (3) The code is not very intuitive for beginners. Using Polars + Polars ds, one can do the following:
 
-```
+```python
 df.lazy().group_by("segments").agg(
     pl.col("actual").metric.roc_auc(pl.col("predicted")).alias("roc_auc"),
     pl.col("actual").metric.log_loss(pl.col("predicted")).alias("log_loss"),
