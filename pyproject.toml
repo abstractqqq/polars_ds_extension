@@ -19,7 +19,7 @@ authors = [
     {name = "Tianren Qin", email = "tq9695@gmail.com"},
 ]
 dependencies = [
-    "polars >= 0.20.6",
+    "polars >= 0.20.6, !=0.20.12",
 ] 
 
 keywords = ["polars-extension", "scientific-computing", "data-science"]
