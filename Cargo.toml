@@ -11,8 +11,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = {version = "*", features = ["extension-module"]}
-pyo3-polars = {version = "0.11", features = ["derive"]}
-polars = {version = "0.37", features = ["performant", "lazy", "dtype-array", "array_count", "ndarray","log","nightly"]}
+pyo3-polars = {version = "0.12", features = ["derive"]}
+polars = {version = "0.38", features = ["performant", "lazy", "parquet", "dtype-array", "array_count", "cross_join", "ndarray", "log", "cum_agg", "nightly"]}
 num = "0.4.1"
 faer = {version = "0.16", features = ["ndarray", "nightly"]}
 serde = {version = "*", features=["derive"]}
@@ -38,4 +38,4 @@ jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }
 [profile.release]
 codegen-units = 1
 strip = "symbols" 
-lto = "thin"
+lto = "fat"

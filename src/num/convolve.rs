@@ -2,6 +2,9 @@ use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use realfft::RealFftPlanner;
 
+// Optimization ideas: small size, e.g. <= 2048, always allocate a fixed sized slice?
+// 2^n padding in the general case
+
 enum ConvMode {
     FULL,
     SAME,

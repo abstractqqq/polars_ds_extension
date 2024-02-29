@@ -7,6 +7,8 @@
   <a href="https://polars-ds-extension.readthedocs.io/en/latest/">Documentation</a>
   |
   <a href="https://github.com/abstractqqq/polars_ds_extension/blob/main/examples/basics.ipynb">User Guide</a>
+  |
+  <a href="https://github.com/abstractqqq/polars_ds_extension/blob/main/CONTRIBUTING.md">Want to Contribute?</a>
 <br>
 <b>pip install polars-ds</b>
 </p>
