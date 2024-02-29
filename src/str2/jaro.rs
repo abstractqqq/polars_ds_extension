@@ -36,14 +36,13 @@ fn pl_jaro(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
         let out: Float64Chunked = if can_parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits
-                .into_par_iter()
-                .map(|(offset, len)| {
-                    let s1 = ca1.slice(offset as i64, len);
-                    let out: Float64Chunked = s1
-                        .apply_nonnull_values_generic(DataType::Float64, |s| batched.similarity(s.chars()));
-                    out.downcast_iter().cloned().collect::<Vec<_>>()
+            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let s1 = ca1.slice(offset as i64, len);
+                let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| {
+                    batched.similarity(s.chars())
                 });
+                out.downcast_iter().cloned().collect::<Vec<_>>()
+            });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
@@ -54,14 +53,12 @@ fn pl_jaro(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
         let out: Float64Chunked = if can_parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits
-                .into_par_iter()
-                .map(|(offset, len)| {
-                    let s1 = ca1.slice(offset as i64, len);
-                    let s2 = ca2.slice(offset as i64, len);
-                    let out: Float64Chunked = binary_elementwise_values(&s1, &s2, jaro_sim);
-                    out.downcast_iter().cloned().collect::<Vec<_>>()
-                });
+            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let s1 = ca1.slice(offset as i64, len);
+                let s2 = ca2.slice(offset as i64, len);
+                let out: Float64Chunked = binary_elementwise_values(&s1, &s2, jaro_sim);
+                out.downcast_iter().cloned().collect::<Vec<_>>()
+            });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
@@ -90,19 +87,16 @@ fn pl_jw(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
         let out: Float64Chunked = if can_parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits
-                .into_par_iter()
-                .map(|(offset, len)| {
-                    let s1 = ca1.slice(offset as i64, len);
-                    let out: Float64Chunked =
-                        s1.apply_nonnull_values_generic(DataType::Float64, |s| {
-                            batched.similarity_with_args(
-                                s.chars(),
-                                &jaro_winkler::Args::default().prefix_weight(weight),
-                            )
-                        });
-                    out.downcast_iter().cloned().collect::<Vec<_>>()
+            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let s1 = ca1.slice(offset as i64, len);
+                let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| {
+                    batched.similarity_with_args(
+                        s.chars(),
+                        &jaro_winkler::Args::default().prefix_weight(weight),
+                    )
                 });
+                out.downcast_iter().cloned().collect::<Vec<_>>()
+            });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
@@ -118,15 +112,13 @@ fn pl_jw(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
         let out: Float64Chunked = if can_parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits
-                .into_par_iter()
-                .map(|(offset, len)| {
-                    let s1 = ca1.slice(offset as i64, len);
-                    let s2 = ca2.slice(offset as i64, len);
-                    let out: Float64Chunked =
-                        binary_elementwise_values(&s1, &s2, |x, y| jw_sim(x, y, weight));
-                    out.downcast_iter().cloned().collect::<Vec<_>>()
-                });
+            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let s1 = ca1.slice(offset as i64, len);
+                let s2 = ca2.slice(offset as i64, len);
+                let out: Float64Chunked =
+                    binary_elementwise_values(&s1, &s2, |x, y| jw_sim(x, y, weight));
+                out.downcast_iter().cloned().collect::<Vec<_>>()
+            });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
