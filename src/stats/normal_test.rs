@@ -7,8 +7,6 @@
 /// [1] D'Agostino, R. B. (1971), "An omnibus test of normality for
 ///     moderate and large sample size", Biometrika, 58, 341-348
 /// [2] https://www.stata.com/manuals/rsktest.pdf
-///
-/// I chose this over the Shapiro Francia test because the distribution is unknown and would require Monte Carlo
 use super::{simple_stats_output, StatsResult};
 use crate::stats_utils::{gamma, is_zero};
 use polars::prelude::*;
