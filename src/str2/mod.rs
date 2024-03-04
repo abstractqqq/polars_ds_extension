@@ -12,12 +12,13 @@ mod snowball;
 mod snowball_stem;
 mod sorensen_dice;
 mod str_jaccard;
+mod tversky;
 
 // Hashbrown has better perf than Rust's HashSet
 use hashbrown::HashSet;
 
 #[inline(always)]
-pub fn str_set_sim_helper(w1: &str, w2: &str, n: usize) -> (usize, usize, usize) {
+pub fn str_set_sim_helper(w1: &str, w2: &str, ngram: usize) -> (usize, usize, usize) {
     // output: set 1 size, set 2 size, intersection size
 
     let w1_len = w1.len();
@@ -30,16 +31,16 @@ pub fn str_set_sim_helper(w1: &str, w2: &str, n: usize) -> (usize, usize, usize)
 
     // Both are nonempty
     // Another version that has slices of size <= n?
-    let s1: HashSet<&[u8]> = if w1_len < n {
+    let s1: HashSet<&[u8]> = if w1_len < ngram {
         HashSet::from_iter([w1.as_bytes()])
     } else {
-        HashSet::from_iter(w1.as_bytes().windows(n))
+        HashSet::from_iter(w1.as_bytes().windows(ngram))
     };
 
-    let s2: HashSet<&[u8]> = if w2_len < n {
+    let s2: HashSet<&[u8]> = if w2_len < ngram {
         HashSet::from_iter([w2.as_bytes()])
     } else {
-        HashSet::from_iter(w2.as_bytes().windows(n))
+        HashSet::from_iter(w2.as_bytes().windows(ngram))
     };
 
     let intersection = s1.intersection(&s2).count();

@@ -13,21 +13,29 @@ use pyo3_polars::{
 // Can optimize the case when ca1 is scalar. No need to regenerate the hashset in that case.
 
 #[inline(always)]
-fn sorensen_dice(w1: &str, w2: &str, ngram: usize) -> f64 {
+fn tversky_sim(w1: &str, w2: &str, ngram: usize, alpha: f64, beta: f64) -> f64 {
     let (s1, s2, intersect) = str_set_sim_helper(w1, w2, ngram);
-    ((2 * intersect) as f64) / ((s1 + s2) as f64)
+    let s1ms2 = s1.abs_diff(intersect) as f64;
+    let s2ms1 = s2.abs_diff(intersect) as f64;
+    (intersect as f64) / (intersect as f64 + alpha * s1ms2 + beta * s2ms1)
 }
 
 #[polars_expr(output_type=Float64)]
-fn pl_sorensen_dice(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
+fn pl_tversky_sim(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
     let ca1 = inputs[0].str()?;
     let ca2 = inputs[1].str()?;
 
     // ngram size
     let ngram = inputs[2].u32()?;
     let ngram = ngram.get(0).unwrap() as usize;
+
+    // Alpha and beta params
+    let alpha = inputs[3].f64()?;
+    let alpha = alpha.get(0).unwrap();
+    let beta = inputs[4].f64()?;
+    let beta = beta.get(0).unwrap();
     // parallel
-    let parallel = inputs[3].bool()?;
+    let parallel = inputs[5].bool()?;
     let parallel = parallel.get(0).unwrap();
     let can_parallel = parallel && !context.parallel();
 
@@ -39,14 +47,17 @@ fn pl_sorensen_dice(inputs: &[Series], context: CallerContext) -> PolarsResult<S
             let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
                 let s1 = ca1.slice(offset as i64, len);
                 let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| {
-                    sorensen_dice(s, r, ngram)
+                    tversky_sim(s, r, ngram, alpha, beta)
                 });
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
+
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
-            ca1.apply_nonnull_values_generic(DataType::Float64, |s| sorensen_dice(s, r, ngram))
+            ca1.apply_nonnull_values_generic(DataType::Float64, |s| {
+                tversky_sim(s, r, ngram, alpha, beta)
+            })
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -56,19 +67,21 @@ fn pl_sorensen_dice(inputs: &[Series], context: CallerContext) -> PolarsResult<S
             let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
                 let s1 = ca1.slice(offset as i64, len);
                 let s2 = ca2.slice(offset as i64, len);
-                let out: Float64Chunked =
-                    binary_elementwise_values(&s1, &s2, |x, y| sorensen_dice(x, y, ngram));
+                let out: Float64Chunked = binary_elementwise_values(&s1, &s2, |x, y| {
+                    tversky_sim(x, y, ngram, alpha, beta)
+                });
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
+
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
-            binary_elementwise_values(ca1, ca2, |x, y| sorensen_dice(x, y, ngram))
+            binary_elementwise_values(ca1, ca2, |x, y| tversky_sim(x, y, ngram, alpha, beta))
         };
         Ok(out.into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or the second of them must be a scalar.".into(),
+            "Inputs must have the same length or one of them must be a scalar.".into(),
         ))
     }
 }

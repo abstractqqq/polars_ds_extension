@@ -203,6 +203,65 @@ class StrExt:
             is_elementwise=True,
         )
 
+    def tversky_sim(
+        self,
+        other: Union[str, pl.Expr],
+        alpha: float,
+        beta: float,
+        substr_size: int = 2,
+        parallel: bool = False,
+    ) -> pl.Expr:
+        """
+        Treats substrings of size `substr_size` as a set. And computes the tversky_sim similarity between
+        this word and the other. See the reference for information on how Tversky similarity is related
+        the other ngram based similarity.
+
+        Note this treats substrings at the byte level under the hood, not at the char level. So non-ASCII
+        characters may have problems. Also note that alpha and beta are supposed to be weighting factors,
+        but this doesn't check whether they satisfy the definition of weights and has to be chosen at the
+        discretion of the user.
+
+        Parameters
+        ----------
+        other
+            If this is a string, then the entire column will be compared with this string. If this
+            is an expression, then perform row wise jaccard similarity
+        alpha
+            The first weighting factor. See reference
+        beta
+            The second weighting factor. See reference
+        substr_size
+            The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
+            the set ('ap', 'pp', 'pl', 'le') before being compared.
+        parallel
+            Whether to run the comparisons in parallel. Note that this is not always faster, especially
+            when used with other expressions or in group_by/over context.
+
+        Reference
+        ---------
+        https://yassineelkhal.medium.com/the-complete-guide-to-string-similarity-algorithms-1290ad07c6b7
+        """
+        if isinstance(other, str):
+            other_ = pl.lit(other, dtype=pl.String)
+        else:
+            other_ = other
+
+        if alpha < 0 or beta < 0:
+            raise ValueError("Input `alpha` and `beta` must be >= 0.")
+
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_tversky_sim",
+            args=[
+                other_,
+                pl.lit(substr_size, pl.UInt32),
+                pl.lit(alpha, pl.Float64),
+                pl.lit(beta, pl.Float64),
+                pl.lit(parallel, pl.Boolean),
+            ],
+            is_elementwise=True,
+        )
+
     def str_jaccard(
         self, other: Union[str, pl.Expr], substr_size: int = 2, parallel: bool = False
     ) -> pl.Expr:
