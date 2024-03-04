@@ -1,4 +1,5 @@
 import polars as pl
+import logging
 from typing import Union, Iterable, List, Optional
 from .type_alias import Distance
 
@@ -8,6 +9,8 @@ from polars_ds.str2 import StrExt  # noqa: E402
 from polars_ds.stats import StatsExt  # noqa: E402
 from polars_ds.metrics import MetricExt  # noqa: E402
 from polars_ds.graph import GraphExt  # noqa: E402
+
+logging.basicConfig(level=logging.INFO)
 
 __version__ = "0.3.4"
 __all__ = ["NumExt", "StrExt", "StatsExt", "ComplexExt", "MetricExt", "GraphExt"]

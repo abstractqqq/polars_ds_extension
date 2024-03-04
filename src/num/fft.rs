@@ -12,6 +12,10 @@ use realfft::RealFftPlanner;
 // Optimization ideas: small size, e.g. <= 2048, always allocate a fixed sized slice?
 // 2^n padding in the general case
 
+// fn fft_normal(v:&[f64]) -> Vec<Complex64> {
+
+// }
+
 #[polars_expr(output_type_func=complex_output)]
 fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
     let s = inputs[0].f64()?;
@@ -29,7 +33,7 @@ fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
 
     if n > input_vec.len() {
         input_vec.extend(vec![0.; n.abs_diff(input_vec.len())]);
-    } else if n < input_vec.len() {
+    } else {
         input_vec.truncate(n);
     }
     let input_len = input_vec.len();
@@ -72,5 +76,4 @@ fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
 
     let out = builder.finish();
     out.cast(&DataType::Array(Box::new(DataType::Float64), 2))
-    // Ok(out.into_series())
 }

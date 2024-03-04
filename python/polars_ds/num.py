@@ -80,6 +80,66 @@ class NumExt:
         """
         return (self._expr - self._expr.min()) / (self._expr.max() - self._expr.min())
 
+    def yeo_johnson(self, lam: float) -> pl.Expr:
+        """
+        Performs the Yeo Johnson transform with parameters lambda.
+
+        Unfortunately, the package does not provide estimate for lambda as of now.
+
+        Parameters
+        ----------
+        lam
+            The lambda in Yeo Johnson transform
+
+        Reference
+        ---------
+        https://en.wikipedia.org/wiki/Power_transform
+        """
+        x = self._expr
+
+        if lam == 0:  # log(x + 1)
+            x_ge = x.log1p()
+        else:  # ((x + 1)**lmbda - 1) / lmbda
+            x_ge = ((1 + x).pow(lam) - 1) / lam
+
+        if lam == 2:  # -log(-x + 1)
+            x_lt = pl.lit(-1) * (-x).log1p()
+        else:  #  -((-x + 1)**(2 - lmbda) - 1) / (2 - lmbda)
+            t = 2 - lam
+            x_lt = -((1 - x).pow(t) - 1) / t
+
+        return pl.when(x >= 0.0).then(x_ge).otherwise(x_lt)
+
+    def box_cox(self, lam: float, lam2: float = 0.0) -> pl.Expr:
+        """
+        Performs the two-parameter Box Cox transform with parameters lambda. This
+        transform is only valid for values >= -lam2. Every other value will be mapped to None.
+
+        Unfortunately, the package does not provide estimate for lambda as of now.
+
+        Parameters
+        ----------
+        lam
+            The first lambda in Box Cox transform
+        lam2
+            The second lambda in Box Cox transform
+
+        Reference
+        ---------
+        https://en.wikipedia.org/wiki/Power_transform
+        """
+        if lam2 == 0.0:
+            x = self._expr
+            cond = self._expr > 0
+        else:
+            x = self._expr + lam2
+            cond = self._expr > -lam2
+
+        if lam == 0.0:
+            return pl.when(cond).then(x.log()).otherwise(None)
+        else:
+            return pl.when(cond).then((x.pow(lam) - 1) / lam).otherwise(None)
+
     def exp2(self) -> pl.Expr:
         """
         Returns 2^x.
