@@ -614,6 +614,54 @@ def test_str_jaccard(df, size, res):
 
 
 @pytest.mark.parametrize(
+    "df, size, alpha, beta, res",
+    [
+        (
+            pl.DataFrame({"a": ["apple", "test", "moon"], "b": ["let", "tests", "sun"]}),
+            2,
+            0.5,
+            0.5,
+            pl.DataFrame(
+                {"a": pl.Series([0.3333333333333333, 0.8571428571428571, 0.0], dtype=pl.Float64)}
+            ),
+        ),
+        (
+            pl.DataFrame({"a": ["apple", "test", "moon"], "b": ["let", "tests", "sun"]}),
+            3,
+            0.1,
+            0.9,
+            pl.DataFrame({"a": pl.Series([0.0, 0.6896551724137931, 0.0], dtype=pl.Float64)}),
+        ),
+    ],
+)
+def test_tversky(df, size, alpha, beta, res):
+    assert_frame_equal(
+        df.select(
+            pl.col("a").str2.tversky_sim(pl.col("b"), alpha=alpha, beta=beta, substr_size=size)
+        ),
+        res,
+    )
+    assert_frame_equal(
+        df.select(
+            pl.col("a").str2.tversky_sim(
+                pl.col("b"), alpha=alpha, beta=beta, substr_size=size, parallel=True
+            )
+        ),
+        res,
+    )
+    assert_frame_equal(
+        df.lazy()
+        .select(
+            pl.col("a").str2.tversky_sim(
+                pl.col("b"), alpha=alpha, beta=beta, substr_size=size, parallel=True
+            )
+        )
+        .collect(),
+        res,
+    )
+
+
+@pytest.mark.parametrize(
     "df, lower, upper, res",
     [
         (
