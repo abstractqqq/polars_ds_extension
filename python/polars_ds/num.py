@@ -1,7 +1,7 @@
 from __future__ import annotations
 import math
 import polars as pl
-from typing import Union, Optional, List
+from typing import Union, Optional, List, Iterable
 from .type_alias import DetrendMethod, Distance, ConvMode
 from polars.utils.udfs import _get_shared_lib_location
 
@@ -582,7 +582,7 @@ class NumExt:
             lib=_lib, symbol="pl_rfft", args=[nn, full], is_elementwise=False, changes_length=True
         )
 
-    def knn_ptwise(
+    def _knn_ptwise(
         self,
         *others: pl.Expr,
         k: int = 5,
@@ -592,34 +592,7 @@ class NumExt:
         return_dist: bool = False,
     ) -> pl.Expr:
         """
-        Treats self as an index column, and uses other columns to determine the k nearest neighbors
-        to every id. By default, this will return self, and k more neighbors. So the output size
-        is actually k + 1. This will throw an error if any null value is found.
-
-        Note that the node index column must be convertible to u64. If you do not have a u64 ID column,
-        you can generate one using pl.int_range(..), which should be a step before this. The index column
-        must not contain nulls.
-
-        Also note that this internally builds a kd-tree for fast querying and deallocates it once we
-        are done. If you need to repeatedly run the same query on the same data, then it is not
-        ideal to use this. A specialized external kd-tree structure would be better in that case.
-
-        Parameters
-        ----------
-        others
-            Other columns used as features
-        k
-            Number of neighbors to query
-        leaf_size
-            Leaf size for the kd-tree. Tuning this might improve runtime performance.
-        dist
-            One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`, where h stands for haversine. Note
-            `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
-        parallel
-            Whether to run the k-nearest neighbor query in parallel. This is recommended when you
-            are running only this expression, and not in group_by context.
-        return_dist
-            If true, return a struct with indices and distances.
+        See query_knn_ptwise.
         """
         if k < 1:
             raise ValueError("Input `k` must be >= 1.")
@@ -643,7 +616,7 @@ class NumExt:
                 is_elementwise=True,
             )
 
-    def query_radius_ptwise(
+    def _query_radius_ptwise(
         self,
         *others: pl.Expr,
         r: float,
@@ -652,30 +625,7 @@ class NumExt:
         parallel: bool = False,
     ) -> pl.Expr:
         """
-        Treats self as an index column, and uses other columns to determine distance, and query all neighbors
-        within distance r from each node in ID.
-
-        Note that the index column must be convertible to u64. If you do not have a u64 ID column,
-        you can generate one using pl.int_range(..), which should be a step before this.
-
-        Also note that this internally builds a kd-tree for fast querying and deallocates it once we
-        are done. If you need to repeatedly run the same query on the same data, then it is not
-        ideal to use this. A specialized external kd-tree structure would be better in that case.
-
-        Parameters
-        ----------
-        others
-            Other columns used as features
-        r
-            The radius. Must be a scalar value now.
-        leaf_size
-            Leaf size for the kd-tree. Tuning this might improve runtime performance.
-        dist
-            One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`, where h stands for haversine. Note
-            `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
-        parallel
-            Whether to run the k-nearest neighbor query in parallel. This is recommended when you
-            are running only this expression, and not in group_by context.
+        See query_radius_ptwise.
         """
         if r <= 0.0:
             raise ValueError("Input `r` must be > 0.")
@@ -700,24 +650,7 @@ class NumExt:
         dist: Distance = "l2",
     ) -> pl.Expr:
         """
-        Treats self as a point, and uses other columns to filter to the k nearest neighbors
-        to self. The recommendation is to use the knn function in polars_ds.
-
-        Note that this internally builds a kd-tree for fast querying and deallocates it once we
-        are done. If you need to repeatedly run the same query on the same data, then it is not
-        ideal to use this. A specialized external kd-tree structure would be better in that case.
-
-        Parameters
-        ----------
-        others
-            Other columns used as features
-        k
-            Number of neighbors to query
-        leaf_size
-            Leaf size for the kd-tree. Tuning this might improve performance.
-        dist
-            One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`, where h stands for haversine. Note
-            `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
+        See query_knn_at_pt
         """
         if k < 1:
             raise ValueError("Input `k` must be >= 1.")
@@ -739,22 +672,7 @@ class NumExt:
         parallel: bool = False,
     ) -> pl.Expr:
         """
-        Treats self as radius, which can be a scalar, or a column with the same length as the columns
-        in `others`. This will return the number of neighbors within (<=) distance for each row.
-        The recommendation is to use the nb_cnt function in polars_ds.
-
-        Parameters
-        ----------
-        others
-            Other columns used as features
-        leaf_size
-            Leaf size for the kd-tree. Tuning this might improve performance.
-        dist
-            One of `l1`, `l2`, `inf`, `cosine` or `h` or `haversine`, where h stands for haversine. Note
-            `l2` is actually squared `l2` for computational efficiency. It defaults to `l2`.
-        parallel
-            Whether to run the k-nearest neighbor query in parallel. This is recommended when you
-            are running only this expression, and not in group_by context.
+        See query_nb_cnt
         """
         return self._expr.register_plugin(
             lib=_lib,
@@ -1181,3 +1099,245 @@ class NumExt:
             is_elementwise=True,
             cast_to_supertypes=True,
         )
+
+
+# ----------------------------------------------------------------------------------
+
+
+def haversine(
+    x_lat: pl.Expr,
+    x_long: pl.Expr,
+    y_lat: Union[float, pl.Expr],
+    y_long: Union[float, pl.Expr],
+) -> pl.Expr:
+    """
+    Computes haversine distance using the naive method. The output unit is km.
+    """
+    ylat = pl.lit(y_lat) if isinstance(y_lat, float) else y_lat
+    ylong = pl.lit(y_long) if isinstance(y_long, float) else y_long
+    return x_lat.num._haversine(x_long, ylat, ylong)
+
+
+def query_knn_ptwise(
+    *others: pl.Expr,
+    index: pl.Expr,
+    k: int = 5,
+    leaf_size: int = 40,
+    dist: Distance = "l2",
+    parallel: bool = False,
+    return_dist: bool = False,
+) -> pl.Expr:
+    """
+    Takes the index column, and uses other columns to determine the k nearest neighbors
+    to every id in the index columns. By default, this will return self, and k more neighbors.
+    So the output size is actually k + 1. This will throw an error if any null value is found.
+
+    Note that the index column must be convertible to u64. If you do not have a u64 column,
+    you can generate one using pl.int_range(..), which should be a step before this. The index column
+    must not contain nulls.
+
+    Also note that this internally builds a kd-tree for fast querying and deallocates it once we
+    are done. If you need to repeatedly run the same query on the same data, then it is not
+    ideal to use this. A specialized external kd-tree structure would be better in that case.
+
+    Parameters
+    ----------
+    *others : pl.Expr
+        Other columns used as features
+    index : pl.Expr
+        The column used as index, must be castable to u64
+    k : int
+        Number of neighbors to query
+    leaf_size : int
+        Leaf size for the kd-tree. Tuning this might improve runtime performance.
+    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
+        Note `l2` is actually squared `l2` for computational efficiency.
+    parallel : bool
+        Whether to run the k-nearest neighbor query in parallel. This is recommended when you
+        are running only this expression, and not in group_by context.
+    return_dist
+        If true, return a struct with indices and distances.
+    """
+    return index.num._knn_ptwise(
+        *others,
+        k=k,
+        leaf_size=leaf_size,
+        dist=dist,
+        parallel=parallel,
+        return_dist=return_dist,
+    )
+
+
+def query_radius_at_pt(
+    *others: pl.Expr,
+    pt: Iterable[float],
+    r: Union[float, pl.Expr],
+    dist: Distance = "l2",
+) -> pl.Expr:
+    """
+    Returns an expression that queries the neighbors within (<=) radius from x. Note that
+    this only queries around a single point x and returns a boolean column.
+
+    Parameters
+    ----------
+    *others : pl.Expr
+        Other columns used as features
+    pt : Iterable[float]
+        The point, at which we filter using the radius.
+    r : either a float or an expression
+        The radius to query with. If this is an expression, the radius will be applied row-wise.
+    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
+        Note `l2` is actually squared `l2` for computational efficiency.
+    """
+    # For a single point, it is faster to just do it in native polars
+    oth = list(others)
+    if len(pt) != len(oth):
+        raise ValueError("Dimension does not match.")
+
+    if dist == "l1":
+        return (
+            pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
+            <= r
+        )
+    elif dist == "inf":
+        return (
+            pl.max_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
+            <= r
+        )
+    elif dist == "cosine":
+        x_list = list(pt)
+        x_norm = sum(z * z for z in x_list)
+        oth_norm = pl.sum_horizontal([e * e for e in oth])
+        dist = (
+            1.0
+            - pl.sum_horizontal(xi * e for xi, e in zip(x_list, oth)) / (x_norm * oth_norm).sqrt()
+        )
+        return dist <= r
+    elif dist in ("h", "haversine"):
+        x_list = list(pt)
+        if (len(x_list) != 2) or (len(oth) < 2):
+            raise ValueError(
+                "For Haversine distance, input x must have dimension 2 and 2 other columns"
+                " must be provided as lat and long."
+            )
+
+        y_lat = pl.Series(values=[x_list[0]], dtype=pl.Float64)
+        y_long = pl.Series(values=[x_list[1]], dtype=pl.Float64)
+        dist = oth[0].num._haversine(oth[1], y_lat, y_long)
+        return dist <= r
+    else:  # defaults to l2, actually squared l2
+        return (
+            pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(pt, oth))
+            <= r
+        )
+
+
+def query_radius_ptwise(
+    *others: pl.Expr,
+    index: pl.Expr,
+    r: float,
+    dist: Distance = "l2",
+    parallel: bool = False,
+) -> pl.Expr:
+    """
+    Takes the index column, and uses other columns to determine distance, and query all neighbors
+    within distance r from each id in the index column.
+
+    Note that the index column must be convertible to u64. If you do not have a u64 ID column,
+    you can generate one using pl.int_range(..), which should be a step before this.
+
+    Also note that this internally builds a kd-tree for fast querying and deallocates it once we
+    are done. If you need to repeatedly run the same query on the same data, then it is not
+    ideal to use this. A specialized external kd-tree structure would be better in that case.
+
+    Parameters
+    ----------
+    *others : pl.Expr
+        Other columns used as features
+    index
+        The column used as index, must be castable to u64
+    r : float
+        The radius. Must be a scalar value now.
+    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
+        Note `l2` is actually squared `l2` for computational efficiency.
+    parallel : bool
+        Whether to run the k-nearest neighbor query in parallel. This is recommended when you
+        are running only this expression, and not in group_by context.
+    """
+    return index.num._query_radius_ptwise(*others, r=r, dist=dist, parallel=parallel)
+
+
+def query_nb_cnt(
+    r: Union[float, pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
+    *others: pl.Expr,
+    leaf_size: int = 40,
+    dist: Distance = "l2",
+    parallel: bool = False,
+) -> pl.Expr:
+    """
+    Return the number of neighbors within (<=) radius r for each row under the given distance
+    metric. The point itself is always a neighbor of itself.
+
+    Parameters
+    ----------
+    r : float | Iterable[float] | pl.Expr
+        If this is a scalar, then it will run the query with fixed radius for all rows. If
+        this is a list, then it must have the same height as the dataframe. If
+        this is an expression, it must be an expression representing radius.
+    *others : pl.Expr
+        Other columns used as features
+    leaf_size : int, > 0
+        Leaf size for the kd-tree. Tuning this might improve performance.
+    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
+        Note `l2` is actually squared `l2` for computational efficiency.
+    parallel : bool
+        Whether to run the distance query in parallel. This is recommended when you
+        are running only this expression, and not in group_by context.
+    """
+    if isinstance(r, (float, int)):
+        rad = pl.lit(pl.Series(values=[r], dtype=pl.Float64))
+    elif isinstance(r, pl.Expr):
+        rad = r
+    else:
+        rad = pl.lit(pl.Series(values=r, dtype=pl.Float64))
+
+    return rad.num._nb_cnt(*others, leaf_size=leaf_size, dist=dist, parallel=parallel)
+
+
+def query_knn_at_pt(
+    *others: pl.Expr,
+    pt: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
+    k: int = 5,
+    leaf_size: int = 40,
+    dist: Distance = "l2",
+) -> pl.Expr:
+    """
+    Returns an expression that queries the k nearest neighbors to a single point x.
+
+    Note that this internally builds a kd-tree for fast querying and deallocates it once we
+    are done. If you need to repeatedly run the same query on the same data, then it is not
+    ideal to use this. A specialized external kd-tree structure would be better in that case.
+
+    Parameters
+    ----------
+    *others : pl.Expr
+        Other columns used as features
+    pt : Iterable[float]
+        The point. It must be of the same length as the number of columns in `others`.
+    k : int, > 0
+        Number of neighbors to query
+    leaf_size : int, > 0
+        Leaf size for the kd-tree. Tuning this might improve performance.
+    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
+        Note `l2` is actually squared `l2` for computational efficiency.
+    """
+    if k <= 0:
+        raise ValueError("Input `k` should be strictly positive.")
+
+    pt = pl.Series(values=pt, dtype=pl.Float64)
+    return pl.lit(pt).num._knn_pt(
+        *others,
+        k=k,
+        leaf_size=leaf_size,
+        dist=dist,
+    )

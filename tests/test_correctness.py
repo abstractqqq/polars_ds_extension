@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import polars as pl
 import numpy as np
-import polars_ds as pld
+import polars_ds as pds
 from polars.testing import assert_frame_equal
 
 
@@ -1122,7 +1122,7 @@ def test_precision_recall_roc_auc():
 def test_knn_ptwise(df, dist, k, res):
     df2 = df.select(
         pl.col("id")
-        .num.knn_ptwise(pl.col("val1"), pl.col("val2"), pl.col("val3"), dist=dist, k=k)
+        .num._knn_ptwise(pl.col("val1"), pl.col("val2"), pl.col("val3"), dist=dist, k=k)
         .list.eval(pl.element().sort().cast(pl.UInt32))
         .alias("nn")
     )
@@ -1155,7 +1155,7 @@ def test_knn_ptwise(df, dist, k, res):
 )
 def test_knn_pt(df, x, dist, k, res):
     test = df.filter(
-        pld.knn(x, pl.col("val1"), pl.col("val2"), pl.col("val3"), dist=dist, k=k)
+        pds.knn_pt(x, pl.col("val1"), pl.col("val2"), pl.col("val3"), dist=dist, k=k)
     ).select(pl.col("id"))
 
     assert_frame_equal(test, res)
@@ -1174,7 +1174,7 @@ def test_knn_pt(df, x, dist, k, res):
 )
 def test_nb_cnt(df, r, dist, res):
     test = df.select(
-        pld.query_nb_cnt(
+        pds.query_nb_cnt(
             r,
             pl.col("x"),
             pl.col("y"),
@@ -1205,7 +1205,7 @@ def test_nb_cnt(df, r, dist, res):
 )
 def test_haversine(df, res):
     test = df.select(
-        pld.haversine(pl.col("x1"), pl.col("x2"), pl.col("y1"), pl.col("y2")).alias("dist")
+        pds.haversine(pl.col("x1"), pl.col("x2"), pl.col("y1"), pl.col("y2")).alias("dist")
     )
     assert_frame_equal(test, res)
 
