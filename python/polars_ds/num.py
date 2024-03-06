@@ -368,12 +368,7 @@ class NumExt:
 
     def cond_entropy(self, other: pl.Expr) -> pl.Expr:
         """
-        Computes the conditional entropy of self(y) given other, aka. H(y|other).
-
-        Parameters
-        ----------
-        other
-            A Polars expression
+        See query_cond_entropy
         """
         return self._expr.register_plugin(
             lib=_lib,
@@ -468,29 +463,7 @@ class NumExt:
         self, *variables: pl.Expr, add_bias: bool = False, return_pred: bool = False
     ) -> pl.Expr:
         """
-        Computes least squares solution to the equation Ax = y by treating self as y.
-
-        All positional arguments should be expressions representing predictive variables. This
-        does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
-
-        If add_bias is true, it will be the last coefficient in the output
-        and output will have len(variables) + 1.
-
-        Note: if columns are not linearly independent, some numerical issue may occur. E.g
-        you may see unrealistic coefficients in the output. It is possible to have
-        `silent` numerical issue during computation. Also note that if any input column contains null,
-        NaNs will be returned.
-
-        Parameters
-        ----------
-        variables
-            The variables used to predict target (self).
-        add_bias
-            Whether to add a bias term
-        return_pred
-            If true, return prediction and residue. If false, return coefficients. Note that
-            for coefficients, it reduces to one output (like max/min), but for predictions and
-            residue, it will return the same number of rows as in input.
+        See query_lstsq
         """
         y = self._expr.cast(pl.Float64)
         if return_pred:
@@ -511,23 +484,7 @@ class NumExt:
 
     def lstsq_report(self, *variables: pl.Expr, add_bias: bool = False) -> pl.Expr:
         """
-        Creates a least square report with more stats about each coefficient.
-
-        Note: if columns are not linearly independent, some numerical issue may occur. E.g
-        you may see unrealistic coefficients in the output. It is possible to have
-        `silent` numerical issue during computation. For this report, input must not
-        contain nulls and there must be > # features number of records. This uses the closed
-        form solution to compute the least square report.
-
-        This functions returns a struct with the same length as the number of features used
-        in the linear regression, and +1 if add_bias is true.
-
-        Parameters
-        ----------
-        variables
-            The variables used to predict target (self).
-        add_bias
-            Whether to add a bias term. If bias is added, it is always the last feature.
+        See query_lstsq_report
         """
         y = self._expr.cast(pl.Float64)
         return y.register_plugin(
@@ -1341,3 +1298,69 @@ def query_knn_at_pt(
         leaf_size=leaf_size,
         dist=dist,
     )
+
+
+def query_lstsq(
+    *variables: pl.Expr, target: pl.Expr, add_bias: bool = False, return_pred: bool = False
+) -> pl.Expr:
+    """
+    Computes least squares solution to the equation Ax = y where y is the target.
+
+    All positional arguments should be expressions representing predictive variables. This
+    does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
+
+    If add_bias is true, it will be the last coefficient in the output
+    and output will have len(variables) + 1.
+
+    Note: if columns are not linearly independent, some numerical issue may occur. E.g
+    you may see unrealistic coefficients in the output. It is possible to have
+    `silent` numerical issue during computation. Also note that if any input column contains null,
+    NaNs will be returned.
+
+    Parameters
+    ----------
+    variables
+        The variables used to predict target (self).
+    add_bias
+        Whether to add a bias term
+    return_pred
+        If true, return prediction and residue. If false, return coefficients. Note that
+        for coefficients, it reduces to one output (like max/min), but for predictions and
+        residue, it will return the same number of rows as in input.
+    """
+    return target.num.lstsq(*variables, add_bias=add_bias, return_pred=return_pred)
+
+
+def query_lstsq_report(*variables: pl.Expr, target: pl.Expr, add_bias: bool = False) -> pl.Expr:
+    """
+    Creates a least square report with more stats about each coefficient.
+
+    Note: if columns are not linearly independent, some numerical issue may occur. E.g
+    you may see unrealistic coefficients in the output. It is possible to have
+    `silent` numerical issue during computation. For this report, input must not
+    contain nulls and there must be > # features number of records. This uses the closed
+    form solution to compute the least square report.
+
+    This functions returns a struct with the same length as the number of features used
+    in the linear regression, and +1 if add_bias is true.
+
+    Parameters
+    ----------
+    variables
+        The variables used to predict target (self).
+    add_bias
+        Whether to add a bias term. If bias is added, it is always the last feature.
+    """
+    return target.num.lstsq_report(*variables, add_bias=add_bias)
+
+
+def query_cond_entropy(x: pl.Expr, y: pl.Expr) -> pl.Expr:
+    """
+    Queries the conditional entropy of x on y, aka. H(x|y).
+
+    Parameters
+    ----------
+    other
+        A Polars expression
+    """
+    return x.num.cond_entropy(y)
