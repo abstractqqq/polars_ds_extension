@@ -573,7 +573,7 @@ class NumExt:
                 is_elementwise=True,
             )
 
-    def _query_radius_ptwise(
+    def _radius_ptwise(
         self,
         *others: pl.Expr,
         r: float,
@@ -1221,7 +1221,7 @@ def query_radius_ptwise(
         Whether to run the k-nearest neighbor query in parallel. This is recommended when you
         are running only this expression, and not in group_by context.
     """
-    return index.num._query_radius_ptwise(*others, r=r, dist=dist, parallel=parallel)
+    return index.num._radius_ptwise(*others, r=r, dist=dist, parallel=parallel)
 
 
 def query_nb_cnt(
