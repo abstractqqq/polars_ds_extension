@@ -6,7 +6,9 @@ mod degree;
 mod eigen_centrality;
 mod shortest_path;
 
-use petgraph::{Directed, Graph};
+
+use hashbrown::{HashMap, HashSet};
+use petgraph::{adj::NodeIndex, csr::IndexType, Directed, Graph};
 use polars::{chunked_array::ops::ChunkUnique, datatypes::{Float64Chunked, UInt32Chunked}, error::{PolarsError, PolarsResult}, series::Series};
 
 fn create_graph_from_nodes(
@@ -23,25 +25,54 @@ fn create_graph_from_nodes(
     } else {
         None
     };
-    let node_cnt = nodes.n_unique()?;
+
+    let u1 = nodes.unique()?;
+    let u2 = connections.unique()?;
+    let mut temp: HashSet<u32> = HashSet::new();
+    
+    for v in u1.into_no_null_iter() {
+        temp.insert(v);
+    }
+    for v in u2.into_no_null_iter() {
+        temp.insert(v);
+    }
+
+    let node_cnt = temp.len();
     if !valid || node_cnt < 2 {
         return Err(PolarsError::ComputeError(
             "Graph: node, connections, and weight (if exists) columns must have the same length, and there
             must be more than 1 distinct node.".into(),
         ))
     }
-    let gh = if let Some(cost) = op_cost {
-        Graph::from_edges(
-            nodes.into_iter().zip(connections.into_iter()).zip(cost.into_iter())
-            .filter(|((i, j), w)| i.is_some() && j.is_some() && w.is_some())
-            .map(|((i,j), w)| (i.unwrap(), j.unwrap(), w.unwrap()))
-        )
+
+    let mut gh: Graph<u32, f64> = Graph::new();
+    let mut mapper:HashMap<u32, usize> = HashMap::new();
+    for node in temp.into_iter() {
+        let idx = gh.add_node(node);
+        mapper.insert(node, idx.index());
+    }
+
+    if let Some(cost) = op_cost {
+        for ((ii,jj), ww) in nodes.into_iter().zip(connections.into_iter()).zip(cost.into_iter()) {
+            if let (Some(i), Some(j), Some(w)) = (ii, jj, ww) {
+
+                let idx1 = mapper.get(&i).unwrap(); 
+                let idx2 = mapper.get(&j).unwrap();
+                let idx1 = NodeIndex::new(*idx1);
+                let idx2 = NodeIndex::new(*idx2);
+                gh.add_edge(idx1, idx2, w);
+            }
+        }
     } else {
-        Graph::from_edges(
-            nodes.into_iter().zip(connections.into_iter())
-            .filter(|(i, j)| i.is_some() && j.is_some())
-            .map(|(i,j)| (i.unwrap(), j.unwrap(), 1f64))
-        )
+        for (ii,jj ) in nodes.into_iter().zip(connections.into_iter()) {
+            if let (Some(i), Some(j)) = (ii, jj) {
+                let idx1 = mapper.get(&i).unwrap(); 
+                let idx2 = mapper.get(&j).unwrap();
+                let idx1 = NodeIndex::new(*idx1);
+                let idx2 = NodeIndex::new(*idx2);
+                gh.add_edge(idx1, idx2, 1f64);
+            }
+        }
     };
     Ok(gh)
 }
