@@ -1306,7 +1306,7 @@ def test_psi_discrete(df, res):
                 {
                     "id": range(5),
                     "conn": [[1, 2, 3, 4], [2, 3], [4], [0, 1, 2], [1]],
-                    "cost": [[0.4, 0.3, 0.2, 0.1], [0.1, 1], [0.5], [0.1, 0.1, 0.1], [0.1]],
+                    "cost": [[0.4, 0.3, 0.2, 0.1], [0.1, 1.0], [0.5], [0.1, 0.1, 0.1], [0.1]],
                 }
             ).with_columns(
                 pl.col("id").cast(pl.UInt32), pl.col("conn").list.eval(pl.element().cast(pl.UInt32))
@@ -1318,7 +1318,7 @@ def test_psi_discrete(df, res):
     ],
 )
 def test_shortest_dist(df, target, path, cost):
-    df = df.explode(pl.col("conn"), pl.col("cost"))
+    df = df.explode([pl.col("conn"), pl.col("cost")])
 
     res = (
         df.select(

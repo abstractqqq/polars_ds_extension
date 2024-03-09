@@ -469,14 +469,16 @@ class NumExt:
             return y.register_plugin(
                 lib=_lib,
                 symbol="pl_lstsq_pred",
-                args=list(variables) + [pl.lit(add_bias, dtype=pl.Boolean)],
+                args=list(variables),
+                kwargs={"bias": add_bias},
                 is_elementwise=True,
             )
         else:
             return y.register_plugin(
                 lib=_lib,
                 symbol="pl_lstsq",
-                args=list(variables) + [pl.lit(add_bias, dtype=pl.Boolean)],
+                args=list(variables),
+                kwargs={"bias": add_bias},
                 is_elementwise=False,
                 returns_scalar=True,
             )
@@ -489,7 +491,8 @@ class NumExt:
         return y.register_plugin(
             lib=_lib,
             symbol="pl_lstsq_report",
-            args=list(variables) + [pl.lit(add_bias, dtype=pl.Boolean)],
+            args=list(variables),
+            kwargs={"bias": add_bias},
             is_elementwise=False,
             changes_length=True,
         )

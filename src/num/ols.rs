@@ -1,9 +1,19 @@
 /// OLS using Faer.
+use faer::solvers::SolverCore;
 use faer::{prelude::*, MatRef, Side};
 use faer::{IntoFaer, Mat};
+// use faer_ext::IntoFaer;
+use crate::utils::rechunk_to_frame;
 use itertools::Itertools;
+use ndarray::{s, Array2};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
+use serde::Deserialize;
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct LstsqKwargs {
+    pub(crate) bias: bool,
+}
 
 fn report_output(_: &[Field]) -> PolarsResult<Field> {
     let index = Field::new("feat_idx", DataType::UInt16); // index of feature
@@ -23,7 +33,7 @@ fn pred_residue_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
-    // Update to array
+    // Update to array ???
     // DataType::Array(DataType::Float64, fields.len());
     // fields.len() + 1 when an input is true
     Ok(Field::new(
@@ -32,61 +42,54 @@ fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
     ))
 }
 
+/// Returns the coefficients for lstsq as a nrows x 1 matrix
 #[inline]
 fn faer_lstsq_qr(x: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
     let qr = x.qr();
     qr.solve_lstsq(y)
 }
 
-#[polars_expr(output_type_func=coeff_output)]
-fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
-    let last_idx = inputs.len().abs_diff(1);
-    let add_bias = inputs[last_idx].bool()?;
-    let add_bias: bool = add_bias.get(0).unwrap();
-
+#[inline(always)]
+fn series_to_mat_lstsq(inputs: &[Series], add_bias: bool) -> PolarsResult<Array2<f64>> {
     let nrows = inputs[0].len();
-    // 0 is target
-    // let ncols = inputs[1..last_idx].len() + add_bias as usize;
-    let mut vs: Vec<Series> = Vec::with_capacity(inputs.len() - 1);
-    for (i, s) in inputs[0..last_idx].into_iter().enumerate() {
-        if s.null_count() > 0 || s.len() <= 1 {
-            return Err(PolarsError::ComputeError(
-                "Lstsq: Input must not contain nulls and must have length > 1".into(),
-            ));
-        } else if i >= 1 {
-            let news = s
-                .rechunk()
-                .cast(&DataType::Float64)?
-                .with_name(&i.to_string());
-            vs.push(news);
-        }
-    }
-    // Constant term
-    if add_bias {
-        let one = Series::from_vec("const", vec![1_f64; nrows]);
-        vs.push(one);
-    }
-    // target
-    let y = inputs[0].f64()?;
-    let y = y.rechunk();
-    let y = y.to_ndarray()?.into_shape((nrows, 1)).unwrap();
-    let y = y.view().into_faer();
+    let mut ncols = inputs.len();
+    // Series at index 0 is target
+    let df_x = if add_bias {
+        ncols += 1;
+        let mut series_vec = inputs.to_vec(); // cheap copy
+        series_vec.push(Series::from_vec("const", vec![1_f64; nrows]));
+        rechunk_to_frame(&series_vec)
+    } else {
+        rechunk_to_frame(&inputs)
+    }?;
 
-    let df_x = DataFrame::new(vs)?;
+    if df_x.height() <= ncols {
+        return Err(PolarsError::ComputeError(
+            "Lstsq: Data must have more rows than columns.".into(),
+        ));
+    }
+    df_x.to_ndarray::<Float64Type>(IndexOrder::Fortran)
+}
+
+#[polars_expr(output_type_func=coeff_output)]
+fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+    let add_bias = kwargs.bias;
     // Copy data
-    match df_x.to_ndarray::<Float64Type>(IndexOrder::Fortran) {
-        Ok(x) => {
-            // Solving Least Square
-            let x = x.view().into_faer();
-            let coeffs = faer_lstsq_qr(x, y);
-            let mut betas: Vec<f64> = Vec::with_capacity(coeffs.nrows());
-            for i in 0..coeffs.nrows() {
-                betas.push(coeffs.read(i, 0));
-            }
-            let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                ListPrimitiveChunkedBuilder::new("betas", 1, betas.len(), DataType::Float64);
+    // Target y is at index 0
+    match series_to_mat_lstsq(inputs, add_bias) {
+        Ok(mat) => {
+            let nrows = mat.nrows();
 
-            builder.append_slice(&betas);
+            let y = mat.slice(s![0..nrows, 0..1]);
+            let y = y.view().into_faer();
+            let x = mat.slice(s![0..nrows, 1..]);
+            let x = x.view().into_faer();
+            // Solving Least Square
+            let coeffs = faer_lstsq_qr(x, y);
+            let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
+                ListPrimitiveChunkedBuilder::new("betas", 1, coeffs.nrows(), DataType::Float64);
+
+            builder.append_slice(&coeffs.col_as_slice(0));
             let out = builder.finish();
             Ok(out.into_series())
         }
@@ -95,53 +98,24 @@ fn pl_lstsq(inputs: &[Series]) -> PolarsResult<Series> {
 }
 
 #[polars_expr(output_type_func=pred_residue_output)]
-fn pl_lstsq_pred(inputs: &[Series]) -> PolarsResult<Series> {
-    let last_idx = inputs.len().abs_diff(1);
-    let add_bias = inputs[last_idx].bool()?;
-    let add_bias: bool = add_bias.get(0).unwrap();
-
-    let nrows = inputs[0].len();
-    // 0 is target
-    // let ncols = inputs[1..last_idx].len() + add_bias as usize;
-    let mut vs: Vec<Series> = Vec::with_capacity(inputs.len() - 1);
-    for (i, s) in inputs[0..last_idx].into_iter().enumerate() {
-        if s.null_count() > 0 || s.len() <= 1 {
-            return Err(PolarsError::ComputeError(
-                "Lstsq: Input must not contain nulls and must have length > 1".into(),
-            ));
-        } else if i >= 1 {
-            let news = s
-                .rechunk()
-                .cast(&DataType::Float64)?
-                .with_name(&i.to_string());
-            vs.push(news);
-        }
-    }
-    // Constant term
-    if add_bias {
-        let one = Series::from_vec("const", vec![1_f64; nrows]);
-        vs.push(one);
-    }
-    // target
-    let y = inputs[0].f64()?;
-    let y = y.rechunk();
-    let y = y.to_ndarray()?.into_shape((nrows, 1)).unwrap();
-    let y = y.view().into_faer();
-
-    let df_x = DataFrame::new(vs)?;
+fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+    let add_bias = kwargs.bias;
     // Copy data
-    match df_x.to_ndarray::<Float64Type>(IndexOrder::Fortran) {
-        Ok(x) => {
-            // Solving Least Square
+    // Target y is at index 0
+    match series_to_mat_lstsq(inputs, add_bias) {
+        Ok(mat) => {
+            let nrows = mat.nrows();
+
+            let y = mat.slice(s![0..nrows, 0..1]);
+            let y = y.view().into_faer();
+            let x = mat.slice(s![0..nrows, 1..]);
             let x = x.view().into_faer();
+            // Solving Least Square
             let coeffs = faer_lstsq_qr(x, y);
             let y_hat = x * coeffs;
-            let rows = y_hat.nrows();
-            let mut pred: Vec<f64> = Vec::with_capacity(rows);
-            for i in 0..rows {
-                pred.push(y_hat.read(i, 0));
-            }
-            let predictions = Series::from_vec("pred", pred);
+            let pred = y_hat.col_as_slice(0).to_vec();
+            let pred = Float64Chunked::from_slice("pred", &pred);
+            let predictions = pred.into_series();
             let actuals = inputs[0].clone(); // ref counted
             let residue = (actuals - predictions.clone()).with_name("resid"); // ref counted
             let out = StructChunked::new("", &[predictions, residue])?;
@@ -152,67 +126,36 @@ fn pl_lstsq_pred(inputs: &[Series]) -> PolarsResult<Series> {
 }
 
 #[polars_expr(output_type_func=report_output)]
-fn pl_lstsq_report(inputs: &[Series]) -> PolarsResult<Series> {
-    let last_idx = inputs.len().abs_diff(1);
-    let add_bias = inputs[last_idx].bool()?;
-    let add_bias: bool = add_bias.get(0).unwrap();
-
-    let nrows = inputs[0].len();
-    // 0 is target
-    let ncols = inputs[1..last_idx].len() + add_bias as usize;
-    let mut vs: Vec<Series> = Vec::with_capacity(inputs.len() - 1);
-    for (i, s) in inputs[0..last_idx].into_iter().enumerate() {
-        if s.null_count() > 0 || s.len() <= ncols {
-            // If there is null input, return NAN
-            return Err(PolarsError::ComputeError(
-                "Lstsq Report: Input must not contain nulls and must have length > # of features."
-                    .into(),
-            ));
-        } else if i >= 1 {
-            let news = s
-                .rechunk()
-                .cast(&DataType::Float64)?
-                .with_name(&i.to_string());
-            vs.push(news);
-        }
-    }
-    // Constant term
-    if add_bias {
-        let one = Series::from_vec("const", vec![1_f64; nrows]);
-        vs.push(one);
-    }
-    // target
-    let y = inputs[0].f64()?;
-    let y = y.rechunk();
-    let y = y.to_ndarray()?.into_shape((nrows, 1)).unwrap();
-    let y = y.view().into_faer();
-
-    let df_x = DataFrame::new(vs)?;
+fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+    let add_bias = kwargs.bias;
     // Copy data
-    match df_x.to_ndarray::<Float64Type>(IndexOrder::Fortran) {
-        Ok(x) => {
-            // Solving Least Square
-            let xt = x.t();
-            let xt = xt.view().into_faer();
-            let x = x.view().into_faer();
+    // Target y is at index 0
+    match series_to_mat_lstsq(inputs, add_bias) {
+        Ok(mat) => {
+            let ncols = mat.ncols() - 1;
+            let nrows = mat.nrows();
 
+            let y = mat.slice(s![0..nrows, 0..1]);
+            let y = y.view().into_faer();
+            let x = mat.slice(s![0..nrows, 1..]);
+            let xt = x.t().into_faer();
+            let x = x.view().into_faer();
+            // Solving Least Square
             let xtx = xt * &x;
             let cholesky = xtx.cholesky(Side::Lower).map_err(|_| {
                 PolarsError::ComputeError(
                     "Lstsq: X^t X is not numerically positive definite.".into(),
                 )
             })?;
+
             let xtx_inv = cholesky.inverse();
             let coeffs = &xtx_inv * xt * y;
-            let mut betas: Vec<f64> = Vec::with_capacity(coeffs.nrows());
-            for i in 0..coeffs.nrows() {
-                betas.push(coeffs.read(i, 0));
-            }
+            let betas = coeffs.col_as_slice(0).to_vec();
             // Degree of Freedom
             let dof = nrows as f64 - ncols as f64;
             // Residue
             let res = y - x * coeffs;
-            let res2 = res.transpose() * &res;
+            let res2 = res.transpose() * &res; // total residue
             let res2 = res2.read(0, 0) / dof;
             // std err
             let std_err = (0..ncols)
