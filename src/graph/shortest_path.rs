@@ -45,16 +45,15 @@ fn astar_i_in_range_const_cost(
     len: usize,
     target: NodeIndex,
 ) -> ListChunked {
-    let mut builder =
-        ListPrimitiveChunkedBuilder::<UInt32Type>::new("", len, 8, DataType::UInt32);
-    for i in i_start..i_start+len {
+    let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new("", len, 8, DataType::UInt32);
+    for i in i_start..i_start + len {
         let ii = NodeIndex::new(i);
         match astar(gh, ii, |idx| idx == target, |_| 1_u32, |_| 0_u32) {
             Some((_, path)) => {
                 let steps = path
                     .into_iter()
                     .skip(1)
-                    .map(|n| n.index() as u32)
+                    .map(|n| *gh.node_weight(n).unwrap())
                     .collect_vec();
                 builder.append_slice(&steps);
             }
@@ -72,12 +71,11 @@ fn astar_i_in_range(
     len: usize,
     target: NodeIndex,
 ) -> (ListChunked, Float64Chunked) {
-    let mut builder =
-        ListPrimitiveChunkedBuilder::<UInt32Type>::new("", len, 8, DataType::UInt32);
+    let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new("", len, 8, DataType::UInt32);
     let mut cost_builder: PrimitiveChunkedBuilder<Float64Type> =
         PrimitiveChunkedBuilder::new("", len);
 
-    for i in i_start..i_start+len {
+    for i in i_start..i_start + len {
         let ii = NodeIndex::new(i);
         match astar(
             gh,
@@ -90,7 +88,7 @@ fn astar_i_in_range(
                 let steps = path
                     .into_iter()
                     .skip(1)
-                    .map(|n| n.index() as u32)
+                    .map(|n| *gh.node_weight(n).unwrap())
                     .collect_vec();
                 builder.append_slice(&steps);
                 cost_builder.append_value(c);
@@ -106,11 +104,11 @@ fn astar_i_in_range(
 
 #[polars_expr(output_type_func=shortest_path_const_cost_output)]
 fn pl_shortest_path_const_cost(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
-
+    let node_id_col_name = inputs[0].name();
     let gh = super::create_graph(&inputs[..2])?;
     let target = inputs[2].u32()?;
     let target = target.get(0).unwrap();
-    let mut target_idx:Option<NodeIndex> = None;
+    let mut target_idx: Option<NodeIndex> = None;
     let mut nodes: Vec<u32> = vec![0u32; gh.node_count()];
     for (idx, w) in gh.node_references() {
         if *w == target {
@@ -118,12 +116,11 @@ fn pl_shortest_path_const_cost(inputs: &[Series], context: CallerContext) -> Pol
         }
         let i = idx.index();
         nodes[i] = *w;
-
     }
     if target_idx.is_none() {
         return Err(PolarsError::ComputeError(
             "Graph: target is not a valid node identifier.".into(),
-        ))
+        ));
     }
     let target_idx = target_idx.unwrap();
     let nrows = gh.node_count();
@@ -134,13 +131,10 @@ fn pl_shortest_path_const_cost(inputs: &[Series], context: CallerContext) -> Pol
     let ca = if can_parallel {
         let n_threads = POOL.current_num_threads();
         let splits = split_offsets(nrows, n_threads);
-        let chunks_iter = splits
-            .into_par_iter()
-            .map(|(offset, len)| {
-                let out =
-                    astar_i_in_range_const_cost(&gh, offset, len, target_idx);
-                out.downcast_iter().cloned().collect::<Vec<_>>()
-            });
+        let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+            let out = astar_i_in_range_const_cost(&gh, offset, len, target_idx);
+            out.downcast_iter().cloned().collect::<Vec<_>>()
+        });
 
         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
         ListChunked::from_chunk_iter("path", chunks.into_iter().flatten())
@@ -148,20 +142,19 @@ fn pl_shortest_path_const_cost(inputs: &[Series], context: CallerContext) -> Pol
         astar_i_in_range_const_cost(&gh, 0, nrows, target_idx)
     };
 
-    let s1 = Series::from_vec("node", nodes);
-    let s2 = ca.into_series();
+    let s1 = Series::from_vec(node_id_col_name, nodes);
+    let s2 = ca.with_name("path").into_series();
     let out = StructChunked::new("shortest_path", &[s1, s2])?;
     Ok(out.into_series())
-
 }
 
 #[polars_expr(output_type_func=shortest_path_output)]
 fn pl_shortest_path(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
-
+    let node_id_col_name = inputs[0].name();
     let gh = super::create_graph(&inputs[..3])?;
     let target = inputs[3].u32()?;
     let target = target.get(0).unwrap();
-    let mut target_idx:Option<NodeIndex> = None;
+    let mut target_idx: Option<NodeIndex> = None;
     let mut nodes: Vec<u32> = vec![0u32; gh.node_count()];
     for (idx, w) in gh.node_references() {
         if *w == target {
@@ -169,12 +162,11 @@ fn pl_shortest_path(inputs: &[Series], context: CallerContext) -> PolarsResult<S
         }
         let i = idx.index();
         nodes[i] = *w;
-
     }
     if target_idx.is_none() {
         return Err(PolarsError::ComputeError(
             "Graph: target is not a valid node identifier.".into(),
-        ))
+        ));
     }
     let target_idx = target_idx.unwrap();
     let nrows = gh.node_count();
@@ -186,16 +178,16 @@ fn pl_shortest_path(inputs: &[Series], context: CallerContext) -> PolarsResult<S
         let n_threads = POOL.current_num_threads();
         let splits = split_offsets(nrows, n_threads);
         POOL.install(|| {
-            let chunks:(Vec<_>, Vec<_>) = splits
+            let chunks: (Vec<_>, Vec<_>) = splits
                 .into_par_iter()
                 .map(|(offset, len)| {
-                    let out =
-                        astar_i_in_range(&gh, offset, len, target_idx);
+                    let out = astar_i_in_range(&gh, offset, len, target_idx);
                     (
                         out.0.downcast_iter().cloned().collect::<Vec<_>>(),
                         out.1.downcast_iter().cloned().collect::<Vec<_>>(),
                     )
-                }).collect();
+                })
+                .collect();
 
             (
                 ListChunked::from_chunk_iter("path", chunks.0.into_iter().flatten()),
@@ -206,19 +198,17 @@ fn pl_shortest_path(inputs: &[Series], context: CallerContext) -> PolarsResult<S
         astar_i_in_range(&gh, 0, nrows, target_idx)
     };
 
-    let s1 = Series::from_vec("node", nodes);
-    let s2 = ca1.into_series();
-    let s3 = ca2.into_series();
+    let s1 = Series::from_vec(node_id_col_name, nodes);
+    let s2 = ca1.with_name("path").into_series();
+    let s3 = ca2.with_name("cost").into_series();
 
     let out = StructChunked::new("shortest_path", &[s1, s2, s3])?;
     Ok(out.into_series())
-
-
 }
 
 #[polars_expr(output_type_func=dijkstra_output)]
 fn pl_shortest_path_dijkstra(inputs: &[Series]) -> PolarsResult<Series> {
-    // let edges = inputs[0].list()?;
+    let node_id_col_name = inputs[0].name();
     let target = inputs[2].u32()?;
     let target = target.get(0).unwrap();
 
@@ -227,7 +217,7 @@ fn pl_shortest_path_dijkstra(inputs: &[Series]) -> PolarsResult<Series> {
     if target_idx.is_none() {
         return Err(PolarsError::ComputeError(
             "Graph: target is not a valid node identifier.".into(),
-        ))
+        ));
     }
 
     let target_idx = target_idx.unwrap().0;
@@ -237,17 +227,15 @@ fn pl_shortest_path_dijkstra(inputs: &[Series]) -> PolarsResult<Series> {
     let mut out_steps: Vec<u32> = vec![0; gh.node_count()];
     let results = dijkstra(&gh, target_idx, None, |_| 1_u32);
     for (idx, n) in gh.node_references() {
+        let i = idx.index();
         if let Some(s) = results.get(&idx) {
-            out.push(true);
-            out_steps.push(*s);
-        } else {
-            out.push(false);
-            out_steps.push(0);
+            out[i] = true;
+            out_steps[i] = *s;
         }
-        node[idx.index()] = *n;
+        node[i] = *n;
     }
 
-    let s1 = Series::from_vec("node", node);
+    let s1 = Series::from_vec(node_id_col_name, node);
     let s2 = BooleanChunked::from_slice("reachable", &out);
     let s2 = s2.into_series();
     let s3 = UInt32Chunked::from_slice("steps", &out_steps);

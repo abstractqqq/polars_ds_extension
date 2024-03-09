@@ -1037,6 +1037,7 @@ def test_multiclass_roc_auc():
             pl.col("id").stats.sample_uniform(low=0.0, high=1.0).alias("val3"),
             pl.col("id").mod(3).alias("actuals"),
         )
+        # Need to normalize to make sure this is valid ROC AUC data
         return (
             df.lazy()
             .with_columns(
@@ -1060,13 +1061,11 @@ def test_multiclass_roc_auc():
     y_pred = np.stack(df["pred"].to_numpy())
     y_true = df["actuals"]
 
-    macro = df.select(pl.col("actuals").metric.multiclass_roc_auc(pl.col("pred"), 3, "macro")).item(
-        0, 0
-    )
+    macro = df.select(pl.col("actuals").metric.multi_roc_auc(pl.col("pred"), 3, "macro")).item(0, 0)
     macro_sklearn = roc_auc_score(y_true, y_pred, average="macro", multi_class="ovr")
 
     weighted = df.select(
-        pl.col("actuals").metric.multiclass_roc_auc(pl.col("pred"), 3, "weighted")
+        pl.col("actuals").metric.multi_roc_auc(pl.col("pred"), 3, "weighted")
     ).item(0, 0)
     weighted_sklearn = roc_auc_score(y_true, y_pred, average="weighted", multi_class="ovr")
 
@@ -1126,9 +1125,7 @@ def test_knn_ptwise(df, dist, k, res):
         .list.eval(pl.element().sort().cast(pl.UInt32))
         .alias("nn")
     )
-    # Make sure the list inner types are both u64
     res = res.select(pl.col("nn").list.eval(pl.element().sort().cast(pl.UInt32)))
-
     assert_frame_equal(df2, res)
 
 
@@ -1155,7 +1152,7 @@ def test_knn_ptwise(df, dist, k, res):
 )
 def test_knn_pt(df, x, dist, k, res):
     test = df.filter(
-        pds.knn_pt(x, pl.col("val1"), pl.col("val2"), pl.col("val3"), dist=dist, k=k)
+        pds.query_knn_at_pt(pl.col("val1"), pl.col("val2"), pl.col("val3"), pt=x, dist=dist, k=k)
     ).select(pl.col("id"))
 
     assert_frame_equal(test, res)
@@ -1303,14 +1300,17 @@ def test_psi_discrete(df, res):
 @pytest.mark.parametrize(
     "df, target, path, cost",
     [
+        # It is easier to provide a frame that needs to be exploded by
         (
             pl.DataFrame(
                 {
                     "id": range(5),
-                    "edges": [[1, 2, 3, 4], [2, 3], [4], [0, 1, 2], [1]],
+                    "conn": [[1, 2, 3, 4], [2, 3], [4], [0, 1, 2], [1]],
                     "cost": [[0.4, 0.3, 0.2, 0.1], [0.1, 1], [0.5], [0.1, 0.1, 0.1], [0.1]],
                 }
-            ).with_columns(pl.col("edges").list.eval(pl.element().cast(pl.UInt64))),
+            ).with_columns(
+                pl.col("id").cast(pl.UInt32), pl.col("conn").list.eval(pl.element().cast(pl.UInt32))
+            ),
             1,
             [[4, 1], [], [4, 1], [1], [1]],
             [0.2, 0.0, 0.6, 0.1, 0.1],
@@ -1318,14 +1318,22 @@ def test_psi_discrete(df, res):
     ],
 )
 def test_shortest_dist(df, target, path, cost):
-    res = df.select(
-        pl.col("edges")
-        .graph.shortest_path(
-            target=target,
-            cost=pl.col("cost"),
+    df = df.explode(pl.col("conn"), pl.col("cost"))
+
+    res = (
+        df.select(
+            pl.col("id")
+            .graph.shortest_path(
+                link=pl.col("conn"),
+                target=target,
+                cost=pl.col("cost"),
+            )
+            .alias("path")
         )
-        .alias("path")
-    ).unnest("path")
+        .unnest("path")
+        .sort("id")
+    )
+
     for p, ans in zip(res["path"], path):
         assert list(p) == ans
 

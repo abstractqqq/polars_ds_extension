@@ -3,19 +3,11 @@ import logging
 from typing import Optional
 
 from polars_ds.num import *  # noqa: F403
-
-# (
-#     NumExt,
-#     query_nb_cnt,
-#     query_radius_at_pt,
-#     query_radius_ptwise,
-#     knn_pt,
-#     knn_ptwise
-# )
+from polars_ds.graph import *  # noqa: F403
+from polars_ds.metrics import *  # noqa: F403
 from polars_ds.complex import ComplexExt  # noqa: E402, F401
 from polars_ds.str2 import StrExt  # noqa: E402, F401
 from polars_ds.stats import StatsExt  # noqa: E402, F401
-from polars_ds.metrics import MetricExt  # noqa: E402, F401
 from polars_ds.graph import GraphExt  # noqa: E402, F401
 
 logging.basicConfig(level=logging.INFO)

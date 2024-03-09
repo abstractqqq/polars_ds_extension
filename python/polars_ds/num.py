@@ -2,7 +2,7 @@ from __future__ import annotations
 import math
 import polars as pl
 from typing import Union, Optional, List, Iterable
-from .type_alias import DetrendMethod, Distance, ConvMode
+from .type_alias import DetrendMethod, Distance, ConvMode, str_to_expr
 from polars.utils.udfs import _get_shared_lib_location
 
 _lib = _get_shared_lib_location(__file__)
@@ -10,7 +10,6 @@ _lib = _get_shared_lib_location(__file__)
 
 @pl.api.register_expr_namespace("num")
 class NumExt:
-
     """
     This class contains tools for dealing with well-known numerical operations and other metrics inside Polars DataFrame.
     All the metrics/losses provided here is meant for use in cases like evaluating models outside training,
@@ -349,7 +348,7 @@ class NumExt:
 
     def lempel_ziv_complexity(self, as_ratio: bool = True) -> pl.Expr:
         """
-        Computes Lempel Ziv complexity on a boolean column. None will be mapped to False.
+        Computes Lempel Ziv complexity on a boolean column. Null will be mapped to False.
 
         Parameters
         ----------
@@ -543,7 +542,7 @@ class NumExt:
         self,
         *others: pl.Expr,
         k: int = 5,
-        leaf_size: int = 40,
+        leaf_size: int = 32,
         dist: Distance = "l2",
         parallel: bool = False,
         return_dist: bool = False,
@@ -555,7 +554,7 @@ class NumExt:
             raise ValueError("Input `k` must be >= 1.")
 
         metric = str(dist).lower()
-        index: pl.Expr = self._expr.cast(pl.UInt64)
+        index: pl.Expr = self._expr.cast(pl.UInt32)
         if return_dist:
             return index.register_plugin(
                 lib=_lib,
@@ -577,7 +576,7 @@ class NumExt:
         self,
         *others: pl.Expr,
         r: float,
-        leaf_size: int = 40,
+        leaf_size: int = 32,
         dist: Distance = "l2",
         parallel: bool = False,
     ) -> pl.Expr:
@@ -590,7 +589,7 @@ class NumExt:
             raise ValueError("Input `r` must be a scalar now. Expression input is not implemented.")
 
         metric = str(dist).lower()
-        index: pl.Expr = self._expr.cast(pl.UInt64)
+        index: pl.Expr = self._expr.cast(pl.UInt32)
         return index.register_plugin(
             lib=_lib,
             symbol="pl_query_radius_ptwise",
@@ -603,7 +602,7 @@ class NumExt:
         self,
         *others: pl.Expr,
         k: int = 5,
-        leaf_size: int = 40,
+        leaf_size: int = 32,
         dist: Distance = "l2",
     ) -> pl.Expr:
         """
@@ -624,7 +623,7 @@ class NumExt:
     def _nb_cnt(
         self,
         *others: pl.Expr,
-        leaf_size: int = 40,
+        leaf_size: int = 32,
         dist: Distance = "l2",
         parallel: bool = False,
     ) -> pl.Expr:
@@ -687,7 +686,7 @@ class NumExt:
             lib=_lib,
             symbol="pl_approximate_entropy",
             args=data,
-            kwargs={"k": 0, "leaf_size": 50, "metric": "inf", "parallel": parallel},
+            kwargs={"k": 0, "leaf_size": 32, "metric": "inf", "parallel": parallel},
             is_elementwise=False,
             returns_scalar=True,
         )
@@ -728,7 +727,7 @@ class NumExt:
             lib=_lib,
             symbol="pl_sample_entropy",
             args=data,
-            kwargs={"k": 0, "leaf_size": 50, "metric": "inf", "parallel": parallel},
+            kwargs={"k": 0, "leaf_size": 32, "metric": "inf", "parallel": parallel},
             is_elementwise=False,
             returns_scalar=True,
         )
@@ -1062,24 +1061,35 @@ class NumExt:
 
 
 def haversine(
-    x_lat: pl.Expr,
-    x_long: pl.Expr,
-    y_lat: Union[float, pl.Expr],
-    y_long: Union[float, pl.Expr],
+    x_lat: Union[str, pl.Expr],
+    x_long: Union[str, pl.Expr],
+    y_lat: Union[float, str, pl.Expr],
+    y_long: Union[float, str, pl.Expr],
 ) -> pl.Expr:
     """
     Computes haversine distance using the naive method. The output unit is km.
+
+    Parameters
+    ----------
+    x_lat
+        Column representing latitude in x
+    x_long
+        Column representing longitude in x
+    y_lat
+        Column representing latitude in y
+    y_long
+        Column representing longitude in y
     """
-    ylat = pl.lit(y_lat) if isinstance(y_lat, float) else y_lat
-    ylong = pl.lit(y_long) if isinstance(y_long, float) else y_long
-    return x_lat.num._haversine(x_long, ylat, ylong)
+    ylat = pl.lit(y_lat) if isinstance(y_lat, float) else str_to_expr(y_lat)
+    ylong = pl.lit(y_long) if isinstance(y_long, float) else str_to_expr(y_long)
+    return str_to_expr(x_lat).num._haversine(str_to_expr(x_long), ylat, ylong)
 
 
 def query_knn_ptwise(
-    *others: pl.Expr,
-    index: pl.Expr,
+    *others: Union[str, pl.Expr],
+    index: Union[str, pl.Expr],
     k: int = 5,
-    leaf_size: int = 40,
+    leaf_size: int = 32,
     dist: Distance = "l2",
     parallel: bool = False,
     return_dist: bool = False,
@@ -1089,7 +1099,7 @@ def query_knn_ptwise(
     to every id in the index columns. By default, this will return self, and k more neighbors.
     So the output size is actually k + 1. This will throw an error if any null value is found.
 
-    Note that the index column must be convertible to u64. If you do not have a u64 column,
+    Note that the index column must be convertible to u32. If you do not have a u32 column,
     you can generate one using pl.int_range(..), which should be a step before this. The index column
     must not contain nulls.
 
@@ -1099,10 +1109,10 @@ def query_knn_ptwise(
 
     Parameters
     ----------
-    *others : pl.Expr
+    *others : str | pl.Expr
         Other columns used as features
-    index : pl.Expr
-        The column used as index, must be castable to u64
+    index : str | pl.Expr
+        The column used as index, must be castable to u32
     k : int
         Number of neighbors to query
     leaf_size : int
@@ -1115,8 +1125,9 @@ def query_knn_ptwise(
     return_dist
         If true, return a struct with indices and distances.
     """
-    return index.num._knn_ptwise(
-        *others,
+    idx = str_to_expr(index)
+    return idx.num._knn_ptwise(
+        *[str_to_expr(x) for x in others],
         k=k,
         leaf_size=leaf_size,
         dist=dist,
@@ -1126,7 +1137,7 @@ def query_knn_ptwise(
 
 
 def query_radius_at_pt(
-    *others: pl.Expr,
+    *others: Union[str, pl.Expr],
     pt: Iterable[float],
     r: Union[float, pl.Expr],
     dist: Distance = "l2",
@@ -1137,7 +1148,7 @@ def query_radius_at_pt(
 
     Parameters
     ----------
-    *others : pl.Expr
+    *others : str | pl.Expr
         Other columns used as features
     pt : Iterable[float]
         The point, at which we filter using the radius.
@@ -1147,7 +1158,7 @@ def query_radius_at_pt(
         Note `l2` is actually squared `l2` for computational efficiency.
     """
     # For a single point, it is faster to just do it in native polars
-    oth = list(others)
+    oth = [str_to_expr(x) for x in others]
     if len(pt) != len(oth):
         raise ValueError("Dimension does not match.")
 
@@ -1190,8 +1201,8 @@ def query_radius_at_pt(
 
 
 def query_radius_ptwise(
-    *others: pl.Expr,
-    index: pl.Expr,
+    *others: Union[str, pl.Expr],
+    index: Union[str, pl.Expr],
     r: float,
     dist: Distance = "l2",
     parallel: bool = False,
@@ -1200,7 +1211,7 @@ def query_radius_ptwise(
     Takes the index column, and uses other columns to determine distance, and query all neighbors
     within distance r from each id in the index column.
 
-    Note that the index column must be convertible to u64. If you do not have a u64 ID column,
+    Note that the index column must be convertible to u32. If you do not have a u32 ID column,
     you can generate one using pl.int_range(..), which should be a step before this.
 
     Also note that this internally builds a kd-tree for fast querying and deallocates it once we
@@ -1209,10 +1220,10 @@ def query_radius_ptwise(
 
     Parameters
     ----------
-    *others : pl.Expr
+    *others : str | pl.Expr
         Other columns used as features
-    index
-        The column used as index, must be castable to u64
+    index : str | pl.Expr
+        The column used as index, must be castable to u32
     r : float
         The radius. Must be a scalar value now.
     dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
@@ -1221,13 +1232,16 @@ def query_radius_ptwise(
         Whether to run the k-nearest neighbor query in parallel. This is recommended when you
         are running only this expression, and not in group_by context.
     """
-    return index.num._radius_ptwise(*others, r=r, dist=dist, parallel=parallel)
+    idx = str_to_expr(index)
+    return idx.num._radius_ptwise(
+        *[str_to_expr(x) for x in others], r=r, dist=dist, parallel=parallel
+    )
 
 
 def query_nb_cnt(
-    r: Union[float, pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
-    *others: pl.Expr,
-    leaf_size: int = 40,
+    r: Union[float, str, pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
+    *others: Union[str, pl.Expr],
+    leaf_size: int = 32,
     dist: Distance = "l2",
     parallel: bool = False,
 ) -> pl.Expr:
@@ -1237,11 +1251,12 @@ def query_nb_cnt(
 
     Parameters
     ----------
-    r : float | Iterable[float] | pl.Expr
+    r : float | Iterable[float] | pl.Expr | str
         If this is a scalar, then it will run the query with fixed radius for all rows. If
         this is a list, then it must have the same height as the dataframe. If
-        this is an expression, it must be an expression representing radius.
-    *others : pl.Expr
+        this is an expression, it must be an expression representing radius. If this is a str,
+        it must be the name of a column
+    *others : str | pl.Expr
         Other columns used as features
     leaf_size : int, > 0
         Leaf size for the kd-tree. Tuning this might improve performance.
@@ -1255,17 +1270,21 @@ def query_nb_cnt(
         rad = pl.lit(pl.Series(values=[r], dtype=pl.Float64))
     elif isinstance(r, pl.Expr):
         rad = r
+    elif isinstance(r, str):
+        rad = pl.col(r)
     else:
         rad = pl.lit(pl.Series(values=r, dtype=pl.Float64))
 
-    return rad.num._nb_cnt(*others, leaf_size=leaf_size, dist=dist, parallel=parallel)
+    return rad.num._nb_cnt(
+        *[str_to_expr(x) for x in others], leaf_size=leaf_size, dist=dist, parallel=parallel
+    )
 
 
 def query_knn_at_pt(
-    *others: pl.Expr,
+    *others: Union[str, pl.Expr],
     pt: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
     k: int = 5,
-    leaf_size: int = 40,
+    leaf_size: int = 32,
     dist: Distance = "l2",
 ) -> pl.Expr:
     """
@@ -1277,7 +1296,7 @@ def query_knn_at_pt(
 
     Parameters
     ----------
-    *others : pl.Expr
+    *others : str | pl.Expr
         Other columns used as features
     pt : Iterable[float]
         The point. It must be of the same length as the number of columns in `others`.
@@ -1293,7 +1312,7 @@ def query_knn_at_pt(
 
     pt = pl.Series(values=pt, dtype=pl.Float64)
     return pl.lit(pt).num._knn_pt(
-        *others,
+        *[str_to_expr(x) for x in others],
         k=k,
         leaf_size=leaf_size,
         dist=dist,
@@ -1301,7 +1320,10 @@ def query_knn_at_pt(
 
 
 def query_lstsq(
-    *variables: pl.Expr, target: pl.Expr, add_bias: bool = False, return_pred: bool = False
+    *variables: Union[str, pl.Expr],
+    target: Union[str, pl.Expr],
+    add_bias: bool = False,
+    return_pred: bool = False,
 ) -> pl.Expr:
     """
     Computes least squares solution to the equation Ax = y where y is the target.
@@ -1319,8 +1341,10 @@ def query_lstsq(
 
     Parameters
     ----------
-    variables
+    variables : str | pl.Expr
         The variables used to predict target (self).
+    target : str | pl.Expr
+        The target variable
     add_bias
         Whether to add a bias term
     return_pred
@@ -1328,10 +1352,15 @@ def query_lstsq(
         for coefficients, it reduces to one output (like max/min), but for predictions and
         residue, it will return the same number of rows as in input.
     """
-    return target.num.lstsq(*variables, add_bias=add_bias, return_pred=return_pred)
+    t = str_to_expr(target)
+    return t.num.lstsq(
+        *[str_to_expr(x) for x in variables], add_bias=add_bias, return_pred=return_pred
+    )
 
 
-def query_lstsq_report(*variables: pl.Expr, target: pl.Expr, add_bias: bool = False) -> pl.Expr:
+def query_lstsq_report(
+    *variables: Union[str, pl.Expr], target: Union[str, pl.Expr], add_bias: bool = False
+) -> pl.Expr:
     """
     Creates a least square report with more stats about each coefficient.
 
@@ -1346,21 +1375,24 @@ def query_lstsq_report(*variables: pl.Expr, target: pl.Expr, add_bias: bool = Fa
 
     Parameters
     ----------
-    variables
+    variables : str | pl.Expr
         The variables used to predict target (self).
+    target : str | pl.Expr
+        The target variable
     add_bias
         Whether to add a bias term. If bias is added, it is always the last feature.
     """
-    return target.num.lstsq_report(*variables, add_bias=add_bias)
+    t = str_to_expr(target)
+    return t.num.lstsq_report(*[str_to_expr(x) for x in variables], add_bias=add_bias)
 
 
-def query_cond_entropy(x: pl.Expr, y: pl.Expr) -> pl.Expr:
+def query_cond_entropy(x: Union[str, pl.Expr], y: Union[str, pl.Expr]) -> pl.Expr:
     """
     Queries the conditional entropy of x on y, aka. H(x|y).
 
     Parameters
     ----------
-    other
-        A Polars expression
+    other : str | pl.Expr
+        Either a str represeting a column name or a Polars expression
     """
-    return x.num.cond_entropy(y)
+    return str_to_expr(x).num.cond_entropy(str_to_expr(y))
