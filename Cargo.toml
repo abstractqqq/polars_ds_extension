@@ -38,4 +38,4 @@ jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }
 [profile.release]
 codegen-units = 1
 strip = "symbols" 
-lto = "fat"
+lto = "thin"

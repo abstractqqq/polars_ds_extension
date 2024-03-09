@@ -56,6 +56,13 @@ pub fn list_u64_output(_: &[Field]) -> PolarsResult<Field> {
     ))
 }
 
+pub fn list_u32_output(_: &[Field]) -> PolarsResult<Field> {
+    Ok(Field::new(
+        "nodes",
+        DataType::List(Box::new(DataType::UInt32)),
+    ))
+}
+
 pub fn list_f64_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
         "floats",

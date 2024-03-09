@@ -1,6 +1,7 @@
 from __future__ import annotations
 import polars as pl
-from .type_alias import ROCAUCStrategy
+from typing import Union
+from .type_alias import ROCAUCStrategy, str_to_expr
 from polars.utils.udfs import _get_shared_lib_location
 
 _lib = _get_shared_lib_location(__file__)
@@ -59,14 +60,7 @@ class MetricExt:
 
     def l1_loss(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
-        Computes L1 loss (absolute difference) between this and the other `pred` expression.
-
-        Parameters
-        ----------
-        pred
-            An expression represeting the column with predicted probability.
-        normalize
-            If true, divide the result by length of the series
+        See query_l1
         """
         temp = (self._expr - pred).abs().sum()
         if normalize:
@@ -75,15 +69,7 @@ class MetricExt:
 
     def l2_loss(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
-        Computes L2 loss (normalized L2 distance) between this and the other `pred` expression. This
-        is the norm without 1/p power.
-
-        Parameters
-        ----------
-        pred
-            An expression represeting the column with predicted probability.
-        normalize
-            If true, divide the result by length of the series
+        See query_l2
         """
         temp = self._expr - pred
         temp = temp.dot(temp)
@@ -116,12 +102,7 @@ class MetricExt:
 
     def r2(self, pred: pl.Expr) -> pl.Expr:
         """
-        Returns the coefficient of determineation for a regression model.
-
-        Parameters
-        ----------
-        pred
-            A Polars expression representing predictions
+        See query_r2
         """
         diff = self._expr - pred
         ss_res = diff.dot(diff)
@@ -167,17 +148,7 @@ class MetricExt:
 
     def mape(self, pred: pl.Expr, weighted: bool = False) -> pl.Expr:
         """
-        Computes mean absolute percentage error between self and the other `pred` expression.
-        If weighted, it will compute the weighted version as defined here:
-
-        https://en.wikipedia.org/wiki/Mean_absolute_percentage_error
-
-        Parameters
-        ----------
-        pred
-            An expression represeting the column with predicted probability.
-        weighted
-            If true, computes wMAPE in the wikipedia article
+        See query_mape
         """
         if weighted:
             return (self._expr - pred).abs().sum() / self._expr.abs().sum()
@@ -186,16 +157,7 @@ class MetricExt:
 
     def smape(self, pred: pl.Expr) -> pl.Expr:
         """
-        Computes symmetric mean absolute percentage error between self and other `pred` expression.
-        The value is always between 0 and 1. This is the third version in the wikipedia without
-        the 100 factor.
-
-        https://en.wikipedia.org/wiki/Symmetric_mean_absolute_percentage_error
-
-        Parameters
-        ----------
-        pred
-            A Polars expression representing predictions
+        See query_smape
         """
         numerator = (self._expr - pred).abs()
         denominator = 1.0 / (self._expr.abs() + pred.abs())
@@ -203,14 +165,7 @@ class MetricExt:
 
     def log_loss(self, pred: pl.Expr, normalize: bool = True) -> pl.Expr:
         """
-        Computes log loss, aka binary cross entropy loss, between self and other `pred` expression.
-
-        Parameters
-        ----------
-        pred
-            An expression represeting the column with predicted probability.
-        normalize
-            Whether to divide by N.
+        See query_log_loss.
         """
         out = self._expr.dot(pred.log()) + (1 - self._expr).dot((1 - pred).log())
         if normalize:
@@ -285,15 +240,7 @@ class MetricExt:
 
     def roc_auc(self, pred: pl.Expr) -> pl.Expr:
         """
-        Computes ROC AUC using self as actual and pred as predictions.
-
-        Self must be binary and castable to type UInt32. If self is not all 0s and 1s or not binary,
-        the result will not make sense, or some error may occur.
-
-        Parameters
-        ----------
-        pred
-            An expression represeting the column with predicted probability.
+        See query_roc_auc
         """
         y = self._expr.cast(pl.UInt32)
         return y.register_plugin(
@@ -304,21 +251,11 @@ class MetricExt:
             returns_scalar=True,
         )
 
-    def multiclass_roc_auc(
+    def multi_roc_auc(
         self, pred: pl.Expr, n_classes: int, strategy: ROCAUCStrategy = "weighted"
     ) -> pl.Expr:
         """
-        Computes multiclass ROC AUC. Self (actuals) must be labels represented by integer values
-        ranging in the range [0, n_classes), and pred must be a column of list[f64] with size `n_classes`.
-
-        Parameters
-        ----------
-        pred
-            The multilabel prediction column
-        n_classes
-            The number of classes
-        strategy
-            Either `macro` or `weighted`, which are defined the same as in Scikit-learn.
+        See query_multi_roc_auc
         """
         if strategy == "macro":
             actuals = [self._expr == i for i in range(n_classes)]
@@ -352,23 +289,7 @@ class MetricExt:
 
     def binary_metrics_combo(self, pred: pl.Expr, threshold: float = 0.5) -> pl.Expr:
         """
-        Computes the following binary classificaition metrics using self as actual and pred as predictions:
-        precision, recall, f, average_precision and roc_auc. The return will be a struct with values
-        having the names as given here.
-
-        Self must be binary and castable to type UInt32. If self is not all 0s and 1s,
-        the result will not make sense, or some error may occur.
-
-        Average precision is computed using Sum (R_n - R_n-1)*P_n-1, which is not the textbook definition,
-        but is consistent with Scikit-learn. For more information, see
-        https://scikit-learn.org/stable/modules/generated/sklearn.metrics.average_precision_score.html
-
-        Parameters
-        ----------
-        pred
-            An expression represeting the column with predicted probability.
-        threshold
-            The threshold used to compute precision, recall and f (f score).
+        See query_binary_metrics
         """
         y = self._expr.cast(pl.UInt32)
         return y.register_plugin(
@@ -378,3 +299,202 @@ class MetricExt:
             is_elementwise=False,
             returns_scalar=True,
         )
+
+
+# ----------------------------------------------------------------------------------
+
+
+def query_r2(actual: Union[str, pl.Expr], pred: Union[str, pl.Expr]) -> pl.Expr:
+    """
+    Returns the coefficient of determineation for a regression model.
+
+    Parameters
+    ----------
+    actual
+        An expression represeting the actual
+    pred
+        A Polars expression representing predictions
+    """
+    return str_to_expr(actual).metric.r2(str_to_expr(pred))
+
+
+def query_l2(
+    actual: Union[str, pl.Expr], pred: Union[str, pl.Expr], normalize: bool = True
+) -> pl.Expr:
+    """
+    Returns squared L2 loss.
+
+    Parameters
+    ----------
+    actual
+        An expression represeting the actual
+    pred
+        A Polars expression representing predictions
+    normalize
+        Whether to divide by N.
+    """
+    return str_to_expr(actual).metric.l2_loss(str_to_expr(pred), normalize=normalize)
+
+
+def query_l1(
+    actual: Union[str, pl.Expr], pred: Union[str, pl.Expr], normalize: bool = True
+) -> pl.Expr:
+    """
+    Returns L1 loss.
+
+    Parameters
+    ----------
+    actual
+        An expression represeting the actual
+    pred
+        A Polars expression representing predictions
+    normalize
+        Whether to divide by N.
+    """
+    return str_to_expr(actual).metric.l1_loss(str_to_expr(pred), normalize=normalize)
+
+
+def query_l_inf(
+    actual: Union[str, pl.Expr], pred: Union[str, pl.Expr], normalize: bool = True
+) -> pl.Expr:
+    """
+    Returns L Inf loss.
+
+    Parameters
+    ----------
+    actual
+        An expression represeting the actual
+    pred
+        A Polars expression representing predictions
+    normalize
+        Whether to divide by N.
+    """
+    return str_to_expr(actual).metric.l_inf_loss(str_to_expr(pred), normalize=normalize)
+
+
+def query_log_loss(
+    actual: Union[str, pl.Expr], pred: Union[str, pl.Expr], normalize: bool = True
+) -> pl.Expr:
+    """
+    Computes log loss, aka binary cross entropy loss, between self and other `pred` expression.
+
+    Parameters
+    ----------
+    actual
+        An expression represeting the actual
+    pred
+        An expression represeting the column with predicted probability.
+    normalize
+        Whether to divide by N.
+    """
+    return str_to_expr(actual).metric.log_loss(str_to_expr(pred), normalize=normalize)
+
+
+def query_mape(
+    actual: Union[str, pl.Expr], pred: Union[str, pl.Expr], weighted: bool = False
+) -> pl.Expr:
+    """
+    Computes mean absolute percentage error between self and the other `pred` expression.
+    If weighted, it will compute the weighted version as defined here:
+
+    https://en.wikipedia.org/wiki/Mean_absolute_percentage_error
+
+    Parameters
+    ----------
+    actual
+        An expression represeting the actual
+    pred
+        An expression represeting the column with predicted probability.
+    weighted
+        If true, computes wMAPE in the wikipedia article
+    """
+    return str_to_expr(actual).metric.mape(str_to_expr(pred), weighted=weighted)
+
+
+def query_smape(actual: Union[str, pl.Expr], pred: Union[str, pl.Expr]) -> pl.Expr:
+    """
+    Computes symmetric mean absolute percentage error between self and other `pred` expression.
+    The value is always between 0 and 1. This is the third version in the wikipedia without
+    the 100 factor.
+
+    https://en.wikipedia.org/wiki/Symmetric_mean_absolute_percentage_error
+
+    Parameters
+    ----------
+    actual
+        An expression represeting the actual
+    pred
+        A Polars expression representing predictions
+    """
+    return str_to_expr(actual).metric.smape(str_to_expr(pred))
+
+
+def query_roc_auc(
+    actual: Union[str, pl.Expr],
+    pred: Union[str, pl.Expr],
+) -> pl.Expr:
+    """
+    Computes ROC AUC using self as actual and pred as predictions.
+
+    Self must be binary and castable to type UInt32. If self is not all 0s and 1s or not binary,
+    the result will not make sense, or some error may occur.
+
+    Parameters
+    ----------
+    actual
+        An expression represeting the actual
+    pred
+        An expression represeting the column with predicted probability.
+    """
+    return str_to_expr(actual).metric.roc_auc(str_to_expr(pred))
+
+
+def query_binary_metrics(
+    actual: Union[str, pl.Expr], pred: Union[str, pl.Expr], threshold: float = 0.5
+) -> pl.Expr:
+    """
+    Computes the following binary classificaition metrics using self as actual and pred as predictions:
+    precision, recall, f, average_precision and roc_auc. The return will be a struct with values
+    having the names as given here.
+
+    Self must be binary and castable to type UInt32. If self is not all 0s and 1s,
+    the result will not make sense, or some error may occur.
+
+    Average precision is computed using Sum (R_n - R_n-1)*P_n-1, which is not the textbook definition,
+    but is consistent with Scikit-learn. For more information, see
+    https://scikit-learn.org/stable/modules/generated/sklearn.metrics.average_precision_score.html
+
+    Parameters
+    ----------
+    actual
+        An expression represeting the actual
+    pred
+        An expression represeting the column with predicted probability.
+    threshold
+        The threshold used to compute precision, recall and f (f score).
+    """
+    return str_to_expr(actual).metric.binary_metrics_combo(str_to_expr(pred), threshold=threshold)
+
+
+def query_multi_roc_auc(
+    actual: Union[str, pl.Expr],
+    pred: Union[str, pl.Expr],
+    n_classes: int,
+    strategy: ROCAUCStrategy = "weighted",
+) -> pl.Expr:
+    """
+    Computes multiclass ROC AUC. Self (actuals) must be labels represented by integer values
+    ranging in the range [0, n_classes), and pred must be a column of list[f64] with size `n_classes`.
+
+    Parameters
+    ----------
+    pred
+        The multilabel prediction column
+    n_classes
+        The number of classes
+    strategy
+        Either `macro` or `weighted`, which are defined the same as in Scikit-learn.
+    """
+    return str_to_expr(actual).metric.multi_roc_auc(
+        str_to_expr(pred), n_classes=n_classes, strategy=strategy
+    )

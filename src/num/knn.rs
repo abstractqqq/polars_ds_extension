@@ -1,7 +1,7 @@
 /// Performs KNN related search queries, classification and regression, and
 /// other features/entropies that require KNN to be efficiently computed.
 use super::which_distance;
-use crate::utils::{list_u64_output, rechunk_to_frame, split_offsets};
+use crate::utils::{list_u32_output, rechunk_to_frame, split_offsets};
 use itertools::Itertools;
 use kdtree::KdTree;
 use ndarray::{s, ArrayView2, Axis};
@@ -14,6 +14,14 @@ use pyo3_polars::{
     },
 };
 use serde::Deserialize;
+
+pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
+    let idx = Field::new("idx", DataType::List(Box::new(DataType::UInt32)));
+
+    let dist = Field::new("dist", DataType::List(Box::new(DataType::Float64)));
+    let v = vec![idx, dist];
+    Ok(Field::new("knn_w_dist", DataType::Struct(v)))
+}
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct KdtreeKwargs {
@@ -48,22 +56,14 @@ pub fn build_standard_kdtree<'a>(
     Ok(tree)
 }
 
-pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
-    let idx = Field::new("idx", DataType::List(Box::new(DataType::UInt64)));
-
-    let dist = Field::new("dist", DataType::List(Box::new(DataType::Float64)));
-    let v = vec![idx, dist];
-    Ok(Field::new("knn_w_dist", DataType::Struct(v)))
-}
-
-#[polars_expr(output_type_func=list_u64_output)]
+#[polars_expr(output_type_func=list_u32_output)]
 fn pl_knn_ptwise(
     inputs: &[Series],
     context: CallerContext,
     kwargs: KdtreeKwargs,
 ) -> PolarsResult<Series> {
     // Set up params
-    let id = inputs[0].u64()?;
+    let id = inputs[0].u32()?;
     let id = id.rechunk();
     let id = id.cont_slice()?;
 
@@ -96,11 +96,11 @@ fn pl_knn_ptwise(
             let chunks: Vec<_> = splits
                 .into_par_iter()
                 .map(|(offset, len)| {
-                    let mut builder = ListPrimitiveChunkedBuilder::<UInt64Type>::new(
+                    let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
                         "",
                         len,
                         k + 1,
-                        DataType::UInt64,
+                        DataType::UInt32,
                     );
                     let piece = data.slice(s![offset..offset + len, 0..dim]);
                     for p in piece.axis_iter(Axis(0)) {
@@ -120,7 +120,7 @@ fn pl_knn_ptwise(
         })
     } else {
         let mut builder =
-            ListPrimitiveChunkedBuilder::<UInt64Type>::new("", id.len(), k + 1, DataType::UInt64);
+            ListPrimitiveChunkedBuilder::<UInt32Type>::new("", id.len(), k + 1, DataType::UInt32);
 
         for p in data.rows() {
             let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
@@ -137,14 +137,14 @@ fn pl_knn_ptwise(
     Ok(ca.into_series())
 }
 
-#[polars_expr(output_type_func=list_u64_output)]
+#[polars_expr(output_type_func=list_u32_output)]
 fn pl_query_radius_ptwise(
     inputs: &[Series],
     context: CallerContext,
     kwargs: KdtreeRadiusKwargs,
 ) -> PolarsResult<Series> {
     // Set up params
-    let id = inputs[0].u64()?;
+    let id = inputs[0].u32()?;
     let id = id.rechunk();
     let id = id.cont_slice()?;
 
@@ -178,11 +178,11 @@ fn pl_query_radius_ptwise(
             let chunks: Vec<_> = splits
                 .into_par_iter()
                 .map(|(offset, len)| {
-                    let mut builder = ListPrimitiveChunkedBuilder::<UInt64Type>::new(
+                    let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
                         "",
                         len,
                         8,
-                        DataType::UInt64,
+                        DataType::UInt32,
                     );
                     let piece = data.slice(s![offset..offset + len, 0..dim]);
                     for p in piece.axis_iter(Axis(0)) {
@@ -204,11 +204,11 @@ fn pl_query_radius_ptwise(
         Ok(ca.into_series())
     } else {
         let mut builder =
-            ListPrimitiveChunkedBuilder::<UInt64Type>::new("", id.len(), 16, DataType::UInt64);
+            ListPrimitiveChunkedBuilder::<UInt32Type>::new("", id.len(), 16, DataType::UInt32);
         for p in data.rows() {
             let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
             if let Ok(v) = tree.within(s, radius, &dist_func) {
-                let mut out: Vec<u64> = v.into_iter().map(|(_, i)| id[*i]).collect();
+                let mut out: Vec<u32> = v.into_iter().map(|(_, i)| id[*i]).collect();
                 out.shrink_to_fit();
                 builder.append_slice(&out);
             } else {
@@ -227,7 +227,7 @@ fn pl_knn_ptwise_w_dist(
     kwargs: KdtreeKwargs,
 ) -> PolarsResult<Series> {
     // Set up params
-    let id = inputs[0].u64()?;
+    let id = inputs[0].u32()?;
     let id = id.rechunk();
     let id = id.cont_slice().unwrap();
 
@@ -261,11 +261,11 @@ fn pl_knn_ptwise_w_dist(
             let chunks: (Vec<_>, Vec<_>) = splits
                 .into_par_iter()
                 .map(|(offset, len)| {
-                    let mut nn_builder = ListPrimitiveChunkedBuilder::<UInt64Type>::new(
+                    let mut nn_builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
                         "",
                         len,
                         8,
-                        DataType::UInt64,
+                        DataType::UInt32,
                     );
                     let mut rr_builder = ListPrimitiveChunkedBuilder::<Float64Type>::new(
                         "",
@@ -277,7 +277,7 @@ fn pl_knn_ptwise_w_dist(
                     for p in piece.axis_iter(Axis(0)) {
                         let sl = p.to_slice().unwrap();
                         if let Ok(v) = tree.nearest(sl, k + 1, &dist_func) {
-                            let mut nn: Vec<u64> = Vec::with_capacity(k + 1);
+                            let mut nn: Vec<u32> = Vec::with_capacity(k + 1);
                             let mut rr: Vec<f64> = Vec::with_capacity(k + 1);
                             //.map(|(_, i)| id[*i]).collect_vec();
                             for (r, i) in v.into_iter() {
@@ -309,7 +309,7 @@ fn pl_knn_ptwise_w_dist(
         })
     } else {
         let mut nn_builder =
-            ListPrimitiveChunkedBuilder::<UInt64Type>::new("", id.len(), k + 1, DataType::UInt64);
+            ListPrimitiveChunkedBuilder::<UInt32Type>::new("", id.len(), k + 1, DataType::UInt32);
 
         let mut rr_builder =
             ListPrimitiveChunkedBuilder::<Float64Type>::new("", id.len(), k + 1, DataType::Float64);
@@ -317,7 +317,7 @@ fn pl_knn_ptwise_w_dist(
             let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
             if let Ok(v) = tree.nearest(s, k + 1, &dist_func) {
                 // By construction, this unwrap is safe
-                let mut w_idx: Vec<u64> = Vec::with_capacity(k + 1);
+                let mut w_idx: Vec<u32> = Vec::with_capacity(k + 1);
                 let mut w_dist: Vec<f64> = Vec::with_capacity(k + 1);
                 for (d, i) in v.into_iter() {
                     w_idx.push(id[*i]);
@@ -349,7 +349,7 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     let dim = inputs[1..].len();
     if dim == 0 || pt.len() != dim {
         return Err(PolarsError::ComputeError(
-            "KNN: There has to be at least one column in `others` and input point \
+            "KNN: There has to be at least one column in `others` and input point 
             must be the same dimension as the number of columns in `others`."
                 .into(),
         ));
@@ -401,40 +401,40 @@ pub fn query_nb_cnt<F>(
 where
     F: Fn(&[f64], &[f64]) -> f64 + std::marker::Sync,
 {
+    let nrows = data.shape()[0];
+    let dim = data.shape()[1];
     if can_parallel {
-        let nrows = data.shape()[0];
-        let dim = data.shape()[1];
-        POOL.install(|| {
-            let n_threads = POOL.current_num_threads();
-            let splits = split_offsets(nrows, n_threads);
-            let chunks: Vec<_> = splits
-                .into_par_iter()
-                .map(|(offset, len)| {
-                    let piece = data.slice(s![offset..offset + len, 0..dim]);
-                    let out = piece.axis_iter(Axis(0)).map(|p| {
-                        let sl = p.to_slice().unwrap();
-                        if let Ok(cnt) = tree.within_count(sl, r, &dist_func) {
-                            Some(cnt as u32)
-                        } else {
-                            None
-                        }
-                    });
-                    let ca = UInt32Chunked::from_iter_options("", out);
-                    ca.downcast_iter().cloned().collect::<Vec<_>>()
-                })
-                .collect();
-            UInt32Chunked::from_chunk_iter("cnt", chunks.into_iter().flatten())
-        })
-    } else {
-        let output = data.axis_iter(Axis(0)).map(|pt| {
-            let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
-            if let Ok(cnt) = tree.within_count(s, r, dist_func) {
-                Some(cnt as u32)
-            } else {
-                None
-            }
+        let n_threads = POOL.current_num_threads();
+        let splits = split_offsets(nrows, n_threads);
+        let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+            let piece = data.slice(s![offset..offset + len, 0..dim]);
+            let out = piece.axis_iter(Axis(0)).map(|p| {
+                let sl = p.to_slice().unwrap();
+                if let Ok(cnt) = tree.within_count(sl, r, &dist_func) {
+                    Some(cnt as u32)
+                } else {
+                    None
+                }
+            });
+            let ca = UInt32Chunked::from_iter_options("", out);
+            ca.downcast_iter().cloned().collect::<Vec<_>>()
         });
-        UInt32Chunked::from_iter(output)
+        let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
+        UInt32Chunked::from_chunk_iter("cnt", chunks.into_iter().flatten())
+    } else {
+        let mut builder: PrimitiveChunkedBuilder<UInt32Type> =
+            PrimitiveChunkedBuilder::new("", nrows);
+        data.axis_iter(Axis(0)).for_each(|pt| {
+            let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
+            builder.append_option({
+                if let Ok(cnt) = tree.within_count(s, r, dist_func) {
+                    Some(cnt as u32)
+                } else {
+                    None
+                }
+            });
+        });
+        builder.finish()
     }
 }
 
@@ -473,53 +473,57 @@ fn pl_nb_cnt(
     if radius.len() == 1 {
         let r = radius.get(0).unwrap();
         let ca = query_nb_cnt(&tree, data.view(), &dist_func, r, can_parallel);
-        Ok(ca.into_series())
+        Ok(ca.with_name("nb_count").into_series())
     } else if radius.len() == nrows {
-        if can_parallel {
+        let ca = if can_parallel {
             let nrows = data.shape()[0];
             let dim = data.shape()[1];
-            POOL.install(|| {
-                let n_threads = POOL.current_num_threads();
-                let splits = split_offsets(nrows, n_threads);
-                let chunks: Vec<_> = splits
-                    .into_par_iter()
-                    .map(|(offset, len)| {
-                        let piece = data.slice(s![offset..offset + len, 0..dim]);
-                        let rad = radius.slice(offset as i64, len);
-                        let out = piece
-                            .axis_iter(Axis(0))
-                            .zip(rad.into_iter())
-                            .map(|(p, op_r)| {
-                                let r = op_r?;
-                                let sl = p.to_slice().unwrap();
-                                if let Ok(cnt) = tree.within_count(sl, r, &dist_func) {
-                                    Some(cnt as u32)
-                                } else {
-                                    None
-                                }
-                            });
-                        let ca = UInt32Chunked::from_iter_options("", out);
-                        ca.downcast_iter().cloned().collect::<Vec<_>>()
-                    })
-                    .collect();
+            let n_threads = POOL.current_num_threads();
+            let splits = split_offsets(nrows, n_threads);
+            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let piece = data.slice(s![offset..offset + len, 0..dim]);
+                let rad = radius.slice(offset as i64, len);
+                let out = piece
+                    .axis_iter(Axis(0))
+                    .zip(rad.into_iter())
+                    .map(|(p, op_r)| {
+                        let r = op_r?;
+                        let sl = p.to_slice().unwrap();
+                        if let Ok(cnt) = tree.within_count(sl, r, &dist_func) {
+                            Some(cnt as u32)
+                        } else {
+                            None
+                        }
+                    });
+                let ca = UInt32Chunked::from_iter_options("", out);
+                ca.downcast_iter().cloned().collect::<Vec<_>>()
+            });
 
-                let ca = UInt32Chunked::from_chunk_iter("cnt", chunks.into_iter().flatten());
-                Ok(ca.into_series())
-            })
+            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
+            UInt32Chunked::from_chunk_iter("cnt", chunks.into_iter().flatten())
         } else {
-            let ca = UInt32Chunked::from_iter(radius.into_iter().zip(data.axis_iter(Axis(0))).map(
-                |(rad, pt)| {
-                    let r = rad?;
-                    let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
-                    if let Ok(cnt) = tree.within_count(s, r, &dist_func) {
-                        Some(cnt as u32)
-                    } else {
-                        None
-                    }
-                },
-            ));
-            Ok(ca.into_series())
-        }
+            let mut builder: PrimitiveChunkedBuilder<UInt32Type> =
+                PrimitiveChunkedBuilder::new("", nrows);
+            radius
+                .into_iter()
+                .zip(data.axis_iter(Axis(0)))
+                .for_each(|(rad, pt)| {
+                    builder.append_option({
+                        if let Some(r) = rad {
+                            let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
+                            if let Ok(cnt) = tree.within_count(s, r, &dist_func) {
+                                Some(cnt as u32)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                });
+            builder.finish()
+        };
+        Ok(ca.with_name("nb_count").into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),

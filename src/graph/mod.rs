@@ -6,49 +6,91 @@ mod degree;
 mod eigen_centrality;
 mod shortest_path;
 
-use petgraph::{stable_graph::NodeIndex, Directed, Graph};
-use polars::{datatypes::ListChunked, error::PolarsResult};
+use hashbrown::{HashMap, HashSet};
+use petgraph::{adj::NodeIndex, csr::IndexType, Directed, Graph};
+use polars::{
+    chunked_array::ops::ChunkUnique,
+    datatypes::{Float64Chunked, UInt32Chunked},
+    error::{PolarsError, PolarsResult},
+    series::Series,
+};
 
-// Here internally I am using an edge's weight to represent the cost.
-// Graph<(), f64, Directed>, where f64 is edge weight.
+fn create_graph_from_nodes(
+    nodes: &UInt32Chunked,
+    connections: &UInt32Chunked,
+    weights: Option<&Float64Chunked>,
+) -> PolarsResult<Graph<u32, f64, Directed>> {
+    let mut valid = nodes.len() == connections.len();
+    let op_cost = if weights.is_some() {
+        let cost = weights.unwrap();
+        valid = valid && cost.len() == nodes.len();
+        Some(cost)
+    } else {
+        None
+    };
 
-pub fn create_graph(
-    edges: &ListChunked,
-    edge_cost: Option<&ListChunked>,
-) -> PolarsResult<Graph<(), f64, Directed>> {
-    let mut gh = Graph::with_capacity(edges.len(), 8);
-    let node_list = (0..edges.len())
-        .map(|_| gh.add_node(()))
-        .collect::<Vec<NodeIndex>>();
-    if let Some(cost) = edge_cost {
-        let it = node_list
+    let u1 = nodes.unique()?;
+    let u2 = connections.unique()?;
+    let mut temp: HashSet<u32> = HashSet::new();
+    temp.extend(u1.into_no_null_iter());
+    temp.extend(u2.into_no_null_iter());
+
+    let node_cnt = temp.len();
+    if !valid || node_cnt < 2 {
+        return Err(PolarsError::ComputeError(
+            "Graph: node, connections, and weight (if exists) columns must have the same length, and there
+            must be more than 1 distinct node.".into(),
+        ));
+    }
+
+    let mut gh: Graph<u32, f64> = Graph::new();
+    let mut mapper: HashMap<u32, usize> = HashMap::new();
+    for node in temp.into_iter() {
+        let idx = gh.add_node(node);
+        mapper.insert(node, idx.index());
+    }
+
+    if let Some(cost) = op_cost {
+        for ((ii, jj), ww) in nodes
             .into_iter()
-            .zip(edges.into_iter().zip(cost.into_iter()));
-        for (i, (op_e, op_c)) in it {
-            if let (Some(e), Some(c)) = (op_e, op_c) {
-                let neighbors = e.u64()?;
-                let dist = c.f64()?;
-                if neighbors.len() == dist.len()
-                    && neighbors.null_count() == 0
-                    && dist.null_count() == 0
-                {
-                    for (b, d) in neighbors.into_no_null_iter().zip(dist.into_no_null_iter()) {
-                        let j = NodeIndex::new(b as usize);
-                        gh.add_edge(i, j, d);
-                    }
-                } // else, don't add the edges
+            .zip(connections.into_iter())
+            .zip(cost.into_iter())
+        {
+            if let (Some(i), Some(j), Some(w)) = (ii, jj, ww) {
+                let idx1 = mapper.get(&i).unwrap();
+                let idx2 = mapper.get(&j).unwrap();
+                let idx1 = NodeIndex::new(*idx1);
+                let idx2 = NodeIndex::new(*idx2);
+                gh.add_edge(idx1, idx2, w);
             }
         }
     } else {
-        for (i, op_e) in node_list.into_iter().zip(edges.into_iter()) {
-            if let Some(e) = op_e {
-                let neighbors = e.u64()?;
-                for b in neighbors.into_no_null_iter() {
-                    let j = NodeIndex::new(b as usize);
-                    gh.add_edge(i, j, 1_f64);
-                }
+        for (ii, jj) in nodes.into_iter().zip(connections.into_iter()) {
+            if let (Some(i), Some(j)) = (ii, jj) {
+                let idx1 = mapper.get(&i).unwrap();
+                let idx2 = mapper.get(&j).unwrap();
+                let idx1 = NodeIndex::new(*idx1);
+                let idx2 = NodeIndex::new(*idx2);
+                gh.add_edge(idx1, idx2, 1f64);
             }
         }
-    }
+    };
     Ok(gh)
+}
+
+/// Create the graph, dispatch the creation method
+/// based on input column types and number.
+pub fn create_graph(inputs: &[Series]) -> PolarsResult<Graph<u32, f64, Directed>> {
+    let s1 = inputs[0].u32()?;
+    let s2 = inputs[1].u32()?;
+    if inputs.len() == 2 {
+        create_graph_from_nodes(s1, s2, None)
+    } else if inputs.len() == 3 {
+        let s3 = inputs[2].f64()?;
+        create_graph_from_nodes(s1, s2, Some(s3))
+    } else {
+        Err(PolarsError::ComputeError(
+            "Graph: too many/few inputs.".into(),
+        ))
+    }
 }
