@@ -13,6 +13,7 @@ use serde::Deserialize;
 #[derive(Deserialize, Debug)]
 pub(crate) struct LstsqKwargs {
     pub(crate) bias: bool,
+    pub(crate) skip_null: bool,
 }
 
 fn report_output(_: &[Field]) -> PolarsResult<Field> {
@@ -33,9 +34,6 @@ fn pred_residue_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
-    // Update to array ???
-    // DataType::Array(DataType::Float64, fields.len());
-    // fields.len() + 1 when an input is true
     Ok(Field::new(
         "coeffs",
         DataType::List(Box::new(DataType::Float64)),
@@ -50,11 +48,15 @@ fn faer_lstsq_qr(x: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
 }
 
 #[inline(always)]
-fn series_to_mat_lstsq(inputs: &[Series], add_bias: bool) -> PolarsResult<Array2<f64>> {
+fn series_to_mat_lstsq(
+    inputs: &[Series],
+    add_bias: bool,
+    skip_null: bool,
+) -> PolarsResult<Array2<f64>> {
     let nrows = inputs[0].len();
     let mut ncols = inputs.len();
     // Series at index 0 is target
-    let df_x = if add_bias {
+    let mut df_x = if add_bias {
         ncols += 1;
         let mut series_vec = inputs.to_vec(); // cheap copy
         series_vec.push(Series::from_vec("const", vec![1_f64; nrows]));
@@ -62,6 +64,19 @@ fn series_to_mat_lstsq(inputs: &[Series], add_bias: bool) -> PolarsResult<Array2
     } else {
         rechunk_to_frame(&inputs)
     }?;
+
+    if skip_null {
+        df_x = df_x.drop_nulls::<String>(None)?;
+    } else {
+        let all_cols = df_x.get_column_names();
+        for s in df_x.columns(all_cols).unwrap() {
+            if s.has_validity() {
+                return Err(PolarsError::ComputeError(
+                    "Lstsq: Data must not contain nulls.".into(),
+                ));
+            }
+        }
+    }
 
     if df_x.height() <= ncols {
         return Err(PolarsError::ComputeError(
@@ -74,9 +89,10 @@ fn series_to_mat_lstsq(inputs: &[Series], add_bias: bool) -> PolarsResult<Array2
 #[polars_expr(output_type_func=coeff_output)]
 fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
+    let skip_null = kwargs.skip_null;
     // Copy data
     // Target y is at index 0
-    match series_to_mat_lstsq(inputs, add_bias) {
+    match series_to_mat_lstsq(inputs, add_bias, skip_null) {
         Ok(mat) => {
             let nrows = mat.nrows();
 
@@ -100,9 +116,10 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
 #[polars_expr(output_type_func=pred_residue_output)]
 fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
+    let skip_null = kwargs.skip_null;
     // Copy data
     // Target y is at index 0
-    match series_to_mat_lstsq(inputs, add_bias) {
+    match series_to_mat_lstsq(inputs, add_bias, skip_null) {
         Ok(mat) => {
             let nrows = mat.nrows();
 
@@ -128,9 +145,10 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
 #[polars_expr(output_type_func=report_output)]
 fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
+    let skip_null = kwargs.skip_null;
     // Copy data
     // Target y is at index 0
-    match series_to_mat_lstsq(inputs, add_bias) {
+    match series_to_mat_lstsq(inputs, add_bias, skip_null) {
         Ok(mat) => {
             let ncols = mat.ncols() - 1;
             let nrows = mat.nrows();

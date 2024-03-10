@@ -1,4 +1,5 @@
 use crate::num::knn::{build_standard_kdtree, query_nb_cnt, KdtreeKwargs};
+use crate::utils::rechunk_to_frame;
 use ndarray::s;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
@@ -12,20 +13,16 @@ use pyo3_polars::derive::polars_expr;
 fn pl_approximate_entropy(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     // inputs[0] is radius, the rest are the shifted columns
     // Set up radius. r is a scalar and set up at Python side.
+
     let radius = inputs[0].f64()?;
     let name = inputs[1].name();
     if radius.get(0).is_none() {
         return Ok(Series::from_vec(name, vec![f64::NAN]));
     }
     let r = radius.get(0).unwrap();
-    // Set up params
     let dim = inputs[1..].len();
-    let mut vs: Vec<Series> = Vec::with_capacity(dim);
-    for (i, s) in inputs[1..].into_iter().enumerate() {
-        let news = s.rechunk().with_name(&i.to_string());
-        vs.push(news)
-    }
-    let data = DataFrame::new(vs)?;
+
+    let data = rechunk_to_frame(&inputs[1..])?;
     let n1 = data.height(); // This is equal to original length - m + 1
     let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
     // Here, dim equals to run_length + 1, or m + 1
@@ -69,14 +66,8 @@ fn pl_sample_entropy(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Se
         return Ok(Series::from_vec(name, vec![f64::NAN]));
     }
     let r = radius.get(0).unwrap();
-    // Set up params
     let dim = inputs[1..].len();
-    let mut vs: Vec<Series> = Vec::with_capacity(dim);
-    for (i, s) in inputs[1..].into_iter().enumerate() {
-        let news = s.rechunk().with_name(&i.to_string());
-        vs.push(news)
-    }
-    let data = DataFrame::new(vs)?;
+    let data = rechunk_to_frame(&inputs[1..])?;
     let n1 = data.height(); // This is equal to original length - m + 1
     let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
     // Here, dim equals to run_length + 1, or m + 1
