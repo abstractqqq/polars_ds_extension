@@ -483,7 +483,6 @@ class NumExt:
                 symbol="pl_lstsq",
                 args=list(variables),
                 kwargs={"bias": add_bias, "skip_null": skip_null},
-                is_elementwise=False,
                 returns_scalar=True,
             )
 
@@ -499,7 +498,6 @@ class NumExt:
             symbol="pl_lstsq_report",
             args=list(variables),
             kwargs={"bias": add_bias, "skip_null": skip_null},
-            is_elementwise=False,
             changes_length=True,
         )
 

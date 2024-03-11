@@ -47,15 +47,28 @@ fn faer_lstsq_qr(x: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
     qr.solve_lstsq(y)
 }
 
+/// Returns a Array2 ready for linear regression, and a mask, indicates valid rows
 #[inline(always)]
 fn series_to_mat_lstsq(
     inputs: &[Series],
     add_bias: bool,
     skip_null: bool,
-) -> PolarsResult<Array2<f64>> {
+) -> PolarsResult<(Array2<f64>, BooleanChunked)> {
     let nrows = inputs[0].len();
     let mut ncols = inputs.len();
-    // Series at index 0 is target
+    // Should we actually skip nulls? Create null mask
+    let mut has_null = inputs[0].has_validity();
+    let mut mask = inputs[0].is_not_null();
+    for s in inputs[1..].iter() {
+        has_null |= s.has_validity();
+        mask = mask & s.is_not_null();
+    }
+    if has_null && !skip_null {
+        return Err(PolarsError::ComputeError(
+            "Lstsq: Data must not contain nulls.".into(),
+        ));
+    }
+
     let mut df_x = if add_bias {
         ncols += 1;
         let mut series_vec = inputs.to_vec(); // cheap copy
@@ -65,25 +78,19 @@ fn series_to_mat_lstsq(
         rechunk_to_frame(&inputs)
     }?;
 
-    if skip_null {
-        df_x = df_x.drop_nulls::<String>(None)?;
-    } else {
-        let all_cols = df_x.get_column_names();
-        for s in df_x.columns(all_cols).unwrap() {
-            if s.has_validity() {
-                return Err(PolarsError::ComputeError(
-                    "Lstsq: Data must not contain nulls.".into(),
-                ));
-            }
-        }
+    if skip_null && has_null {
+        df_x = df_x.filter(&mask)?;
     }
-
-    if df_x.height() <= ncols {
+    if df_x.is_empty() {
+        return Err(PolarsError::ComputeError("Lstsq: Data is empty.".into()));
+    }
+    if df_x.height() < ncols {
         return Err(PolarsError::ComputeError(
-            "Lstsq: Data must have more rows than columns.".into(),
+            "Lstsq: #Data < #features. No conclusive result.".into(),
         ));
     }
-    df_x.to_ndarray::<Float64Type>(IndexOrder::Fortran)
+    let mat = df_x.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
+    Ok((mat, mask))
 }
 
 #[polars_expr(output_type_func=coeff_output)]
@@ -93,9 +100,8 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     // Copy data
     // Target y is at index 0
     match series_to_mat_lstsq(inputs, add_bias, skip_null) {
-        Ok(mat) => {
+        Ok((mat, _)) => {
             let nrows = mat.nrows();
-
             let y = mat.slice(s![0..nrows, 0..1]);
             let y = y.view().into_faer();
             let x = mat.slice(s![0..nrows, 1..]);
@@ -120,22 +126,47 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
     // Copy data
     // Target y is at index 0
     match series_to_mat_lstsq(inputs, add_bias, skip_null) {
-        Ok(mat) => {
+        Ok((mat, mask)) => {
+            // Mask = True indicates the the nulls that we skipped.
             let nrows = mat.nrows();
-
             let y = mat.slice(s![0..nrows, 0..1]);
             let y = y.view().into_faer();
             let x = mat.slice(s![0..nrows, 1..]);
             let x = x.view().into_faer();
             // Solving Least Square
             let coeffs = faer_lstsq_qr(x, y);
-            let y_hat = x * coeffs;
-            let pred = y_hat.col_as_slice(0).to_vec();
-            let pred = Float64Chunked::from_slice("pred", &pred);
-            let predictions = pred.into_series();
-            let actuals = inputs[0].clone(); // ref counted
-            let residue = (actuals - predictions.clone()).with_name("resid"); // ref counted
-            let out = StructChunked::new("", &[predictions, residue])?;
+            let pred = x * &coeffs;
+            let resid = y - &pred;
+            let pred = pred.col_as_slice(0);
+            let resid = resid.col_as_slice(0);
+            // println!("Lstsq: Coefficients in order (bias last if exists): {:?}", coeffs);
+            // Need extra work when skip_null is true and there are nulls
+            let (p, r) = if skip_null && mask.any() {
+                let mut p_builder: PrimitiveChunkedBuilder<Float64Type> =
+                    PrimitiveChunkedBuilder::new("pred", mask.len());
+                let mut r_builder: PrimitiveChunkedBuilder<Float64Type> =
+                    PrimitiveChunkedBuilder::new("resid", mask.len());
+                let mut i: usize = 0;
+                for mm in mask.into_iter() {
+                    // mask is always non-null, mm = true means is not null
+                    if mm.unwrap() {
+                        p_builder.append_value(pred[i]);
+                        r_builder.append_value(resid[i]);
+                        i += 1;
+                    } else {
+                        p_builder.append_value(f64::NAN);
+                        r_builder.append_value(f64::NAN);
+                    }
+                }
+                (p_builder.finish(), r_builder.finish())
+            } else {
+                let pred = Float64Chunked::from_slice("pred", pred);
+                let residue = Float64Chunked::from_slice("resid", resid);
+                (pred, residue)
+            };
+            let p = p.into_series();
+            let r = r.into_series();
+            let out = StructChunked::new("", &[p, r])?;
             Ok(out.into_series())
         }
         Err(e) => Err(e),
@@ -149,7 +180,7 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
     // Copy data
     // Target y is at index 0
     match series_to_mat_lstsq(inputs, add_bias, skip_null) {
-        Ok(mat) => {
+        Ok((mat, _)) => {
             let ncols = mat.ncols() - 1;
             let nrows = mat.nrows();
 
@@ -168,12 +199,12 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
 
             let xtx_inv = cholesky.inverse();
             let coeffs = &xtx_inv * xt * y;
-            let betas = coeffs.col_as_slice(0).to_vec();
+            let betas = coeffs.col_as_slice(0);
             // Degree of Freedom
             let dof = nrows as f64 - ncols as f64;
             // Residue
-            let res = y - x * coeffs;
-            let res2 = res.transpose() * &res; // total residue
+            let res = y - x * &coeffs;
+            let res2 = res.transpose() * &res; // total residue, sum of squares
             let res2 = res2.read(0, 0) / dof;
             // std err
             let std_err = (0..ncols)
@@ -198,7 +229,7 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
             // Finalize
             let idx_series = UInt16Chunked::from_iter((0..ncols).map(|i| Some(i as u16)));
             let idx_series = idx_series.with_name("feat_idx").into_series();
-            let coeffs_series = Float64Chunked::from_vec("coeff", betas);
+            let coeffs_series = Float64Chunked::from_slice("coeff", betas);
             let coeffs_series = coeffs_series.into_series();
             let stderr_series = Float64Chunked::from_vec("std_err", std_err);
             let stderr_series = stderr_series.into_series();
