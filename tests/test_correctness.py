@@ -290,6 +290,27 @@ def test_lstsq():
     assert_frame_equal(df.select(pl.col("y").num.lstsq(pl.col("a"), add_bias=True)), res)
 
 
+# Hard to write generic tests because ncols can vary in X
+def test_lstsq_skip_null():
+    df = pl.DataFrame(
+        {"y": [None, 9.5, 10.5, 11.5, 12.5], "a": [1, 9, 10, 11, 12], "b": [1, 0.5, 0.5, 0.5, 0.5]}
+    )
+    res = pl.DataFrame(
+        {
+            "pred": [float("nan"), 9.5, 10.5, 11.5, 12.5],
+            "resid": [float("nan"), 0.0, 0.0, 0.0, 0.0],
+        }
+    )
+    assert_frame_equal(
+        df.select(
+            pl.col("y")
+            .num.lstsq(pl.col("a"), pl.col("b"), skip_null=True, return_pred=True)
+            .alias("result")
+        ).unnest("result"),
+        res,
+    )
+
+
 @pytest.mark.parametrize(
     "df, res",
     [
