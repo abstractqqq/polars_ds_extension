@@ -459,7 +459,11 @@ class NumExt:
         )
 
     def lstsq(
-        self, *variables: pl.Expr, add_bias: bool = False, return_pred: bool = False
+        self,
+        *variables: pl.Expr,
+        add_bias: bool = False,
+        skip_null: bool = False,
+        return_pred: bool = False,
     ) -> pl.Expr:
         """
         See query_lstsq
@@ -470,7 +474,7 @@ class NumExt:
                 lib=_lib,
                 symbol="pl_lstsq_pred",
                 args=list(variables),
-                kwargs={"bias": add_bias},
+                kwargs={"bias": add_bias, "skip_null": skip_null},
                 is_elementwise=True,
             )
         else:
@@ -478,12 +482,14 @@ class NumExt:
                 lib=_lib,
                 symbol="pl_lstsq",
                 args=list(variables),
-                kwargs={"bias": add_bias},
+                kwargs={"bias": add_bias, "skip_null": skip_null},
                 is_elementwise=False,
                 returns_scalar=True,
             )
 
-    def lstsq_report(self, *variables: pl.Expr, add_bias: bool = False) -> pl.Expr:
+    def lstsq_report(
+        self, *variables: pl.Expr, add_bias: bool = False, skip_null: bool = False
+    ) -> pl.Expr:
         """
         See query_lstsq_report
         """
@@ -492,7 +498,7 @@ class NumExt:
             lib=_lib,
             symbol="pl_lstsq_report",
             args=list(variables),
-            kwargs={"bias": add_bias},
+            kwargs={"bias": add_bias, "skip_null": skip_null},
             is_elementwise=False,
             changes_length=True,
         )
@@ -1326,6 +1332,7 @@ def query_lstsq(
     *variables: Union[str, pl.Expr],
     target: Union[str, pl.Expr],
     add_bias: bool = False,
+    skip_null: bool = False,
     return_pred: bool = False,
 ) -> pl.Expr:
     """
@@ -1350,6 +1357,8 @@ def query_lstsq(
         The target variable
     add_bias
         Whether to add a bias term
+    skip_null
+        Whether to skip a row if there is a null value in row
     return_pred
         If true, return prediction and residue. If false, return coefficients. Note that
         for coefficients, it reduces to one output (like max/min), but for predictions and
@@ -1357,12 +1366,18 @@ def query_lstsq(
     """
     t = str_to_expr(target)
     return t.num.lstsq(
-        *[str_to_expr(x) for x in variables], add_bias=add_bias, return_pred=return_pred
+        *[str_to_expr(x) for x in variables],
+        add_bias=add_bias,
+        skip_null=skip_null,
+        return_pred=return_pred,
     )
 
 
 def query_lstsq_report(
-    *variables: Union[str, pl.Expr], target: Union[str, pl.Expr], add_bias: bool = False
+    *variables: Union[str, pl.Expr],
+    target: Union[str, pl.Expr],
+    add_bias: bool = False,
+    skip_null: bool = False,
 ) -> pl.Expr:
     """
     Creates a least square report with more stats about each coefficient.
@@ -1384,9 +1399,13 @@ def query_lstsq_report(
         The target variable
     add_bias
         Whether to add a bias term. If bias is added, it is always the last feature.
+    skip_null
+        Whether to skip a row if there is a null value in row
     """
     t = str_to_expr(target)
-    return t.num.lstsq_report(*[str_to_expr(x) for x in variables], add_bias=add_bias)
+    return t.num.lstsq_report(
+        *[str_to_expr(x) for x in variables], add_bias=add_bias, skip_null=skip_null
+    )
 
 
 def query_cond_entropy(x: Union[str, pl.Expr], y: Union[str, pl.Expr]) -> pl.Expr:

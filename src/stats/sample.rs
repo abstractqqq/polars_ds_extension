@@ -40,7 +40,7 @@ fn pl_rand_int(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> 
     } else {
         StdRng::from_entropy()
     };
-    if respect_null && (reference.null_count() > 0) {
+    if respect_null && reference.has_validity() {
         let ca = reference.is_null();
         let out: Int32Chunked = ca.apply_generic(|x| {
             if x.unwrap_or(true) {
@@ -74,7 +74,7 @@ fn pl_sample_binomial(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<S
     } else {
         StdRng::from_entropy()
     };
-    if respect_null && (reference.null_count() > 0) {
+    if respect_null && reference.has_validity() {
         let ca = reference.is_null();
         let out: UInt64Chunked = ca.apply_generic(|x| {
             if x.unwrap_or(true) {
@@ -106,7 +106,7 @@ fn pl_sample_exp(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series
         StdRng::from_entropy()
     };
     if lambda == 1.0 {
-        if respect_null && (reference.null_count() > 0) {
+        if respect_null && reference.has_validity() {
             let ca = reference.is_null();
             let out: Float64Chunked = ca.apply_generic(|x| {
                 if x.unwrap_or(true) {
@@ -122,7 +122,7 @@ fn pl_sample_exp(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series
         }
     } else {
         let dist = Exp::new(lambda).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
-        if respect_null && (reference.null_count() > 0) {
+        if respect_null && reference.has_validity() {
             let ca = reference.is_null();
             let out: Float64Chunked = ca.apply_generic(|x| {
                 if x.unwrap_or(true) {
@@ -171,7 +171,7 @@ fn pl_sample_uniform(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Se
     } else {
         StdRng::from_entropy()
     };
-    if respect_null && (reference.null_count() > 0) {
+    if respect_null && reference.has_validity() {
         // Create a dummy. I just need to access the apply_nonnull_values_generic method
         // on chunked arrays.
         let ca = reference.is_null();
@@ -245,7 +245,7 @@ fn pl_sample_normal(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Ser
     // Standard Normal, use the more optimized version
     if mean == 0. && std_ == 1. {
         let dist = StandardNormal;
-        if respect_null && (reference.null_count() > 0) {
+        if respect_null && reference.has_validity() {
             let ca = reference.is_null();
             let out: Float64Chunked = ca.apply_generic(|x| {
                 if x.unwrap_or(true) {
@@ -262,7 +262,7 @@ fn pl_sample_normal(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Ser
     } else {
         // Guaranteed that std is finite
         let dist = Normal::new(mean, std_).unwrap();
-        if respect_null && (reference.null_count() > 0) {
+        if respect_null && reference.has_validity() {
             let ca = reference.is_null();
             let out: Float64Chunked = ca.apply_generic(|x| {
                 if x.unwrap_or(true) {
