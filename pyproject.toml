@@ -16,7 +16,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 authors = [
-    {name = "Tianren Qin", email = "tq9695 at gmail"},
+    {name = "Tianren Qin", email = "tq9695@gmail.com"},
 ]
 dependencies = [
     "polars >= 0.20.6, !=0.20.12",
