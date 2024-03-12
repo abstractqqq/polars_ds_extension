@@ -5,7 +5,7 @@ use faer::{IntoFaer, Mat};
 // use faer_ext::IntoFaer;
 use crate::utils::rechunk_to_frame;
 use itertools::Itertools;
-use ndarray::{s, Array2};
+use ndarray::{s, Array2, ArrayView2};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use serde::Deserialize;
@@ -41,10 +41,14 @@ fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 /// Returns the coefficients for lstsq as a nrows x 1 matrix
-#[inline]
-fn faer_lstsq_qr(x: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
-    let qr = x.qr();
-    qr.solve_lstsq(y)
+fn faer_cholesky_lstsq(x: MatRef<f64>, xt: MatRef<f64>, y: MatRef<f64>) -> PolarsResult<Mat<f64>> {
+    let xtx = xt * &x;
+    let cholesky = xtx.cholesky(Side::Lower).map_err(|_| {
+        PolarsError::ComputeError("Lstsq: X^t X is not numerically positive definite.".into())
+    })?;
+    let xtx_inv = cholesky.inverse();
+    let coeffs = &xtx_inv * xt * y;
+    Ok(coeffs)
 }
 
 /// Returns a Array2 ready for linear regression, and a mask, indicates valid rows
@@ -81,10 +85,7 @@ fn series_to_mat_lstsq(
     if skip_null && has_null {
         df_x = df_x.filter(&mask)?;
     }
-    if df_x.is_empty() {
-        return Err(PolarsError::ComputeError("Lstsq: Data is empty.".into()));
-    }
-    if df_x.height() < ncols {
+    if df_x.height() <= ncols {
         return Err(PolarsError::ComputeError(
             "Lstsq: #Data < #features. No conclusive result.".into(),
         ));
@@ -105,9 +106,10 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
             let y = mat.slice(s![0..nrows, 0..1]);
             let y = y.view().into_faer();
             let x = mat.slice(s![0..nrows, 1..]);
+            let xt = x.t().into_faer();
             let x = x.view().into_faer();
             // Solving Least Square
-            let coeffs = faer_lstsq_qr(x, y);
+            let coeffs = faer_cholesky_lstsq(x, xt, y)?;
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new("betas", 1, coeffs.nrows(), DataType::Float64);
 
@@ -132,9 +134,11 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let y = mat.slice(s![0..nrows, 0..1]);
             let y = y.view().into_faer();
             let x = mat.slice(s![0..nrows, 1..]);
+            let xt = x.t().into_faer();
             let x = x.view().into_faer();
             // Solving Least Square
-            let coeffs = faer_lstsq_qr(x, y);
+            let coeffs = faer_cholesky_lstsq(x, xt, y)?;
+
             let pred = x * &coeffs;
             let resid = y - &pred;
             let pred = pred.col_as_slice(0);
