@@ -20,7 +20,7 @@ pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
 
     let dist = Field::new("dist", DataType::List(Box::new(DataType::Float64)));
     let v = vec![idx, dist];
-    Ok(Field::new("knn_w_dist", DataType::Struct(v)))
+    Ok(Field::new("knn_dist", DataType::Struct(v)))
 }
 
 #[derive(Deserialize, Debug)]
@@ -44,16 +44,17 @@ pub fn build_standard_kdtree<'a>(
     dim: usize,
     leaf_size: usize,
     data: &'a ArrayView2<f64>,
-) -> Result<KdTree<f64, usize, &'a [f64]>, PolarsError> {
+) -> KdTree<f64, usize, &'a [f64]> {
     // Building the tree
     let mut tree = KdTree::with_capacity(dim, leaf_size);
     for (i, p) in data.axis_iter(Axis(0)).enumerate() {
-        let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
-        let _is_ok = tree
-            .add(s, i)
-            .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
+        // C order makes sure rows are contiguous
+        match tree.add(p.to_slice().unwrap(), i) {
+            Ok(_) => {}
+            Err(_) => {}
+        }
     }
-    Ok(tree)
+    tree
 }
 
 #[polars_expr(output_type_func=list_u32_output)]
@@ -86,7 +87,7 @@ fn pl_knn_ptwise(
 
     // Building the tree
     let binding = data.view();
-    let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
+    let tree = build_standard_kdtree(dim, leaf_size, &binding);
 
     // Building output
     let ca = if can_parallel {
@@ -149,12 +150,6 @@ fn pl_query_radius_ptwise(
     let id = id.cont_slice()?;
 
     let dim = inputs[1..].len();
-    if dim == 0 {
-        return Err(PolarsError::ComputeError(
-            "KNN: No column to decide distance from.".into(),
-        ));
-    }
-
     let data = rechunk_to_frame(&inputs[1..])?;
     let nrows = data.height();
     let leaf_size = kwargs.leaf_size;
@@ -168,7 +163,7 @@ fn pl_query_radius_ptwise(
 
     // Building the tree
     let binding = data.view();
-    let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
+    let tree = build_standard_kdtree(dim, leaf_size, &binding);
 
     // Building output
     if can_parallel {
@@ -232,11 +227,6 @@ fn pl_knn_ptwise_w_dist(
     let id = id.cont_slice().unwrap();
 
     let dim = inputs[1..].len();
-    if dim == 0 {
-        return Err(PolarsError::ComputeError(
-            "KNN: No column to decide distance from.".into(),
-        ));
-    }
 
     let data = rechunk_to_frame(&inputs[1..])?;
     let nrows = data.height();
@@ -251,7 +241,7 @@ fn pl_knn_ptwise_w_dist(
 
     // Building the tree
     let binding = data.view();
-    let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
+    let tree = build_standard_kdtree(dim, leaf_size, &binding);
 
     //Building output
     if can_parallel {
@@ -300,11 +290,11 @@ fn pl_knn_ptwise_w_dist(
                 })
                 .collect();
 
-            let ca_nn = ListChunked::from_chunk_iter("knn", chunks.0.into_iter().flatten());
-            let ca_nn = ca_nn.with_name("knn").into_series();
-            let ca_rr = ListChunked::from_chunk_iter("knn-radius", chunks.1.into_iter().flatten());
-            let ca_rr = ca_rr.with_name("radius").into_series();
-            let out = StructChunked::new("knn_full_output", &[ca_nn, ca_rr])?;
+            let ca_nn = ListChunked::from_chunk_iter("", chunks.0.into_iter().flatten());
+            let ca_nn = ca_nn.with_name("idx").into_series();
+            let ca_rr = ListChunked::from_chunk_iter("", chunks.1.into_iter().flatten());
+            let ca_rr = ca_rr.with_name("dist").into_series();
+            let out = StructChunked::new("knn_dist", &[ca_nn, ca_rr])?;
             Ok(out.into_series())
         })
     } else {
@@ -331,10 +321,10 @@ fn pl_knn_ptwise_w_dist(
             }
         }
         let ca_nn = nn_builder.finish();
-        let ca_nn = ca_nn.with_name("knn").into_series();
+        let ca_nn = ca_nn.with_name("idx").into_series();
         let ca_rr = rr_builder.finish();
-        let ca_rr = ca_rr.with_name("radius").into_series();
-        let out = StructChunked::new("knn_full_output", &[ca_nn, ca_rr])?;
+        let ca_rr = ca_rr.with_name("dist").into_series();
+        let out = StructChunked::new("knn_dist", &[ca_nn, ca_rr])?;
         Ok(out.into_series())
     }
 }
@@ -343,14 +333,13 @@ fn pl_knn_ptwise_w_dist(
 /// Note, only k points will be returned as true, because here the point is considered an "outside" point,
 /// not a point in the data.
 #[polars_expr(output_type=Boolean)]
-fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
+fn pl_knn_filter(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     // Check len
     let pt = inputs[0].f64()?;
     let dim = inputs[1..].len();
-    if dim == 0 || pt.len() != dim {
+    if pt.len() != dim {
         return Err(PolarsError::ComputeError(
-            "KNN: There has to be at least one column in `others` and input point 
-            must be the same dimension as the number of columns in `others`."
+            "KNN: input point must be the same dimension as the number of columns in `others`."
                 .into(),
         ));
     }
@@ -370,7 +359,7 @@ fn pl_knn_pt(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
 
     // Building the tree
     let binding = data.view();
-    let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
+    let tree = build_standard_kdtree(dim, leaf_size, &binding);
 
     // Building the output
     let mut out: Vec<bool> = vec![false; nrows];
@@ -410,11 +399,8 @@ where
             let piece = data.slice(s![offset..offset + len, 0..dim]);
             let out = piece.axis_iter(Axis(0)).map(|p| {
                 let sl = p.to_slice().unwrap();
-                if let Ok(cnt) = tree.within_count(sl, r, &dist_func) {
-                    Some(cnt as u32)
-                } else {
-                    None
-                }
+                tree.within_count(sl, r, &dist_func)
+                    .map_or(None, |u| Some(u as u32))
             });
             let ca = UInt32Chunked::from_iter_options("", out);
             ca.downcast_iter().cloned().collect::<Vec<_>>()
@@ -427,11 +413,8 @@ where
         data.axis_iter(Axis(0)).for_each(|pt| {
             let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
             builder.append_option({
-                if let Ok(cnt) = tree.within_count(s, r, dist_func) {
-                    Some(cnt as u32)
-                } else {
-                    None
-                }
+                tree.within_count(s, r, &dist_func)
+                    .map_or(None, |u| Some(u as u32))
             });
         });
         builder.finish()
@@ -448,15 +431,8 @@ fn pl_nb_cnt(
 ) -> PolarsResult<Series> {
     // Set up radius
     let radius = inputs[0].f64()?;
-
     // Set up params
     let dim = inputs[1..].len();
-    if dim == 0 {
-        return Err(PolarsError::ComputeError(
-            "KNN: No column to decide distance from.".into(),
-        ));
-    }
-
     let data = rechunk_to_frame(&inputs[1..])?;
     let nrows = data.height();
     let parallel = kwargs.parallel;
@@ -468,12 +444,12 @@ fn pl_nb_cnt(
 
     // Building the tree
     let binding = data.view();
-    let tree = build_standard_kdtree(dim, leaf_size, &binding)?;
+    let tree = build_standard_kdtree(dim, leaf_size, &binding);
 
     if radius.len() == 1 {
         let r = radius.get(0).unwrap();
         let ca = query_nb_cnt(&tree, data.view(), &dist_func, r, can_parallel);
-        Ok(ca.with_name("nb_count").into_series())
+        Ok(ca.with_name("cnt").into_series())
     } else if radius.len() == nrows {
         let ca = if can_parallel {
             let nrows = data.shape()[0];
@@ -489,11 +465,8 @@ fn pl_nb_cnt(
                     .map(|(p, op_r)| {
                         let r = op_r?;
                         let sl = p.to_slice().unwrap();
-                        if let Ok(cnt) = tree.within_count(sl, r, &dist_func) {
-                            Some(cnt as u32)
-                        } else {
-                            None
-                        }
+                        tree.within_count(sl, r, &dist_func)
+                            .map_or(None, |u| Some(u as u32))
                     });
                 let ca = UInt32Chunked::from_iter_options("", out);
                 ca.downcast_iter().cloned().collect::<Vec<_>>()
@@ -511,11 +484,8 @@ fn pl_nb_cnt(
                     builder.append_option({
                         if let Some(r) = rad {
                             let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
-                            if let Ok(cnt) = tree.within_count(s, r, &dist_func) {
-                                Some(cnt as u32)
-                            } else {
-                                None
-                            }
+                            tree.within_count(s, r, &dist_func)
+                                .map_or(None, |u| Some(u as u32))
                         } else {
                             None
                         }
@@ -523,7 +493,7 @@ fn pl_nb_cnt(
                 });
             builder.finish()
         };
-        Ok(ca.with_name("nb_count").into_series())
+        Ok(ca.with_name("cnt").into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),

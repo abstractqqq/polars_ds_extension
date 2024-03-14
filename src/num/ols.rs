@@ -5,7 +5,7 @@ use faer::{IntoFaer, Mat};
 // use faer_ext::IntoFaer;
 use crate::utils::rechunk_to_frame;
 use itertools::Itertools;
-use ndarray::{s, Array2, ArrayView2};
+use ndarray::{s, Array2};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use serde::Deserialize;

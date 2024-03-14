@@ -1,6 +1,6 @@
 [package]
 name = "polars_ds"
-version = "0.3.4"
+version = "0.3.5"
 edition = "2021"
 
 [lib]
@@ -27,6 +27,7 @@ inflections = "1.1.1"
 kdtree = {git = "https://github.com/mrhooray/kdtree-rs.git"}
 petgraph = "0.6.4"
 ordered-float = "4.2.0"
+approx = "*"
 
 [target.'cfg(any(not(target_os = "linux"), use_mimalloc))'.dependencies]
 mimalloc = { version = "0.1", default-features = false }

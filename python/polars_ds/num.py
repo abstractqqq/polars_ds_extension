@@ -605,7 +605,7 @@ class NumExt:
             is_elementwise=True,
         )
 
-    def _knn_pt(
+    def _knn_filter(
         self,
         *others: pl.Expr,
         k: int = 5,
@@ -613,7 +613,7 @@ class NumExt:
         dist: Distance = "l2",
     ) -> pl.Expr:
         """
-        See query_knn_at_pt
+        See query_knn_filter
         """
         if k < 1:
             raise ValueError("Input `k` must be >= 1.")
@@ -621,7 +621,7 @@ class NumExt:
         metric = str(dist).lower()
         return self._expr.register_plugin(
             lib=_lib,
-            symbol="pl_knn_pt",
+            symbol="pl_knn_filter",
             args=list(others),
             kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": False},
             is_elementwise=True,
@@ -645,34 +645,34 @@ class NumExt:
             is_elementwise=True,
         )
 
+    def _knn_entropy(
+        self,
+        *others: pl.Expr,
+        k: int,
+        leaf_size: int = 32,
+        dist: Distance = "l2",
+        parallel: bool = False,
+    ) -> pl.Expr:
+        """
+        See query_knn_entropy
+        """
+        if k < 0:
+            raise ValueError("Input `k` must be > 0.")
+
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_knn_entropy",
+            args=list(others),
+            kwargs={"k": k, "leaf_size": leaf_size, "metric": dist, "parallel": parallel},
+            is_elementwise=True,
+        )
+
     # Rewrite of Functime's approximate entropy
-    def approximate_entropy(
+    def approx_entropy(
         self, m: int, filtering_level: float, scale_by_std: bool = True, parallel: bool = True
     ) -> pl.Expr:
         """
-        Approximate sample entropies of a time series given the filtering level. It is highly
-        recommended that the user impute nulls before calling this.
-
-        If NaN/some error is returned/thrown, it is likely that:
-        (1) Too little data, e.g. m + 1 > length
-        (2) filtering_level or (filtering_level * std) is too close to 0 or std is null/NaN.
-
-        Parameters
-        ----------
-        m : int
-            Length of compared runs of data. This is `m` in the wikipedia article.
-        filtering_level : float
-            Filtering level, must be positive. This is `r` in the wikipedia article.
-        scale_by_std : bool
-            Whether to scale filter level by std of data. In most applications, this is the default
-            behavior, but not in some other cases.
-        parallel : bool
-            Whether to run this in parallel or not. This is recommended when you
-            are running only this expression, and not in group_by context.
-
-        Reference
-        ---------
-        https://en.wikipedia.org/wiki/Approximate_entropy
+        See query_approx_entropy.
         """
         if filtering_level <= 0:
             raise ValueError("Filter level must be positive.")
@@ -701,26 +701,7 @@ class NumExt:
     # Rewrite of Functime's sample_entropy
     def sample_entropy(self, ratio: float = 0.2, m: int = 2, parallel: bool = False) -> pl.Expr:
         """
-        Calculate the sample entropy of this column. It is highly
-        recommended that the user impute nulls before calling this.
-
-        If NaN/some error is returned/thrown, it is likely that:
-        (1) Too little data, e.g. m + 1 > length
-        (2) ratio or (ratio * std) is too close to 0 or std is null/NaN.
-
-        Parameters
-        ----------
-        ratio : float
-            The tolerance parameter. Default is 0.2.
-        m : int
-            Length of a run of data. Most common run length is 2.
-        parallel : bool
-            Whether to run this in parallel or not. This is recommended when you
-            are running only this expression, and not in group_by context.
-
-        Reference
-        ---------
-        https://en.wikipedia.org/wiki/Sample_entropy
+        See sample entropy
         """
         r = ratio * self._expr.std(ddof=0)
         rows = self._expr.count() - m + 1
@@ -1287,15 +1268,14 @@ def query_nb_cnt(
     )
 
 
-def query_knn_at_pt(
+def query_knn_filter(
     *others: Union[str, pl.Expr],
     pt: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
     k: int = 5,
-    leaf_size: int = 32,
     dist: Distance = "l2",
 ) -> pl.Expr:
     """
-    Returns an expression that queries the k nearest neighbors to a single point x.
+    Returns an expression that filters to the k-nearest neighbors to the given point.
 
     Note that this internally builds a kd-tree for fast querying and deallocates it once we
     are done. If you need to repeatedly run the same query on the same data, then it is not
@@ -1304,13 +1284,11 @@ def query_knn_at_pt(
     Parameters
     ----------
     *others : str | pl.Expr
-        Other columns used as features
+        Columns used as features
     pt : Iterable[float]
         The point. It must be of the same length as the number of columns in `others`.
     k : int, > 0
         Number of neighbors to query
-    leaf_size : int, > 0
-        Leaf size for the kd-tree. Tuning this might improve performance.
     dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
         Note `l2` is actually squared `l2` for computational efficiency.
     """
@@ -1318,12 +1296,138 @@ def query_knn_at_pt(
         raise ValueError("Input `k` should be strictly positive.")
 
     pt = pl.Series(values=pt, dtype=pl.Float64)
-    return pl.lit(pt).num._knn_pt(
+    return pl.lit(pt).num._knn_filter(
         *[str_to_expr(x) for x in others],
         k=k,
-        leaf_size=leaf_size,
         dist=dist,
     )
+
+
+def query_approx_entropy(
+    ts: Union[str, pl.Expr],
+    m: int,
+    filtering_level: float,
+    scale_by_std: bool = True,
+    parallel: bool = True,
+) -> pl.Expr:
+    """
+    Approximate sample entropies of a time series given the filtering level. It is highly
+    recommended that the user impute nulls before calling this.
+
+    If NaN/some error is returned/thrown, it is likely that:
+    (1) Too little data, e.g. m + 1 > length
+    (2) filtering_level or (filtering_level * std) is too close to 0 or std is null/NaN.
+
+    Parameters
+    ----------
+    ts : str | pl.Expr
+        A time series
+    m : int
+        Length of compared runs of data. This is `m` in the wikipedia article.
+    filtering_level : float
+        Filtering level, must be positive. This is `r` in the wikipedia article.
+    scale_by_std : bool
+        Whether to scale filter level by std of data. In most applications, this is the default
+        behavior, but not in some other cases.
+    parallel : bool
+        Whether to run this in parallel or not. This is recommended when you
+        are running only this expression, and not in group_by context.
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Approximate_entropy
+    """
+    return str_to_expr(ts).num.approx_entropy(
+        m=m, filtering_level=filtering_level, scale_by_std=scale_by_std, parallel=parallel
+    )
+
+
+def query_sample_entropy(
+    ts: Union[str, pl.Expr], ratio: float = 0.2, m: int = 2, parallel: bool = False
+) -> pl.Expr:
+    """
+    Calculate the sample entropy of this column. It is highly
+    recommended that the user impute nulls before calling this.
+
+    If NaN/some error is returned/thrown, it is likely that:
+    (1) Too little data, e.g. m + 1 > length
+    (2) ratio or (ratio * std) is too close to 0 or std is null/NaN.
+
+    Parameters
+    ----------
+    ts : str | pl.Expr
+        A time series
+    ratio : float
+        The tolerance parameter. Default is 0.2.
+    m : int
+        Length of a run of data. Most common run length is 2.
+    parallel : bool
+        Whether to run this in parallel or not. This is recommended when you
+        are running only this expression, and not in group_by context.
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Sample_entropy
+    """
+    return str_to_expr(ts).num.sample_entropy(ratio=ratio, m=m, parallel=parallel)
+
+
+def query_permute_entropy(
+    ts: Union[str, pl.Expr],
+    tau: int = 1,
+    n_dims: int = 3,
+    base: float = math.e,
+) -> pl.Expr:
+    """
+    Computes permutation entropy.
+
+    Parameters
+    ----------
+    ts : str | pl.Expr
+        A time series
+    tau : int
+        The embedding time delay which controls the number of time periods between elements
+        of each of the new column vectors.
+    n_dims : int, > 1
+        The embedding dimension which controls the length of each of the new column vectors
+    base : float
+        The base for log in the entropy computation
+
+    Reference
+    ---------
+    https://www.aptech.com/blog/permutation-entropy/
+    """
+    return str_to_expr(ts).num.permutation_entropy(tau=tau, n_dims=n_dims, base=base)
+
+
+def query_knn_entropy(
+    *others: Union[str, pl.Expr],
+    k: int = 2,
+    dist: Distance = "l2",
+    parallel: bool = False,
+) -> pl.Expr:
+    """
+    Computes KNN entropy among all the rows
+
+    Parameters
+    ----------
+    *others
+        Columns used as features
+    k
+        The number of nearest neighbor to consider. Usually 2 or 3.
+    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
+        Note `l2` is actually squared `l2` for computational efficiency.
+    parallel : bool
+        Whether to run the distance query in parallel. This is recommended when you
+        are running only this expression, and not in group_by context.
+
+    Reference
+    ---------
+    https://arxiv.org/pdf/1506.06501v1.pdf
+    """
+    exprs = [str_to_expr(e) for e in others]
+    first = exprs[0]
+    return first.num._knn_entropy(*exprs[1:], k=k, dist=dist, parallel=parallel)
 
 
 def query_lstsq(

@@ -1171,9 +1171,9 @@ def test_knn_ptwise(df, dist, k, res):
         ),
     ],
 )
-def test_knn_pt(df, x, dist, k, res):
+def test_knn_filter(df, x, dist, k, res):
     test = df.filter(
-        pds.query_knn_at_pt(pl.col("val1"), pl.col("val2"), pl.col("val3"), pt=x, dist=dist, k=k)
+        pds.query_knn_filter(pl.col("val1"), pl.col("val2"), pl.col("val3"), pt=x, dist=dist, k=k)
     ).select(pl.col("id"))
 
     assert_frame_equal(test, res)
@@ -1239,7 +1239,7 @@ def test_sample_entropy(s, res):
     # Test 1's answer comes from comparing result with Tsfresh
     # Thest 2's answer comes from running this using the Python code on Wikipedia
     df = pl.Series(name="a", values=s).to_frame()
-    entropy = df.select(pl.col("a").num.sample_entropy()).item(0, 0)
+    entropy = df.select(pds.query_sample_entropy(pl.col("a"))).item(0, 0)
     assert np.isclose(entropy, res, atol=1e-12, equal_nan=True)
 
 
@@ -1270,7 +1270,7 @@ def test_sample_entropy(s, res):
 def test_apprximate_entropy(s, m, r, scale, res):
     df = pl.Series(name="a", values=s).to_frame()
     entropy = df.select(
-        pl.col("a").num.approximate_entropy(m=m, filtering_level=r, scale_by_std=scale)
+        pds.query_approx_entropy("a", m=m, filtering_level=r, scale_by_std=scale)
     ).item(0, 0)
     assert np.isclose(entropy, res, atol=1e-12, equal_nan=True)
 

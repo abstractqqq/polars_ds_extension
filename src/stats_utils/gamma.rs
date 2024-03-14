@@ -227,3 +227,48 @@ fn checked_gamma_ur(a: f64, x: f64) -> Result<f64, String> {
     }
     Ok(ans * ax)
 }
+
+/// Computes the Digamma function which is defined as the derivative of
+/// the log of the gamma function. The implementation is based on
+/// "Algorithm AS 103", Jose Bernardo, Applied Statistics, Volume 25, Number 3
+/// 1976, pages 315 - 317
+pub fn digamma(x: f64) -> f64 {
+    let c = 12.0;
+    let d1 = -0.57721566490153286;
+    let d2 = 1.6449340668482264365;
+    let s = 1e-6;
+    let s3 = 1.0 / 12.0;
+    let s4 = 1.0 / 120.0;
+    let s5 = 1.0 / 252.0;
+    let s6 = 1.0 / 240.0;
+    let s7 = 1.0 / 132.0;
+
+    if x == f64::NEG_INFINITY || x.is_nan() {
+        return f64::NAN;
+    }
+    if x <= 0.0 && approx::ulps_eq!(x.floor(), x) {
+        return f64::NEG_INFINITY;
+    }
+    if x < 0.0 {
+        return digamma(1.0 - x) + std::f64::consts::PI / (-std::f64::consts::PI * x).tan();
+    }
+    if x <= s {
+        return d1 - 1.0 / x + d2 * x;
+    }
+
+    let mut result = 0.0;
+    let mut z = x;
+    while z < c {
+        result -= 1.0 / z;
+        z += 1.0;
+    }
+
+    if z >= c {
+        let mut r = 1.0 / z;
+        result += z.ln() - 0.5 * r;
+        r *= r;
+
+        result -= r * (s3 - r * (s4 - r * (s5 - r * (s6 - r * s7))));
+    }
+    result
+}

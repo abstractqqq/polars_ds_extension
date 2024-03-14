@@ -12,7 +12,7 @@ from polars_ds.graph import GraphExt  # noqa: E402, F401
 
 logging.basicConfig(level=logging.INFO)
 
-__version__ = "0.3.4"
+__version__ = "0.3.5"
 
 # __all__ = ["NumExt", "ComplexExt", "StrExt", "StatsExt", "MetricExt", "GraphExt"]
 
