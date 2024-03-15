@@ -892,7 +892,7 @@ def test_ks_stats():
 
     stats = ks_2samp(a, b).statistic
     # Only statistic for now
-    res = df.select(pl.col("a").stats.ks_stats(pl.col("b"))).item(0, 0)
+    res = df.select(pl.col("a").stats.ks_stats(pl.col("b")).struct.field("statistic")).item(0, 0)
 
     assert np.isclose(stats, res)
 
