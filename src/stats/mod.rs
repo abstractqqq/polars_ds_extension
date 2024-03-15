@@ -33,10 +33,6 @@ impl StatsResult {
             p: None,
         }
     }
-
-    // pub fn unwrap_p_or(&self, default: f64) -> f64 {
-    //     self.p.unwrap_or(default)
-    // }
 }
 
 pub enum Alternative {

@@ -1,3 +1,4 @@
+use super::simple_stats_output;
 /// KS statistics.
 use crate::stats::StatsResult;
 use polars::prelude::*;
@@ -5,6 +6,7 @@ use pyo3_polars::derive::polars_expr;
 
 #[inline(always)]
 fn binary_search_right<T: PartialOrd>(arr: &[T], t: &T) -> Option<usize> {
+    // Can likely get rid of the partial_cmp, because I have gauranteed the values to be finite
     let mut left = 0;
     let mut right = arr.len();
 
@@ -23,7 +25,7 @@ fn binary_search_right<T: PartialOrd>(arr: &[T], t: &T) -> Option<usize> {
 }
 
 #[inline]
-fn ks_2samp(v1: &[f64], v2: &[f64], stats_only: bool) -> StatsResult {
+fn ks_2samp(v1: &[f64], v2: &[f64], alpha: f64) -> StatsResult {
     // Currently only supports two-sided. Won't be too hard to do add one-sided? I hope.
     // Reference:
     // https://github.com/scipy/scipy/blob/v1.11.3/scipy/stats/_stats_py.py#L8644-L8875
@@ -47,32 +49,34 @@ fn ks_2samp(v1: &[f64], v2: &[f64], stats_only: bool) -> StatsResult {
 
     // This differs from SciPy, since I am assuming we are doing two-sided test
 
-    if stats_only {
-        StatsResult::from_stats(stats)
-    } else {
-        // Temporary
-        StatsResult::from_stats(stats)
-    }
+    let c_alpha = (-0.5 * (alpha / 2.0).ln()).abs();
+    let p_estimate = (c_alpha * (n1 + n2) / (n1 * n2)).sqrt();
+
+    StatsResult::new(stats, p_estimate)
 }
 
-#[polars_expr(output_type=Float64)]
+#[polars_expr(output_type_func=simple_stats_output)]
 fn pl_ks_2samp(inputs: &[Series]) -> PolarsResult<Series> {
     let s1 = inputs[0].f64()?; // input is sorted, one chunk, gauranteed by Python side code
     let s2 = inputs[1].f64()?; // input is sorted, one chunk, gauranteed by Python side code
+    let alpha = inputs[2].f64()?;
+    let alpha = alpha.get(0).unwrap();
 
     if (s1.len() == 0) || (s2.len() == 0) {
         return Err(PolarsError::ComputeError(
             "KS: Both input series must contain at least 1 non-null values.".into(),
         ));
     }
-    // Always true right now
-    let stats_only = inputs[2].bool()?;
-    let stats_only = stats_only.get(0).unwrap_or(true);
 
     let v1 = s1.cont_slice().unwrap();
     let v2 = s2.cont_slice().unwrap();
 
-    let res = ks_2samp(v1, v2, stats_only);
-    let s = res.statistic;
-    Ok(Series::from_iter([s]))
+    let res = ks_2samp(v1, v2, alpha);
+
+    let statistic = Series::from_vec("statistic", vec![res.statistic]);
+    let pval = Float64Chunked::from_slice_options("threshold", &[res.p]);
+    let pval = pval.into_series();
+
+    let out = StructChunked::new("ks", &[statistic, pval])?;
+    Ok(out.into_series())
 }
