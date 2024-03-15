@@ -32,6 +32,16 @@ pub fn l_inf_dist<T: Float>(a: &[T], b: &[T]) -> T {
         .fold(T::zero(), |acc, (x, y)| acc.max((*x - *y).abs()))
 }
 
+/// L2 distance, with square root. Most of the times, this is not needed
+#[inline]
+pub fn l2_dist<T: Float>(a: &[T], b: &[T]) -> T {
+    debug_assert_eq!(a.len(), b.len());
+    a.iter()
+        .zip(b.iter())
+        .fold(T::zero(), |acc, (x, y)| acc + (*x - *y) * (*x - *y))
+        .sqrt()
+}
+
 #[inline]
 pub fn l1_dist<T: Float>(a: &[T], b: &[T]) -> T {
     debug_assert_eq!(a.len(), b.len());
@@ -79,6 +89,7 @@ pub fn haversine<T: Float>(start: &[T], end: &[T]) -> T {
 pub fn which_distance(metric: &str, dim: usize) -> PolarsResult<fn(&[f64], &[f64]) -> f64> {
     match metric {
         "l1" => Ok(l1_dist),
+        "l2" => Ok(squared_euclidean),
         "inf" => Ok(l_inf_dist),
         "h" | "haversine" => {
             if dim == 2 {
@@ -86,12 +97,14 @@ pub fn which_distance(metric: &str, dim: usize) -> PolarsResult<fn(&[f64], &[f64
             } else {
                 Err(
                     PolarsError::ComputeError(
-                        "KNN: Haversine distance must take 2 columns as features, one for lat and one for long.".into()
+                        "Haversine distance must take 2 columns as features, one for lat and one for long.".into()
                     )
                 )
             }
         }
         "cosine" => Ok(cosine_dist),
-        _ => Ok(squared_euclidean),
+        _ => Err(PolarsError::ComputeError(
+            "Distance string not recognized. Valid values are: l1, l2, inf, h, cosine.".into(),
+        )),
     }
 }

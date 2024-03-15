@@ -1,7 +1,7 @@
 from __future__ import annotations
 import polars as pl
 import math
-from .type_alias import Alternative
+from .type_alias import Alternative, str_to_expr
 from typing import Optional, Union
 from polars.utils.udfs import _get_shared_lib_location
 
@@ -82,26 +82,7 @@ class StatsExt:
         self, other: pl.Expr, alternative: Alternative = "two-sided", equal_var: bool = False
     ) -> pl.Expr:
         """
-        Performs 2 sample student's t test or Welch's t test. Functionality-wise this is desgined
-        to be equivalent to SciPy's ttest_ind, with fewer options. The result is not exact but
-        within 1e-10 precision from SciPy's.
-
-        In the case of student's t test, the data is assumed to have no nulls, and n = self._expr.count()
-        is used. Note self._expr.count() only counts non-null elements after polars 0.20.
-        The degree of freedom will be 2n - 2. As a result, nulls might cause problems.
-
-        In the case of Welch's t test, data will be sanitized (nulls, NaNs, Infs will be dropped
-        before the test), and df will be counted based on the length of sanitized data.
-
-        Parameters
-        ----------
-        other
-            The other expression
-        alternative : {"two-sided", "less", "greater"}
-            Alternative of the hypothesis test
-        equal_var
-            If true, perform standard student t 2 sample test. Otherwise, perform Welch's
-            t test.
+        See query_ttest_ind
         """
         if equal_var:
             m1 = self._expr.mean()
@@ -113,7 +94,6 @@ class StatsExt:
                 lib=_lib,
                 symbol="pl_ttest_2samp",
                 args=[m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
-                is_elementwise=False,
                 returns_scalar=True,
             )
         else:
@@ -129,7 +109,6 @@ class StatsExt:
                 lib=_lib,
                 symbol="pl_welch_t",
                 args=[m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
-                is_elementwise=False,
                 returns_scalar=True,
             )
 
@@ -155,7 +134,6 @@ class StatsExt:
             lib=_lib,
             symbol="pl_ttest_1samp",
             args=[pm, var, cnt, alt],
-            is_elementwise=False,
             returns_scalar=True,
         )
 
@@ -174,7 +152,6 @@ class StatsExt:
             lib=_lib,
             symbol="pl_f_stats",
             args=list(variables),
-            is_elementwise=False,
             returns_scalar=True,
         )
 
@@ -191,7 +168,6 @@ class StatsExt:
             lib=_lib,
             symbol="pl_f_test",
             args=[var],
-            is_elementwise=False,
             returns_scalar=True,
         )
 
@@ -215,32 +191,24 @@ class StatsExt:
         return skew.register_plugin(
             lib=_lib,
             symbol="pl_normal_test",
-            args=[kur, valid.count().cast(pl.UInt64)],
-            is_elementwise=False,
+            args=[kur, valid.count().cast(pl.UInt32)],
             returns_scalar=True,
         )
 
-    def ks_stats(self, var: pl.Expr) -> pl.Expr:
+    def ks_stats(self, var: pl.Expr, alpha: float = 0.05) -> pl.Expr:
         """
-        Computes two-sided KS statistics with other. Currently it only returns the statistics. This will
-        sanitize data (only non-null finite values are used) before doing the computation.
-
-        Parameters
-        ----------
-        var
-            The column to run KS statistic on
+        See query_ks_2samp
         """
         y = self._expr.filter(self._expr.is_finite()).sort().cast(pl.Float64)
         other_ = var.filter(var.is_finite()).sort().cast(pl.Float64)
         return y.register_plugin(
             lib=_lib,
             symbol="pl_ks_2samp",
-            args=[other_, pl.lit(True, dtype=pl.Boolean)],
-            is_elementwise=False,
+            args=[other_, pl.lit(alpha, pl.Float64)],
             returns_scalar=True,
         )
 
-    def ks_binary_classif(self, target: pl.Expr) -> pl.Expr:
+    def ks_binary_classif(self, target: pl.Expr, alpha: float = 0.05) -> pl.Expr:
         """
         Given a binary target, compute the ks statistics by comparing the feature when target = 1
         with the same feature when target != 1.
@@ -250,14 +218,13 @@ class StatsExt:
         target
             A Polars Expression representing the binary target
         """
-        y = self._expr.cast(pl.Float64)
-        y1 = y.filter(target == target.max())
-        y2 = y.filter((target == target.max()).not_())
+        y = self._expr.filter(self._expr.is_finite()).cast(pl.Float64)
+        y1 = y.filter(target == 1).sort()
+        y2 = y.filter(target < 1).sort()
         return y1.register_plugin(
             lib=_lib,
             symbol="pl_ks_2samp",
-            args=[y2, pl.lit(True, dtype=pl.Boolean)],
-            is_elementwise=False,
+            args=[y2, pl.lit(alpha, pl.Float64)],
             returns_scalar=True,
         )
 
@@ -280,7 +247,6 @@ class StatsExt:
             lib=_lib,
             symbol="pl_chi2",
             args=[var],
-            is_elementwise=False,
             returns_scalar=True,
         )
 
@@ -359,7 +325,6 @@ class StatsExt:
         respect_null
             If true, null in reference column will be null in the new column
         """
-
         if isinstance(low, pl.Expr):
             lo = low
         elif isinstance(low, float):
@@ -668,3 +633,107 @@ class StatsExt:
             return (self._expr.ln().dot(weights)).exp()
         else:
             return (self._expr.ln().dot(weights) / (weights.sum())).exp()
+
+
+def query_ttest_ind(
+    var1: Union[str, pl.Expr],
+    var2: Union[str, pl.Expr],
+    alternative: Alternative = "two-sided",
+    equal_var: bool = False,
+) -> pl.Expr:
+    """
+    Performs 2 sample student's t test or Welch's t test. Functionality-wise this is desgined
+    to be equivalent to SciPy's ttest_ind, with fewer options. The result is not exact but
+    within 1e-10 precision from SciPy's.
+
+    In the case of student's t test, the data is assumed to have no nulls, and n = self._expr.count()
+    is used. Note self._expr.count() only counts non-null elements after polars 0.20.
+    The degree of freedom will be 2n - 2. As a result, nulls might cause problems.
+
+    In the case of Welch's t test, data will be sanitized (nulls, NaNs, Infs will be dropped
+    before the test), and df will be counted based on the length of sanitized data.
+
+    Parameters
+    ----------
+    var1
+        Variable 1
+    var2
+        Variable 2
+    alternative : {"two-sided", "less", "greater"}
+        Alternative of the hypothesis test
+    equal_var
+        If true, perform standard student t 2 sample test. Otherwise, perform Welch's
+        t test.
+    """
+    return str_to_expr(var1).stats.ttest_ind(
+        str_to_expr(var2), alternative=alternative, equal_var=equal_var
+    )
+
+
+def query_ttest_ind_from_stats(
+    var1: Union[str, pl.Expr],
+    mean: float,
+    var: float,
+    cnt: int,
+    alternative: Alternative = "two-sided",
+    equal_var: bool = False,
+) -> pl.Expr:
+    """
+    Performs 2 sample student's t test or Welch's t test, using only scalar statistics from other.
+    This is more suitable for t-tests between rolling data and some other fixed data, from which you
+    can compute the mean, var, and count only once.
+
+    Parameters
+    ----------
+    var1
+        The variable 1
+    mean
+        The mean of var2
+    var
+        The var of var2
+    cnt
+        The count of var2, used only in welch's t test
+    alternative : {"two-sided", "less", "greater"}
+        Alternative of the hypothesis test
+    equal_var
+        If true, perform standard student t 2 sample test. Otherwise, perform Welch's
+        t test.
+    """
+    return str_to_expr(var1).stats.ttest_ind_from_stats(
+        other_mean=mean, other_var=var, other_cnt=cnt, alternative=alternative, equal_var=equal_var
+    )
+
+
+def query_ks_2samp(
+    var1: Union[str, pl.Expr],
+    var2: Union[str, pl.Expr],
+    alpha: float = 0.05,
+    is_binary: bool = False,
+) -> pl.Expr:
+    """
+    Computes two-sided KS statistics between var1 and var2. This will
+    sanitize data (only non-null finite values are used) before doing the computation. If
+    is_binary true, it will compare the statistics by comparing var2(var1=0) and var2(var1=1).
+
+    Note, this returns a stastics and a threshold value. The threshold value is not the p-value, but
+    rather it is used in the following way: if the statistic is > the threshold value, then the null
+    hypothesis should be rejected. This is suitable only for large sameple sizes. See the reference.
+
+    Parameters
+    ----------
+    var1
+        Variable 1
+    var2
+        Variable 2
+    alpha
+        The confidence level used to estimate p-value
+    is_binary
+        If true, instead of running ks(var1, var2), it runs ks(var2(var1=0), var2(var1=1))
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Kolmogorov%E2%80%93Smirnov_test#Two-sample_Kolmogorov%E2%80%93Smirnov_test
+    """
+    if is_binary:
+        return str_to_expr(var2).stats.ks_binary_classif(str_to_expr(var1), alpha=alpha)
+    return str_to_expr(var1).stats.ks_stats(str_to_expr(var2), alpha=alpha)

@@ -58,7 +58,7 @@ fn pl_normal_test(inputs: &[Series]) -> PolarsResult<Series> {
     let kurtosis = inputs[1].f64()?;
     let kurtosis = kurtosis.get(0).unwrap();
 
-    let n = inputs[2].u64()?;
+    let n = inputs[2].u32()?;
     let n = n.get(0).unwrap() as usize;
 
     if n < 20 {

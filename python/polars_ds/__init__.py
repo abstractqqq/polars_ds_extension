@@ -5,14 +5,14 @@ from typing import Optional
 from polars_ds.num import *  # noqa: F403
 from polars_ds.graph import *  # noqa: F403
 from polars_ds.metrics import *  # noqa: F403
+from polars_ds.stats import *  # noqa: F403
 from polars_ds.complex import ComplexExt  # noqa: E402, F401
 from polars_ds.str2 import StrExt  # noqa: E402, F401
-from polars_ds.stats import StatsExt  # noqa: E402, F401
 from polars_ds.graph import GraphExt  # noqa: E402, F401
 
 logging.basicConfig(level=logging.INFO)
 
-__version__ = "0.3.4"
+__version__ = "0.3.5"
 
 # __all__ = ["NumExt", "ComplexExt", "StrExt", "StatsExt", "MetricExt", "GraphExt"]
 
