@@ -1,6 +1,6 @@
 # Polars Extension for General Data Science Use
 
-A comprehensive [walkthrough](./examples/basics.ipynb).
+A comprehensive [walkthrough](https://github.com/abstractqqq/polars_ds_extension/blob/knn_entropy/examples/basics.ipynb).
 
 Read the [Docs](https://polars-ds-extension.readthedocs.io/en/latest/).
 
