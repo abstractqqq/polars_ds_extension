@@ -46,7 +46,7 @@ fn pl_approximate_entropy(
     // Step 3, 4, 5 in wiki
     let data_1_view = data.slice(s![..n1, ..dim.abs_diff(1)]);
     let tree = build_standard_kdtree(dim.abs_diff(1), leaf_size, &data_1_view);
-    let nb_in_radius = query_nb_cnt(&tree, data_1_view, &l_inf_dist, r, parallel);
+    let nb_in_radius = query_nb_cnt(&tree, data_1_view, &l_inf_dist, r, can_parallel);
     let phi_m: f64 = nb_in_radius
         .into_no_null_iter()
         .fold(0_f64, |acc, x| acc + (x as f64 / n1 as f64).ln())
@@ -56,7 +56,7 @@ fn pl_approximate_entropy(
     let n2 = n1.abs_diff(1);
     let data_2_view = data.slice(s![..n2, ..]);
     let tree = build_standard_kdtree(dim, leaf_size, &data_2_view);
-    let nb_in_radius = query_nb_cnt(&tree, data_2_view, &l_inf_dist, r, parallel);
+    let nb_in_radius = query_nb_cnt(&tree, data_2_view, &l_inf_dist, r, can_parallel);
     let phi_m1: f64 = nb_in_radius
         .into_no_null_iter()
         .fold(0_f64, |acc, x| acc + (x as f64 / n2 as f64).ln())
@@ -95,13 +95,13 @@ fn pl_sample_entropy(
 
     let data_1_view = data.slice(s![..n1, ..dim.abs_diff(1)]);
     let tree = build_standard_kdtree(dim.abs_diff(1), leaf_size, &data_1_view);
-    let nb_in_radius = query_nb_cnt(&tree, data_1_view, &l_inf_dist, r, parallel);
+    let nb_in_radius = query_nb_cnt(&tree, data_1_view, &l_inf_dist, r, can_parallel);
     let b = (nb_in_radius.sum().unwrap_or(0) as f64) - (n1 as f64);
 
     let n2 = n1.abs_diff(1);
     let data_2_view = data.slice(s![..n2, ..]);
     let tree = build_standard_kdtree(dim, leaf_size, &data_2_view);
-    let nb_in_radius = query_nb_cnt(&tree, data_2_view, &l_inf_dist, r, parallel);
+    let nb_in_radius = query_nb_cnt(&tree, data_2_view, &l_inf_dist, r, can_parallel);
     let a = (nb_in_radius.sum().unwrap_or(0) as f64) - (n2 as f64);
 
     // Output
@@ -134,9 +134,12 @@ fn pl_knn_entropy(
     let d = dim as f64;
     // Should support l1, l2, inf here.
 
-    let cd = if metric_str == "l2" {
+    let (dist_func, cd): (fn(&[f64], &[f64]) -> f64, f64) = if metric_str == "l2" {
         let half_d: f64 = d / 2.0;
-        std::f64::consts::PI.powf(half_d) / (2f64.powf(d)) / (1.0 + half_d).gamma()
+        let cd = std::f64::consts::PI.powf(half_d) / (2f64.powf(d)) / (1.0 + half_d).gamma();
+        (super::l2_dist, cd)
+    } else if metric_str == "inf" {
+        (super::l_inf_dist, 1.0)
     } else {
         return Err(PolarsError::ComputeError("Not implemented.".into()));
     };
@@ -150,7 +153,7 @@ fn pl_knn_entropy(
     let data_view = data.view();
     let tree = build_standard_kdtree(dim, leaf_size, &data_view);
 
-    let logd = if parallel {
+    let logd = if can_parallel {
         let n_threads = POOL.current_num_threads();
         let splits = crate::utils::split_offsets(nrows, n_threads);
         let partial_sums = splits.into_par_iter().map(|(offset, len)| {
@@ -158,7 +161,7 @@ fn pl_knn_entropy(
             let mut out: f64 = 0.0;
             for p in piece.rows() {
                 let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
-                if let Ok(mut v) = tree.nearest(s, k + 1, &l2_dist) {
+                if let Ok(mut v) = tree.nearest(s, k + 1, &dist_func) {
                     let (d, _) = v.pop().unwrap();
                     out += (2.0 * d).ln();
                 }
@@ -170,7 +173,7 @@ fn pl_knn_entropy(
         let mut out: f64 = 0.0;
         for p in data.rows() {
             let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
-            if let Ok(mut v) = tree.nearest(s, k + 1, &l2_dist) {
+            if let Ok(mut v) = tree.nearest(s, k + 1, &dist_func) {
                 // The last element represents the k-th neighbor
                 // The pop should be safe, because nrows > k
                 let (d, _) = v.pop().unwrap();

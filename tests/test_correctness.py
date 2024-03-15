@@ -898,6 +898,27 @@ def test_ks_stats():
 
 
 @pytest.mark.parametrize(
+    "df, k, dist, res",
+    [
+        (
+            pl.DataFrame(dict(x=[1, 2, 10], y=[2, 5, 10])),
+            1,
+            "l2",
+            5.675998737756144,
+        ),
+    ],
+)
+def test_knn_entropy(df, k, dist, res):
+    test = df.select(pds.query_knn_entropy("x", "y", k=k, dist=dist)).item(0, 0)
+
+    assert np.isclose(test, res)
+
+    test_par = df.select(pds.query_knn_entropy("x", "y", k=k, dist=dist, parallel=True)).item(0, 0)
+
+    assert np.isclose(test_par, res)
+
+
+@pytest.mark.parametrize(
     "df, eq_var",
     [
         (

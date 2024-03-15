@@ -1074,7 +1074,7 @@ def haversine(
 
 
 def query_knn_ptwise(
-    *others: Union[str, pl.Expr],
+    *features: Union[str, pl.Expr],
     index: Union[str, pl.Expr],
     k: int = 5,
     leaf_size: int = 32,
@@ -1097,7 +1097,7 @@ def query_knn_ptwise(
 
     Parameters
     ----------
-    *others : str | pl.Expr
+    *features : str | pl.Expr
         Other columns used as features
     index : str | pl.Expr
         The column used as index, must be castable to u32
@@ -1115,7 +1115,7 @@ def query_knn_ptwise(
     """
     idx = str_to_expr(index)
     return idx.num._knn_ptwise(
-        *[str_to_expr(x) for x in others],
+        *[str_to_expr(x) for x in features],
         k=k,
         leaf_size=leaf_size,
         dist=dist,
@@ -1125,7 +1125,7 @@ def query_knn_ptwise(
 
 
 def query_radius_at_pt(
-    *others: Union[str, pl.Expr],
+    *features: Union[str, pl.Expr],
     pt: Iterable[float],
     r: Union[float, pl.Expr],
     dist: Distance = "l2",
@@ -1136,7 +1136,7 @@ def query_radius_at_pt(
 
     Parameters
     ----------
-    *others : str | pl.Expr
+    *features : str | pl.Expr
         Other columns used as features
     pt : Iterable[float]
         The point, at which we filter using the radius.
@@ -1146,7 +1146,7 @@ def query_radius_at_pt(
         Note `l2` is actually squared `l2` for computational efficiency.
     """
     # For a single point, it is faster to just do it in native polars
-    oth = [str_to_expr(x) for x in others]
+    oth = [str_to_expr(x) for x in features]
     if len(pt) != len(oth):
         raise ValueError("Dimension does not match.")
 
@@ -1189,7 +1189,7 @@ def query_radius_at_pt(
 
 
 def query_radius_ptwise(
-    *others: Union[str, pl.Expr],
+    *features: Union[str, pl.Expr],
     index: Union[str, pl.Expr],
     r: float,
     dist: Distance = "l2",
@@ -1208,7 +1208,7 @@ def query_radius_ptwise(
 
     Parameters
     ----------
-    *others : str | pl.Expr
+    *features : str | pl.Expr
         Other columns used as features
     index : str | pl.Expr
         The column used as index, must be castable to u32
@@ -1222,13 +1222,13 @@ def query_radius_ptwise(
     """
     idx = str_to_expr(index)
     return idx.num._radius_ptwise(
-        *[str_to_expr(x) for x in others], r=r, dist=dist, parallel=parallel
+        *[str_to_expr(x) for x in features], r=r, dist=dist, parallel=parallel
     )
 
 
 def query_nb_cnt(
     r: Union[float, str, pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
-    *others: Union[str, pl.Expr],
+    *features: Union[str, pl.Expr],
     leaf_size: int = 32,
     dist: Distance = "l2",
     parallel: bool = False,
@@ -1244,7 +1244,7 @@ def query_nb_cnt(
         this is a list, then it must have the same height as the dataframe. If
         this is an expression, it must be an expression representing radius. If this is a str,
         it must be the name of a column
-    *others : str | pl.Expr
+    *features : str | pl.Expr
         Other columns used as features
     leaf_size : int, > 0
         Leaf size for the kd-tree. Tuning this might improve performance.
@@ -1264,12 +1264,12 @@ def query_nb_cnt(
         rad = pl.lit(pl.Series(values=r, dtype=pl.Float64))
 
     return rad.num._nb_cnt(
-        *[str_to_expr(x) for x in others], leaf_size=leaf_size, dist=dist, parallel=parallel
+        *[str_to_expr(x) for x in features], leaf_size=leaf_size, dist=dist, parallel=parallel
     )
 
 
 def query_knn_filter(
-    *others: Union[str, pl.Expr],
+    *features: Union[str, pl.Expr],
     pt: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
     k: int = 5,
     dist: Distance = "l2",
@@ -1283,7 +1283,7 @@ def query_knn_filter(
 
     Parameters
     ----------
-    *others : str | pl.Expr
+    *features : str | pl.Expr
         Columns used as features
     pt : Iterable[float]
         The point. It must be of the same length as the number of columns in `others`.
@@ -1297,7 +1297,7 @@ def query_knn_filter(
 
     pt = pl.Series(values=pt, dtype=pl.Float64)
     return pl.lit(pt).num._knn_filter(
-        *[str_to_expr(x) for x in others],
+        *[str_to_expr(x) for x in features],
         k=k,
         dist=dist,
     )
@@ -1401,7 +1401,7 @@ def query_permute_entropy(
 
 
 def query_knn_entropy(
-    *others: Union[str, pl.Expr],
+    *features: Union[str, pl.Expr],
     k: int = 2,
     dist: Distance = "l2",
     parallel: bool = False,
@@ -1411,7 +1411,7 @@ def query_knn_entropy(
 
     Parameters
     ----------
-    *others
+    *features
         Columns used as features
     k
         The number of nearest neighbor to consider. Usually 2 or 3.
@@ -1425,13 +1425,13 @@ def query_knn_entropy(
     ---------
     https://arxiv.org/pdf/1506.06501v1.pdf
     """
-    exprs = [str_to_expr(e) for e in others]
+    exprs = [str_to_expr(e) for e in features]
     first = exprs[0]
     return first.num._knn_entropy(*exprs[1:], k=k, dist=dist, parallel=parallel)
 
 
 def query_lstsq(
-    *variables: Union[str, pl.Expr],
+    *vars: Union[str, pl.Expr],
     target: Union[str, pl.Expr],
     add_bias: bool = False,
     skip_null: bool = False,
@@ -1453,7 +1453,7 @@ def query_lstsq(
 
     Parameters
     ----------
-    variables : str | pl.Expr
+    vars : str | pl.Expr
         The variables used to predict target (self).
     target : str | pl.Expr
         The target variable
@@ -1468,7 +1468,7 @@ def query_lstsq(
     """
     t = str_to_expr(target)
     return t.num.lstsq(
-        *[str_to_expr(x) for x in variables],
+        *[str_to_expr(x) for x in vars],
         add_bias=add_bias,
         skip_null=skip_null,
         return_pred=return_pred,
@@ -1476,7 +1476,7 @@ def query_lstsq(
 
 
 def query_lstsq_report(
-    *variables: Union[str, pl.Expr],
+    *vars: Union[str, pl.Expr],
     target: Union[str, pl.Expr],
     add_bias: bool = False,
     skip_null: bool = False,
@@ -1495,7 +1495,7 @@ def query_lstsq_report(
 
     Parameters
     ----------
-    variables : str | pl.Expr
+    vars : str | pl.Expr
         The variables used to predict target (self).
     target : str | pl.Expr
         The target variable
@@ -1506,7 +1506,7 @@ def query_lstsq_report(
     """
     t = str_to_expr(target)
     return t.num.lstsq_report(
-        *[str_to_expr(x) for x in variables], add_bias=add_bias, skip_null=skip_null
+        *[str_to_expr(x) for x in vars], add_bias=add_bias, skip_null=skip_null
     )
 
 
