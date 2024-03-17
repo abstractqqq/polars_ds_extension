@@ -4,6 +4,7 @@
 tests/*.ipynb
 tests/test.ipynb
 tests/sample.csv
+tests/test*.csv
 
 /target
 
