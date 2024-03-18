@@ -7,7 +7,7 @@ fn pl_conditional_entropy(inputs: &[Series]) -> PolarsResult<Series> {
     let y = "y";
     let out_name = "H(x|y)";
 
-    let df = df!(x => inputs[0], y => inputs[1])?;
+    let df = df!(x => inputs[0].clone(), y => inputs[1].clone())?;
     let mut out = df
         .lazy()
         .group_by([col(x), col(y)])
