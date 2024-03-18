@@ -1,3 +1,4 @@
+# Needed for local development
 maturin[patchelf]
 polars
 pre-commit
