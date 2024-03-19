@@ -16,7 +16,27 @@ pub(crate) struct SampleKwargs {
 }
 
 #[polars_expr(output_type=Int32)]
-fn pl_rand_int(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
+fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
+    let n = inputs[0].u32()?;
+    let n = n.get(0).unwrap() as usize;
+    let low = inputs[1].i32()?;
+    let low = low.get(0).unwrap();
+    let high = inputs[2].i32()?;
+    let high = high.get(0).unwrap();
+    let seed = inputs[3].u64()?;
+    let seed = seed.get(0);
+    let dist = Uniform::new(low, high);
+    let mut rng = if let Some(s) = seed {
+        StdRng::seed_from_u64(s)
+    } else {
+        StdRng::from_entropy()
+    };
+    let out = Int32Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(n));
+    Ok(out.into_series())
+}
+
+#[polars_expr(output_type=Int32)]
+fn pl_sample_int(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
     let reference = &inputs[0];
     let low = inputs[1].i32()?;
     let high = inputs[2].i32()?;
@@ -55,6 +75,8 @@ fn pl_rand_int(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> 
         Ok(out.into_series())
     }
 }
+
+fn pl_random_binomial() {}
 
 #[polars_expr(output_type=UInt64)]
 fn pl_sample_binomial(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {

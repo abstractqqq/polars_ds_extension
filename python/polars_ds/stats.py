@@ -250,6 +250,17 @@ class StatsExt:
             returns_scalar=True,
         )
 
+    def _rand_int(self, lower: int, upper: int, seed: Optional[int] = None) -> pl.Expr:
+        """
+        See random_int
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_rand_int",
+            args=[pl.lit(lower, pl.Int32), pl.lit(upper, pl.Int32), pl.lit(seed, pl.UInt64)],
+            is_elementwise=True,
+        )
+
     def rand_int(
         self,
         low: Union[int, pl.Expr] = 0,
@@ -295,7 +306,7 @@ class StatsExt:
 
         return self._expr.register_plugin(
             lib=_lib,
-            symbol="pl_rand_int",
+            symbol="pl_sample_int",
             args=[lo, hi],
             kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
@@ -737,3 +748,26 @@ def query_ks_2samp(
     if is_binary:
         return str_to_expr(var2).stats.ks_binary_classif(str_to_expr(var1), alpha=alpha)
     return str_to_expr(var1).stats.ks_stats(str_to_expr(var2), alpha=alpha)
+
+
+def random_int(lower: int, upper: int, seed: Optional[int] = None) -> pl.Expr:
+    """
+    Generates random integer between lower and upper.
+
+    Parameters
+    ----------
+    lower
+        The lower bound, inclusive
+    upper
+        The upper bound, exclusive
+    seed
+        The random seed. None means no seed.
+    """
+    if lower == upper:
+        raise ValueError("Input `lower` must be smaller than `higher`")
+
+    lo, hi = lower, upper
+    if lower > upper:
+        lo, hi = upper, lower
+
+    return pl.len().cast(pl.UInt32).stats._rand_int(lower=lo, upper=hi, seed=seed)
