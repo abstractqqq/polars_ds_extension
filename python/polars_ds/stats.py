@@ -261,6 +261,81 @@ class StatsExt:
             is_elementwise=True,
         )
 
+    def _random(
+        self,
+        lower: Union[pl.Expr, float] = 0.0,
+        upper: Union[pl.Expr, float] = 1.0,
+        seed: Optional[int] = None,
+    ) -> pl.Expr:
+        """
+        See random
+        """
+        lo = pl.lit(lower, pl.Float64) if isinstance(lower, float) else lower
+        up = pl.lit(upper, pl.Float64) if isinstance(upper, float) else upper
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_random",
+            args=[lo, up, pl.lit(seed, pl.UInt64)],
+            is_elementwise=True,
+        )
+
+    def _rand_binomial(self, n: int, p: int, seed: Optional[int] = None) -> pl.Expr:
+        """
+        See random_binomial
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_rand_binomial",
+            args=[pl.lit(n, pl.Int32), pl.lit(p, pl.Float64), pl.lit(seed, pl.UInt64)],
+            is_elementwise=True,
+        )
+
+    def _rand_normal(
+        self,
+        mean: Union[pl.Expr, float] = 0.0,
+        std: Union[pl.Expr, float] = 1.0,
+        seed: Optional[int] = None,
+    ) -> pl.Expr:
+        """
+        See random_normal
+        """
+        m = pl.lit(mean, pl.Float64) if isinstance(mean, float) else mean
+        s = pl.lit(std, pl.Float64) if isinstance(std, float) else std
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_rand_normal",
+            args=[m, s, pl.lit(seed, pl.UInt64)],
+            is_elementwise=True,
+        )
+
+    def _rand_exp(self, lambda_: float, seed: Optional[int] = None) -> pl.Expr:
+        """
+        See random_exp
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_rand_exp",
+            args=[pl.lit(lambda_, pl.Float64), pl.lit(seed, pl.UInt64)],
+            is_elementwise=True,
+        )
+
+    def _rand_str(
+        self, min_size: int = 1, max_size: int = 10, seed: Optional[int] = None
+    ) -> pl.Expr:
+        """
+        See random_str
+        """
+        return self._expr.register_plugin(
+            lib=_lib,
+            symbol="pl_rand_str",
+            args=[
+                pl.lit(min_size, pl.UInt32),
+                pl.lit(max_size, pl.UInt32),
+                pl.lit(seed, pl.UInt64),
+            ],
+            is_elementwise=True,
+        )
+
     def rand_int(
         self,
         low: Union[int, pl.Expr] = 0,
@@ -306,13 +381,13 @@ class StatsExt:
 
         return self._expr.register_plugin(
             lib=_lib,
-            symbol="pl_sample_int",
+            symbol="pl_rand_int_w_ref",
             args=[lo, hi],
             kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
         )
 
-    def sample_uniform(
+    def rand_uniform(
         self,
         low: Optional[Union[float, pl.Expr]] = 0.0,
         high: Optional[Union[float, pl.Expr]] = 1.0,
@@ -320,7 +395,7 @@ class StatsExt:
         respect_null: bool = False,
     ) -> pl.Expr:
         """
-        Creates self.len() many random points sampled from a uniform distribution within [low, high).
+        Creates random points from a uniform distribution within [low, high).
         This will throw an error if low == high.
 
         This treats self as the reference column.
@@ -352,7 +427,7 @@ class StatsExt:
 
         return self._expr.register_plugin(
             lib=_lib,
-            symbol="pl_sample_uniform",
+            symbol="pl_rand_uniform_w_ref",
             args=[lo, hi],
             kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
@@ -389,11 +464,11 @@ class StatsExt:
             is_elementwise=True,
         )
 
-    def sample_binomial(
+    def rand_binomial(
         self, n: int, p: float, seed: Optional[int] = None, respect_null: bool = False
     ) -> pl.Expr:
         """
-        Creates self.len() many random points sampled from a binomial distribution with n and p.
+        Creates random points from a binomial distribution with n and p.
 
         This treats self as the reference column.
 
@@ -409,24 +484,24 @@ class StatsExt:
             If true, null in reference column will be null in the new column
         """
 
-        nn = pl.lit(n, dtype=pl.UInt64)
+        nn = pl.lit(n, dtype=pl.UInt32)
         pp = pl.lit(p, dtype=pl.Float64)
         return self._expr.register_plugin(
             lib=_lib,
-            symbol="pl_sample_binomial",
+            symbol="pl_rand_binomial_w_ref",
             args=[nn, pp],
             kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
         )
 
-    def sample_exp(
+    def rand_exp(
         self,
         lambda_: Optional[Union[float, pl.Expr]] = None,
         seed: Optional[int] = None,
         respect_null: bool = False,
     ) -> pl.Expr:
         """
-        Creates self.len() many random points sampled from a exponential distribution with parameter `lambda_`.
+        Creates random points from a exponential distribution with parameter `lambda_`.
 
         This treats self as the reference column.
 
@@ -449,13 +524,13 @@ class StatsExt:
 
         return self._expr.register_plugin(
             lib=_lib,
-            symbol="pl_sample_exp",
+            symbol="pl_rand_exp_w_ref",
             args=[la],
             kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
         )
 
-    def sample_normal(
+    def rand_normal(
         self,
         mean: Optional[Union[float, pl.Expr]] = None,
         std: Optional[Union[float, pl.Expr]] = None,
@@ -463,7 +538,7 @@ class StatsExt:
         respect_null: bool = False,
     ) -> pl.Expr:
         """
-        Creates self.len() many random points sampled from a normal distribution with the given
+        Creates random points from a normal distribution with the given
         mean and std.
 
         This treats self as the reference column.
@@ -495,7 +570,7 @@ class StatsExt:
 
         return self._expr.register_plugin(
             lib=_lib,
-            symbol="pl_sample_normal",
+            symbol="pl_rand_normal_w_ref",
             args=[me, st],
             kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
@@ -518,7 +593,7 @@ class StatsExt:
         if pct <= 0.0 or pct >= 1.0:
             raise ValueError("Input `pct` must be > 0 and < 1")
 
-        to_null = self.sample_uniform(0.0, 1.0, seed=seed) < pct
+        to_null = self.rand_uniform(0.0, 1.0, seed=seed) < pct
         return pl.when(to_null).then(None).otherwise(self._expr)
 
     def rand_str(
@@ -555,7 +630,7 @@ class StatsExt:
         max_s = pl.lit(max_size, dtype=pl.UInt32)
         return self._expr.register_plugin(
             lib=_lib,
-            symbol="pl_sample_alphanumeric",
+            symbol="pl_rand_str_w_ref",
             args=[min_s, max_s],
             kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
@@ -750,6 +825,29 @@ def query_ks_2samp(
     return str_to_expr(var1).stats.ks_stats(str_to_expr(var2), alpha=alpha)
 
 
+def random(lower: float = 0.0, upper: float = 1.0, seed: Optional[int] = None) -> pl.Expr:
+    """
+    Generates random numbers uniformly.
+
+    Parameters
+    ----------
+    lower
+        The lower bound, inclusive
+    upper
+        The upper bound, exclusive
+    seed
+        The random seed. None means no seed.
+    """
+    if lower == upper:
+        raise ValueError("Input `lower` must be smaller than `higher`")
+
+    lo, hi = lower, upper
+    if lower > upper:
+        lo, hi = upper, lower
+
+    return pl.len().cast(pl.UInt32).stats._random(lower=lo, upper=hi, seed=seed)
+
+
 def random_int(lower: int, upper: int, seed: Optional[int] = None) -> pl.Expr:
     """
     Generates random integer between lower and upper.
@@ -771,3 +869,72 @@ def random_int(lower: int, upper: int, seed: Optional[int] = None) -> pl.Expr:
         lo, hi = upper, lower
 
     return pl.len().cast(pl.UInt32).stats._rand_int(lower=lo, upper=hi, seed=seed)
+
+
+def random_str(min_size: int, max_size: int) -> pl.Expr:
+    """
+    Generates random strings of length between min_size and max_size.
+
+    Parameters
+    ----------
+    min_size
+        The min size of the string, inclusive
+    max_size
+        The max size of the string, inclusive
+    seed
+        The random seed. None means no seed.
+    """
+    mi, ma = min_size, max_size
+    if min_size > max_size:
+        mi, ma = max_size, min_size
+
+    return pl.len().cast(pl.UInt32).stats._rand_str(min_size=mi, max_size=ma, seed=None)
+
+
+def random_binomial(n: int, p: int, seed: Optional[int] = None) -> pl.Expr:
+    """
+    Generates random integer following a binomial distribution.
+
+    Parameters
+    ----------
+    n
+        The n in a binomial distribution
+    p
+        The p in a binomial distribution
+    seed
+        The random seed. None means no seed.
+    """
+    if n < 1:
+        raise ValueError("Input `n` must be > 1.")
+
+    return pl.len().cast(pl.UInt32).stats._rand_binomial(n=n, p=p, seed=seed)
+
+
+def random_exp(lambda_: float, seed: Optional[int] = None) -> pl.Expr:
+    """
+    Generates random numbers following an exponential distribution.
+
+    Parameters
+    ----------
+    lambda_
+        The lambda in an exponential distribution
+    seed
+        The random seed. None means no seed.
+    """
+    return pl.len().cast(pl.UInt32).stats._rand_exp(lambda_=lambda_, seed=seed)
+
+
+def random_normal(mean: float, std: float, seed: Optional[int] = None) -> pl.Expr:
+    """
+    Generates random number following a normal distribution.
+
+    Parameters
+    ----------
+    mean
+        The mean in a normal distribution
+    std
+        The std in a normal distribution
+    seed
+        The random seed. None means no seed.
+    """
+    return pl.len().cast(pl.UInt32).stats._rand_normal(mean=mean, std=std, seed=seed)
