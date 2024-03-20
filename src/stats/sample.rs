@@ -16,7 +16,27 @@ pub(crate) struct SampleKwargs {
 }
 
 #[polars_expr(output_type=Int32)]
-fn pl_rand_int(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
+fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
+    let n = inputs[0].u32()?;
+    let n = n.get(0).unwrap() as usize;
+    let low = inputs[1].i32()?;
+    let low = low.get(0).unwrap();
+    let high = inputs[2].i32()?;
+    let high = high.get(0).unwrap();
+    let seed = inputs[3].u64()?;
+    let seed = seed.get(0);
+    let dist = Uniform::new(low, high);
+    let mut rng = if let Some(s) = seed {
+        StdRng::seed_from_u64(s)
+    } else {
+        StdRng::from_entropy()
+    };
+    let out = Int32Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(n));
+    Ok(out.into_series())
+}
+
+#[polars_expr(output_type=Int32)]
+fn pl_rand_int_w_ref(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
     let reference = &inputs[0];
     let low = inputs[1].i32()?;
     let high = inputs[2].i32()?;
@@ -57,9 +77,30 @@ fn pl_rand_int(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> 
 }
 
 #[polars_expr(output_type=UInt64)]
-fn pl_sample_binomial(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
+fn pl_rand_binomial(inputs: &[Series]) -> PolarsResult<Series> {
+    let len = inputs[0].u32()?;
+    let len = len.get(0).unwrap() as usize;
+    let n = inputs[1].u32()?;
+    let n = n.get(0).unwrap();
+    let p = inputs[2].f64()?;
+    let p = p.get(0).unwrap();
+    let seed = inputs[3].u64()?;
+    let seed = seed.get(0);
+    let dist =
+        Binomial::new(n.into(), p).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
+    let mut rng = if let Some(s) = seed {
+        StdRng::seed_from_u64(s)
+    } else {
+        StdRng::from_entropy()
+    };
+    let out = UInt64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(len));
+    Ok(out.into_series())
+}
+
+#[polars_expr(output_type=UInt64)]
+fn pl_rand_binomial_w_ref(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
     let reference = &inputs[0];
-    let n = inputs[1].u64()?;
+    let n = inputs[1].u32()?;
     let n = n.get(0).unwrap();
     let p = inputs[2].f64()?;
     let p = p.get(0).unwrap();
@@ -68,7 +109,8 @@ fn pl_sample_binomial(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<S
     let respect_null = kwargs.respect_null;
     let seed = kwargs.seed;
 
-    let dist = Binomial::new(n, p).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
+    let dist =
+        Binomial::new(n.into(), p).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
     let mut rng = if let Some(s) = seed {
         StdRng::seed_from_u64(s)
     } else {
@@ -91,7 +133,31 @@ fn pl_sample_binomial(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<S
 }
 
 #[polars_expr(output_type=Float64)]
-fn pl_sample_exp(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
+fn pl_rand_exp(inputs: &[Series]) -> PolarsResult<Series> {
+    let len = inputs[0].u32()?;
+    let len = len.get(0).unwrap() as usize;
+    let lambda = inputs[1].f64()?;
+    let lambda = lambda.get(0).unwrap();
+
+    let seed = inputs[2].u64()?;
+    let seed = seed.get(0);
+    let mut rng = if let Some(s) = seed {
+        StdRng::seed_from_u64(s)
+    } else {
+        StdRng::from_entropy()
+    };
+    if lambda == 1.0 {
+        let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(Exp1).take(len));
+        Ok(out.into_series())
+    } else {
+        let dist = Exp::new(lambda).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
+        let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(len));
+        Ok(out.into_series())
+    }
+}
+
+#[polars_expr(output_type=Float64)]
+fn pl_rand_exp_w_ref(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
     let reference = &inputs[0];
     let lambda = inputs[1].f64()?;
     let lambda = lambda.get(0).unwrap();
@@ -140,7 +206,27 @@ fn pl_sample_exp(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series
 }
 
 #[polars_expr(output_type=Float64)]
-fn pl_sample_uniform(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
+fn pl_random(inputs: &[Series]) -> PolarsResult<Series> {
+    let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
+    let len = len.get(0).unwrap() as usize;
+    let low = inputs[1].f64()?;
+    let low = low.get(0).unwrap();
+    let high = inputs[2].f64()?;
+    let high = high.get(0).unwrap();
+    let seed = inputs[3].u64()?;
+    let seed = seed.get(0);
+    let dist = Uniform::new(low, high);
+    let mut rng = if let Some(s) = seed {
+        StdRng::seed_from_u64(s)
+    } else {
+        StdRng::from_entropy()
+    };
+    let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(len));
+    Ok(out.into_series())
+}
+
+#[polars_expr(output_type=Float64)]
+fn pl_rand_uniform_w_ref(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
     let reference = &inputs[0];
     let low = inputs[1].f64()?;
     let mut low = low.get(0).unwrap();
@@ -220,7 +306,34 @@ fn pl_perturb(inputs: &[Series]) -> PolarsResult<Series> {
 }
 
 #[polars_expr(output_type=Float64)]
-fn pl_sample_normal(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
+fn pl_rand_normal(inputs: &[Series]) -> PolarsResult<Series> {
+    let len = inputs[0].u32()?;
+    let len = len.get(0).unwrap() as usize;
+    let mean = inputs[1].f64()?;
+    let mean = mean.get(0).unwrap_or(0.);
+    let std_ = inputs[2].f64()?;
+    let std_ = std_.get(0).unwrap_or(1.);
+
+    let seed = inputs[3].u64()?;
+    let seed = seed.get(0);
+    let mut rng = if let Some(s) = seed {
+        StdRng::seed_from_u64(s)
+    } else {
+        StdRng::from_entropy()
+    };
+    if mean == 0. && std_ == 1.0 {
+        let out =
+            Float64Chunked::from_iter_values("", (&mut rng).sample_iter(StandardNormal).take(len));
+        Ok(out.into_series())
+    } else {
+        let dist = Normal::new(mean, std_).unwrap();
+        let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(len));
+        Ok(out.into_series())
+    }
+}
+
+#[polars_expr(output_type=Float64)]
+fn pl_rand_normal_w_ref(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
     let reference = &inputs[0];
     let mean = inputs[1].f64()?;
     let mean = mean.get(0).unwrap_or(0.);
@@ -279,8 +392,34 @@ fn pl_sample_normal(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Ser
     }
 }
 
+#[polars_expr(output_type=Float64)]
+fn pl_rand_str(inputs: &[Series]) -> PolarsResult<Series> {
+    let len = inputs[0].u32()?;
+    let len = len.get(0).unwrap() as usize;
+    let min_size = inputs[1].u32()?;
+    let min_size = min_size.get(0).unwrap() as usize;
+    let max_size = inputs[2].u32()?;
+    let max_size = max_size.get(0).unwrap() as usize;
+    let seed = inputs[3].u64()?;
+    let seed = seed.get(0);
+
+    let dist = Uniform::new_inclusive(min_size, max_size);
+    let mut rng = if let Some(s) = seed {
+        StdRng::seed_from_u64(s)
+    } else {
+        StdRng::from_entropy()
+    };
+
+    let sample = (0..len).map(|_| {
+        let length = rng.sample(dist);
+        Alphanumeric.sample_string(&mut rng, length)
+    });
+    let out = StringChunked::from_iter_values("", sample);
+    Ok(out.into_series())
+}
+
 #[polars_expr(output_type=String)]
-fn pl_sample_alphanumeric(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
+fn pl_rand_str_w_ref(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
     let reference = &inputs[0];
     let min_size = inputs[1].u32()?;
     let mut min_size = min_size.get(0).unwrap() as usize;

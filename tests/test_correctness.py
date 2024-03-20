@@ -1074,9 +1074,9 @@ def test_multiclass_roc_auc():
             }
         ).with_columns(
             pl.col("id").cast(pl.UInt64),
-            pl.col("id").stats.sample_uniform(low=0.0, high=1.0).alias("val1"),
-            pl.col("id").stats.sample_uniform(low=0.0, high=1.0).alias("val2"),
-            pl.col("id").stats.sample_uniform(low=0.0, high=1.0).alias("val3"),
+            pl.col("id").stats.rand_uniform(low=0.0, high=1.0).alias("val1"),
+            pl.col("id").stats.rand_uniform(low=0.0, high=1.0).alias("val2"),
+            pl.col("id").stats.rand_uniform(low=0.0, high=1.0).alias("val3"),
             pl.col("id").mod(3).alias("actuals"),
         )
         # Need to normalize to make sure this is valid ROC AUC data
