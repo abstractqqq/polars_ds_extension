@@ -20,8 +20,8 @@ authors = [
 ]
 dependencies = [
     "polars >= 0.20.6, !=0.20.12",
-    "hvplot >= 0.9.1",
-    "graphviz >= 0.20"
+    "graphviz >= 0.20",
+    "great-tables >= 0.4"
 ] 
 
 keywords = ["polars-extension", "scientific-computing", "data-science"]
