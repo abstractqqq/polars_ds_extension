@@ -88,13 +88,13 @@ def random_data(
     """
     if null_pct is None:
         rand_cols = (
-            pl.col("row_num").stats.sample_uniform(low=0.0, high=1.0).alias(f"feature_{i+1}")
+            pl.col("row_num").stats.rand_uniform(low=0.0, high=1.0).alias(f"feature_{i+1}")
             for i in range(n_cols)
         )
     else:
         rand_cols = (
             pl.col("row_num")
-            .stats.sample_uniform(low=0.0, high=1.0)
+            .stats.rand_uniform(low=0.0, high=1.0)
             .stats.rand_null(null_pct)
             .alias(f"feature_{i+1}")
             for i in range(n_cols)
