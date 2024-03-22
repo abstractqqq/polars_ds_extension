@@ -267,11 +267,6 @@ class DIA:
         If returned conditional entropy is very low, that means knowning the column in
         `by` is enough to to infer the column in `column`, or the column in `column` can
         be determined by the column in `by`.
-
-        Parameters
-        ----------
-        exclude
-            None or a list of column names to exclude from this analysis.
         """
 
         # Infer valid columns to run this detection
