@@ -20,11 +20,15 @@ authors = [
 ]
 dependencies = [
     "polars >= 0.20.6, !=0.20.12",
-    "hvplot >= 0.9.1",
-    "graphviz >= 0.20"
 ] 
 
 keywords = ["polars-extension", "scientific-computing", "data-science"]
+
+[project.optional-dependencies]
+plot = [
+    "great-tables >= 0.4",
+    "graphviz >= 0.20"
+]
 
 [tool.maturin]
 python-source = "python"

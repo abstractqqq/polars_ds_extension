@@ -6,12 +6,20 @@ from functools import lru_cache
 from .num import NumExt  # noqa: F401
 from itertools import combinations
 import graphviz
+from great_tables import GT
 
 logger = logging.getLogger(__name__)
 
 
-# Name to be decided
-class Detector:
+# DIA = Data Inspection Assistant / DIAgonsis
+class DIA:
+
+    """
+    Data Inspection Assistant.
+
+    If you cannot import this module, please try: pip install "polars_ds[plot]"
+    """
+
     def __init__(self, df: Union[pl.DataFrame, pl.LazyFrame]):
         self._frame: pl.LazyFrame = df.lazy()
         self.numerics: List[str] = df.select(cs.numeric()).columns
@@ -22,6 +30,52 @@ class Detector:
         self.cats: List[str] = df.select(cs.categorical()).columns
         self.simple_types: List[str] = self.numerics + self.strs + self.bools + self.cats
         self.other_types: List[str] = [c for c in self._frame.columns if c not in self.simple_types]
+
+    def numeric_profile(self, n_bins: int = 20):
+        """
+        Creates a numerical profile with a histogram plot. Notice that the histograms may have
+        completely different scales on the x-axis.
+
+        Parameters
+        ----------
+        n_bins
+            Bins in the histogram
+        """
+        to_check = self.numerics
+
+        cuts = [i / n_bins for i in range(n_bins)]
+        cuts[0] -= 1e-5
+        cuts[-1] += 1e-5
+        frames = []
+        for c in to_check:
+            temp = self._frame.select(
+                pl.lit(c).alias("column"),
+                (pl.col(c).null_count() / pl.len()).round(2).alias("null%"),
+                pl.col(c).mean().round(2).alias("mean"),
+                pl.col(c).median().cast(pl.Float64).round(2).alias("median"),
+                pl.col(c).std().round(2).alias("std"),
+                pl.struct(
+                    ((pl.col(c) - pl.col(c).min()) / (pl.col(c).max() - pl.col(c).min()))
+                    .filter(pl.col(c).is_finite())
+                    .cut(breaks=cuts, left_closed=True, include_breaks=True)
+                    .struct.field("brk")
+                    .value_counts()
+                    .sort()
+                    .struct.field("count")
+                    .implode()
+                ).alias("histogram"),
+                pl.col(c).min().cast(pl.Float64).round(2).alias("min"),
+                pl.col(c).max().cast(pl.Float64).round(2).alias("max"),
+            )
+            frames.append(temp)
+
+        df_final = pl.concat(pl.collect_all(frames))
+        return (
+            GT(df_final, rowname_col="column")
+            .tab_stubhead("column")
+            .fmt_percent("null%")
+            .fmt_nanoplot(columns="histogram", plot_type="bar")
+        )
 
     @lru_cache
     def infer_high_null(self, threshold: float = 0.75) -> List[str]:
