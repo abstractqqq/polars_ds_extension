@@ -1044,6 +1044,31 @@ class NumExt:
             cast_to_supertypes=True,
         )
 
+    
+    def conditional_independence(self, y: pl.Expr, z: pl.Expr, k: int = 2):
+        """
+        Test independance of `self` (considered as `x`) and `y`, conditioned on `z`
+        Reference
+        ---------
+        Jian Ma. Multivariate Normality Test with Copula Entropy. arXiv preprint arXiv:2206.05956, 2022.
+        """
+        xyz = query_copula_entropy(self._expr, y, z, k=k)
+        yz = query_copula_entropy(y, z, k=k)
+        xz = query_copula_entropy(self._expr, z, k=k)
+        return xyz - yz - xz
+
+    def transfer_entropy(self, source: pl.Expr, lag = 1, k = 2):
+        """
+        Estimating transfer entropy from `source` to `self` with a lag
+        Reference
+        ---------
+        Jian Ma. Estimating Transfer Entropy via Copula Entropy. arXiv preprint arXiv:1910.04375, 2019.
+        """
+        x1 = self._expr.slice(0, pl.len() - lag)
+        x2 = self._expr.slice(lag, pl.len())
+        source = source.slice(0, pl.len() - lag)
+        return x2.num.conditional_independence(source, x1, k=k)
+
 
 # ----------------------------------------------------------------------------------
 
@@ -1520,3 +1545,13 @@ def query_cond_entropy(x: Union[str, pl.Expr], y: Union[str, pl.Expr]) -> pl.Exp
         Either a str represeting a column name or a Polars expression
     """
     return str_to_expr(x).num.cond_entropy(str_to_expr(y))
+
+def query_copula_entropy(*features: Union[str, pl.Expr], k: int = 2):
+    """
+    Estimates Copula Entropy via rank statistics.
+    Reference
+    ---------
+    Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
+    """
+    ranks = [str_to_expr(x).rank() / pl.len() for x in features]
+    return -query_knn_entropy(*ranks, k=k, dist="l2")
