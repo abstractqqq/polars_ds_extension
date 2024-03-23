@@ -1,7 +1,7 @@
 import polars.selectors as cs
 import polars as pl
 import logging
-from typing import Union, List
+from typing import Union, List, Optional
 from functools import lru_cache
 from .num import NumExt  # noqa: F401
 from itertools import combinations
@@ -313,7 +313,9 @@ class DIA:
 
         return out
 
-    def plot_dependency(self, threshold: float = 0.01) -> graphviz.Digraph:
+    def plot_dependency(
+        self, threshold: float = 0.01, exclude: Optional[list[str]] = None
+    ) -> graphviz.Digraph:
         """
         Plot dependency using the result of self.infer_dependency and positively dtermines
         dependency by the threshold.
@@ -322,11 +324,20 @@ class DIA:
         ----------
         threshold
             If conditional entropy is < threshold, we draw a line indicating dependency.
+        exclude
+            None or a list of column names to exclude from plotting. E.g. ID column will always
+            unique determine values in other columns. So plotting ID will make the plot crowded
+            and provides no additional information.
         """
 
         dep_frame = self.infer_dependency()
+        to_exclude = (
+            pl.lit(True, dtype=pl.Boolean)
+            if exclude is None
+            else pl.col("by").is_in(exclude).not_()
+        )
 
-        df_local = dep_frame.filter(pl.col("cond_entropy") < threshold).select(
+        df_local = dep_frame.filter((pl.col("cond_entropy") < threshold) & to_exclude).select(
             pl.col("column").alias("child"),  # c for child
             pl.col("by").alias("parent"),  # p for parent
         )
