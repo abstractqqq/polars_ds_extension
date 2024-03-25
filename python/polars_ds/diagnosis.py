@@ -77,6 +77,43 @@ class DIA:
             .fmt_nanoplot(columns="histogram", plot_type="bar")
         )
 
+    def meta(self):
+        """
+        Returns internal data in this class as a dictionary by copying the data.
+        """
+        out = self.__dict__.copy()
+        out.pop("_frame")
+        return out
+
+    def str_stats(self):
+        """
+        Returns basic statistics about the string columns.
+        """
+        to_check = self.strs
+        frames = [
+            self._frame.select(
+                pl.lit(c).alias("column"),
+                pl.col(c).null_count().alias("null_count"),
+                pl.col(c).n_unique().alias("n_unique"),
+                pl.col(c).value_counts(sort=True).first().struct.field(c).alias("most_freq"),
+                pl.col(c)
+                .value_counts(sort=True)
+                .first()
+                .struct.field("count")
+                .alias("most_freq_cnt"),
+                pl.col(c).str.len_bytes().min().alias("min_byte_len"),
+                pl.col(c).str.len_chars().min().alias("min_char_len"),
+                pl.col(c).str.len_bytes().mean().alias("avg_byte_len"),
+                pl.col(c).str.len_chars().mean().alias("avg_char_len"),
+                pl.col(c).str.len_bytes().max().alias("max_byte_len"),
+                pl.col(c).str.len_chars().max().alias("max_char_len"),
+                pl.col(c).str.len_bytes().quantile(0.05).alias("5p_byte_len"),
+                pl.col(c).str.len_bytes().quantile(0.95).alias("95p_byte_len"),
+            )
+            for c in to_check
+        ]
+        return pl.concat(pl.collect_all(frames))
+
     @lru_cache
     def infer_high_null(self, threshold: float = 0.75) -> List[str]:
         """
