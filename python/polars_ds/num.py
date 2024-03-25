@@ -1044,7 +1044,6 @@ class NumExt:
             cast_to_supertypes=True,
         )
 
-    
     def conditional_independence(self, y: pl.Expr, z: pl.Expr, k: int = 2):
         """
         Test independance of `self` (considered as `x`) and `y`, conditioned on `z`
@@ -1057,7 +1056,7 @@ class NumExt:
         xz = query_copula_entropy(self._expr, z, k=k)
         return xyz - yz - xz
 
-    def transfer_entropy(self, source: pl.Expr, lag = 1, k = 2):
+    def transfer_entropy(self, source: pl.Expr, lag=1, k=2):
         """
         Estimating transfer entropy from `source` to `self` with a lag
         Reference
@@ -1397,6 +1396,30 @@ def query_sample_entropy(
     return str_to_expr(ts).num.sample_entropy(ratio=ratio, m=m, parallel=parallel)
 
 
+def query_cond_entropy(x: Union[str, pl.Expr], y: Union[str, pl.Expr]) -> pl.Expr:
+    """
+    Queries the conditional entropy of x on y, aka. H(x|y).
+
+    Parameters
+    ----------
+    other : str | pl.Expr
+        Either a str represeting a column name or a Polars expression
+    """
+    return str_to_expr(x).num.cond_entropy(str_to_expr(y))
+
+
+def query_copula_entropy(*features: Union[str, pl.Expr], k: int = 2):
+    """
+    Estimates Copula Entropy via rank statistics.
+
+    Reference
+    ---------
+    Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
+    """
+    ranks = [str_to_expr(x).rank() / pl.len() for x in features]
+    return -query_knn_entropy(*ranks, k=k, dist="l2")
+
+
 def query_permute_entropy(
     ts: Union[str, pl.Expr],
     tau: int = 1,
@@ -1533,25 +1556,3 @@ def query_lstsq_report(
     return t.num.lstsq_report(
         *[str_to_expr(x) for x in vars], add_bias=add_bias, skip_null=skip_null
     )
-
-
-def query_cond_entropy(x: Union[str, pl.Expr], y: Union[str, pl.Expr]) -> pl.Expr:
-    """
-    Queries the conditional entropy of x on y, aka. H(x|y).
-
-    Parameters
-    ----------
-    other : str | pl.Expr
-        Either a str represeting a column name or a Polars expression
-    """
-    return str_to_expr(x).num.cond_entropy(str_to_expr(y))
-
-def query_copula_entropy(*features: Union[str, pl.Expr], k: int = 2):
-    """
-    Estimates Copula Entropy via rank statistics.
-    Reference
-    ---------
-    Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
-    """
-    ranks = [str_to_expr(x).rank() / pl.len() for x in features]
-    return -query_knn_entropy(*ranks, k=k, dist="l2")

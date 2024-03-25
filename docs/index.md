@@ -111,11 +111,6 @@ The end result is simpler, more intuitive code that is also easier to reason abo
 **Performance and elegance - something that is quite rare in the Python world.**
 
 ## Getting Started
-```bash
-pip install polars_ds
-```
-
-and 
 
 ```python
 import polars_ds as pds
@@ -146,9 +141,9 @@ Generating random numbers according to reference column
 ```python
 df.with_columns(
     # Sample from normal distribution, using reference column "a" 's mean and std
-    pl.col("a").stats.sample_normal().alias("test1") 
+    pl.col("a").stats.rand_normal().alias("test1") 
     # Sample from uniform distribution, with low = 0 and high = "a"'s max, and respect the nulls in "a"
-    , pl.col("a").stats.sample_uniform(low = 0., high = None, respect_null=True).alias("test2")
+    , pl.col("a").stats.rand_uniform(low = 0., high = None, respect_null=True).alias("test2")
 ).head()
 
 shape: (5, 3)
@@ -190,7 +185,7 @@ shape: (5, 6)
 └──────────┴───────────┴─────────────┴────────────────┴───────────────────────────┴────────────────┘
 ```
 
-Even in-dataframe nearest neighbors queries! 😲
+Even in-dataframe nearest neighbors queries! 😲 
 ```python
 df.select(
     pl.col("row_num"),
@@ -219,7 +214,7 @@ shape: (5, 3)
 └─────────┴─────────────────────┴────────────────────┘
 ```
 
-# Disclaimers
+# Disclaimer
 
 **Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars and will try to be as stable as possible for polars>=0.20.6. Exceptions will be made when Polars's update forces changes in the plugins.**
 
@@ -230,7 +225,9 @@ The recommended usage will be for datasets of size 1k to 2-3mm rows, but actual 
 # Credits
 
 1. Rust Snowball Stemmer is taken from Tsoding's Seroost project (MIT). See [here](https://github.com/tsoding/seroost)
-2. Some statistics functions are taken from Statrs (MIT). See [here](https://github.com/statrs-dev/statrs/tree/master)
+2. Some statistics functions are taken from Statrs (MIT) and internalized. See [here](https://github.com/statrs-dev/statrs/tree/master)
+3. Graph functionalities are powered by the petgragh crate. See [here](https://crates.io/crates/petgraph)
+4. Linear algebra routines are powered partly by [faer](https://crates.io/crates/faer)
 
 # Other related Projects
 

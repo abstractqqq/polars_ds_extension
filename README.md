@@ -37,7 +37,7 @@ Let's see an example. Say we want to generate a model performance report. In our
 
 ```python
 import polars as pl
-import polars_ds as pld
+import polars_ds as pds
 
 size = 100_000
 df = pl.DataFrame({
@@ -150,9 +150,9 @@ Generating random numbers according to reference column
 ```python
 df.with_columns(
     # Sample from normal distribution, using reference column "a" 's mean and std
-    pl.col("a").stats.sample_normal().alias("test1") 
+    pl.col("a").stats.rand_normal().alias("test1") 
     # Sample from uniform distribution, with low = 0 and high = "a"'s max, and respect the nulls in "a"
-    , pl.col("a").stats.sample_uniform(low = 0., high = None, respect_null=True).alias("test2")
+    , pl.col("a").stats.rand_uniform(low = 0., high = None, respect_null=True).alias("test2")
 ).head()
 
 shape: (5, 3)
