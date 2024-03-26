@@ -86,6 +86,10 @@ def random_data(
         If none, no null values will be present. If it is a float, then each feature column
         will have this much percentage of nulls.
     """
+    base = pl.DataFrame({"row_num": range(size)})
+    if n_cols <= 0:
+        return base
+
     if null_pct is None:
         rand_cols = (
             pl.col("row_num").stats.rand_uniform(low=0.0, high=1.0).alias(f"feature_{i+1}")
@@ -100,8 +104,4 @@ def random_data(
             for i in range(n_cols)
         )
 
-    return pl.DataFrame(
-        {
-            "row_num": pl.Series(values=range(size), dtype=pl.UInt64),
-        }
-    ).with_columns(*rand_cols)
+    return base.with_columns(*rand_cols)

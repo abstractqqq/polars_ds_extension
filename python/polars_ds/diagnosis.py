@@ -31,7 +31,7 @@ class DIA:
         self.simple_types: List[str] = self.numerics + self.strs + self.bools + self.cats
         self.other_types: List[str] = [c for c in self._frame.columns if c not in self.simple_types]
 
-    def numeric_profile(self, n_bins: int = 20):
+    def numeric_profile(self, n_bins: int = 20, iqr_multiplier: float = 1.5):
         """
         Creates a numerical profile with a histogram plot. Notice that the histograms may have
         completely different scales on the x-axis.
@@ -40,6 +40,10 @@ class DIA:
         ----------
         n_bins
             Bins in the histogram
+        iqr_multiplier
+            Inter Quartile Ranger multiplier. Inter quantile range is the range between
+            Q1 and Q3, and this multiplier will enlarge the range by a certain amount and
+            use this to count outliers.
         """
         to_check = self.numerics
 
@@ -50,10 +54,26 @@ class DIA:
         for c in to_check:
             temp = self._frame.select(
                 pl.lit(c).alias("column"),
-                (pl.col(c).null_count() / pl.len()).round(2).alias("null%"),
-                pl.col(c).mean().round(2).alias("mean"),
+                pl.col(c).count().alias("non_null_cnt"),
+                (pl.col(c).null_count() / pl.len()).alias("null%"),
+                pl.col(c).mean().alias("mean"),
+                pl.col(c).std().alias("std"),
+                pl.col(c).min().cast(pl.Float64).alias("min"),
+                pl.col(c).quantile(0.25).cast(pl.Float64).alias("q1"),
                 pl.col(c).median().cast(pl.Float64).round(2).alias("median"),
-                pl.col(c).std().round(2).alias("std"),
+                pl.col(c).quantile(0.75).cast(pl.Float64).alias("q3"),
+                pl.col(c).max().cast(pl.Float64).alias("max"),
+                (pl.col(c).quantile(0.75) - pl.col(c).quantile(0.25)).cast(pl.Float64).alias("IQR"),
+                pl.any_horizontal(
+                    pl.col(c)
+                    < pl.col(c).quantile(0.25)
+                    - iqr_multiplier * (pl.col(c).quantile(0.75) - pl.col(c).quantile(0.25)),
+                    pl.col(c)
+                    > pl.col(c).quantile(0.75)
+                    + iqr_multiplier * (pl.col(c).quantile(0.75) - pl.col(c).quantile(0.25)),
+                )
+                .sum()
+                .alias("outlier_cnt"),
                 pl.struct(
                     ((pl.col(c) - pl.col(c).min()) / (pl.col(c).max() - pl.col(c).min()))
                     .filter(pl.col(c).is_finite())
@@ -64,8 +84,6 @@ class DIA:
                     .struct.field("count")
                     .implode()
                 ).alias("histogram"),
-                pl.col(c).min().cast(pl.Float64).round(2).alias("min"),
-                pl.col(c).max().cast(pl.Float64).round(2).alias("max"),
             )
             frames.append(temp)
 
@@ -73,7 +91,10 @@ class DIA:
         return (
             GT(df_final, rowname_col="column")
             .tab_stubhead("column")
-            .fmt_percent("null%")
+            .fmt_percent(columns="null%")
+            .fmt_number(
+                columns=["mean", "std", "min", "q1", "median", "q3", "max", "IQR"], decimals=3
+            )
             .fmt_nanoplot(columns="histogram", plot_type="bar")
         )
 
