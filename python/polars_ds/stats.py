@@ -4,6 +4,7 @@ import math
 from .type_alias import Alternative, str_to_expr
 from typing import Optional, Union
 from polars.utils.udfs import _get_shared_lib_location
+from ._utils import pl_plugin
 
 _lib = _get_shared_lib_location(__file__)
 
@@ -55,11 +56,10 @@ class StatsExt:
             v1 = self._expr.var()
             v2 = pl.lit(other_var, pl.Float64)
             cnt = self._expr.count().cast(pl.UInt64)
-            return m1.register_plugin(
+            return pl_plugin(
                 lib=_lib,
                 symbol="pl_ttest_2samp",
-                args=[m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
-                is_elementwise=False,
+                args=[m1, m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
                 returns_scalar=True,
             )
         else:
@@ -70,11 +70,10 @@ class StatsExt:
             v2 = pl.lit(other_var, pl.Float64)
             n1 = s1.count().cast(pl.UInt64)
             n2 = pl.lit(other_cnt, pl.UInt64)
-            return m1.register_plugin(
+            return pl_plugin(
                 lib=_lib,
                 symbol="pl_welch_t",
-                args=[m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
-                is_elementwise=False,
+                args=[m1, m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
                 returns_scalar=True,
             )
 
@@ -90,10 +89,10 @@ class StatsExt:
             v1 = self._expr.var()
             v2 = other.var()
             cnt = self._expr.count().cast(pl.UInt64)
-            return m1.register_plugin(
+            return pl_plugin(
                 lib=_lib,
                 symbol="pl_ttest_2samp",
-                args=[m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
+                args=[m1, m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
                 returns_scalar=True,
             )
         else:
@@ -105,10 +104,10 @@ class StatsExt:
             v2 = s2.var()
             n1 = s1.count().cast(pl.UInt64)
             n2 = s2.count().cast(pl.UInt64)
-            return m1.register_plugin(
+            return pl_plugin(
                 lib=_lib,
                 symbol="pl_welch_t",
-                args=[m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
+                args=[m1, m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
                 returns_scalar=True,
             )
 
@@ -130,46 +129,28 @@ class StatsExt:
         var = s1.var()
         cnt = s1.count().cast(pl.UInt64)
         alt = pl.lit(alternative, dtype=pl.String)
-        return sm.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_ttest_1samp",
-            args=[pm, var, cnt, alt],
+            args=[sm, pm, var, cnt, alt],
             returns_scalar=True,
         )
 
-    def f_stats(self, *variables: pl.Expr) -> pl.Expr:
+    def f_test(self, *variables: pl.Expr) -> pl.Expr:
         """
-        Computes multiple F statistics at once by using self as the grouping (class) column. This
-        does not output p values. If the p value is desired, use `f_test`. This will return
-        all the stats as a scalar list in order.
-
-        Parameters
-        ----------
-        *variables
-            The variables (Polars df columns) to compute the F statistics
+        See query_f_test.
         """
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_f_stats",
-            args=list(variables),
-            returns_scalar=True,
-        )
-
-    def f_test(self, var: pl.Expr) -> pl.Expr:
-        """
-        Performs the ANOVA F-test using self as the grouping column.
-
-        Parameters
-        ----------
-        var
-            The column to run ANOVA F-test on
-        """
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_f_test",
-            args=[var],
-            returns_scalar=True,
-        )
+        vars_ = list(variables)
+        if len(vars_) <= 0:
+            raise ValueError("No input feature column to run F-test on.")
+        elif len(vars_) == 1:
+            return pl_plugin(
+                lib=_lib, symbol="pl_f_test", args=[self._expr] + vars_, returns_scalar=True
+            )
+        else:
+            return pl_plugin(
+                lib=_lib, symbol="pl_f_test", args=[self._expr] + vars_, changes_length=True
+            )
 
     def normal_test(self) -> pl.Expr:
         """
@@ -188,10 +169,10 @@ class StatsExt:
         skew = valid.skew()
         # Pearson Kurtosis, see here: https://en.wikipedia.org/wiki/D%27Agostino%27s_K-squared_test
         kur = valid.kurtosis(fisher=False)
-        return skew.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_normal_test",
-            args=[kur, valid.count().cast(pl.UInt32)],
+            args=[skew, kur, valid.count().cast(pl.UInt32)],
             returns_scalar=True,
         )
 
@@ -201,10 +182,10 @@ class StatsExt:
         """
         y = self._expr.filter(self._expr.is_finite()).sort().cast(pl.Float64)
         other_ = var.filter(var.is_finite()).sort().cast(pl.Float64)
-        return y.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_ks_2samp",
-            args=[other_, pl.lit(alpha, pl.Float64)],
+            args=[y, other_, pl.lit(alpha, pl.Float64)],
             returns_scalar=True,
         )
 
@@ -221,10 +202,10 @@ class StatsExt:
         y = self._expr.filter(self._expr.is_finite()).cast(pl.Float64)
         y1 = y.filter(target == 1).sort()
         y2 = y.filter(target < 1).sort()
-        return y1.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_ks_2samp",
-            args=[y2, pl.lit(alpha, pl.Float64)],
+            args=[y1, y2, pl.lit(alpha, pl.Float64)],
             returns_scalar=True,
         )
 
@@ -242,11 +223,10 @@ class StatsExt:
         var
             The second column to run chi squared test on
         """
-
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_chi2",
-            args=[var],
+            args=[self._expr, var],
             returns_scalar=True,
         )
 
@@ -254,10 +234,15 @@ class StatsExt:
         """
         See random_int
         """
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_rand_int",
-            args=[pl.lit(lower, pl.Int32), pl.lit(upper, pl.Int32), pl.lit(seed, pl.UInt64)],
+            args=[
+                self._expr,
+                pl.lit(lower, pl.Int32),
+                pl.lit(upper, pl.Int32),
+                pl.lit(seed, pl.UInt64),
+            ],
             is_elementwise=True,
         )
 
@@ -272,10 +257,10 @@ class StatsExt:
         """
         lo = pl.lit(lower, pl.Float64) if isinstance(lower, float) else lower
         up = pl.lit(upper, pl.Float64) if isinstance(upper, float) else upper
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_random",
-            args=[lo, up, pl.lit(seed, pl.UInt64)],
+            args=[self._expr, lo, up, pl.lit(seed, pl.UInt64)],
             is_elementwise=True,
         )
 
@@ -283,10 +268,10 @@ class StatsExt:
         """
         See random_binomial
         """
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_rand_binomial",
-            args=[pl.lit(n, pl.Int32), pl.lit(p, pl.Float64), pl.lit(seed, pl.UInt64)],
+            args=[self._expr, pl.lit(n, pl.Int32), pl.lit(p, pl.Float64), pl.lit(seed, pl.UInt64)],
             is_elementwise=True,
         )
 
@@ -301,10 +286,10 @@ class StatsExt:
         """
         m = pl.lit(mean, pl.Float64) if isinstance(mean, float) else mean
         s = pl.lit(std, pl.Float64) if isinstance(std, float) else std
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_rand_normal",
-            args=[m, s, pl.lit(seed, pl.UInt64)],
+            args=[self._expr, m, s, pl.lit(seed, pl.UInt64)],
             is_elementwise=True,
         )
 
@@ -312,10 +297,10 @@ class StatsExt:
         """
         See random_exp
         """
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_rand_exp",
-            args=[pl.lit(lambda_, pl.Float64), pl.lit(seed, pl.UInt64)],
+            args=[self._expr, pl.lit(lambda_, pl.Float64), pl.lit(seed, pl.UInt64)],
             is_elementwise=True,
         )
 
@@ -325,10 +310,11 @@ class StatsExt:
         """
         See random_str
         """
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_rand_str",
             args=[
+                self._expr,
                 pl.lit(min_size, pl.UInt32),
                 pl.lit(max_size, pl.UInt32),
                 pl.lit(seed, pl.UInt64),
@@ -379,10 +365,10 @@ class StatsExt:
             else:
                 raise ValueError("Input `high` must be expression or int.")
 
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_rand_int_w_ref",
-            args=[lo, hi],
+            args=[self._expr, lo, hi],
             kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
         )
@@ -425,10 +411,10 @@ class StatsExt:
         else:
             hi = self._expr.max().cast(pl.Float64)
 
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_rand_uniform_w_ref",
-            args=[lo, hi],
+            args=[self._expr, lo, hi],
             kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
         )
@@ -457,10 +443,10 @@ class StatsExt:
             lo = pl.lit(-half, dtype=pl.Float64)
             hi = pl.lit(half, dtype=pl.Float64)
 
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_perturb",
-            args=[lo, hi],
+            args=[self._expr, lo, hi],
             is_elementwise=True,
         )
 
@@ -486,10 +472,10 @@ class StatsExt:
 
         nn = pl.lit(n, dtype=pl.UInt32)
         pp = pl.lit(p, dtype=pl.Float64)
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_rand_binomial_w_ref",
-            args=[nn, pp],
+            args=[self._expr, nn, pp],
             kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
         )
@@ -522,10 +508,10 @@ class StatsExt:
         else:
             la = 1.0 / self._expr.mean()
 
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_rand_exp_w_ref",
-            args=[la],
+            args=[self._expr, la],
             kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
         )
@@ -568,10 +554,10 @@ class StatsExt:
         else:
             st = self._expr.std()
 
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_rand_normal_w_ref",
-            args=[me, st],
+            args=[self._expr, me, st],
             kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
         )
@@ -628,10 +614,11 @@ class StatsExt:
 
         min_s = pl.lit(min_size, dtype=pl.UInt32)
         max_s = pl.lit(max_size, dtype=pl.UInt32)
-        return self._expr.register_plugin(
+
+        return pl_plugin(
             lib=_lib,
             symbol="pl_rand_str_w_ref",
-            args=[min_s, max_s],
+            args=[self._expr, min_s, max_s],
             kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
         )
@@ -823,6 +810,20 @@ def query_ks_2samp(
     if is_binary:
         return str_to_expr(var2).stats.ks_binary_classif(str_to_expr(var1), alpha=alpha)
     return str_to_expr(var1).stats.ks_stats(str_to_expr(var2), alpha=alpha)
+
+
+def query_f_test(*variables: Union[str, pl.Expr], group: Union[str, pl.Expr]) -> pl.Expr:
+    """
+    Performs the ANOVA F-test.
+
+    Parameters
+    ----------
+    variables
+        The columns (variables) to run ANOVA F-test on
+    group
+        The "target" column used to group the variables
+    """
+    return str_to_expr(group).stats.f_test(*(str_to_expr(v) for v in variables))
 
 
 def random(lower: float = 0.0, upper: float = 1.0, seed: Optional[int] = None) -> pl.Expr:
