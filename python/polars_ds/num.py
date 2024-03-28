@@ -953,7 +953,6 @@ class NumExt:
             lib=_lib,
             symbol="pl_psi",
             args=[brk, cnt_ref],
-            is_elementwise=False,
             returns_scalar=True,
         )
 
@@ -962,8 +961,8 @@ class NumExt:
         ref: Union[pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
     ) -> pl.Expr:
         """
-        Compute the Population Stability Index between self (actual) and the reference column. The reference
-        column will be used as bins which are the basis of comparison.
+        Compute the Population Stability Index between self (actual) and the reference column. The unique values
+        in the reference column will be used as bins which are the basis of comparison.
 
         Note this assumes values in self and ref are discrete columns. This will treat each value as a discrete
         category, e.g. null will be treated as a category by itself. If a category exists in actual but not in
@@ -982,24 +981,23 @@ class NumExt:
         https://www.listendata.com/2015/05/population-stability-index.html
         """
         if isinstance(ref, pl.Expr):
-            temp = ref.alias("__ref").value_counts()
+            temp = ref.value_counts().struct.rename_fields(["ref", "count"])
+            ref_cats = temp.struct.field("ref")
             ref_cnt = temp.struct.field("count")
-            ref_cats = temp.struct.field("__ref")
         else:
             temp = pl.Series(values=ref, dtype=pl.Float64)
             temp = temp.value_counts()  # This is a df in this case
             ref_cnt = temp.drop_in_place("count")
             ref_cats = temp[temp.columns[0]]
 
-        vc = self._expr.alias("_self").value_counts()
-        data_cats = vc.struct.field("_self")
+        vc = self._expr.value_counts().struct.rename_fields(["this", "count"])
+        data_cats = vc.struct.field("this")
         data_cnt = vc.struct.field("count")
 
         return data_cats.register_plugin(
             lib=_lib,
             symbol="pl_psi_discrete",
             args=[data_cnt, ref_cats, ref_cnt],
-            is_elementwise=False,
             returns_scalar=True,
         )
 
