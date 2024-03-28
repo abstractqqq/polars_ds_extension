@@ -1,6 +1,6 @@
 import polars as pl
 import re
-from typing import Sequence, Any
+from typing import Sequence, Any, Optional, List
 
 
 def parse_version(version: Sequence[str | int]) -> tuple[int, ...]:
@@ -15,8 +15,8 @@ def pl_plugin(
     *,
     lib: str,
     symbol: str,
-    args: list[pl.Expr],
-    kwargs: dict[str, Any] | None = None,
+    args: List[pl.Expr],
+    kwargs: Optional[dict[str, Any]] = None,
     is_elementwise: bool = False,
     returns_scalar: bool = False,
     changes_length: bool = False,
