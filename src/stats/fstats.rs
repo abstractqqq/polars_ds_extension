@@ -1,40 +1,23 @@
 /// Multiple F-statistics at once and F test
-use super::{simple_stats_output, StatsResult};
-use crate::{stats_utils::beta::fisher_snedecor_sf, utils::list_f64_output};
+use super::simple_stats_output;
+use crate::stats_utils::beta::fisher_snedecor_sf;
 use itertools::Itertools;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
+/// Computes the p value for the f test
 #[inline]
-fn ftest(x: f64, f1: f64, f2: f64) -> Result<StatsResult, String> {
-    if x < 0. {
-        return Err("F statistics is < 0. This should be impossible.".into());
-    }
-    // F test does not take alternative.
-    let p = fisher_snedecor_sf(x, f1, f2)?;
-    Ok(StatsResult::new(x, p))
+fn ftest_p(x: f64, f1: f64, f2: f64) -> PolarsResult<f64> {
+    // No alternative
+    fisher_snedecor_sf(x, f1, f2).map_err(|e| PolarsError::ComputeError(e.into()))
 }
 
-/// An internal helper function to compute f statistic for F test, with the option to comput
-/// the p value too. It shouldn't be used outside. The API is bad for outsiders to use.
-/// When return_p is false, returns a Vec with f stats.
-/// When return_p is true, returns a Vec that has x_0, .., x_{n-1} = f_0, .., f_{n-1}
-/// where n = inputs.len() - 1 = number of features
-/// And additionally x_n, .., x_{2n - 2} = p_0, .., p_{n-1}, are the p values.
-///
-/// Refactor?
-fn _f_stats(inputs: &[Series], return_p: bool) -> PolarsResult<Vec<f64>> {
-    let target = "target";
+fn _f_stats(inputs: &[Series]) -> PolarsResult<StructChunked> {
+    // Column at index 0 is the target column
     let v = inputs
         .into_iter()
         .enumerate()
-        .map(|(i, s)| {
-            if i == 0 {
-                s.clone().with_name(target)
-            } else {
-                s.clone().with_name(i.to_string().as_str())
-            }
-        })
+        .map(|(i, s)| s.clone().with_name(i.to_string().as_str()))
         .collect_vec();
     let n_cols = v.len();
 
@@ -44,13 +27,8 @@ fn _f_stats(inputs: &[Series], return_p: bool) -> PolarsResult<Vec<f64>> {
     let mut step_one: Vec<Expr> = Vec::with_capacity(inputs.len() * 2 - 1);
     step_one.push(len().cast(DataType::Float64).alias("cnt"));
     let mut step_two: Vec<Expr> = Vec::with_capacity(inputs.len() + 1);
-    step_two.push(col("cnt").sum().alias("n_samples").cast(DataType::UInt32));
-    step_two.push(
-        col(target)
-            .count()
-            .alias("n_classes")
-            .cast(DataType::UInt32),
-    );
+    step_two.push(col("cnt").sum().cast(DataType::UInt32).alias("n_samples"));
+    step_two.push(col("0").count().cast(DataType::UInt32).alias("n_classes"));
 
     for i in 1..n_cols {
         let name = i.to_string();
@@ -71,7 +49,7 @@ fn _f_stats(inputs: &[Series], return_p: bool) -> PolarsResult<Vec<f64>> {
     }
 
     let mut reference = df
-        .group_by([col(target)])
+        .group_by([col("0")])
         .agg(step_one)
         .select(step_two)
         .collect()?;
@@ -85,71 +63,34 @@ fn _f_stats(inputs: &[Series], return_p: bool) -> PolarsResult<Vec<f64>> {
 
     if n_classes <= 1 || n_samples <= 1 {
         return Err(PolarsError::ComputeError(
-            "Number of classes, or number of samples is either 1 or 0, which is invalid.".into(),
+            "F-stats: Number of classes or number of samples is either 1 or 0.".into(),
         ));
     }
 
     let df_btw_class = n_classes.abs_diff(1) as f64;
     let df_in_class = n_samples.abs_diff(n_classes) as f64;
-
+    // Note: reference is a df with 1 row. We need to get the stats out
     // fstats is 2D
-    let fstats = reference.to_ndarray::<Float64Type>(IndexOrder::default())?;
+    let fstats = reference.to_ndarray::<Float64Type>(IndexOrder::C)?;
+
     let scale = df_in_class / df_btw_class;
 
-    let out: Vec<f64> = if return_p {
-        let mut output: Vec<f64> = Vec::with_capacity(reference.height() * 2);
-        for f in fstats.row(0) {
-            output.push(f * scale);
-        }
-        for f in fstats.row(0) {
-            let res = ftest(f * scale, df_btw_class, df_in_class);
-            match res {
-                Ok(s) => {
-                    if let Some(p) = s.p {
-                        output.push(p);
-                    } else {
-                        return Err(PolarsError::ComputeError(
-                            "F test: Unknown error occurred when computing P value.".into(),
-                        ));
-                    }
-                }
-                Err(e) => return Err(PolarsError::ComputeError(e.into())),
-            }
-        }
-        output
-    } else {
-        fstats.row(0).into_iter().map(|f| f * scale).collect_vec()
-    };
+    let out_fstats: Vec<f64> = fstats.row(0).into_iter().map(|x| x * scale).collect();
+    let out_p: Vec<f64> = out_fstats
+        .iter()
+        .map(|x| ftest_p(*x, df_btw_class, df_in_class).map_or(f64::NAN, |x| x))
+        .collect();
 
-    Ok(out)
+    let s1 = Series::from_vec("statistic", out_fstats);
+    let s2 = Series::from_vec("pvalue", out_p);
+
+    StructChunked::new("f-test", &[s1, s2])
 }
 
-/// Use inputs[0] as the grouping column
-/// and inputs[1..] as other columns. Compute F statistic for other columns w.r.t the grouping column.
-/// Outputs a list of floats, in the order of other columns.
-#[polars_expr(output_type_func=list_f64_output)]
-fn pl_f_stats(inputs: &[Series]) -> PolarsResult<Series> {
-    let stats = _f_stats(inputs, false)?;
-    let mut builder = ListPrimitiveChunkedBuilder::<Float64Type>::new(
-        "f_stats",
-        1,
-        stats.len(),
-        DataType::Float64,
-    );
-
-    builder.append_slice(stats.as_slice());
-    let output = builder.finish();
-    Ok(output.into_series())
-}
-
-/// Use inputs[0] as the grouping column
-/// and inputs[1] as the column to run F-test. There should be only two columns.
+/// Use inputs[0] as the target column (discrete, indicating the groups)
+/// and inputs[1] as the column to run F-test against the target. There should be only two columns.
 #[polars_expr(output_type_func=simple_stats_output)]
 fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
-    // The variable res has 2 values, the test statistic and p value.
-    let res = _f_stats(&inputs[..2], true)?;
-    let s = Series::from_vec("statistic", vec![res[0]]);
-    let p = Series::from_vec("pvalue", vec![res[1]]);
-    let out = StructChunked::new("", &[s, p])?;
+    let out = _f_stats(inputs)?;
     Ok(out.into_series())
 }

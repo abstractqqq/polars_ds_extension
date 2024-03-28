@@ -4,6 +4,7 @@ import polars as pl
 from typing import Union, Optional, List, Iterable
 from .type_alias import DetrendMethod, Distance, ConvMode, str_to_expr
 from polars.utils.udfs import _get_shared_lib_location
+from ._utils import pl_plugin
 
 _lib = _get_shared_lib_location(__file__)
 
@@ -143,7 +144,8 @@ class NumExt:
         """
         Returns 2^x.
         """
-        return self._expr.register_plugin(
+        return pl_plugin(
+            args=[self._expr],
             lib=_lib,
             symbol="pl_exp2",
             is_elementwise=True,
@@ -153,7 +155,8 @@ class NumExt:
         """
         Returns the fractional part of the input values. E.g. fractional part of 1.1 is 0.1
         """
-        return self._expr.register_plugin(
+        return pl_plugin(
+            args=[self._expr],
             lib=_lib,
             symbol="pl_fract",
             is_elementwise=True,
@@ -163,7 +166,8 @@ class NumExt:
         """
         Returns the integer part of the input values. E.g. integer part of 1.1 is 1.0
         """
-        return self._expr.register_plugin(
+        return pl_plugin(
+            args=[self._expr],
             lib=_lib,
             symbol="pl_trunc",
             is_elementwise=True,
@@ -174,7 +178,8 @@ class NumExt:
         Returns sign of the input values. Note: NaN is returned for NaN. This is faster
         and more accurate than doing pl.when(..).then().otherwise().
         """
-        return self._expr.register_plugin(
+        return pl_plugin(
+            args=[self._expr],
             lib=_lib,
             symbol="pl_signum",
             is_elementwise=True,
@@ -358,7 +363,6 @@ class NumExt:
         out = self._expr.register_plugin(
             lib=_lib,
             symbol="pl_lempel_ziv_complexity",
-            is_elementwise=False,
             returns_scalar=True,
         )
         if as_ratio:
@@ -373,7 +377,6 @@ class NumExt:
             lib=_lib,
             symbol="pl_conditional_entropy",
             args=[other],
-            is_elementwise=False,
             returns_scalar=True,
         )
 
@@ -431,7 +434,8 @@ class NumExt:
         Applies the gamma function to self. Note, this will return NaN for negative values and inf when x = 0,
         whereas SciPy's gamma function will return inf for all x <= 0.
         """
-        return self._expr.register_plugin(
+        return pl_plugin(
+            args=[self._expr],
             lib=_lib,
             symbol="pl_gamma",
             is_elementwise=True,
@@ -441,7 +445,8 @@ class NumExt:
         """
         Applies the Expit function to self. Expit(x) = 1 / (1 + e^(-x))
         """
-        return self._expr.register_plugin(
+        return pl_plugin(
+            args=[self._expr],
             lib=_lib,
             symbol="pl_expit",
             is_elementwise=True,
@@ -452,7 +457,8 @@ class NumExt:
         Applies the logit function to self. Logit(x) = ln(x/(1-x)).
         Note that logit(0) = -inf, logit(1) = inf, and logit(p) for p < 0 or p > 1 yields nan.
         """
-        return self._expr.register_plugin(
+        return pl_plugin(
+            args=[self._expr],
             lib=_lib,
             symbol="pl_logit",
             is_elementwise=True,
