@@ -982,7 +982,7 @@ class NumExt:
         https://www.listendata.com/2015/05/population-stability-index.html
         """
         if isinstance(ref, pl.Expr):
-            temp = ref.value_counts().rename_fields(["ref", "count"])
+            temp = ref.value_counts().struct.rename_fields(["ref", "count"])
             ref_cnt = temp.struct.field("count")
             ref_cats = temp.struct.field("ref")
         else:
@@ -991,7 +991,7 @@ class NumExt:
             ref_cnt = temp.drop_in_place("count")
             ref_cats = temp[temp.columns[0]]
 
-        vc = self._expr.value_counts().rename_fields(["self", "count"])
+        vc = self._expr.value_counts().struct.rename_fields(["self", "count"])
         data_cnt = vc.struct.field("count")
         data_cats = vc.struct.field("self")
 
