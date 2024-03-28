@@ -17,310 +17,11 @@ class StatsExt:
 
     Polars Namespace: stats
 
-    Example: pl.col("a").stats.ttest_ind(pl.col("b"), equal_var = True)
+    Example: pl.col("a").stats.rand_uniform()
     """
 
     def __init__(self, expr: pl.Expr):
         self._expr: pl.Expr = expr
-
-    def ttest_ind_from_stats(
-        self,
-        other_mean: float,
-        other_var: float,
-        other_cnt: int,
-        alternative: Alternative = "two-sided",
-        equal_var: bool = False,
-    ) -> pl.Expr:
-        """
-        Performs 2 sample student's t test or Welch's t test, using only scalar statistics from other.
-        This is more suitable for t-tests between rolling data and some other fixed data, from which you
-        can compute the mean, var, and count only once.
-
-        Parameters
-        ----------
-        other_mean
-            The mean of other
-        other_var
-            The var of other
-        other_cnt
-            The count of other, used only in welch's t test
-        alternative : {"two-sided", "less", "greater"}
-            Alternative of the hypothesis test
-        equal_var
-            If true, perform standard student t 2 sample test. Otherwise, perform Welch's
-            t test.
-        """
-        if equal_var:
-            m1 = self._expr.mean()
-            m2 = pl.lit(other_mean, pl.Float64)
-            v1 = self._expr.var()
-            v2 = pl.lit(other_var, pl.Float64)
-            cnt = self._expr.count().cast(pl.UInt64)
-            return pl_plugin(
-                lib=_lib,
-                symbol="pl_ttest_2samp",
-                args=[m1, m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
-                returns_scalar=True,
-            )
-        else:
-            s1 = self._expr.filter(self._expr.is_finite())
-            m1 = s1.mean()
-            m2 = pl.lit(other_mean, pl.Float64)
-            v1 = s1.var()
-            v2 = pl.lit(other_var, pl.Float64)
-            n1 = s1.count().cast(pl.UInt64)
-            n2 = pl.lit(other_cnt, pl.UInt64)
-            return pl_plugin(
-                lib=_lib,
-                symbol="pl_welch_t",
-                args=[m1, m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
-                returns_scalar=True,
-            )
-
-    def ttest_ind(
-        self, other: pl.Expr, alternative: Alternative = "two-sided", equal_var: bool = False
-    ) -> pl.Expr:
-        """
-        See query_ttest_ind
-        """
-        if equal_var:
-            m1 = self._expr.mean()
-            m2 = other.mean()
-            v1 = self._expr.var()
-            v2 = other.var()
-            cnt = self._expr.count().cast(pl.UInt64)
-            return pl_plugin(
-                lib=_lib,
-                symbol="pl_ttest_2samp",
-                args=[m1, m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
-                returns_scalar=True,
-            )
-        else:
-            s1 = self._expr.filter(self._expr.is_finite())
-            s2 = other.filter(other.is_finite())
-            m1 = s1.mean()
-            m2 = s2.mean()
-            v1 = s1.var()
-            v2 = s2.var()
-            n1 = s1.count().cast(pl.UInt64)
-            n2 = s2.count().cast(pl.UInt64)
-            return pl_plugin(
-                lib=_lib,
-                symbol="pl_welch_t",
-                args=[m1, m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
-                returns_scalar=True,
-            )
-
-    def ttest_1samp(self, pop_mean: float, alternative: Alternative = "two-sided") -> pl.Expr:
-        """
-        Performs a standard 1 sample t test using reference column and expected mean. This function
-        sanitizes the self column first. The df is the count of valid values.
-
-        Parameters
-        ----------
-        pop_mean
-            The expected population mean in the hypothesis test
-        alternative : {"two-sided", "less", "greater"}
-            Alternative of the hypothesis test
-        """
-        s1 = self._expr.filter(self._expr.is_finite())
-        sm = s1.mean()
-        pm = pl.lit(pop_mean, dtype=pl.Float64)
-        var = s1.var()
-        cnt = s1.count().cast(pl.UInt64)
-        alt = pl.lit(alternative, dtype=pl.String)
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_ttest_1samp",
-            args=[sm, pm, var, cnt, alt],
-            returns_scalar=True,
-        )
-
-    def f_test(self, *variables: pl.Expr) -> pl.Expr:
-        """
-        See query_f_test.
-        """
-        vars_ = list(variables)
-        if len(vars_) <= 0:
-            raise ValueError("No input feature column to run F-test on.")
-        elif len(vars_) == 1:
-            return pl_plugin(
-                lib=_lib, symbol="pl_f_test", args=[self._expr] + vars_, returns_scalar=True
-            )
-        else:
-            return pl_plugin(
-                lib=_lib, symbol="pl_f_test", args=[self._expr] + vars_, changes_length=True
-            )
-
-    def normal_test(self) -> pl.Expr:
-        """
-        Perform a normality test which is based on D'Agostino and Pearson's test
-        that combines skew and kurtosis to produce an omnibus test of normality.
-        Null values, NaN and inf are dropped when running this computation.
-
-        References
-        ----------
-        D'Agostino, R. B. (1971), "An omnibus test of normality for
-            moderate and large sample size", Biometrika, 58, 341-348
-        D'Agostino, R. and Pearson, E. S. (1973), "Tests for departure from
-            normality", Biometrika, 60, 613-622
-        """
-        valid: pl.Expr = self._expr.filter(self._expr.is_finite())
-        skew = valid.skew()
-        # Pearson Kurtosis, see here: https://en.wikipedia.org/wiki/D%27Agostino%27s_K-squared_test
-        kur = valid.kurtosis(fisher=False)
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_normal_test",
-            args=[skew, kur, valid.count().cast(pl.UInt32)],
-            returns_scalar=True,
-        )
-
-    def ks_stats(self, var: pl.Expr, alpha: float = 0.05) -> pl.Expr:
-        """
-        See query_ks_2samp
-        """
-        y = self._expr.filter(self._expr.is_finite()).sort().cast(pl.Float64)
-        other_ = var.filter(var.is_finite()).sort().cast(pl.Float64)
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_ks_2samp",
-            args=[y, other_, pl.lit(alpha, pl.Float64)],
-            returns_scalar=True,
-        )
-
-    def ks_binary_classif(self, target: pl.Expr, alpha: float = 0.05) -> pl.Expr:
-        """
-        Given a binary target, compute the ks statistics by comparing the feature when target = 1
-        with the same feature when target != 1.
-
-        Parameters
-        ----------
-        target
-            A Polars Expression representing the binary target
-        """
-        y = self._expr.filter(self._expr.is_finite()).cast(pl.Float64)
-        y1 = y.filter(target == 1).sort()
-        y2 = y.filter(target < 1).sort()
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_ks_2samp",
-            args=[y1, y2, pl.lit(alpha, pl.Float64)],
-            returns_scalar=True,
-        )
-
-    def chi2(self, var: pl.Expr) -> pl.Expr:
-        """
-        Computes the Chi Squared statistic and p value between two categorical values by treating
-        self as the first column and var as the second.
-
-        Note that it is up to the user to make sure that the two columns contain categorical
-        values. This method is equivalent to SciPy's chi2_contingency, except that it also
-        computes the contingency table internally for the user.
-
-        Parameters
-        ----------
-        var
-            The second column to run chi squared test on
-        """
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_chi2",
-            args=[self._expr, var],
-            returns_scalar=True,
-        )
-
-    def _rand_int(self, lower: int, upper: int, seed: Optional[int] = None) -> pl.Expr:
-        """
-        See random_int
-        """
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_rand_int",
-            args=[
-                self._expr,
-                pl.lit(lower, pl.Int32),
-                pl.lit(upper, pl.Int32),
-                pl.lit(seed, pl.UInt64),
-            ],
-            is_elementwise=True,
-        )
-
-    def _random(
-        self,
-        lower: Union[pl.Expr, float] = 0.0,
-        upper: Union[pl.Expr, float] = 1.0,
-        seed: Optional[int] = None,
-    ) -> pl.Expr:
-        """
-        See random
-        """
-        lo = pl.lit(lower, pl.Float64) if isinstance(lower, float) else lower
-        up = pl.lit(upper, pl.Float64) if isinstance(upper, float) else upper
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_random",
-            args=[self._expr, lo, up, pl.lit(seed, pl.UInt64)],
-            is_elementwise=True,
-        )
-
-    def _rand_binomial(self, n: int, p: int, seed: Optional[int] = None) -> pl.Expr:
-        """
-        See random_binomial
-        """
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_rand_binomial",
-            args=[self._expr, pl.lit(n, pl.Int32), pl.lit(p, pl.Float64), pl.lit(seed, pl.UInt64)],
-            is_elementwise=True,
-        )
-
-    def _rand_normal(
-        self,
-        mean: Union[pl.Expr, float] = 0.0,
-        std: Union[pl.Expr, float] = 1.0,
-        seed: Optional[int] = None,
-    ) -> pl.Expr:
-        """
-        See random_normal
-        """
-        m = pl.lit(mean, pl.Float64) if isinstance(mean, float) else mean
-        s = pl.lit(std, pl.Float64) if isinstance(std, float) else std
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_rand_normal",
-            args=[self._expr, m, s, pl.lit(seed, pl.UInt64)],
-            is_elementwise=True,
-        )
-
-    def _rand_exp(self, lambda_: float, seed: Optional[int] = None) -> pl.Expr:
-        """
-        See random_exp
-        """
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_rand_exp",
-            args=[self._expr, pl.lit(lambda_, pl.Float64), pl.lit(seed, pl.UInt64)],
-            is_elementwise=True,
-        )
-
-    def _rand_str(
-        self, min_size: int = 1, max_size: int = 10, seed: Optional[int] = None
-    ) -> pl.Expr:
-        """
-        See random_str
-        """
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_rand_str",
-            args=[
-                self._expr,
-                pl.lit(min_size, pl.UInt32),
-                pl.lit(max_size, pl.UInt32),
-                pl.lit(seed, pl.UInt64),
-            ],
-            is_elementwise=True,
-        )
 
     def rand_int(
         self,
@@ -419,37 +120,6 @@ class StatsExt:
             is_elementwise=True,
         )
 
-    def perturb(self, epsilon: float, positive: bool = False):
-        """
-        Perturb self by a small amount. This only applies to float columns.
-
-        Parameters
-        ----------
-        epsilon
-            The small amount to perturb.
-        positive
-            If true, randomly add a small amount in [0, epsilon). If false, it will use the range
-            [-epsilon/2, epsilon/2)
-        """
-        if math.isinf(epsilon) or math.isnan(epsilon):
-            raise ValueError("Input `epsilon should be a valid finite value.`")
-
-        ep = abs(epsilon)
-        if positive:
-            lo = pl.lit(0.0, dtype=pl.Float64)
-            hi = pl.lit(ep, dtype=pl.Float64)
-        else:
-            half = ep / 2
-            lo = pl.lit(-half, dtype=pl.Float64)
-            hi = pl.lit(half, dtype=pl.Float64)
-
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_perturb",
-            args=[self._expr, lo, hi],
-            is_elementwise=True,
-        )
-
     def rand_binomial(
         self, n: int, p: float, seed: Optional[int] = None, respect_null: bool = False
     ) -> pl.Expr:
@@ -469,7 +139,6 @@ class StatsExt:
         respect_null
             If true, null in reference column will be null in the new column
         """
-
         nn = pl.lit(n, dtype=pl.UInt32)
         pp = pl.lit(p, dtype=pl.Float64)
         return pl_plugin(
@@ -561,26 +230,6 @@ class StatsExt:
             kwargs={"seed": seed, "respect_null": respect_null},
             is_elementwise=True,
         )
-
-    def rand_null(self, pct: float, seed: Optional[int] = None) -> pl.Expr:
-        """
-        Creates random null values in self. If self contains nulls originally, they
-        will stay null.
-
-        Parameters
-        ----------
-        pct
-            Percentage of nulls to randomly generate. This percentage is based on the
-            length of the column, so may not be the actual percentage of nulls depending
-            on how many values are originally null.
-        seed
-            A seed to fix the random numbers. If none, use the system's entropy.
-        """
-        if pct <= 0.0 or pct >= 1.0:
-            raise ValueError("Input `pct` must be > 0 and < 1")
-
-        to_null = self.rand_uniform(0.0, 1.0, seed=seed) < pct
-        return pl.when(to_null).then(None).otherwise(self._expr)
 
     def rand_str(
         self,
@@ -708,6 +357,9 @@ class StatsExt:
             return (self._expr.ln().dot(weights) / (weights.sum())).exp()
 
 
+# -------------------------------------------------------------------------------------------------------
+
+
 def query_ttest_ind(
     var1: Union[str, pl.Expr],
     var2: Union[str, pl.Expr],
@@ -738,8 +390,65 @@ def query_ttest_ind(
         If true, perform standard student t 2 sample test. Otherwise, perform Welch's
         t test.
     """
-    return str_to_expr(var1).stats.ttest_ind(
-        str_to_expr(var2), alternative=alternative, equal_var=equal_var
+    y1 = str_to_expr(var1)
+    y2 = str_to_expr(var2)
+    if equal_var:
+        m1 = y1.mean()
+        m2 = y2.mean()
+        v1 = y1.var()
+        v2 = y2.var()
+        cnt = y1.count().cast(pl.UInt64)
+        return pl_plugin(
+            lib=_lib,
+            symbol="pl_ttest_2samp",
+            args=[m1, m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
+            returns_scalar=True,
+        )
+    else:
+        s1 = y1.filter(y1.is_finite())
+        s2 = y2.filter(y2.is_finite())
+        m1 = s1.mean()
+        m2 = s2.mean()
+        v1 = s1.var()
+        v2 = s2.var()
+        n1 = s1.count().cast(pl.UInt64)
+        n2 = s2.count().cast(pl.UInt64)
+        return pl_plugin(
+            lib=_lib,
+            symbol="pl_welch_t",
+            args=[m1, m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
+            returns_scalar=True,
+        )
+
+
+def query_ttest_1samp(
+    var1: Union[str, pl.Expr], pop_mean: float, alternative: Alternative = "two-sided"
+) -> pl.Expr:
+    """
+    Performs a standard 1 sample t test using reference column and expected mean. This function
+    sanitizes the self column first. The df is the count of valid values.
+
+    Parameters
+    ----------
+    var1
+        Variable 1
+    pop_mean
+        The expected population mean in the hypothesis test
+    alternative : {"two-sided", "less", "greater"}
+        Alternative of the hypothesis test
+    """
+    y = str_to_expr(var1)
+    s1 = y.filter(y.is_finite())
+    sm = s1.mean()
+    pm = pl.lit(pop_mean, dtype=pl.Float64)
+    var = s1.var()
+    cnt = s1.count().cast(pl.UInt64)
+    alt = pl.lit(alternative, dtype=pl.String)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_ttest_1samp",
+        args=[sm, pm, var, cnt, alt],
+        returns_scalar=True,
     )
 
 
@@ -772,9 +481,33 @@ def query_ttest_ind_from_stats(
         If true, perform standard student t 2 sample test. Otherwise, perform Welch's
         t test.
     """
-    return str_to_expr(var1).stats.ttest_ind_from_stats(
-        other_mean=mean, other_var=var, other_cnt=cnt, alternative=alternative, equal_var=equal_var
-    )
+    y = str_to_expr(var1)
+    if equal_var:
+        m1 = y.mean()
+        m2 = pl.lit(mean, pl.Float64)
+        v1 = y.var()
+        v2 = pl.lit(var, pl.Float64)
+        cnt = y.count().cast(pl.UInt64)
+        return pl_plugin(
+            lib=_lib,
+            symbol="pl_ttest_2samp",
+            args=[m1, m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
+            returns_scalar=True,
+        )
+    else:
+        s1 = y.filter(y.is_finite())
+        m1 = s1.mean()
+        m2 = pl.lit(mean, pl.Float64)
+        v1 = s1.var()
+        v2 = pl.lit(var, pl.Float64)
+        n1 = s1.count().cast(pl.UInt64)
+        n2 = pl.lit(cnt, pl.UInt64)
+        return pl_plugin(
+            lib=_lib,
+            symbol="pl_welch_t",
+            args=[m1, m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
+            returns_scalar=True,
+        )
 
 
 def query_ks_2samp(
@@ -786,11 +519,13 @@ def query_ks_2samp(
     """
     Computes two-sided KS statistics between var1 and var2. This will
     sanitize data (only non-null finite values are used) before doing the computation. If
-    is_binary true, it will compare the statistics by comparing var2(var1=0) and var2(var1=1).
+    is_binary is true, it will compare the statistics by comparing var2(var1=0) and var2(var1=1).
 
     Note, this returns a stastics and a threshold value. The threshold value is not the p-value, but
     rather it is used in the following way: if the statistic is > the threshold value, then the null
     hypothesis should be rejected. This is suitable only for large sameple sizes. See the reference.
+
+    If either var1 or var2 has less than 30 values, a ks stats of INFINITY will be returned.
 
     Parameters
     ----------
@@ -807,9 +542,27 @@ def query_ks_2samp(
     ---------
     https://en.wikipedia.org/wiki/Kolmogorov%E2%80%93Smirnov_test#Two-sample_Kolmogorov%E2%80%93Smirnov_test
     """
+    y1 = str_to_expr(var1)
+    y2 = str_to_expr(var2)
     if is_binary:
-        return str_to_expr(var2).stats.ks_binary_classif(str_to_expr(var1), alpha=alpha)
-    return str_to_expr(var1).stats.ks_stats(str_to_expr(var2), alpha=alpha)
+        z = y2.filter(y2.is_finite()).cast(pl.Float64)
+        z1 = z.filter(y1 == 1).sort()
+        z2 = z.filter(y1 == 0).sort()
+        return pl_plugin(
+            lib=_lib,
+            symbol="pl_ks_2samp",
+            args=[z1, z2, pl.lit(alpha, pl.Float64)],
+            returns_scalar=True,
+        )
+    else:
+        z1 = y1.filter(y1.is_finite()).sort()
+        z2 = y2.filter(y2.is_finite()).sort()
+        return pl_plugin(
+            lib=_lib,
+            symbol="pl_ks_2samp",
+            args=[z1, z2, pl.lit(alpha, pl.Float64)],
+            returns_scalar=True,
+        )
 
 
 def query_f_test(*variables: Union[str, pl.Expr], group: Union[str, pl.Expr]) -> pl.Expr:
@@ -823,30 +576,152 @@ def query_f_test(*variables: Union[str, pl.Expr], group: Union[str, pl.Expr]) ->
     group
         The "target" column used to group the variables
     """
-    return str_to_expr(group).stats.f_test(*(str_to_expr(v) for v in variables))
+    vars_ = [str_to_expr(group)]
+    vars_.extend(str_to_expr(x) for x in variables)
+    if len(vars_) <= 1:
+        raise ValueError("No input feature column to run F-test on.")
+    elif len(vars_) == 2:
+        return pl_plugin(lib=_lib, symbol="pl_f_test", args=vars_, returns_scalar=True)
+    else:
+        return pl_plugin(lib=_lib, symbol="pl_f_test", args=vars_, changes_length=True)
 
 
-def random(lower: float = 0.0, upper: float = 1.0, seed: Optional[int] = None) -> pl.Expr:
+def query_chi2(var1: Union[pl.Expr, float], var2: Union[pl.Expr, float]) -> pl.Expr:
     """
-    Generates random numbers uniformly.
+    Computes the Chi Squared statistic and p value between two categorical values.
+
+    Note that it is up to the user to make sure that the two columns contain categorical
+    values. This method is equivalent to SciPy's chi2_contingency, except that it also
+    computes the contingency table internally for the user.
+
+    Parameters
+    ----------
+    var1
+        Either the name of the column or a Polars expression
+    var2
+        Either the name of the column or a Polars expression
+    """
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_chi2",
+        args=[str_to_expr(var1), str_to_expr(var2)],
+        returns_scalar=True,
+    )
+
+
+def perturb(var: Union[pl.Expr, float], epsilon: float, positive: bool = False):
+    """
+    Perturb the var by a small amount. This only applies to float columns.
+
+    Parameters
+    ----------
+    var
+        Either the name of the column or a Polars expression
+    epsilon
+        The small amount to perturb.
+    positive
+        If true, randomly add a small amount in [0, epsilon). If false, it will use the range
+        [-epsilon/2, epsilon/2)
+    """
+    if math.isinf(epsilon) or math.isnan(epsilon):
+        raise ValueError("Input `epsilon should be a valid finite value.`")
+
+    ep = abs(epsilon)
+    if positive:
+        lo = pl.lit(0.0, dtype=pl.Float64)
+        hi = pl.lit(ep, dtype=pl.Float64)
+    else:
+        half = ep / 2
+        lo = pl.lit(-half, dtype=pl.Float64)
+        hi = pl.lit(half, dtype=pl.Float64)
+
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_perturb",
+        args=[str_to_expr(var), lo, hi],
+        is_elementwise=True,
+    )
+
+
+def normal_test(var: Union[pl.Expr, float]) -> pl.Expr:
+    """
+    Perform a normality test which is based on D'Agostino and Pearson's test
+    that combines skew and kurtosis to produce an omnibus test of normality.
+    Null values, NaN and inf are dropped when running this computation.
+
+    Parameters
+    ----------
+    var
+        Either the name of the column or a Polars expression
+
+    References
+    ----------
+    D'Agostino, R. B. (1971), "An omnibus test of normality for
+        moderate and large sample size", Biometrika, 58, 341-348
+    D'Agostino, R. and Pearson, E. S. (1973), "Tests for departure from
+        normality", Biometrika, 60, 613-622
+    """
+    y = str_to_expr(var)
+    valid: pl.Expr = y.filter(y.is_finite())
+    skew = valid.skew()
+    # Pearson Kurtosis, see here: https://en.wikipedia.org/wiki/D%27Agostino%27s_K-squared_test
+    kur = valid.kurtosis(fisher=False)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_normal_test",
+        args=[skew, kur, valid.count().cast(pl.UInt32)],
+        returns_scalar=True,
+    )
+
+
+def random(
+    lower: Union[pl.Expr, float] = 0.0,
+    upper: Union[pl.Expr, float] = 1.0,
+    seed: Optional[int] = None,
+) -> pl.Expr:
+    """
+    Generate random numbers in [lower, upper)
 
     Parameters
     ----------
     lower
-        The lower bound, inclusive
+        The lower bound
     upper
         The upper bound, exclusive
     seed
         The random seed. None means no seed.
     """
-    if lower == upper:
-        raise ValueError("Input `lower` must be smaller than `higher`")
+    lo = pl.lit(lower, pl.Float64) if isinstance(lower, float) else lower
+    up = pl.lit(upper, pl.Float64) if isinstance(upper, float) else upper
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_random",
+        args=[pl.len(), lo, up, pl.lit(seed, pl.UInt64)],
+        is_elementwise=True,
+    )
 
-    lo, hi = lower, upper
-    if lower > upper:
-        lo, hi = upper, lower
 
-    return pl.len().cast(pl.UInt32).stats._random(lower=lo, upper=hi, seed=seed)
+def random_null(var: Union[pl.Expr, float], pct: float, seed: Optional[int] = None) -> pl.Expr:
+    """
+    Creates random null values in var. If var contains nulls originally, they
+    will stay null.
+
+    Parameters
+    ----------
+    var
+        Either the name of the column or a Polars expression
+    pct
+        Percentage of nulls to randomly generate. This percentage is based on the
+        length of the column, so may not be the actual percentage of nulls depending
+        on how many values are originally null.
+    seed
+        A seed to fix the random numbers. If none, use the system's entropy.
+    """
+    if pct <= 0.0 or pct >= 1.0:
+        raise ValueError("Input `pct` must be > 0 and < 1")
+
+    to_null = random(0.0, 1.0, seed=seed) < pct
+    return pl.when(to_null).then(None).otherwise(str_to_expr(var))
 
 
 def random_int(lower: int, upper: int, seed: Optional[int] = None) -> pl.Expr:
@@ -869,7 +744,17 @@ def random_int(lower: int, upper: int, seed: Optional[int] = None) -> pl.Expr:
     if lower > upper:
         lo, hi = upper, lower
 
-    return pl.len().cast(pl.UInt32).stats._rand_int(lower=lo, upper=hi, seed=seed)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_rand_int",
+        args=[
+            pl.len().cast(pl.UInt32),
+            pl.lit(lo, pl.Int32),
+            pl.lit(hi, pl.Int32),
+            pl.lit(seed, pl.UInt64),
+        ],
+        is_elementwise=True,
+    )
 
 
 def random_str(min_size: int, max_size: int) -> pl.Expr:
@@ -889,7 +774,17 @@ def random_str(min_size: int, max_size: int) -> pl.Expr:
     if min_size > max_size:
         mi, ma = max_size, min_size
 
-    return pl.len().cast(pl.UInt32).stats._rand_str(min_size=mi, max_size=ma, seed=None)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_rand_str",
+        args=[
+            pl.len().cast(pl.UInt32),
+            pl.lit(mi, pl.UInt32),
+            pl.lit(ma, pl.UInt32),
+            pl.lit(42, pl.UInt64),
+        ],
+        is_elementwise=True,
+    )
 
 
 def random_binomial(n: int, p: int, seed: Optional[int] = None) -> pl.Expr:
@@ -908,7 +803,17 @@ def random_binomial(n: int, p: int, seed: Optional[int] = None) -> pl.Expr:
     if n < 1:
         raise ValueError("Input `n` must be > 1.")
 
-    return pl.len().cast(pl.UInt32).stats._rand_binomial(n=n, p=p, seed=seed)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_rand_binomial",
+        args=[
+            pl.len().cast(pl.UInt32),
+            pl.lit(n, pl.Int32),
+            pl.lit(p, pl.Float64),
+            pl.lit(seed, pl.UInt64),
+        ],
+        is_elementwise=True,
+    )
 
 
 def random_exp(lambda_: float, seed: Optional[int] = None) -> pl.Expr:
@@ -922,10 +827,17 @@ def random_exp(lambda_: float, seed: Optional[int] = None) -> pl.Expr:
     seed
         The random seed. None means no seed.
     """
-    return pl.len().cast(pl.UInt32).stats._rand_exp(lambda_=lambda_, seed=seed)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_rand_exp",
+        args=[pl.len().cast(pl.UInt32), pl.lit(lambda_, pl.Float64), pl.lit(seed, pl.UInt64)],
+        is_elementwise=True,
+    )
 
 
-def random_normal(mean: float, std: float, seed: Optional[int] = None) -> pl.Expr:
+def random_normal(
+    mean: Union[pl.Expr, float], std: Union[pl.Expr, float], seed: Optional[int] = None
+) -> pl.Expr:
     """
     Generates random number following a normal distribution.
 
@@ -938,4 +850,11 @@ def random_normal(mean: float, std: float, seed: Optional[int] = None) -> pl.Exp
     seed
         The random seed. None means no seed.
     """
-    return pl.len().cast(pl.UInt32).stats._rand_normal(mean=mean, std=std, seed=seed)
+    m = pl.lit(mean, pl.Float64) if isinstance(mean, float) else mean
+    s = pl.lit(std, pl.Float64) if isinstance(std, float) else std
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_rand_normal",
+        args=[pl.len().cast(pl.UInt32), m, s, pl.lit(seed, pl.UInt64)],
+        is_elementwise=True,
+    )

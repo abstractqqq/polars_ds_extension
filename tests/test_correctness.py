@@ -86,7 +86,7 @@ def test_fft(arr, n):
 def test_f_test(df):
     from sklearn.feature_selection import f_classif
 
-    res = df.select(pl.col("target").stats.f_test(pl.col("a")))
+    res = df.select(pds.query_f_test(pl.col("a"), group=pl.col("target")))
     res = res.item(0, 0)  # A dictionary
     statistic = res["statistic"]
     pvalue = res["pvalue"]
@@ -892,7 +892,7 @@ def test_ks_stats():
 
     stats = ks_2samp(a, b).statistic
     # Only statistic for now
-    res = df.select(pl.col("a").stats.ks_stats(pl.col("b")).struct.field("statistic")).item(0, 0)
+    res = df.select(pds.query_ks_2samp("a", "b").struct.field("statistic")).item(0, 0)
 
     assert np.isclose(stats, res)
 
@@ -934,7 +934,7 @@ def test_knn_entropy(df, k, dist, res):
 def test_ttest_ind(df, eq_var):
     from scipy.stats import ttest_ind
 
-    res = df.select(pl.col("a").stats.ttest_ind(pl.col("b"), equal_var=eq_var))
+    res = df.select(pds.query_ttest_ind("a", "b", equal_var=eq_var))
     res = res.item(0, 0)  # A dictionary
     statistic = res["statistic"]
     pvalue = res["pvalue"]
@@ -961,7 +961,7 @@ def test_ttest_ind(df, eq_var):
 def test_welch_t(df):
     from scipy.stats import ttest_ind
 
-    res = df.select(pl.col("a").stats.ttest_ind(pl.col("b"), equal_var=False))
+    res = df.select(pds.query_ttest_ind("a", "b", equal_var=False))
     res = res.item(0, 0)  # A dictionary
     statistic = res["statistic"]
     pvalue = res["pvalue"]
@@ -991,7 +991,7 @@ def test_chi2(df):
     import pandas as pd
     from scipy.stats import chi2_contingency
 
-    res = df.select(pl.col("x").stats.chi2(pl.col("y"))).item(0, 0)
+    res = df.select(pds.query_chi2("x", "y")).item(0, 0)
     stats, p = res["statistic"], res["pvalue"]
 
     df2 = df.to_pandas()
@@ -1011,7 +1011,7 @@ def test_chi2(df):
 def test_normal_test(df):
     from scipy.stats import normaltest
 
-    res = df.select(pl.col("a").stats.normal_test())
+    res = df.select(pds.normal_test("a"))
     res = res.item(0, 0)  # A dictionary
     statistic = res["statistic"]
     pvalue = res["pvalue"]
