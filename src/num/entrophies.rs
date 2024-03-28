@@ -1,4 +1,4 @@
-use super::{l1_dist, l2_dist, l_inf_dist};
+use super::l_inf_dist;
 use crate::num::knn::{build_standard_kdtree, query_nb_cnt, KdtreeKwargs};
 use crate::utils::rechunk_to_frame;
 use ndarray::s;

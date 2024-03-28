@@ -8,11 +8,11 @@ from polars_ds.graph import *  # noqa: F403
 from polars_ds.metrics import *  # noqa: F403
 from polars_ds.stats import *  # noqa: F403
 from polars_ds.complex import ComplexExt  # noqa: E402, F401
-from polars_ds.str2 import StrExt  # noqa: E402, F401
+from polars_ds.str2 import *  # noqa: F403
 
 logging.basicConfig(level=logging.INFO)
 
-__version__ = "0.3.5"
+__version__ = "0.3.6"
 
 
 def l_inf_horizontal(*v: Union[str, pl.Expr], normalize: bool = False) -> pl.Expr:
@@ -92,15 +92,15 @@ def random_data(
 
     if null_pct is None:
         rand_cols = (
-            pl.col("row_num").stats.rand_uniform(low=0.0, high=1.0).alias(f"feature_{i+1}")
+            random(0.0, 1.0).alias(f"feature_{i+1}")  # noqa: F405
             for i in range(n_cols)
         )
     else:
         rand_cols = (
-            pl.col("row_num")
-            .stats.rand_uniform(low=0.0, high=1.0)
-            .stats.rand_null(null_pct)
-            .alias(f"feature_{i+1}")
+            random_null(  # noqa: F405
+                random(0.0, 1.0),  # noqa: F405
+                pct=null_pct,
+            ).alias(f"feature_{i+1}")
             for i in range(n_cols)
         )
 

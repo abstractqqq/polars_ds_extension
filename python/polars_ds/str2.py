@@ -2,6 +2,8 @@ from __future__ import annotations
 import polars as pl
 from typing import Union, Optional, Literal, List
 from polars.utils.udfs import _get_shared_lib_location
+from .type_alias import str_to_expr
+from ._utils import pl_plugin
 
 _lib = _get_shared_lib_location(__file__)
 
@@ -401,41 +403,6 @@ class StrExt:
                 args=[other_, pl.lit(parallel, pl.Boolean)],
                 is_elementwise=True,
             )
-
-    def levenshtein_filter(
-        self,
-        other: Union[str, pl.Expr],
-        bound: int,
-        parallel: bool = False,
-    ) -> pl.Expr:
-        """
-        Returns whether the Levenshtein distance between self and other is <= bound. This is much
-        faster than computing levenshtein distance and then doing a filter.
-
-        Parameters
-        ----------
-        other
-            If this is a string, then the entire column will be compared with this string. If this
-            is an expression, then an element-wise Levenshtein distance computation between this column
-            and the other (given by the expression) will be performed.
-        bound
-            Closed upper bound. If distance <= bound, return true and false otherwise.
-        parallel
-            Whether to run the comparisons in parallel. Note that this is not always faster, especially
-            when used with other expressions or in group_by/over context.
-        """
-        if isinstance(other, str):
-            other_ = pl.lit(other, pl.String)
-        else:
-            other_ = other
-
-        bound = pl.lit(abs(bound), pl.UInt32)
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_levenshtein_filter",
-            args=[other_, bound, pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
-        )
 
     def d_levenshtein(
         self, other: Union[str, pl.Expr], parallel: bool = False, return_sim: bool = False
@@ -867,3 +834,41 @@ class StrExt:
             symbol="pl_to_constant",
             is_elementwise=True,
         )
+
+
+def filter_by_levenshtein(
+    col: Union[str, pl.Expr],
+    other: Union[str, pl.Expr],
+    bound: int,
+    parallel: bool = False,
+) -> pl.Expr:
+    """
+    Returns whether the Levenshtein distance between self and other is <= bound. This is much
+    faster than computing levenshtein distance and then doing a filter.
+
+    Parameters
+    ----------
+    col
+        Either the name of the column or a Polars expression
+    other
+        If this is a string, then the entire column will be compared with this string. If this
+        is an expression, then an element-wise Levenshtein distance computation between this column
+        and the other (given by the expression) will be performed.
+    bound
+        Closed upper bound. If distance <= bound, return true and false otherwise.
+    parallel
+        Whether to run the comparisons in parallel. Note that this is not always faster, especially
+        when used with other expressions or in group_by/over context.
+    """
+    if isinstance(other, str):
+        other_ = pl.lit(other, pl.String)
+    else:
+        other_ = other
+
+    bound = pl.lit(abs(bound), pl.UInt32)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_levenshtein_filter",
+        args=[str_to_expr(col), other_, bound, pl.lit(parallel, pl.Boolean)],
+        is_elementwise=True,
+    )
