@@ -982,18 +982,18 @@ class NumExt:
         https://www.listendata.com/2015/05/population-stability-index.html
         """
         if isinstance(ref, pl.Expr):
-            temp = ref.alias("__ref").value_counts()
+            temp = ref.value_counts().rename_fields(["ref", "count"])
             ref_cnt = temp.struct.field("count")
-            ref_cats = temp.struct.field("__ref")
+            ref_cats = temp.struct.field("ref")
         else:
             temp = pl.Series(values=ref, dtype=pl.Float64)
             temp = temp.value_counts()  # This is a df in this case
             ref_cnt = temp.drop_in_place("count")
             ref_cats = temp[temp.columns[0]]
 
-        vc = self._expr.alias("_self").value_counts()
-        data_cats = vc.struct.field("_self")
+        vc = self._expr.value_counts().rename_fields(["self", "count"])
         data_cnt = vc.struct.field("count")
+        data_cats = vc.struct.field("self")
 
         return data_cats.register_plugin(
             lib=_lib,
