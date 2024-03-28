@@ -12,8 +12,8 @@ def pl_plugin(
     returns_scalar: bool = False,
     changes_length: bool = False,
 ) -> pl.Expr:
-    # pl.__version__ should always be a valid version number
-    if tuple(pl.__version__.split(".")) < ("0", "20", "16"):
+    # pl.__version__ should always be a valid version number, so split returns always 3 strs
+    if tuple(int(x) for x in pl.__version__.split(".")) < (0, 20, 16):
         # This will eventually be deprecated?
         assert isinstance(args[0], pl.Expr)
         assert isinstance(lib, str)
