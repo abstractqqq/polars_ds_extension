@@ -1,14 +1,5 @@
 import polars as pl
-import re
-from typing import Sequence, Any, Optional, List
-
-
-def parse_version(version: Sequence[str | int]) -> tuple[int, ...]:
-    # Simple version parser; split into a tuple of ints for comparison.
-    # vendored from Polars
-    if isinstance(version, str):
-        version = version.split(".")
-    return tuple(int(re.sub(r"\D", "", str(v))) for v in version)
+from typing import Any, Optional, List, Dict
 
 
 def pl_plugin(
@@ -16,12 +7,13 @@ def pl_plugin(
     lib: str,
     symbol: str,
     args: List[pl.Expr],
-    kwargs: Optional[dict[str, Any]] = None,
+    kwargs: Optional[Dict[str, Any]] = None,
     is_elementwise: bool = False,
     returns_scalar: bool = False,
     changes_length: bool = False,
 ) -> pl.Expr:
-    if parse_version(pl.__version__) < parse_version("0.20.16"):
+    # pl.__version__ should always be a valid version number
+    if tuple(pl.__version__.split(".")) < ("0", "20", "16"):
         # This will eventually be deprecated?
         assert isinstance(args[0], pl.Expr)
         assert isinstance(lib, str)
