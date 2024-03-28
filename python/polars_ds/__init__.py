@@ -8,7 +8,7 @@ from polars_ds.graph import *  # noqa: F403
 from polars_ds.metrics import *  # noqa: F403
 from polars_ds.stats import *  # noqa: F403
 from polars_ds.complex import ComplexExt  # noqa: E402, F401
-from polars_ds.str2 import StrExt  # noqa: E402, F401
+from polars_ds.str2 import *  # noqa: F403
 
 logging.basicConfig(level=logging.INFO)
 

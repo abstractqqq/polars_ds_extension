@@ -3,6 +3,7 @@ import polars as pl
 from typing import Union
 from .type_alias import ROCAUCStrategy, str_to_expr
 from polars.utils.udfs import _get_shared_lib_location
+from ._utils import pl_plugin
 
 _lib = _get_shared_lib_location(__file__)
 
@@ -242,12 +243,10 @@ class MetricExt:
         """
         See query_roc_auc
         """
-        y = self._expr.cast(pl.UInt32)
-        return y.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_roc_auc",
-            args=[pred],
-            is_elementwise=False,
+            args=[self._expr.cast(pl.UInt32), pred],
             returns_scalar=True,
         )
 
@@ -291,12 +290,10 @@ class MetricExt:
         """
         See query_binary_metrics
         """
-        y = self._expr.cast(pl.UInt32)
-        return y.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_combo_b",
-            args=[pred, pl.lit(threshold, dtype=pl.Float64)],
-            is_elementwise=False,
+            args=[self._expr.cast(pl.UInt32), pred, pl.lit(threshold, dtype=pl.Float64)],
             returns_scalar=True,
         )
 

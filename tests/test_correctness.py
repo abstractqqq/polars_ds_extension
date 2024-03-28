@@ -476,16 +476,18 @@ def test_levenshtein(df, res):
 )
 def test_levenshtein_filter(df, bound, res):
     assert_frame_equal(
-        df.select(pl.col("a").str2.levenshtein_filter(pl.col("b"), bound=bound)), res
+        df.select(pds.filter_by_levenshtein(pl.col("a"), pl.col("b"), bound=bound)), res
     )
 
     assert_frame_equal(
-        df.select(pl.col("a").str2.levenshtein_filter(pl.col("b"), bound=bound, parallel=True)),
+        df.select(pds.filter_by_levenshtein(pl.col("a"), pl.col("b"), bound=bound, parallel=True)),
         res,
     )
 
     assert_frame_equal(
-        df.lazy().select(pl.col("a").str2.levenshtein_filter(pl.col("b"), bound=bound)).collect(),
+        df.lazy()
+        .select(pds.filter_by_levenshtein(pl.col("a"), pl.col("b"), bound=bound))
+        .collect(),
         res,
     )
 

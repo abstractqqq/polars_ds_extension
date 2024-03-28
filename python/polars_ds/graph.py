@@ -3,6 +3,7 @@ import polars as pl
 from typing import Union, Optional
 from .type_alias import str_to_expr
 from polars.utils.udfs import _get_shared_lib_location
+from ._utils import pl_plugin
 
 _lib = _get_shared_lib_location(__file__)
 
@@ -38,10 +39,10 @@ class GraphExt:
         link
             A polars expression representing connections (links)
         """
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_graph_deg",
-            args=[link],
+            args=[self._expr, link],
             changes_length=True,
         )
 
@@ -54,10 +55,10 @@ class GraphExt:
         link
             A polars expression representing connections (links)
         """
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_graph_in_out_deg",
-            args=[link],
+            args=[self._expr, link],
             changes_length=True,
         )
 
@@ -94,11 +95,10 @@ class GraphExt:
         if target < 0:
             raise ValueError("Value for `target` can only be non-negative integer.")
 
-        t = pl.lit(target, pl.UInt32)
-        return self._expr.register_plugin(
+        return pl_plugin(
             lib=_lib,
             symbol="pl_shortest_path_dijkstra",
-            args=[link, t],
+            args=[self._expr, link, pl.lit(target, pl.UInt32)],
             changes_length=True,
         )
 
@@ -119,17 +119,17 @@ class GraphExt:
             return NotImplemented
 
         if cost is None:  # use const cost impl
-            return self._expr.register_plugin(
+            return pl_plugin(
                 lib=_lib,
                 symbol="pl_shortest_path_const_cost",
-                args=[link, to, par],
+                args=[self._expr, link, to, par],
                 changes_length=True,
             )
         else:
-            return self._expr.register_plugin(
+            return pl_plugin(
                 lib=_lib,
                 symbol="pl_shortest_path",
-                args=[link, cost, to, par],
+                args=[self._expr, link, cost, to, par],
                 changes_length=True,
             )
 
