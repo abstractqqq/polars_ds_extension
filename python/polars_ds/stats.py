@@ -724,7 +724,9 @@ def random_null(var: Union[pl.Expr, float], pct: float, seed: Optional[int] = No
     return pl.when(to_null).then(None).otherwise(str_to_expr(var))
 
 
-def random_int(lower: int, upper: int, seed: Optional[int] = None) -> pl.Expr:
+def random_int(
+    lower: Union[int, pl.Expr], upper: Union[int, pl.Expr], seed: Optional[int] = None
+) -> pl.Expr:
     """
     Generates random integer between lower and upper.
 
@@ -740,17 +742,15 @@ def random_int(lower: int, upper: int, seed: Optional[int] = None) -> pl.Expr:
     if lower == upper:
         raise ValueError("Input `lower` must be smaller than `higher`")
 
-    lo, hi = lower, upper
-    if lower > upper:
-        lo, hi = upper, lower
-
+    lo = pl.lit(lower, pl.Int32) if isinstance(lower, int) else lower.cast(pl.Int32)
+    hi = pl.lit(upper, pl.Int32) if isinstance(upper, int) else upper.cast(pl.Int32)
     return pl_plugin(
         lib=_lib,
         symbol="pl_rand_int",
         args=[
             pl.len().cast(pl.UInt32),
-            pl.lit(lo, pl.Int32),
-            pl.lit(hi, pl.Int32),
+            lo,
+            hi,
             pl.lit(seed, pl.UInt64),
         ],
         is_elementwise=True,
