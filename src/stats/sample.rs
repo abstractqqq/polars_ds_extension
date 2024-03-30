@@ -20,9 +20,15 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
     let n = inputs[0].u32()?;
     let n = n.get(0).unwrap() as usize;
     let low = inputs[1].i32()?;
-    let low = low.get(0).unwrap();
+    let mut low = low.get(0).unwrap();
     let high = inputs[2].i32()?;
-    let high = high.get(0).unwrap();
+    let mut high = high.get(0).unwrap();
+    if low == high {
+        let out = Int32Chunked::from_vec("", vec![low; n]);
+        return Ok(out.into_series())
+    } else if high < low {
+        std::mem::swap(&mut low, &mut high);
+    }
     let seed = inputs[3].u64()?;
     let seed = seed.get(0);
     let dist = Uniform::new(low, high);

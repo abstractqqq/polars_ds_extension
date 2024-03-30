@@ -999,7 +999,6 @@ class NumExt:
             lib=_lib,
             symbol="pl_psi_discrete",
             args=[data_cnt, ref_cats, ref_cnt],
-            is_elementwise=False,
             returns_scalar=True,
         )
 
