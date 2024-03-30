@@ -41,39 +41,55 @@ def sample(
 
 def volume_neutral(
     df: Union[pl.DataFrame, pl.LazyFrame],
-    condition: pl.Expr,
+    by: pl.Expr,
+    control: Optional[Union[pl.Expr, List[pl.Expr]]] = None,
     target_volume: Optional[int] = None,
     seed: Optional[int] = None,
 ) -> pl.DataFrame:
     """
-    Given the condition, define the # of trues as N and the # of falses as M, then randomly select
-    min(M, N, target_volume) rows on the two groups.
+    Say we have a reference column, which is discrete. Let's say it has three distinct values, A,
+    B, and C, with a, b, c being the value counts. It will randomly select min(a, b, c, target_volume)
+    rows from each category, thus the name volume neutral.
 
     Parameters
     ----------
     df
         Either a lazy or eager Polars dataframe
-    condition
-        A Polars expression represeting a boolean condition
+    by
+        A Polars expression represeting a column with discrete values. Volume neutral by the values
+        in this column.
+    control
+        Additional level(s). If not none, the volume neutral selection will happen at the
+        sublevel of the control column(s). See example.
     target_volume
-        If none, use min(M, N), this means that one group is always fully selected. If int,
-        this will randomly select min(M, N, target_volume) for both groups.
+        If none, it will select min(a, b, c) rows, this means that one group is always fully selected.
     seed
         A random seed
     """
-    trues = condition.sum()
-    falses = pl.len() - trues.sum()
     if isinstance(target_volume, int):
-        target = pl.min_horizontal(trues, falses, target_volume)
+        target = pl.min_horizontal(by.value_counts().struct.field("count").min(), target_volume)
     else:
-        target = pl.min_horizontal(trues, falses)
+        target = by.value_counts().struct.field("count").min()
+
+    if isinstance(control, pl.Expr):
+        ctrl = [control]
+    elif isinstance(control, list):
+        ctrl = [c for c in control if isinstance(c, pl.Expr)]
+    else:
+        ctrl = []
+
+    if len(ctrl) > 0:
+        target = target.over(ctrl)
+        final_ref = ctrl + [by]
+    else:
+        final_ref = by
 
     return (
-        df.lazy().filter(pl.int_range(0, pl.len()).shuffle(seed).over(condition) < target).collect()
+        df.lazy().filter(pl.int_range(0, pl.len()).shuffle(seed).over(final_ref) < target).collect()
     )
 
 
-def down_sample(
+def downsample(
     df: Union[pl.DataFrame, pl.LazyFrame],
     conditions: Union[Tuple[pl.Expr, Union[float, int]], List[Tuple[pl.Expr, Union[float, int]]]],
     seed: Optional[int] = None,
@@ -139,7 +155,7 @@ def down_sample(
 
 def random_cols(
     df: Union[pl.DataFrame, pl.LazyFrame],
-    k: Optional[int] = None,
+    k: int,
     keep: Optional[List[str]] = None,
     seed: Optional[int] = None,
 ) -> List[str]:

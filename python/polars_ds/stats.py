@@ -787,6 +787,12 @@ def random_str(min_size: int, max_size: int) -> pl.Expr:
     )
 
 
+# def random_str_from_vocab(vocab:Union[pl.Series, List[str]]) -> pl.Expr:
+#     """
+#     Generates a column of
+#     """
+
+
 def random_binomial(n: int, p: int, seed: Optional[int] = None) -> pl.Expr:
     """
     Generates random integer following a binomial distribution.
