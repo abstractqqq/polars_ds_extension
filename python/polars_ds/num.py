@@ -50,35 +50,11 @@ class NumExt:
         """
         return self._expr.count() / (1.0 / self._expr).sum()
 
-    def gmean(self) -> pl.Expr:
-        """
-        Returns the geometric mean of the expression
-        """
-        return self._expr.ln().mean().exp()
-
     def cv(self, ddof: int = 1) -> pl.Expr:
         """
         Returns the coefficient of variation of the expression
         """
         return self._expr.std(ddof=ddof) / self._expr.mean()
-
-    def range_over_mean(self) -> pl.Expr:
-        """
-        Returns (max - min) / mean
-        """
-        return (self._expr.max() - self._expr.min()) / self._expr.mean()
-
-    def z_scale(self, ddof: int = 1) -> pl.Expr:
-        """
-        z_normalize the given expression: remove the mean and scales by the std
-        """
-        return (self._expr - self._expr.mean()) / self._expr.std(ddof=ddof)
-
-    def min_max_scale(self) -> pl.Expr:
-        """
-        Min max normalize the given expression.
-        """
-        return (self._expr - self._expr.min()) / (self._expr.max() - self._expr.min())
 
     def yeo_johnson(self, lam: float) -> pl.Expr:
         """

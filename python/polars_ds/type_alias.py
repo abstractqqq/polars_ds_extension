@@ -29,9 +29,9 @@ def str_to_expr(e: Union[pl.Expr, str]) -> pl.Expr:
     e
         Either a str represeting a column name or an expression
     """
-    if isinstance(e, pl.Expr):
-        return e
-    elif isinstance(e, str):
+    if isinstance(e, str):
         return pl.col(e)
+    elif isinstance(e, pl.Expr):
+        return e
     else:
         raise ValueError("Input must either be a string or a Polars expression.")
