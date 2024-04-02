@@ -2,7 +2,7 @@ from __future__ import annotations
 import math
 import polars as pl
 from typing import Union, Optional, List, Iterable
-from .type_alias import DetrendMethod, Distance, ConvMode, str_to_expr
+from .type_alias import DetrendMethod, Distance, ConvMode, str_to_expr, StrOrExpr
 from polars.utils.udfs import _get_shared_lib_location
 from ._utils import pl_plugin
 
@@ -19,8 +19,6 @@ class NumExt:
     Polars Namespace: num
 
     Example: pl.col("a").num.range_over_mean()
-
-    It currently contains some time series stuff such as detrend, rfft, and entropies, and other common numerical quantities.
     """
 
     def __init__(self, expr: pl.Expr):
@@ -43,12 +41,6 @@ class NumExt:
         Returns root mean square of the expression
         """
         return (self._expr.dot(self._expr) / self._expr.count()).sqrt()
-
-    def hmean(self) -> pl.Expr:
-        """
-        Returns the harmonic mean of the expression
-        """
-        return self._expr.count() / (1.0 / self._expr).sum()
 
     def cv(self, ddof: int = 1) -> pl.Expr:
         """
@@ -116,51 +108,6 @@ class NumExt:
         else:
             return pl.when(cond).then((x.pow(lam) - 1) / lam).otherwise(None)
 
-    def exp2(self) -> pl.Expr:
-        """
-        Returns 2^x.
-        """
-        return pl_plugin(
-            args=[self._expr],
-            lib=_lib,
-            symbol="pl_exp2",
-            is_elementwise=True,
-        )
-
-    def fract(self) -> pl.Expr:
-        """
-        Returns the fractional part of the input values. E.g. fractional part of 1.1 is 0.1
-        """
-        return pl_plugin(
-            args=[self._expr],
-            lib=_lib,
-            symbol="pl_fract",
-            is_elementwise=True,
-        )
-
-    def trunc(self) -> pl.Expr:
-        """
-        Returns the integer part of the input values. E.g. integer part of 1.1 is 1.0
-        """
-        return pl_plugin(
-            args=[self._expr],
-            lib=_lib,
-            symbol="pl_trunc",
-            is_elementwise=True,
-        )
-
-    def signum(self) -> pl.Expr:
-        """
-        Returns sign of the input values. Note: NaN is returned for NaN. This is faster
-        and more accurate than doing pl.when(..).then().otherwise().
-        """
-        return pl_plugin(
-            args=[self._expr],
-            lib=_lib,
-            symbol="pl_signum",
-            is_elementwise=True,
-        )
-
     def max_abs(self) -> pl.Expr:
         """
         Returns the maximum of absolute values of self.
@@ -197,16 +144,6 @@ class NumExt:
         Count the number of occurrences of min.
         """
         return (self._expr == self._expr.min()).sum()
-
-    def list_amax(self) -> pl.Expr:
-        """
-        Finds the argmax of the list in this column. This is useful for
-
-        (1) Turning sparse multiclass target into dense target.
-        (2) Finding the max probability class of a multiclass classification output.
-        (3) Just a shortcut for expr.list.eval(pl.element().arg_max()).
-        """
-        return self._expr.list.eval(pl.element().arg_max())
 
     def gcd(self, other: Union[int, pl.Expr]) -> pl.Expr:
         """
@@ -261,101 +198,6 @@ class NumExt:
         """
         return (self._expr.diff(null_behavior="drop").abs() <= tol).all()
 
-    def trapz(self, x: Union[float, pl.Expr]) -> pl.Expr:
-        """
-        Treats self as y axis, integrates along x using the trapezoidal rule. If x is not a single
-        value, then x should be sorted.
-
-        Parameters
-        ----------
-        x
-            If it is a single float, it must be positive and it will represent a uniform
-            distance between points. If it is an expression, it must be sorted, does not contain
-            null, and have the same length as self.
-        """
-        y = self._expr.cast(pl.Float64)
-        if isinstance(x, float):
-            x_ = pl.lit(abs(x), pl.Float64)
-        else:
-            x_ = x.cast(pl.Float64)
-
-        return y.register_plugin(
-            lib=_lib,
-            symbol="pl_trapz",
-            args=[x_],
-            is_elementwise=False,
-            returns_scalar=True,
-        )
-
-    def jaccard(self, other: pl.Expr, count_null: bool = False) -> pl.Expr:
-        """
-        Computes jaccard similarity between this column and the other. This will hash entire
-        columns and compares the two hashsets. Note: only integer/str columns can be compared.
-
-        Parameters
-        ----------
-        other
-            Either an int or a Polars expression
-        count_null
-            Whether to count null as a distinct element.
-        """
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_jaccard",
-            args=[other, pl.lit(count_null, dtype=pl.Boolean)],
-            is_elementwise=False,
-            returns_scalar=True,
-        )
-
-    def list_jaccard(self, other: pl.Expr) -> pl.Expr:
-        """
-        Computes jaccard similarity pairwise between this and the other column. The type of
-        each column must be list and the lists must have the same inner type. The inner type
-        must either be integer or string.
-
-        Parameters
-        ----------
-        other
-            Either an int or a Polars expression
-        include_null : to be added
-            Currently there are some technical issue with adding this parameter.
-        """
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_list_jaccard",
-            args=[other],
-            is_elementwise=True,
-        )
-
-    def lempel_ziv_complexity(self, as_ratio: bool = True) -> pl.Expr:
-        """
-        Computes Lempel Ziv complexity on a boolean column. Null will be mapped to False.
-
-        Parameters
-        ----------
-        as_ratio : bool
-            If true, return complexity / length.
-        """
-        out = self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_lempel_ziv_complexity",
-            returns_scalar=True,
-        )
-        if as_ratio:
-            return out / self._expr.count()
-        return out
-
-    def cond_entropy(self, other: pl.Expr) -> pl.Expr:
-        """
-        See query_cond_entropy
-        """
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_conditional_entropy",
-            args=[other],
-            returns_scalar=True,
-        )
-
     def rel_entropy(self, other: pl.Expr) -> pl.Expr:
         """
         Computes relative entropy between self and other. (self = x, other = y).
@@ -398,91 +240,6 @@ class NumExt:
             .otherwise(pl.lit(float("inf"), dtype=pl.Float64))
         )
 
-    def sinc(self) -> pl.Expr:
-        """
-        Computes the sinc function normalized by pi.
-        """
-        y = math.pi * pl.when(self._expr == 0).then(1e-20).otherwise(self._expr)
-        return y.sin() / y
-
-    def gamma(self) -> pl.Expr:
-        """
-        Applies the gamma function to self. Note, this will return NaN for negative values and inf when x = 0,
-        whereas SciPy's gamma function will return inf for all x <= 0.
-        """
-        return pl_plugin(
-            args=[self._expr],
-            lib=_lib,
-            symbol="pl_gamma",
-            is_elementwise=True,
-        )
-
-    def expit(self) -> pl.Expr:
-        """
-        Applies the Expit function to self. Expit(x) = 1 / (1 + e^(-x))
-        """
-        return pl_plugin(
-            args=[self._expr],
-            lib=_lib,
-            symbol="pl_expit",
-            is_elementwise=True,
-        )
-
-    def logit(self) -> pl.Expr:
-        """
-        Applies the logit function to self. Logit(x) = ln(x/(1-x)).
-        Note that logit(0) = -inf, logit(1) = inf, and logit(p) for p < 0 or p > 1 yields nan.
-        """
-        return pl_plugin(
-            args=[self._expr],
-            lib=_lib,
-            symbol="pl_logit",
-            is_elementwise=True,
-        )
-
-    def lstsq(
-        self,
-        *variables: pl.Expr,
-        add_bias: bool = False,
-        skip_null: bool = False,
-        return_pred: bool = False,
-    ) -> pl.Expr:
-        """
-        See query_lstsq
-        """
-        y = self._expr.cast(pl.Float64)
-        if return_pred:
-            return y.register_plugin(
-                lib=_lib,
-                symbol="pl_lstsq_pred",
-                args=list(variables),
-                kwargs={"bias": add_bias, "skip_null": skip_null},
-                is_elementwise=True,
-            )
-        else:
-            return y.register_plugin(
-                lib=_lib,
-                symbol="pl_lstsq",
-                args=list(variables),
-                kwargs={"bias": add_bias, "skip_null": skip_null},
-                returns_scalar=True,
-            )
-
-    def lstsq_report(
-        self, *variables: pl.Expr, add_bias: bool = False, skip_null: bool = False
-    ) -> pl.Expr:
-        """
-        See query_lstsq_report
-        """
-        y = self._expr.cast(pl.Float64)
-        return y.register_plugin(
-            lib=_lib,
-            symbol="pl_lstsq_report",
-            args=list(variables),
-            kwargs={"bias": add_bias, "skip_null": skip_null},
-            changes_length=True,
-        )
-
     def detrend(self, method: DetrendMethod = "linear") -> pl.Expr:
         """
         Detrends self using either linear/mean method. This does not persist.
@@ -502,30 +259,6 @@ class NumExt:
             return self._expr - self._expr.mean()
         else:
             raise ValueError(f"Unknown detrend method: {method}")
-
-    def rfft(self, n: Optional[int] = None, return_full: bool = False) -> pl.Expr:
-        """
-        Computes the DFT transform of a real-valued input series using FFT Algorithm. Note that
-        by default a series of length (length // 2 + 1) will be returned.
-
-        Parameters
-        ----------
-        n
-            The number of points to use. If n is smaller than the length of the input,
-            the input is cropped. If it is larger, the input is padded with zeros.
-            If n is not given, the length of the input is used.
-        return_full
-            If true, output will have the same length as determined by n.
-        """
-        if n is not None and n <= 1:
-            raise ValueError("Input `n` should be > 1.")
-
-        full = pl.lit(return_full, pl.Boolean)
-        nn = pl.lit(n, pl.UInt32)
-        x: pl.Expr = self._expr.cast(pl.Float64)
-        return x.register_plugin(
-            lib=_lib, symbol="pl_rfft", args=[nn, full], is_elementwise=False, changes_length=True
-        )
 
     def _knn_ptwise(
         self,
@@ -586,169 +319,6 @@ class NumExt:
             kwargs={"r": r, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
             is_elementwise=True,
         )
-
-    def _knn_filter(
-        self,
-        *others: pl.Expr,
-        k: int = 5,
-        leaf_size: int = 32,
-        dist: Distance = "l2",
-    ) -> pl.Expr:
-        """
-        See query_knn_filter
-        """
-        if k < 1:
-            raise ValueError("Input `k` must be >= 1.")
-
-        metric = str(dist).lower()
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_knn_filter",
-            args=list(others),
-            kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": False},
-            is_elementwise=True,
-        )
-
-    def _nb_cnt(
-        self,
-        *others: pl.Expr,
-        leaf_size: int = 32,
-        dist: Distance = "l2",
-        parallel: bool = False,
-    ) -> pl.Expr:
-        """
-        See query_nb_cnt
-        """
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_nb_cnt",
-            args=list(others),
-            kwargs={"k": 0, "leaf_size": leaf_size, "metric": dist, "parallel": parallel},
-            is_elementwise=True,
-        )
-
-    def _knn_entropy(
-        self,
-        *others: pl.Expr,
-        k: int,
-        leaf_size: int = 32,
-        dist: Distance = "l2",
-        parallel: bool = False,
-    ) -> pl.Expr:
-        """
-        See query_knn_entropy
-        """
-        if k < 0:
-            raise ValueError("Input `k` must be > 0.")
-
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_knn_entropy",
-            args=list(others),
-            kwargs={"k": k, "leaf_size": leaf_size, "metric": dist, "parallel": parallel},
-            is_elementwise=True,
-        )
-
-    # Rewrite of Functime's approximate entropy
-    def approx_entropy(
-        self, m: int, filtering_level: float, scale_by_std: bool = True, parallel: bool = True
-    ) -> pl.Expr:
-        """
-        See query_approx_entropy.
-        """
-        if filtering_level <= 0:
-            raise ValueError("Filter level must be positive.")
-
-        if scale_by_std:
-            r: pl.Expr = filtering_level * self._expr.std()
-        else:
-            r: pl.Expr = pl.lit(filtering_level, dtype=pl.Float64)
-
-        rows = self._expr.count() - m + 1
-        data = [self._expr.slice(0, length=rows)]
-        # See rust code for more comment on why I put m + 1 here.
-        data.extend(
-            self._expr.shift(-i).slice(0, length=rows).alias(f"{i}") for i in range(1, m + 1)
-        )
-        # More errors are handled in Rust
-        return r.register_plugin(
-            lib=_lib,
-            symbol="pl_approximate_entropy",
-            args=data,
-            kwargs={"k": 0, "leaf_size": 32, "metric": "inf", "parallel": parallel},
-            is_elementwise=False,
-            returns_scalar=True,
-        )
-
-    # Rewrite of Functime's sample_entropy
-    def sample_entropy(self, ratio: float = 0.2, m: int = 2, parallel: bool = False) -> pl.Expr:
-        """
-        See sample entropy
-        """
-        r = ratio * self._expr.std(ddof=0)
-        rows = self._expr.count() - m + 1
-        data = [self._expr.slice(0, length=rows)]
-        # See rust code for more comment on why I put m + 1 here.
-        data.extend(
-            self._expr.shift(-i).slice(0, length=rows).alias(f"{i}") for i in range(1, m + 1)
-        )
-        # More errors are handled in Rust
-        return r.register_plugin(
-            lib=_lib,
-            symbol="pl_sample_entropy",
-            args=data,
-            kwargs={"k": 0, "leaf_size": 32, "metric": "inf", "parallel": parallel},
-            is_elementwise=False,
-            returns_scalar=True,
-        )
-
-    def permutation_entropy(
-        self,
-        tau: int = 1,
-        n_dims: int = 3,
-        base: float = math.e,
-    ) -> pl.Expr:
-        """
-        Computes permutation entropy.
-
-        Parameters
-        ----------
-        tau : int
-            The embedding time delay which controls the number of time periods between elements
-            of each of the new column vectors.
-        n_dims : int, > 1
-            The embedding dimension which controls the length of each of the new column vectors
-        base : float
-            The base for log in the entropy computation
-
-        Reference
-        ---------
-        https://www.aptech.com/blog/permutation-entropy/
-        """
-        if n_dims <= 1:
-            raise ValueError("Input `n_dims` has to be > 1.")
-
-        if tau == 1:  # Fast track the most common use case
-            return (
-                pl.concat_list(self._expr, *(self._expr.shift(-i) for i in range(1, n_dims)))
-                .head(self._expr.count() - n_dims + 1)
-                .list.eval(pl.element().arg_sort())
-                .value_counts()  # groupby and count, but returns a struct
-                .struct.field("count")  # extract the field named "counts"
-                .entropy(base=base, normalize=True)
-            )
-        else:
-            return (
-                pl.concat_list(
-                    self._expr.gather_every(tau),
-                    *(self._expr.shift(-i).gather_every(tau) for i in range(1, n_dims)),
-                )
-                .slice(0, length=(self._expr.count() // tau) + 1 - (n_dims // tau))
-                .list.eval(pl.element().arg_sort())
-                .value_counts()
-                .struct.field("count")
-                .entropy(base=base, normalize=True)
-            )
 
     def woe(self, target: pl.Expr, n_bins: int = 10) -> pl.Expr:
         """
@@ -978,84 +548,13 @@ class NumExt:
             returns_scalar=True,
         )
 
-    def convolve(
-        self,
-        other: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
-        mode: ConvMode = "full",
-    ) -> pl.Expr:
-        """
-        Performs a convolution with the filter via FFT. The current implementation's performance is worse
-        than SciPy but offers parallelization within Polars Context.
-
-        parameters
-        ----------
-        other
-            The filter for the convolution. Anything that can be turned into a Polars Series will work.
-        mode
-            Please check the reference. One of `same`, `left` (left-aligned same), `right` (right-aligned same),
-            `valid` or `full`.
-
-        Reference
-        ---------
-        https://brianmcfee.net/dstbook-site/content/ch03-convolution/Modes.html
-        """
-
-        filter_ = pl.Series(values=other, dtype=pl.Float64)
-        return self._expr.cast(pl.Float64).register_plugin(
-            lib=_lib,
-            symbol="pl_fft_convolve",
-            args=[filter_, pl.lit(mode, dtype=pl.String)],
-            changes_length=True,
-        )
-
-    def _haversine(
-        self,
-        x_long: pl.Expr,
-        y_lat: pl.Expr,
-        y_long: pl.Expr,
-    ) -> pl.Expr:
-        """
-        Treats self as x_lat and computes haversine distance naively.
-        """
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_haversine",
-            args=[x_long, y_lat, y_long],
-            is_elementwise=True,
-            cast_to_supertypes=True,
-        )
-
-    def conditional_independence(self, y: pl.Expr, z: pl.Expr, k: int = 2):
-        """
-        Test independance of `self` (considered as `x`) and `y`, conditioned on `z`
-        Reference
-        ---------
-        Jian Ma. Multivariate Normality Test with Copula Entropy. arXiv preprint arXiv:2206.05956, 2022.
-        """
-        xyz = query_copula_entropy(self._expr, y, z, k=k)
-        yz = query_copula_entropy(y, z, k=k)
-        xz = query_copula_entropy(self._expr, z, k=k)
-        return xyz - yz - xz
-
-    def transfer_entropy(self, source: pl.Expr, lag=1, k=2):
-        """
-        Estimating transfer entropy from `source` to `self` with a lag
-        Reference
-        ---------
-        Jian Ma. Estimating Transfer Entropy via Copula Entropy. arXiv preprint arXiv:1910.04375, 2019.
-        """
-        x1 = self._expr.slice(0, pl.len() - lag)
-        x2 = self._expr.slice(lag, pl.len())
-        source = source.slice(0, pl.len() - lag)
-        return x2.num.conditional_independence(source, x1, k=k)
-
 
 # ----------------------------------------------------------------------------------
 
 
 def haversine(
-    x_lat: Union[str, pl.Expr],
-    x_long: Union[str, pl.Expr],
+    x_lat: StrOrExpr,
+    x_long: StrOrExpr,
     y_lat: Union[float, str, pl.Expr],
     y_long: Union[float, str, pl.Expr],
 ) -> pl.Expr:
@@ -1073,14 +572,22 @@ def haversine(
     y_long
         Column representing longitude in y
     """
+    xlat = str_to_expr(x_lat)
+    xlong = str_to_expr(x_long)
     ylat = pl.lit(y_lat) if isinstance(y_lat, float) else str_to_expr(y_lat)
     ylong = pl.lit(y_long) if isinstance(y_long, float) else str_to_expr(y_long)
-    return str_to_expr(x_lat).num._haversine(str_to_expr(x_long), ylat, ylong)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_haversine",
+        args=[xlat, xlong, ylat, ylong],
+        is_elementwise=True,
+        cast_to_supertype=True,
+    )
 
 
 def query_knn_ptwise(
-    *features: Union[str, pl.Expr],
-    index: Union[str, pl.Expr],
+    *features: StrOrExpr,
+    index: StrOrExpr,
     k: int = 5,
     leaf_size: int = 32,
     dist: Distance = "l2",
@@ -1120,7 +627,7 @@ def query_knn_ptwise(
     """
     idx = str_to_expr(index)
     return idx.num._knn_ptwise(
-        *[str_to_expr(x) for x in features],
+        *(str_to_expr(x) for x in features),
         k=k,
         leaf_size=leaf_size,
         dist=dist,
@@ -1129,15 +636,14 @@ def query_knn_ptwise(
     )
 
 
-def query_radius_at_pt(
-    *features: Union[str, pl.Expr],
+def query_within_dist_from(
+    *features: StrOrExpr,
     pt: Iterable[float],
     r: Union[float, pl.Expr],
     dist: Distance = "l2",
 ) -> pl.Expr:
     """
-    Returns an expression that queries the neighbors within (<=) radius from x. Note that
-    this only queries around a single point x and returns a boolean column.
+    Returns a boolean column that returns points that are within radius from the given point.
 
     Parameters
     ----------
@@ -1168,23 +674,23 @@ def query_radius_at_pt(
     elif dist == "cosine":
         x_list = list(pt)
         x_norm = sum(z * z for z in x_list)
-        oth_norm = pl.sum_horizontal([e * e for e in oth])
+        oth_norm = pl.sum_horizontal(e * e for e in oth)
         dist = (
             1.0
             - pl.sum_horizontal(xi * e for xi, e in zip(x_list, oth)) / (x_norm * oth_norm).sqrt()
         )
         return dist <= r
     elif dist in ("h", "haversine"):
-        x_list = list(pt)
-        if (len(x_list) != 2) or (len(oth) < 2):
+        pt_as_list = list(pt)
+        if (len(pt_as_list) != 2) or (len(oth) < 2):
             raise ValueError(
                 "For Haversine distance, input x must have dimension 2 and 2 other columns"
                 " must be provided as lat and long."
             )
 
-        y_lat = pl.Series(values=[x_list[0]], dtype=pl.Float64)
-        y_long = pl.Series(values=[x_list[1]], dtype=pl.Float64)
-        dist = oth[0].num._haversine(oth[1], y_lat, y_long)
+        y_lat = pl.lit(pt_as_list[0], dtype=pl.Float64)
+        y_long = pl.lit(pt_as_list[1], dtype=pl.Float64)
+        dist = haversine(oth[0], oth[1], y_lat, y_long)
         return dist <= r
     else:  # defaults to l2, actually squared l2
         return (
@@ -1194,8 +700,8 @@ def query_radius_at_pt(
 
 
 def query_radius_ptwise(
-    *features: Union[str, pl.Expr],
-    index: Union[str, pl.Expr],
+    *features: StrOrExpr,
+    index: StrOrExpr,
     r: float,
     dist: Distance = "l2",
     parallel: bool = False,
@@ -1233,7 +739,7 @@ def query_radius_ptwise(
 
 def query_nb_cnt(
     r: Union[float, str, pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
-    *features: Union[str, pl.Expr],
+    *features: StrOrExpr,
     leaf_size: int = 32,
     dist: Distance = "l2",
     parallel: bool = False,
@@ -1268,13 +774,17 @@ def query_nb_cnt(
     else:
         rad = pl.lit(pl.Series(values=r, dtype=pl.Float64))
 
-    return rad.num._nb_cnt(
-        *[str_to_expr(x) for x in features], leaf_size=leaf_size, dist=dist, parallel=parallel
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_nb_cnt",
+        args=[rad] + [str_to_expr(x) for x in features],
+        kwargs={"k": 0, "leaf_size": leaf_size, "metric": dist, "parallel": parallel},
+        is_elementwise=True,
     )
 
 
 def query_knn_filter(
-    *features: Union[str, pl.Expr],
+    *features: StrOrExpr,
     pt: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
     k: int = 5,
     dist: Distance = "l2",
@@ -1300,16 +810,19 @@ def query_knn_filter(
     if k <= 0:
         raise ValueError("Input `k` should be strictly positive.")
 
-    pt = pl.Series(values=pt, dtype=pl.Float64)
-    return pl.lit(pt).num._knn_filter(
-        *[str_to_expr(x) for x in features],
-        k=k,
-        dist=dist,
+    p = pt if isinstance(pt, pl.Series) else pl.Series(values=pt)
+    metric = str(dist).lower()
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_knn_filter",
+        args=[p] + [str_to_expr(x) for x in features],
+        kwargs={"k": k, "leaf_size": 32, "metric": metric, "parallel": False},
+        is_elementwise=True,
     )
 
 
 def query_approx_entropy(
-    ts: Union[str, pl.Expr],
+    ts: StrOrExpr,
     m: int,
     filtering_level: float,
     scale_by_std: bool = True,
@@ -1342,13 +855,32 @@ def query_approx_entropy(
     ---------
     https://en.wikipedia.org/wiki/Approximate_entropy
     """
-    return str_to_expr(ts).num.approx_entropy(
-        m=m, filtering_level=filtering_level, scale_by_std=scale_by_std, parallel=parallel
+
+    if filtering_level <= 0:
+        raise ValueError("Filter level must be positive.")
+
+    t = str_to_expr(ts)
+    if scale_by_std:
+        r: pl.Expr = filtering_level * t.std()
+    else:
+        r: pl.Expr = pl.lit(filtering_level, dtype=pl.Float64)
+
+    rows = t.count() - m + 1
+    data = [t.slice(0, length=rows)]
+    # See rust code for more comment on why I put m + 1 here.
+    data.extend(t.shift(-i).slice(0, length=rows).alias(f"{i}") for i in range(1, m + 1))
+    # More errors are handled in Rust
+    return r.register_plugin(
+        lib=_lib,
+        symbol="pl_approximate_entropy",
+        args=data,
+        kwargs={"k": 0, "leaf_size": 32, "metric": "inf", "parallel": parallel},
+        returns_scalar=True,
     )
 
 
 def query_sample_entropy(
-    ts: Union[str, pl.Expr], ratio: float = 0.2, m: int = 2, parallel: bool = False
+    ts: StrOrExpr, ratio: float = 0.2, m: int = 2, parallel: bool = False
 ) -> pl.Expr:
     """
     Calculate the sample entropy of this column. It is highly
@@ -1374,10 +906,24 @@ def query_sample_entropy(
     ---------
     https://en.wikipedia.org/wiki/Sample_entropy
     """
-    return str_to_expr(ts).num.sample_entropy(ratio=ratio, m=m, parallel=parallel)
+    t = str_to_expr(ts)
+    r = ratio * t.std(ddof=0)
+    rows = t.count() - m + 1
+    data = [r, t.slice(0, length=rows)]
+    # See rust code for more comment on why I put m + 1 here.
+    data.extend(
+        t.shift(-i).slice(0, length=rows).alias(f"{i}") for i in range(1, m + 1)
+    )  # More errors are handled in Rust
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_sample_entropy",
+        args=data,
+        kwargs={"k": 0, "leaf_size": 32, "metric": "inf", "parallel": parallel},
+        returns_scalar=True,
+    )
 
 
-def query_cond_entropy(x: Union[str, pl.Expr], y: Union[str, pl.Expr]) -> pl.Expr:
+def query_cond_entropy(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
     """
     Queries the conditional entropy of x on y, aka. H(x|y).
 
@@ -1386,51 +932,16 @@ def query_cond_entropy(x: Union[str, pl.Expr], y: Union[str, pl.Expr]) -> pl.Exp
     other : str | pl.Expr
         Either a str represeting a column name or a Polars expression
     """
-    return str_to_expr(x).num.cond_entropy(str_to_expr(y))
-
-
-def query_copula_entropy(*features: Union[str, pl.Expr], k: int = 2):
-    """
-    Estimates Copula Entropy via rank statistics.
-
-    Reference
-    ---------
-    Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
-    """
-    ranks = [str_to_expr(x).rank() / pl.len() for x in features]
-    return -query_knn_entropy(*ranks, k=k, dist="l2")
-
-
-def query_permute_entropy(
-    ts: Union[str, pl.Expr],
-    tau: int = 1,
-    n_dims: int = 3,
-    base: float = math.e,
-) -> pl.Expr:
-    """
-    Computes permutation entropy.
-
-    Parameters
-    ----------
-    ts : str | pl.Expr
-        A time series
-    tau : int
-        The embedding time delay which controls the number of time periods between elements
-        of each of the new column vectors.
-    n_dims : int, > 1
-        The embedding dimension which controls the length of each of the new column vectors
-    base : float
-        The base for log in the entropy computation
-
-    Reference
-    ---------
-    https://www.aptech.com/blog/permutation-entropy/
-    """
-    return str_to_expr(ts).num.permutation_entropy(tau=tau, n_dims=n_dims, base=base)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_conditional_entropy",
+        args=[str_to_expr(x), str_to_expr(y)],
+        returns_scalar=True,
+    )
 
 
 def query_knn_entropy(
-    *features: Union[str, pl.Expr],
+    *features: StrOrExpr,
     k: int = 2,
     dist: Distance = "l2",
     parallel: bool = False,
@@ -1454,14 +965,123 @@ def query_knn_entropy(
     ---------
     https://arxiv.org/pdf/1506.06501v1.pdf
     """
-    exprs = [str_to_expr(e) for e in features]
-    first = exprs[0]
-    return first.num._knn_entropy(*exprs[1:], k=k, dist=dist, parallel=parallel)
+    if k < 0:
+        raise ValueError("Input `k` must be > 0.")
+
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_knn_entropy",
+        args=[str_to_expr(e) for e in features],
+        kwargs={"k": k, "leaf_size": 32, "metric": dist, "parallel": parallel},
+        is_elementwise=True,
+    )
+
+
+def query_copula_entropy(*features: StrOrExpr, k: int = 2, parallel: bool = False):
+    """
+    Estimates Copula Entropy via rank statistics.
+
+    Reference
+    ---------
+    Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
+    """
+    ranks = [str_to_expr(x).rank() / pl.len() for x in features]
+    return -query_knn_entropy(*ranks, k=k, dist="l2", parallel=parallel)
+
+
+def query_cond_indep(x: StrOrExpr, y: StrOrExpr, z: StrOrExpr, k: int = 2, parallel: bool = False):
+    """
+    Computes the conditional independance of `x`  and `y`, conditioned on `z`
+
+    Reference
+    ---------
+    Jian Ma. Multivariate Normality Test with Copula Entropy. arXiv preprint arXiv:2206.05956, 2022.
+    """
+    # We can likely optimize this by going into Rust.
+    # Here we are
+    # (1) computing rank multiple times
+    # (2) creating 3 separate kd-trees, and copying the data 3 times. Might just need to copy once.
+    xyz = query_copula_entropy(x, y, z, k=k, parallel=parallel)
+    yz = query_copula_entropy(y, z, k=k, parallel=parallel)
+    xz = query_copula_entropy(x, z, k=k, parallel=parallel)
+    return xyz - yz - xz
+
+
+def query_transfer_entropy(
+    x: StrOrExpr, source: StrOrExpr, lag: int = 1, k: int = 2, parallel: bool = False
+):
+    """
+    Estimating transfer entropy from `source` to `x` with a lag
+
+    Reference
+    ---------
+    Jian Ma. Estimating Transfer Entropy via Copula Entropy. arXiv preprint arXiv:1910.04375, 2019.
+    """
+    if lag < 1:
+        raise ValueError("Input `lag` must be >= 1.")
+
+    xx = str_to_expr(x)
+    x1 = xx.slice(0, pl.len() - lag)
+    x2 = xx.slice(lag, pl.len())
+    s = str_to_expr(source).slice(0, pl.len() - lag)
+    return query_cond_indep(x2, s, x1, k=k, parallel=parallel)
+
+
+def query_permute_entropy(
+    ts: StrOrExpr,
+    tau: int = 1,
+    n_dims: int = 3,
+    base: float = math.e,
+) -> pl.Expr:
+    """
+    Computes permutation entropy.
+
+    Parameters
+    ----------
+    ts : str | pl.Expr
+        A time series
+    tau : int
+        The embedding time delay which controls the number of time periods between elements
+        of each of the new column vectors.
+    n_dims : int, > 1
+        The embedding dimension which controls the length of each of the new column vectors
+    base : float
+        The base for log in the entropy computation
+
+    Reference
+    ---------
+    https://www.aptech.com/blog/permutation-entropy/
+    """
+    t = str_to_expr(ts)
+    if n_dims <= 1:
+        raise ValueError("Input `n_dims` has to be > 1.")
+
+    if tau == 1:  # Fast track the most common use case
+        return (
+            pl.concat_list(t, *(t.shift(-i) for i in range(1, n_dims)))
+            .head(t.count() - n_dims + 1)
+            .list.eval(pl.element().arg_sort())
+            .value_counts()  # groupby and count, but returns a struct
+            .struct.field("count")  # extract the field named "counts"
+            .entropy(base=base, normalize=True)
+        )
+    else:
+        return (
+            pl.concat_list(
+                t.gather_every(tau),
+                *(t.shift(-i).gather_every(tau) for i in range(1, n_dims)),
+            )
+            .slice(0, length=(t.count() // tau) + 1 - (n_dims // tau))
+            .list.eval(pl.element().arg_sort())
+            .value_counts()
+            .struct.field("count")
+            .entropy(base=base, normalize=True)
+        )
 
 
 def query_lstsq(
-    *vars: Union[str, pl.Expr],
-    target: Union[str, pl.Expr],
+    *x: StrOrExpr,
+    target: StrOrExpr,
     add_bias: bool = False,
     skip_null: bool = False,
     return_pred: bool = False,
@@ -1482,8 +1102,8 @@ def query_lstsq(
 
     Parameters
     ----------
-    vars : str | pl.Expr
-        The variables used to predict target (self).
+    x : str | pl.Expr
+        The variables used to predict target
     target : str | pl.Expr
         The target variable
     add_bias
@@ -1495,18 +1115,30 @@ def query_lstsq(
         for coefficients, it reduces to one output (like max/min), but for predictions and
         residue, it will return the same number of rows as in input.
     """
-    t = str_to_expr(target)
-    return t.num.lstsq(
-        *[str_to_expr(x) for x in vars],
-        add_bias=add_bias,
-        skip_null=skip_null,
-        return_pred=return_pred,
-    )
+    t = str_to_expr(target).cast(pl.Float64)
+    cols = [t]
+    cols.extend(str_to_expr(z) for z in x)
+    if return_pred:
+        return pl_plugin(
+            lib=_lib,
+            symbol="pl_lstsq_pred",
+            args=cols,
+            kwargs={"bias": add_bias, "skip_null": skip_null},
+            is_elementwise=True,
+        )
+    else:
+        return pl_plugin(
+            lib=_lib,
+            symbol="pl_lstsq",
+            args=cols,
+            kwargs={"bias": add_bias, "skip_null": skip_null},
+            returns_scalar=True,
+        )
 
 
 def query_lstsq_report(
-    *vars: Union[str, pl.Expr],
-    target: Union[str, pl.Expr],
+    *x: StrOrExpr,
+    target: StrOrExpr,
     add_bias: bool = False,
     skip_null: bool = False,
 ) -> pl.Expr:
@@ -1524,8 +1156,8 @@ def query_lstsq_report(
 
     Parameters
     ----------
-    vars : str | pl.Expr
-        The variables used to predict target (self).
+    x : str | pl.Expr
+        The variables used to predict target
     target : str | pl.Expr
         The target variable
     add_bias
@@ -1533,7 +1165,272 @@ def query_lstsq_report(
     skip_null
         Whether to skip a row if there is a null value in row
     """
-    t = str_to_expr(target)
-    return t.num.lstsq_report(
-        *[str_to_expr(x) for x in vars], add_bias=add_bias, skip_null=skip_null
+    t = str_to_expr(target).cast(pl.Float64)
+    cols = [t]
+    cols.extend(str_to_expr(z) for z in x)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_lstsq_report",
+        args=cols,
+        kwargs={"bias": add_bias, "skip_null": skip_null},
+        changes_length=True,
     )
+
+
+def query_lempel_ziv(b: StrOrExpr, as_ratio: bool = True) -> pl.Expr:
+    """
+    Computes Lempel Ziv complexity on a boolean column. Null will be mapped to False.
+
+    Parameters
+    ----------
+    b
+        A boolean column
+    as_ratio : bool
+        If true, return complexity / length.
+    """
+    x = str_to_expr(b)
+    out = pl_plugin(
+        lib=_lib,
+        symbol="pl_lempel_ziv_complexity",
+        args=[x],
+        returns_scalar=True,
+    )
+    if as_ratio:
+        return out / x.len()
+    return out
+
+
+def query_jaccard_row(first: StrOrExpr, second: StrOrExpr) -> pl.Expr:
+    """
+    Computes jaccard similarity pairwise between this and the other column. The type of
+    each column must be list and the lists must have the same inner type. The inner type
+    must either be integer or string.
+
+    Parameters
+    ----------
+    first
+        A list column with a hashable inner type
+    second
+        A list column with a hashable inner type
+    """
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_list_jaccard",
+        args=[str_to_expr(first), str_to_expr(second)],
+        is_elementwise=True,
+    )
+
+
+def query_jaccard_col(first: StrOrExpr, second: StrOrExpr, count_null: bool = False) -> pl.Expr:
+    """
+    Computes jaccard similarity column-wise. This will hash entire columns and compares the two
+    hashsets. Note: only integer/str columns can be compared.
+
+    Parameters
+    ----------
+    first
+        A column with a hashable type
+    second
+        A column with a hashable type
+    count_null
+        Whether to count null as a distinct element.
+    """
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_jaccard",
+        args=[str_to_expr(first), str_to_expr(second), pl.lit(count_null, dtype=pl.Boolean)],
+        returns_scalar=True,
+    )
+
+
+def integrate_trapz(y: StrOrExpr, x: Union[float, pl.Expr]) -> pl.Expr:
+    """
+    Integrate y along x using the trapezoidal rule. If x is not a single
+    value, then x should be sorted.
+
+    Parameters
+    ----------
+    y
+        A column of numbers
+    x
+        If it is a single float, it must be positive and it will represent a uniform
+        distance between points. If it is an expression, it must be sorted, does not contain
+        null, and have the same length as self.
+    """
+    yy = str_to_expr(y).cast(pl.Float64)
+    if isinstance(x, float):
+        xx = pl.lit(abs(x), pl.Float64)
+    else:
+        xx = x.cast(pl.Float64)
+
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_trapz",
+        args=[yy, xx],
+        returns_scalar=True,
+    )
+
+
+def convolve(
+    x: StrOrExpr,
+    filter_: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
+    mode: ConvMode = "full",
+) -> pl.Expr:
+    """
+    Performs a convolution with the filter via FFT. The current implementation's performance is worse
+    than SciPy but offers parallelization within Polars Context.
+
+    parameters
+    ----------
+    x
+        A column of numbers
+    filter_
+        The filter for the convolution. Anything that can be turned into a Polars Series will work.
+    mode
+        Please check the reference. One of `same`, `left` (left-aligned same), `right` (right-aligned same),
+        `valid` or `full`.
+
+    Reference
+    ---------
+    https://brianmcfee.net/dstbook-site/content/ch03-convolution/Modes.html
+    """
+    xx = str_to_expr(x).cast(pl.Float64)
+    f = pl.Series(values=filter_, dtype=pl.Float64)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_fft_convolve",
+        args=[xx, f, pl.lit(mode, dtype=pl.String)],
+        changes_length=True,
+    )
+
+
+def list_amax(list_col: StrOrExpr) -> pl.Expr:
+    """
+    Finds the argmax of the list in this column. This is useful for
+
+    (1) Turning sparse multiclass target into dense target.
+    (2) Finding the max probability class of a multiclass classification output.
+    (3) As a shortcut for expr.list.eval(pl.element().arg_max()).
+    """
+    return str_to_expr(list_col).list.eval(pl.element().arg_max())
+
+
+def gamma(x: StrOrExpr) -> pl.Expr:
+    """
+    Applies the gamma function to self. Note, this will return NaN for negative values and inf when x = 0,
+    whereas SciPy's gamma function will return inf for all x <= 0.
+    """
+    return pl_plugin(
+        args=[str_to_expr(x)],
+        lib=_lib,
+        symbol="pl_gamma",
+        is_elementwise=True,
+    )
+
+
+def expit(x: StrOrExpr) -> pl.Expr:
+    """
+    Applies the Expit function to self. Expit(x) = 1 / (1 + e^(-x))
+    """
+    return pl_plugin(
+        args=[str_to_expr(x)],
+        lib=_lib,
+        symbol="pl_expit",
+        is_elementwise=True,
+    )
+
+
+def logit(x: StrOrExpr) -> pl.Expr:
+    """
+    Applies the logit function to self. Logit(x) = ln(x/(1-x)).
+    Note that logit(0) = -inf, logit(1) = inf, and logit(p) for p < 0 or p > 1 yields nan.
+    """
+    return pl_plugin(
+        args=[str_to_expr(x)],
+        lib=_lib,
+        symbol="pl_logit",
+        is_elementwise=True,
+    )
+
+
+def exp2(x: StrOrExpr) -> pl.Expr:
+    """
+    Returns 2^x.
+    """
+    return pl_plugin(
+        args=[str_to_expr(x)],
+        lib=_lib,
+        symbol="pl_exp2",
+        is_elementwise=True,
+    )
+
+
+def fract(x: StrOrExpr) -> pl.Expr:
+    """
+    Returns the fractional part of the input values. E.g. fractional part of 1.1 is 0.1
+    """
+    return pl_plugin(
+        args=[str_to_expr(x)],
+        lib=_lib,
+        symbol="pl_fract",
+        is_elementwise=True,
+    )
+
+
+def trunc(x: StrOrExpr) -> pl.Expr:
+    """
+    Returns the integer part of the input values. E.g. integer part of 1.1 is 1.0
+    """
+    return pl_plugin(
+        args=[str_to_expr(x)],
+        lib=_lib,
+        symbol="pl_trunc",
+        is_elementwise=True,
+    )
+
+
+def signum(x: StrOrExpr) -> pl.Expr:
+    """
+    Returns sign of the input values. Note: NaN is returned for NaN. This is faster
+    and more accurate than doing pl.when(..).then().otherwise().
+    """
+    return pl_plugin(
+        args=[str_to_expr(x)],
+        lib=_lib,
+        symbol="pl_signum",
+        is_elementwise=True,
+    )
+
+
+def sinc(x: StrOrExpr) -> pl.Expr:
+    """
+    Computes the sinc function normalized by pi.
+    """
+    xx = str_to_expr(x)
+    y = math.pi * pl.when(xx == 0).then(1e-20).otherwise(xx)
+    return y.sin() / y
+
+
+def rfft(series: StrOrExpr, n: Optional[int] = None, return_full: bool = False) -> pl.Expr:
+    """
+    Computes the DFT transform of a real-valued input series using FFT Algorithm. Note that
+    by default a series of length (length // 2 + 1) will be returned.
+
+    Parameters
+    ----------
+    series
+        Input real series
+    n
+        The number of points to use. If n is smaller than the length of the input,
+        the input is cropped. If it is larger, the input is padded with zeros.
+        If n is not given, the length of the input is used.
+    return_full
+        If true, output will have the same length as determined by n.
+    """
+    if n is not None and n <= 1:
+        raise ValueError("Input `n` should be > 1.")
+
+    full = pl.lit(return_full, pl.Boolean)
+    nn = pl.lit(n, pl.UInt32)
+    x: pl.Expr = str_to_expr(series).cast(pl.Float64)
+    return pl_plugin(lib=_lib, symbol="pl_rfft", args=[x, nn, full], changes_length=True)

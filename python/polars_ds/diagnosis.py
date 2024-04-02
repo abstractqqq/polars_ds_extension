@@ -3,7 +3,7 @@ import polars as pl
 import logging
 from typing import Union, List, Optional
 from functools import lru_cache
-from .num import NumExt  # noqa: F401
+from .num import query_cond_entropy  # noqa: F401
 from itertools import combinations
 import graphviz
 from great_tables import GT
@@ -318,9 +318,9 @@ class DIA:
     @lru_cache
     def infer_dependency(self) -> pl.DataFrame:
         """
-        Infers dependency using the method of conditional entropy. This only evaluates potential
-        columns. Potential columns are columns of type: int, str, categorical, or
-        booleans.
+        Infers (functional) dependency using the method of conditional entropy. This only evaluates
+        potential qualifying columns. Potential qualifying columns are columns of type:
+        int, str, categorical, or booleans.
 
         If returned conditional entropy is very low, that means knowning the column in
         `by` is enough to to infer the column in `column`, or the column in `column` can
@@ -353,7 +353,7 @@ class DIA:
 
         ce = (
             self._frame.select(
-                pl.col(x).num.cond_entropy(pl.col(y)).abs().alias(f"{i}")
+                query_cond_entropy(x, y).abs().alais(f"{i}")
                 for i, (x, y) in enumerate(combinations(check, 2))
             )
             .collect()

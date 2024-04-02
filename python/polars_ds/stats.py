@@ -1,7 +1,7 @@
 from __future__ import annotations
 import polars as pl
 import math
-from .type_alias import Alternative, str_to_expr
+from .type_alias import Alternative, str_to_expr, StrOrExpr
 from typing import Optional, Union
 from polars.utils.udfs import _get_shared_lib_location
 from ._utils import pl_plugin
@@ -277,8 +277,8 @@ class StatsExt:
 
 
 def query_ttest_ind(
-    var1: Union[str, pl.Expr],
-    var2: Union[str, pl.Expr],
+    var1: StrOrExpr,
+    var2: StrOrExpr,
     alternative: Alternative = "two-sided",
     equal_var: bool = False,
 ) -> pl.Expr:
@@ -338,7 +338,7 @@ def query_ttest_ind(
 
 
 def query_ttest_1samp(
-    var1: Union[str, pl.Expr], pop_mean: float, alternative: Alternative = "two-sided"
+    var1: StrOrExpr, pop_mean: float, alternative: Alternative = "two-sided"
 ) -> pl.Expr:
     """
     Performs a standard 1 sample t test using reference column and expected mean. This function
@@ -369,7 +369,7 @@ def query_ttest_1samp(
 
 
 def query_ttest_ind_from_stats(
-    var1: Union[str, pl.Expr],
+    var1: StrOrExpr,
     mean: float,
     var: float,
     cnt: int,
@@ -427,8 +427,8 @@ def query_ttest_ind_from_stats(
 
 
 def query_ks_2samp(
-    var1: Union[str, pl.Expr],
-    var2: Union[str, pl.Expr],
+    var1: StrOrExpr,
+    var2: StrOrExpr,
     alpha: float = 0.05,
     is_binary: bool = False,
 ) -> pl.Expr:
@@ -481,7 +481,7 @@ def query_ks_2samp(
         )
 
 
-def query_f_test(*variables: Union[str, pl.Expr], group: Union[str, pl.Expr]) -> pl.Expr:
+def query_f_test(*variables: StrOrExpr, group: StrOrExpr) -> pl.Expr:
     """
     Performs the ANOVA F-test.
 
@@ -782,7 +782,7 @@ def random_normal(
     )
 
 
-def hmean(var: Union[pl.Expr, str]) -> pl.Expr:
+def hmean(var: StrOrExpr) -> pl.Expr:
     """
     Computes the harmonic mean.
 
@@ -795,7 +795,7 @@ def hmean(var: Union[pl.Expr, str]) -> pl.Expr:
     return x.count() / (1.0 / x).sum()
 
 
-def gmean(var: Union[pl.Expr, str]) -> pl.Expr:
+def gmean(var: StrOrExpr) -> pl.Expr:
     """
     Computes the geometric mean.
 
@@ -808,9 +808,7 @@ def gmean(var: Union[pl.Expr, str]) -> pl.Expr:
     return x.ln().mean().exp()
 
 
-def weighted_gmean(
-    var: Union[pl.Expr, str], weights: Union[pl.Expr, str], is_normalized: bool = False
-) -> pl.Expr:
+def weighted_gmean(var: StrOrExpr, weights: StrOrExpr, is_normalized: bool = False) -> pl.Expr:
     """
     Computes the weighted geometric mean.
 
@@ -831,9 +829,7 @@ def weighted_gmean(
         return (x.ln().dot(w) / (w.sum())).exp()
 
 
-def weighted_mean(
-    var: Union[pl.Expr, str], weights: Union[pl.Expr, str], is_normalized: bool = False
-) -> pl.Expr:
+def weighted_mean(var: StrOrExpr, weights: StrOrExpr, is_normalized: bool = False) -> pl.Expr:
     """
     Computes the weighted mean, where weights is an expr represeting
     a weight column. The weights column must have the same length as var.
@@ -857,9 +853,7 @@ def weighted_mean(
     return out / w.sum()
 
 
-def weighted_var(
-    var: Union[pl.Expr, str], weights: Union[pl.Expr, str], freq_weights: bool = False
-) -> pl.Expr:
+def weighted_var(var: StrOrExpr, weights: StrOrExpr, freq_weights: bool = False) -> pl.Expr:
     """
     Computes the weighted variance. The weights column must have the same length as var.
 
@@ -889,9 +883,7 @@ def weighted_var(
     return summand / w.sum()
 
 
-def weighted_cov(
-    x: Union[pl.Expr, str], y: Union[pl.Expr, str], weights: Union[pl.Expr, float]
-) -> pl.Expr:
+def weighted_cov(x: StrOrExpr, y: StrOrExpr, weights: Union[pl.Expr, float]) -> pl.Expr:
     """
     Computes the weighted covariance between x and y. The weights column must have the same
     length as both x an y.
@@ -919,9 +911,7 @@ def weighted_cov(
     return w.dot((xx - wx) * (yy - wy)) / w.sum()
 
 
-def weighted_corr(
-    x: Union[pl.Expr, str], y: Union[pl.Expr, str], weights: Union[pl.Expr, float]
-) -> pl.Expr:
+def weighted_corr(x: StrOrExpr, y: StrOrExpr, weights: Union[pl.Expr, float]) -> pl.Expr:
     """
     Computes the weighted correlation between x and y. The weights column must have the same
     length as both x an y.
@@ -950,7 +940,7 @@ def weighted_corr(
     return numerator * w.sum() / (sxx * syy).sqrt()
 
 
-def cosine_sim(x: Union[pl.Expr, str], y: Union[pl.Expr, str]) -> pl.Expr:
+def cosine_sim(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
     """
     Column-wise cosine similarity
 
@@ -968,9 +958,7 @@ def cosine_sim(x: Union[pl.Expr, str], y: Union[pl.Expr, str]) -> pl.Expr:
     return xx.dot(yy) / (x2 * y2).sqrt()
 
 
-def weighted_cosine_sim(
-    x: Union[pl.Expr, str], y: Union[pl.Expr, str], weights: Union[pl.Expr, str]
-) -> pl.Expr:
+def weighted_cosine_sim(x: StrOrExpr, y: StrOrExpr, weights: Union[pl.Expr, str]) -> pl.Expr:
     """
     Computes the weighted cosine similarity between x and y (column-wise). The weights column
     must have the same length as both x an y.
