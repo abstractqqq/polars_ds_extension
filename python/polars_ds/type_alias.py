@@ -17,10 +17,11 @@ ConvMode: TypeAlias = Literal["same", "left", "right", "full", "valid"]
 
 # Other Custom Types
 PolarsFrame: TypeAlias = Union[pl.DataFrame, pl.LazyFrame]
+StrOrExpr: TypeAlias = Union[str, pl.Expr]
 
 
 # Auxiliary functions for type conversions
-def str_to_expr(e: Union[pl.Expr, str]) -> pl.Expr:
+def str_to_expr(e: StrOrExpr) -> pl.Expr:
     """
     Turns a string into an expression
 

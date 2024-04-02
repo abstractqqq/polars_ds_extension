@@ -20,15 +20,15 @@ from polars.testing import assert_frame_equal
     ],
 )
 def test_convolve(df, ft, res_full, res_valid, res_same):
-    res = df.select(pl.col("a").num.convolve(ft, mode="full"))
+    res = df.select(pds.convolve("a", ft, mode="full"))
 
     assert_frame_equal(res, res_full)
 
-    res = df.select(pl.col("a").num.convolve(ft, mode="valid"))
+    res = df.select(pds.convolve("a", ft, mode="valid"))
 
     assert_frame_equal(res, res_valid)
 
-    res = df.select(pl.col("a").num.convolve(ft, mode="same"))
+    res = df.select(pds.convolve("a", ft, mode="same"))
 
     assert_frame_equal(res, res_same)
 
@@ -45,7 +45,7 @@ def test_fft(arr, n):
     import scipy as sp
 
     df = pl.DataFrame({"a": arr})
-    res = df.select(pl.col("a").num.rfft(n=n).alias("fft")).select(
+    res = df.select(pds.rfft("a", n=n).alias("fft")).select(
         pl.col("fft").arr.first().alias("re"), pl.col("fft").arr.last().alias("im")
     )
     real_test = res["re"].to_numpy()
@@ -58,12 +58,12 @@ def test_fft(arr, n):
     assert np.isclose(im_test, imag).all()
 
     # Always run a check against scipy, with return_full=True as well
-    res2 = df.select(pl.col("a").num.rfft(return_full=True).alias("fft")).select(
+    res2 = df.select(pds.rfft("a", return_full=True).alias("fft")).select(
         pl.col("fft").arr.first().alias("re"), pl.col("fft").arr.last().alias("im")
     )
     real_test = res2["re"].to_numpy()
     im_test = res2["im"].to_numpy()
-    ans = sp.fft.fft(arr)
+    ans = sp.fft.fft(arr)  # always full fft
     real = ans.real
     imag = ans.imag
     assert np.isclose(real_test, real).all()
@@ -109,8 +109,8 @@ def test_f_test(df):
     ],
 )
 def test_signum(df, res):
-    assert_frame_equal(df.select(pl.col("a").num.signum()), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").num.signum()).collect(), res)
+    assert_frame_equal(df.select(pds.signum("a")), res)
+    assert_frame_equal(df.lazy().select(pds.signum("a")).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -123,8 +123,8 @@ def test_signum(df, res):
     ],
 )
 def test_trunc(df, res):
-    assert_frame_equal(df.select(pl.col("a").num.trunc()), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").num.trunc()).collect(), res)
+    assert_frame_equal(df.select(pds.trunc("a")), res)
+    assert_frame_equal(df.lazy().select(pds.trunc("a")).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -137,8 +137,8 @@ def test_trunc(df, res):
     ],
 )
 def test_fract(df, res):
-    assert_frame_equal(df.select(pl.col("a").num.fract()), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").num.fract()).collect(), res)
+    assert_frame_equal(df.select(pds.fract("a")), res)
+    assert_frame_equal(df.lazy().select(pds.fract("a")).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -194,7 +194,7 @@ def test_lcm(df, other, res):
     ],
 )
 def test_trapz(df, x, res):
-    assert_frame_equal(df.select(pl.col("a").num.trapz(x=x)), res)
+    assert_frame_equal(df.select(pds.integrate_trapz("a", x=x)), res)
 
 
 @pytest.mark.parametrize(
@@ -213,9 +213,9 @@ def test_trapz(df, x, res):
     ],
 )
 def test_cond_entropy(df, res):
-    assert_frame_equal(df.select(pl.col("y").num.cond_entropy(pl.col("a"))), res)
+    assert_frame_equal(df.select(pds.query_cond_entropy("y", "a")), res)
 
-    assert_frame_equal(df.lazy().select(pl.col("y").num.cond_entropy(pl.col("a"))).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.query_cond_entropy("y", "a")).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -264,11 +264,11 @@ def test_cross_entropy(df, res):
         ),
     ],
 )
-def test_list_jaccard(df, res):
-    assert_frame_equal(df.select(pl.col("a").num.list_jaccard(pl.col("b")).alias("res")), res)
+def test_jaccard_row(df, res):
+    assert_frame_equal(df.select(pds.query_jaccard_row("a", "b").alias("res")), res)
 
     assert_frame_equal(
-        df.lazy().select(pl.col("a").num.list_jaccard(pl.col("b")).alias("res")).collect(), res
+        df.lazy().select(pds.query_jaccard_row("a", "b").alias("res")).collect(), res
     )
 
 
@@ -277,7 +277,7 @@ def test_lstsq():
     df = pl.DataFrame({"y": [1, 2, 3, 4, 5], "a": [2, 3, 4, 5, 6], "b": [-1, -1, -1, -1, -1]})
     res = pl.DataFrame({"y": [[1.0, 1.0]]})
     assert_frame_equal(
-        df.select(pl.col("y").num.lstsq(pl.col("a"), pl.col("b"), add_bias=False)), res
+        df.select(pds.query_lstsq(pl.col("a"), pl.col("b"), target="y", add_bias=False)), res
     )
 
     df = pl.DataFrame(
@@ -287,7 +287,7 @@ def test_lstsq():
         }
     )
     res = pl.DataFrame({"y": [[1.0, -1.0]]})
-    assert_frame_equal(df.select(pl.col("y").num.lstsq(pl.col("a"), add_bias=True)), res)
+    assert_frame_equal(df.select(pds.query_lstsq(pl.col("a"), target="y", add_bias=True)), res)
 
 
 # Hard to write generic tests because ncols can vary in X
@@ -303,9 +303,9 @@ def test_lstsq_skip_null():
     )
     assert_frame_equal(
         df.select(
-            pl.col("y")
-            .num.lstsq(pl.col("a"), pl.col("b"), skip_null=True, return_pred=True)
-            .alias("result")
+            pds.query_lstsq(
+                pl.col("a"), pl.col("b"), target="y", skip_null=True, return_pred=True
+            ).alias("result")
         ).unnest("result"),
         res,
     )
@@ -320,11 +320,11 @@ def test_lstsq_skip_null():
         ),
     ],
 )
-def test_col_jaccard(df, res):
-    assert_frame_equal(df.select(pl.col("a").num.jaccard(pl.col("b")).alias("j")), res)
+def test_jaccard_col(df, res):
+    assert_frame_equal(df.select(pds.query_jaccard_col("a", "b").alias("j")), res)
 
     assert_frame_equal(
-        df.lazy().select(pl.col("a").num.jaccard(pl.col("b")).alias("j")).collect(), res
+        df.lazy().select(df.select(pds.query_jaccard_col("a", "b").alias("j"))).collect(), res
     )
 
 
@@ -880,7 +880,7 @@ def test_merge_infreq(df, min_count, min_frac, res):
     ],
 )
 def test_lempel_ziv_complexity(df, threshold, res):
-    test = df.select((pl.col("a") > threshold).num.lempel_ziv_complexity(as_ratio=False))
+    test = df.select(pds.query_lempel_ziv(pl.col("a") > threshold, as_ratio=False))
     assert test.item(0, 0) == res
 
 
@@ -1033,7 +1033,7 @@ def test_normal_test(df):
 def test_expit(df):
     from scipy.special import expit
 
-    res = df.select(pl.col("a").num.expit())["a"].to_numpy()
+    res = df.select(pds.expit("a"))["a"].to_numpy()
     scipy_res = expit(df["a"].to_numpy())
     assert np.isclose(res, scipy_res, equal_nan=True).all()
 
@@ -1047,7 +1047,7 @@ def test_expit(df):
 def test_logit(df):
     from scipy.special import logit
 
-    res = df.select(pl.col("a").num.logit())["a"].to_numpy()
+    res = df.select(pds.logit("a"))["a"].to_numpy()
     scipy_res = logit(df["a"].to_numpy())
     assert np.isclose(res, scipy_res, equal_nan=True).all()
 
@@ -1061,7 +1061,7 @@ def test_logit(df):
 def test_gamma(df):
     from scipy.special import gamma
 
-    res = df.select(pl.col("a").num.gamma())["a"].to_numpy()
+    res = df.select(pds.gamma("a"))["a"].to_numpy()
     scipy_res = gamma(df["a"].to_numpy())
     assert np.isclose(res, scipy_res, equal_nan=True).all()
 

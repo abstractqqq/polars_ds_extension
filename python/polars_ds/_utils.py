@@ -11,6 +11,7 @@ def pl_plugin(
     is_elementwise: bool = False,
     returns_scalar: bool = False,
     changes_length: bool = False,
+    cast_to_supertype: bool = False,
 ) -> pl.Expr:
     # pl.__version__ should always be a valid version number, so split returns always 3 strs
     if tuple(int(x) for x in pl.__version__.split(".")) < (0, 20, 16):
@@ -23,6 +24,7 @@ def pl_plugin(
             is_elementwise=is_elementwise,
             returns_scalar=returns_scalar,
             changes_length=changes_length,
+            cast_to_supertype=cast_to_supertype,
         )
 
     from polars.plugins import register_plugin_function
@@ -35,4 +37,5 @@ def pl_plugin(
         is_elementwise=is_elementwise,
         returns_scalar=returns_scalar,
         changes_length=changes_length,
+        cast_to_supertype=cast_to_supertype,
     )
