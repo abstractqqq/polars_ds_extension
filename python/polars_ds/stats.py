@@ -272,90 +272,6 @@ class StatsExt:
             is_elementwise=True,
         )
 
-    def t_mean(self, lower: float, upper: float) -> pl.Expr:
-        """
-        Computes the trimmed mean of the variable.
-
-        Parameters
-        ----------
-        lower
-            The lower end, smaller values will be trimmed
-        upper
-            The upper end, larger values will be trimmed
-        """
-        return self._expr.filter(self._expr.is_between(lower, upper)).mean()
-
-    def t_var(self, lower: float, upper: float, ddof: int = 1) -> pl.Expr:
-        """
-        Computes the trimmed var of the variable.
-
-        Parameters
-        ----------
-        lower
-            The lower end, smaller values will be trimmed
-        upper
-            The upper end, larger values will be trimmed
-        """
-        return self._expr.filter(self._expr.is_between(lower, upper)).var(ddof)
-
-    def w_mean(self, weights: pl.Expr, is_normalized: bool = False) -> pl.Expr:
-        """
-        Computes the weighted mean of self, where weights is an expr represeting
-        a weight column. The weights column must have the same length as self.
-
-        All weights are assumed to be > 0. This will not check if weight is zero.
-
-        Parameters
-        ----------
-        weights
-            An expr representing weights. Must be of same length as self.
-        is_normalized
-            If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
-        """
-        out = self._expr.dot(weights)
-        if is_normalized:
-            return out
-        return out / weights.sum()
-
-    def w_var(self, weights: pl.Expr, is_normalized: bool = False) -> pl.Expr:
-        """
-        Computes the weighted var of self, where weights is an expr represeting
-        a weight column. The weights column must have the same length as self.
-
-        All weights are assumed to be > 0. This will not check if weight is zero.
-
-        Parameters
-        ----------
-        weights
-            An expr representing weights. Must be of same length as self.
-        is_normalized
-            If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
-        """
-        centered_squared = (self._expr - self._expr.mean()).pow(2)
-        out = weights.dot(centered_squared)
-        if is_normalized:
-            denom = (self._expr.count() - 1) / self._expr.count()
-        else:
-            denom = weights.sum() * (self._expr.count() - 1) / self._expr.count()
-
-        return out / denom
-
-    def w_gmean(self, weights: pl.Expr, is_normalized: bool = False) -> pl.Expr:
-        """
-        Computes the weighted geometric mean.
-
-        Parameters
-        ----------
-        weights
-            An expr representing weights. Must be of same length as self.
-        is_normalized
-            If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
-        """
-        if is_normalized:
-            return (self._expr.ln().dot(weights)).exp()
-        else:
-            return (self._expr.ln().dot(weights) / (weights.sum())).exp()
-
 
 # -------------------------------------------------------------------------------------------------------
 
@@ -864,3 +780,219 @@ def random_normal(
         args=[pl.len().cast(pl.UInt32), m, s, pl.lit(seed, pl.UInt64)],
         is_elementwise=True,
     )
+
+
+def hmean(var: Union[pl.Expr, str]) -> pl.Expr:
+    """
+    Computes the harmonic mean.
+
+    Parameters
+    ----------
+    var
+        The variable
+    """
+    x = str_to_expr(var)
+    return x.count() / (1.0 / x).sum()
+
+
+def gmean(var: Union[pl.Expr, str]) -> pl.Expr:
+    """
+    Computes the geometric mean.
+
+    Parameters
+    ----------
+    var
+        The variable
+    """
+    x = str_to_expr(var)
+    return x.ln().mean().exp()
+
+
+def weighted_gmean(
+    var: Union[pl.Expr, str], weights: Union[pl.Expr, str], is_normalized: bool = False
+) -> pl.Expr:
+    """
+    Computes the weighted geometric mean.
+
+    Parameters
+    ----------
+    var
+        The variable
+    weights
+        An expr representing weights. Must be of same length as var.
+    is_normalized
+        If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
+    """
+    x = str_to_expr(var)
+    w = str_to_expr(weights)
+    if is_normalized:
+        return (x.ln().dot(w)).exp()
+    else:
+        return (x.ln().dot(w) / (w.sum())).exp()
+
+
+def weighted_mean(
+    var: Union[pl.Expr, str], weights: Union[pl.Expr, str], is_normalized: bool = False
+) -> pl.Expr:
+    """
+    Computes the weighted mean, where weights is an expr represeting
+    a weight column. The weights column must have the same length as var.
+
+    All weights are assumed to be > 0. This will not check if weights are valid.
+
+    Parameters
+    ----------
+    var
+        The variable
+    weights
+        An expr representing weights. Must be of same length as var.
+    is_normalized
+        If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
+    """
+    x = str_to_expr(var)
+    w = str_to_expr(weights)
+    out = x.dot(w)
+    if is_normalized:
+        return out
+    return out / w.sum()
+
+
+def weighted_var(
+    var: Union[pl.Expr, str], weights: Union[pl.Expr, str], freq_weights: bool = False
+) -> pl.Expr:
+    """
+    Computes the weighted variance. The weights column must have the same length as var.
+
+    All weights are assumed to be > 0. This will not check if weights are valid.
+
+    Parameters
+    ----------
+    var
+        The variable
+    weights
+        An expr representing weights. Must be of same length as var.
+    freq_weights
+        Whether to follow the formula for frequency weights or other types of weights. See reference
+        for detail. If true, this assumes frequency weights are NOT normalized. If false, the
+        weighted sample variance is biased. See reference for more info.
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
+    """
+    x = str_to_expr(var)
+    w = str_to_expr(weights)
+    wm = weighted_mean(x, w, False)
+    summand = w.dot((x - wm).pow(2))
+    if freq_weights:
+        return summand / (w.sum() - 1)
+    return summand / w.sum()
+
+
+def weighted_cov(
+    x: Union[pl.Expr, str], y: Union[pl.Expr, str], weights: Union[pl.Expr, float]
+) -> pl.Expr:
+    """
+    Computes the weighted covariance between x and y. The weights column must have the same
+    length as both x an y.
+
+    All weights are assumed to be > 0. This will not check if weights are valid.
+
+    Parameters
+    ----------
+    x
+        The first variable
+    y
+        The second variable
+    weights
+        An expr representing weights. Must be of same length as var.
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Pearson_correlation_coefficient#Weighted_correlation_coefficient
+    """
+    xx = str_to_expr(x)
+    yy = str_to_expr(y)
+    w = str_to_expr(weights)
+    wx = weighted_mean(xx, w, False)
+    wy = weighted_mean(yy, w, False)
+    return w.dot((xx - wx) * (yy - wy)) / w.sum()
+
+
+def weighted_corr(
+    x: Union[pl.Expr, str], y: Union[pl.Expr, str], weights: Union[pl.Expr, float]
+) -> pl.Expr:
+    """
+    Computes the weighted correlation between x and y. The weights column must have the same
+    length as both x an y.
+
+    All weights are assumed to be > 0. This will not check if weights are valid.
+
+    Parameters
+    ----------
+    x
+        The first variable
+    y
+        The second variable
+    weights
+        An expr representing weights. Must be of same length as var.
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Pearson_correlation_coefficient#Weighted_correlation_coefficient
+    """
+    xx = str_to_expr(x)
+    yy = str_to_expr(y)
+    w = str_to_expr(weights)
+    numerator = weighted_cov(xx, yy, w)
+    sxx = w.dot((xx - weighted_mean(xx, w, False)).pow(2))
+    syy = w.dot((xx - weighted_mean(yy, w, False)).pow(2))
+    return numerator * w.sum() / (sxx * syy).sqrt()
+
+
+def cosine_sim(x: Union[pl.Expr, str], y: Union[pl.Expr, str]) -> pl.Expr:
+    """
+    Column-wise cosine similarity
+
+    Parameters
+    ----------
+    x
+        The first variable
+    y
+        The second variable
+    """
+    xx = str_to_expr(x)
+    yy = str_to_expr(y)
+    x2 = xx.dot(xx).sqrt()
+    y2 = yy.dot(yy).sqrt()
+    return xx.dot(yy) / (x2 * y2).sqrt()
+
+
+def weighted_cosine_sim(
+    x: Union[pl.Expr, str], y: Union[pl.Expr, str], weights: Union[pl.Expr, str]
+) -> pl.Expr:
+    """
+    Computes the weighted cosine similarity between x and y (column-wise). The weights column
+    must have the same length as both x an y.
+
+    All weights are assumed to be > 0. This will not check if weights are valid.
+
+    Parameters
+    ----------
+    x
+        The first variable
+    y
+        The second variable
+    weights
+        An expr representing weights. Must be of same length as var.
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Pearson_correlation_coefficient#Weighted_correlation_coefficient
+    """
+    xx = str_to_expr(x)
+    yy = str_to_expr(y)
+    w = str_to_expr(weights)
+    wx2 = xx.pow(2).dot(w)
+    wy2 = yy.pow(2).dot(w)
+    return (w * xx).dot(yy) / (wx2 * wy2).sqrt()
