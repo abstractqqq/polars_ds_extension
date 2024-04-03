@@ -157,9 +157,9 @@ def test_fract(df, res):
     ],
 )
 def test_gcd(df, other, res):
-    assert_frame_equal(df.select(pl.col("a").num.gcd(other)), res)
+    assert_frame_equal(df.select(pds.query_gcd("a", other).cast(pl.Int64)), res)
 
-    assert_frame_equal(df.lazy().select(pl.col("a").num.gcd(other)).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.query_gcd("a", other).cast(pl.Int64)).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -178,9 +178,9 @@ def test_gcd(df, other, res):
     ],
 )
 def test_lcm(df, other, res):
-    assert_frame_equal(df.select(pl.col("a").num.lcm(other)), res)
+    assert_frame_equal(df.select(pds.query_lcm("a", other).cast(pl.Int64)), res)
 
-    assert_frame_equal(df.lazy().select(pl.col("a").num.lcm(other)).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.query_lcm("a", other).cast(pl.Int64)).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -1164,8 +1164,9 @@ def test_precision_recall_roc_auc():
 )
 def test_knn_ptwise(df, dist, k, res):
     df2 = df.select(
-        pl.col("id")
-        .num._knn_ptwise(pl.col("val1"), pl.col("val2"), pl.col("val3"), dist=dist, k=k)
+        pds.query_knn_ptwise(
+            pl.col("val1"), pl.col("val2"), pl.col("val3"), index="id", dist=dist, k=k
+        )
         .list.eval(pl.element().sort().cast(pl.UInt32))
         .alias("nn")
     )
@@ -1309,7 +1310,7 @@ def test_apprximate_entropy(s, m, r, scale, res):
     ],
 )
 def test_psi(df, n_bins, res):
-    ans = df.select(pl.col("act").num.psi(pl.col("ref"), n_bins=n_bins)).item(0, 0)
+    ans = df.select(pds.query_psi("act", pl.col("ref"), n_bins=n_bins)).item(0, 0)
     assert np.isclose(ans, res)
 
 
@@ -1337,7 +1338,7 @@ def test_psi(df, n_bins, res):
     ],
 )
 def test_psi_discrete(df, res):
-    ans = df.select(pl.col("act").num.psi_discrete(pl.col("ref"))).item(0, 0)
+    ans = df.select(pds.query_psi_discrete("act", pl.col("ref"))).item(0, 0)
     assert np.isclose(ans, res)
 
 
