@@ -145,48 +145,6 @@ class NumExt:
         """
         return (self._expr == self._expr.min()).sum()
 
-    def gcd(self, other: Union[int, pl.Expr]) -> pl.Expr:
-        """
-        Computes GCD of two integer columns. This will try to cast everything to int64.
-
-        Parameters
-        ----------
-        other
-            Either an int or a Polars expression
-        """
-        if isinstance(other, int):
-            other_ = pl.lit(other, dtype=pl.Int64)
-        else:
-            other_ = other.cast(pl.Int64)
-
-        return self._expr.cast(pl.Int64).register_plugin(
-            lib=_lib,
-            symbol="pl_gcd",
-            args=[other_],
-            is_elementwise=True,
-        )
-
-    def lcm(self, other: Union[int, pl.Expr]) -> pl.Expr:
-        """
-        Computes LCM of two integer columns. This will try to cast everything to int64.
-
-        Parameters
-        ----------
-        other
-            Either an int or a Polars expression
-        """
-        if isinstance(other, int):
-            other_ = pl.lit(other, dtype=pl.Int64)
-        else:
-            other_ = other.cast(pl.Int64)
-
-        return self._expr.cast(pl.Int64).register_plugin(
-            lib=_lib,
-            symbol="pl_lcm",
-            args=[other_],
-            is_elementwise=True,
-        )
-
     def is_equidistant(self, tol: float = 1e-6) -> pl.Expr:
         """
         Checks if a column has equal distance between consecutive values.
@@ -240,190 +198,6 @@ class NumExt:
             .otherwise(pl.lit(float("inf"), dtype=pl.Float64))
         )
 
-    def detrend(self, method: DetrendMethod = "linear") -> pl.Expr:
-        """
-        Detrends self using either linear/mean method. This does not persist.
-
-        Parameters
-        ----------
-        method
-            Either `linear` or `mean`
-        """
-        if method == "linear":
-            N = self._expr.count()
-            x = pl.int_range(0, N, eager=False)
-            coeff = pl.cov(self._expr, x) / x.var()
-            const = self._expr.mean() - coeff * (N - 1) / 2
-            return self._expr - x * coeff - const
-        elif method == "mean":
-            return self._expr - self._expr.mean()
-        else:
-            raise ValueError(f"Unknown detrend method: {method}")
-
-    def _knn_ptwise(
-        self,
-        *others: pl.Expr,
-        k: int = 5,
-        leaf_size: int = 32,
-        dist: Distance = "l2",
-        parallel: bool = False,
-        return_dist: bool = False,
-    ) -> pl.Expr:
-        """
-        See query_knn_ptwise.
-        """
-        if k < 1:
-            raise ValueError("Input `k` must be >= 1.")
-
-        metric = str(dist).lower()
-        index: pl.Expr = self._expr.cast(pl.UInt32)
-        if return_dist:
-            return index.register_plugin(
-                lib=_lib,
-                symbol="pl_knn_ptwise_w_dist",
-                args=list(others),
-                kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
-                is_elementwise=True,
-            )
-        else:
-            return index.register_plugin(
-                lib=_lib,
-                symbol="pl_knn_ptwise",
-                args=list(others),
-                kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
-                is_elementwise=True,
-            )
-
-    def _radius_ptwise(
-        self,
-        *others: pl.Expr,
-        r: float,
-        leaf_size: int = 32,
-        dist: Distance = "l2",
-        parallel: bool = False,
-    ) -> pl.Expr:
-        """
-        See query_radius_ptwise.
-        """
-        if r <= 0.0:
-            raise ValueError("Input `r` must be > 0.")
-        elif isinstance(r, pl.Expr):
-            raise ValueError("Input `r` must be a scalar now. Expression input is not implemented.")
-
-        metric = str(dist).lower()
-        index: pl.Expr = self._expr.cast(pl.UInt32)
-        return index.register_plugin(
-            lib=_lib,
-            symbol="pl_query_radius_ptwise",
-            args=list(others),
-            kwargs={"r": r, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
-            is_elementwise=True,
-        )
-
-    def woe(self, target: pl.Expr, n_bins: int = 10) -> pl.Expr:
-        """
-        Compute the Weight of Evidence for self with respect to target. This assumes self
-        is continuous. A value of 1 is added to all events/non-events
-        (goods/bads) to smooth the computation.
-
-        Currently only quantile binning strategy is implemented.
-
-        Parameters
-        ----------
-        target
-            The target variable. Should be 0s and 1s.
-        n_bins
-            The number of bins to bin the variable.
-
-        Reference
-        ---------
-        https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
-        """
-        valid = self._expr.filter(self._expr.is_finite()).cast(pl.Float64)
-        brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True)
-        return brk.register_plugin(
-            lib=_lib, symbol="pl_woe_discrete", args=[target], changes_length=True
-        )
-
-    def woe_discrete(
-        self,
-        target: pl.Expr,
-    ) -> pl.Expr:
-        """
-        Compute the Weight of Evidence for self with respect to target. This assumes self
-        is discrete and castable to String. A value of 1 is added to all events/non-events
-        (goods/bads) to smooth the computation.
-
-        Parameters
-        ----------
-        target
-            The target variable. Should be 0s and 1s.
-
-        Reference
-        ---------
-        https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
-        """
-        return self._expr.register_plugin(
-            lib=_lib, symbol="pl_woe_discrete", args=[target], changes_length=True
-        )
-
-    def iv(self, target: pl.Expr, n_bins: int = 10, return_sum: bool = True) -> pl.Expr:
-        """
-        Compute the Information Value for self with respect to target. This assumes the variable
-        is continuous. A value of 1 is added to all events/non-events
-        (goods/bads) to smooth the computation.
-
-        Currently only quantile binning strategy is implemented.
-
-        Parameters
-        ----------
-        target
-            The target variable. Should be 0s and 1s.
-        n_bins
-            The number of bins to bin the variable.
-        return_sum
-            If false, the output is a struct containing the ranges and the corresponding IVs. If true,
-            it is the sum of the individual information values.
-
-        Reference
-        ---------
-        https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
-        """
-        valid = self._expr.filter(self._expr.is_finite()).cast(pl.Float64)
-        brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True)
-
-        out = brk.register_plugin(lib=_lib, symbol="pl_iv", args=[target], changes_length=True)
-        if return_sum:
-            return out.struct.field("iv").sum()
-        else:
-            return out
-
-    def iv_discrete(self, target: pl.Expr, return_sum: bool = True) -> pl.Expr:
-        """
-        Compute the Information Value for self with respect to target. This assumes self
-        is discrete and castable to String. A value of 1 is added to all events/non-events
-        (goods/bads) to smooth the computation.
-
-        Parameters
-        ----------
-        target
-            The target variable. Should be 0s and 1s.
-        return_sum
-            If false, the output is a struct containing the categories and the corresponding IVs. If true,
-            it is the sum of the individual information values.
-
-        Reference
-        ---------
-        https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
-        """
-        out = self._expr.register_plugin(
-            lib=_lib, symbol="pl_iv", args=[target], changes_length=True
-        )
-        if return_sum:
-            return out.struct.field("iv").sum()
-        else:
-            return out
-
     def target_encode(
         self, target: pl.Expr, min_samples_leaf: int = 20, smoothing: float = 10.0
     ) -> pl.Expr:
@@ -444,112 +218,56 @@ class NumExt:
             changes_length=True,
         )
 
-    def psi(
-        self,
-        ref: Union[pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
-        n_bins: int = 10,
-    ) -> pl.Expr:
-        """
-        Compute the Population Stability Index between self (actual) and the reference column. The reference
-        column will be divided into n_bins quantile bins which will be used as basis of comparison.
-
-        Note this assumes values in self and ref are continuous. This will also remove all infinite, null, NA.
-        values.
-
-        Also note that it will try to create `n_bins` many unique breakpoints. If input data has < n_bins
-        unique breakpoints, the repeated breakpoints will be grouped together, and the computation will be done
-        with < `n_bins` many bins. This happens when a single value appears too many times in data. This also
-        differs from the reference implementation by treating breakpoints as right-closed intervals with -inf
-        and inf being the first and last values of the intervals. This is because we need to accommodate all data
-        in the case when actual data's min and the reference data's min are not the same, which is common in reality.
-
-        Parameters
-        ----------
-        ref
-            An expression, or any iterable that can be turned into a Polars series
-        n_bins : int, > 1
-            The number of quantile bins to use
-
-        Reference
-        ---------
-        https://github.com/mwburke/population-stability-index/blob/master/psi.py
-        https://www.listendata.com/2015/05/population-stability-index.html
-        """
-        if n_bins <= 1:
-            raise ValueError("Input `n_bins` must be >= 2.")
-
-        valid_self = self._expr.filter(self._expr.is_finite()).cast(pl.Float64)
-        if isinstance(ref, pl.Expr):
-            valid_ref = ref.filter(ref.is_finite()).cast(pl.Float64)
-        else:
-            temp = pl.Series(values=ref, dtype=pl.Float64)
-            temp = temp.filter(temp.is_finite())
-            valid_ref = pl.lit(temp)
-
-        vc = (
-            valid_ref.qcut(n_bins, left_closed=False, allow_duplicates=True, include_breaks=True)
-            .struct.field("brk")
-            .value_counts()
-            .sort()
-        )
-        brk = vc.struct.field("brk")  # .cast(pl.Float64)
-        cnt_ref = vc.struct.field("count")  # .cast(pl.UInt32)
-
-        return valid_self.register_plugin(
-            lib=_lib,
-            symbol="pl_psi",
-            args=[brk, cnt_ref],
-            is_elementwise=False,
-            returns_scalar=True,
-        )
-
-    def psi_discrete(
-        self,
-        ref: Union[pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
-    ) -> pl.Expr:
-        """
-        Compute the Population Stability Index between self (actual) and the reference column. The reference
-        column will be used as bins which are the basis of comparison.
-
-        Note this assumes values in self and ref are discrete columns. This will treat each value as a discrete
-        category, e.g. null will be treated as a category by itself. If a category exists in actual but not in
-        ref, then 0 is imputed, and 0.0001 is used to avoid numerical issue when computing psi. It is recommended
-        to use for str and str column PSI comparison, or discrete numerical column PSI comparison.
-
-        Also note that discrete columns must have the same type in order to be considered the same.
-
-        Parameters
-        ----------
-        ref
-            An expression, or any iterable that can be turned into a Polars series
-
-        Reference
-        ---------
-        https://www.listendata.com/2015/05/population-stability-index.html
-        """
-        if isinstance(ref, pl.Expr):
-            temp = ref.value_counts().struct.rename_fields(["ref", "count"])
-            ref_cnt = temp.struct.field("count")
-            ref_cats = temp.struct.field("ref")
-        else:
-            temp = pl.Series(values=ref, dtype=pl.Float64)
-            temp = temp.value_counts()  # This is a df in this case
-            ref_cnt = temp.drop_in_place("count")
-            ref_cats = temp[temp.columns[0]]
-
-        vc = self._expr.value_counts().struct.rename_fields(["self", "count"])
-        data_cnt = vc.struct.field("count")
-        data_cats = vc.struct.field("self")
-
-        return data_cats.register_plugin(
-            lib=_lib,
-            symbol="pl_psi_discrete",
-            args=[data_cnt, ref_cats, ref_cnt],
-            returns_scalar=True,
-        )
-
 
 # ----------------------------------------------------------------------------------
+
+
+def query_gcd(x: StrOrExpr, y: Union[int, str, pl.Expr]) -> pl.Expr:
+    """
+    Computes GCD of two integer columns. This will try to cast everything to int32.
+
+    Parameters
+    ----------
+    x
+        An integer column
+    y
+        Either an int, or another integer column
+    """
+    if isinstance(y, int):
+        yy = pl.lit(y, dtype=pl.Int32)
+    else:
+        yy = str_to_expr(y).cast(pl.Int32)
+
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_gcd",
+        args=[str_to_expr(x).cast(pl.Int32), yy],
+        is_elementwise=True,
+    )
+
+
+def query_lcm(x: StrOrExpr, y: Union[int, str, pl.Expr]) -> pl.Expr:
+    """
+    Computes LCM of two integer columns. This will try to cast everything to int32.
+
+    Parameters
+    ----------
+    x
+        An integer column
+    y
+        Either an int, or another integer column
+    """
+    if isinstance(y, int):
+        yy = pl.lit(y, dtype=pl.Int32)
+    else:
+        yy = str_to_expr(y).cast(pl.Int32)
+
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_lcm",
+        args=[str_to_expr(x).cast(pl.Int32), yy],
+        is_elementwise=True,
+    )
 
 
 def haversine(
@@ -625,15 +343,29 @@ def query_knn_ptwise(
     return_dist
         If true, return a struct with indices and distances.
     """
-    idx = str_to_expr(index)
-    return idx.num._knn_ptwise(
-        *(str_to_expr(x) for x in features),
-        k=k,
-        leaf_size=leaf_size,
-        dist=dist,
-        parallel=parallel,
-        return_dist=return_dist,
-    )
+    if k < 1:
+        raise ValueError("Input `k` must be >= 1.")
+
+    idx = str_to_expr(index).cast(pl.UInt32)
+    metric = str(dist).lower()
+    cols = [idx]
+    cols.extend(str_to_expr(x) for x in features)
+    if return_dist:
+        return pl_plugin(
+            lib=_lib,
+            symbol="pl_knn_ptwise_w_dist",
+            args=cols,
+            kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
+            is_elementwise=True,
+        )
+    else:
+        return pl_plugin(
+            lib=_lib,
+            symbol="pl_knn_ptwise",
+            args=cols,
+            kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
+            is_elementwise=True,
+        )
 
 
 def query_within_dist_from(
@@ -731,9 +463,21 @@ def query_radius_ptwise(
         Whether to run the k-nearest neighbor query in parallel. This is recommended when you
         are running only this expression, and not in group_by context.
     """
-    idx = str_to_expr(index)
-    return idx.num._radius_ptwise(
-        *[str_to_expr(x) for x in features], r=r, dist=dist, parallel=parallel
+    if r <= 0.0:
+        raise ValueError("Input `r` must be > 0.")
+    elif isinstance(r, pl.Expr):
+        raise ValueError("Input `r` must be a scalar now. Expression input is not implemented.")
+
+    idx = str_to_expr(index).cast(pl.UInt32)
+    metric = str(dist).lower()
+    cols = [idx]
+    cols.extend(str_to_expr(x) for x in features)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_query_radius_ptwise",
+        args=cols,
+        kwargs={"r": r, "leaf_size": 32, "metric": metric, "parallel": parallel},
+        is_elementwise=True,
     )
 
 
@@ -977,7 +721,7 @@ def query_knn_entropy(
     )
 
 
-def query_copula_entropy(*features: StrOrExpr, k: int = 2, parallel: bool = False):
+def query_copula_entropy(*features: StrOrExpr, k: int = 2, parallel: bool = False) -> pl.Expr:
     """
     Estimates Copula Entropy via rank statistics.
 
@@ -989,7 +733,9 @@ def query_copula_entropy(*features: StrOrExpr, k: int = 2, parallel: bool = Fals
     return -query_knn_entropy(*ranks, k=k, dist="l2", parallel=parallel)
 
 
-def query_cond_indep(x: StrOrExpr, y: StrOrExpr, z: StrOrExpr, k: int = 2, parallel: bool = False):
+def query_cond_indep(
+    x: StrOrExpr, y: StrOrExpr, z: StrOrExpr, k: int = 2, parallel: bool = False
+) -> pl.Expr:
     """
     Computes the conditional independance of `x`  and `y`, conditioned on `z`
 
@@ -1009,7 +755,7 @@ def query_cond_indep(x: StrOrExpr, y: StrOrExpr, z: StrOrExpr, k: int = 2, paral
 
 def query_transfer_entropy(
     x: StrOrExpr, source: StrOrExpr, lag: int = 1, k: int = 2, parallel: bool = False
-):
+) -> pl.Expr:
     """
     Estimating transfer entropy from `source` to `x` with a lag
 
@@ -1243,6 +989,230 @@ def query_jaccard_col(first: StrOrExpr, second: StrOrExpr, count_null: bool = Fa
     )
 
 
+def query_psi(
+    x: StrOrExpr,
+    ref: Union[pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
+    n_bins: int = 10,
+) -> pl.Expr:
+    """
+    Compute the Population Stability Index between x and the reference column (usually x's historical values).
+    The reference column will be divided into n_bins quantile bins which will be used as basis of comparison.
+
+    Note this assumes values in self and ref are continuous. This will also remove all infinite, null, NA.
+    values.
+
+    Also note that it will try to create `n_bins` many unique breakpoints. If input data has < n_bins
+    unique breakpoints, the repeated breakpoints will be grouped together, and the computation will be done
+    with < `n_bins` many bins. This happens when a single value appears too many times in data. This also
+    differs from the reference implementation by treating breakpoints as right-closed intervals with -inf
+    and inf being the first and last values of the intervals. This is because we need to accommodate all data
+    in the case when actual data's min and the reference data's min are not the same, which is common in reality.
+
+    Parameters
+    ----------
+    x
+        The feature
+    ref
+        An expression, or any iterable that can be turned into a Polars series. Usually this should
+        be x's historical values
+    n_bins : int, > 1
+        The number of quantile bins to use
+
+    Reference
+    ---------
+    https://github.com/mwburke/population-stability-index/blob/master/psi.py
+    https://www.listendata.com/2015/05/population-stability-index.html
+    """
+    if n_bins <= 1:
+        raise ValueError("Input `n_bins` must be >= 2.")
+
+    xx = str_to_expr(x)
+    valid_x = xx.filter(xx.is_finite()).cast(pl.Float64)
+    if isinstance(ref, pl.Expr):
+        valid_ref = ref.filter(ref.is_finite()).cast(pl.Float64)
+    else:
+        temp = pl.Series(values=ref, dtype=pl.Float64)
+        temp = temp.filter(temp.is_finite())
+        valid_ref = pl.lit(temp)
+
+    vc = (
+        valid_ref.qcut(n_bins, left_closed=False, allow_duplicates=True, include_breaks=True)
+        .struct.field("brk")
+        .value_counts()
+        .sort()
+    )
+    brk = vc.struct.field("brk")  # .cast(pl.Float64)
+    cnt_ref = vc.struct.field("count")  # .cast(pl.UInt32)
+
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_psi",
+        args=[valid_x, brk, cnt_ref],
+        returns_scalar=True,
+    )
+
+
+def query_psi_discrete(
+    x: StrOrExpr,
+    ref: Union[pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
+) -> pl.Expr:
+    """
+    Compute the Population Stability Index between self (actual) and the reference column. The reference
+    column will be used as bins which are the basis of comparison.
+
+    Note this assumes values in x and ref are discrete columns (str categories). This will treat each
+    value as a distinct category and null will be treated as a category by itself. If a category
+    exists in actual but not in ref, then 0 is imputed, and 0.0001 is used to avoid numerical issue.
+    This is recommended to use for str-str column PSI comparison.
+
+    Also note that discrete columns must have the same type in order to be considered the same.
+
+    Parameters
+    ----------
+    x
+        The feature
+    ref
+        An expression, or any iterable that can be turned into a Polars series. Usually this should
+        be x's historical values
+
+    Reference
+    ---------
+    https://www.listendata.com/2015/05/population-stability-index.html
+    """
+    if isinstance(ref, pl.Expr):
+        temp = ref.value_counts().struct.rename_fields(["ref", "count"])
+        ref_cnt = temp.struct.field("count")
+        ref_cats = temp.struct.field("ref")
+    else:
+        temp = pl.Series(values=ref, dtype=pl.Float64)
+        temp = temp.value_counts()  # This is a df in this case
+        ref_cnt = temp.drop_in_place("count")
+        ref_cats = temp[temp.columns[0]]
+
+    vc = str_to_expr(x).value_counts().struct.rename_fields(["self", "count"])
+    data_cnt = vc.struct.field("count")
+    data_cats = vc.struct.field("self")
+
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_psi_discrete",
+        args=[data_cats, data_cnt, ref_cats, ref_cnt],
+        returns_scalar=True,
+    )
+
+
+def query_woe(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10) -> pl.Expr:
+    """
+    Compute the Weight of Evidence for x with respect to target. This assumes x
+    is continuous. A value of 1 is added to all events/non-events
+    (goods/bads) to smooth the computation.
+
+    Currently only quantile binning strategy is implemented.
+
+    Parameters
+    ----------
+    x
+        The feature
+    target
+        The target variable. Should be 0s and 1s.
+    n_bins
+        The number of bins to bin the variable.
+
+    Reference
+    ---------
+    https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
+    """
+    xx = str_to_expr(x)
+    valid = xx.filter(xx.is_finite()).cast(pl.Float64)
+    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True)
+    return pl_plugin(
+        lib=_lib, symbol="pl_woe_discrete", args=[brk, str_to_expr(target)], changes_length=True
+    )
+
+
+def query_woe_discrete(
+    x: StrOrExpr,
+    target: StrOrExpr,
+) -> pl.Expr:
+    """
+    Compute the Weight of Evidence for x with respect to target. This assumes x
+    is discrete and castable to String. A value of 1 is added to all events/non-events
+    (goods/bads) to smooth the computation.
+
+    Parameters
+    ----------
+    x
+        The feature
+    target
+        The target variable. Should be 0s and 1s.
+
+    Reference
+    ---------
+    https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
+    """
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_woe_discrete",
+        args=[str_to_expr(x), str_to_expr(target)],
+        changes_length=True,
+    )
+
+
+def query_iv(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10, return_sum: bool = True) -> pl.Expr:
+    """
+    Compute Information Value for x with respect to target. This assumes the variable x
+    is continuous. A value of 1 is added to all events/non-events
+    (goods/bads) to smooth the computation.
+
+    Currently only quantile binning strategy is implemented.
+
+    Parameters
+    ----------
+    x
+        The feature
+    target
+        The target column. Should be 0s and 1s.
+    n_bins
+        The number of bins to bin x.
+    return_sum
+        If false, the output is a struct containing the ranges and the corresponding IVs. If true,
+        it is the sum of the individual information values.
+
+    Reference
+    ---------
+    https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
+    """
+    xx = str_to_expr(x)
+    valid = xx.filter(xx.is_finite()).cast(pl.Float64)
+    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True)
+    out = pl_plugin(lib=_lib, symbol="pl_iv", args=[brk, str_to_expr(target)], changes_length=True)
+    return out.struct.field("iv").sum() if return_sum else out
+
+
+def query_iv_discrete(x: StrOrExpr, target: StrOrExpr, return_sum: bool = True) -> pl.Expr:
+    """
+    Compute the Information Value for x with respect to target. This assumes x
+    is discrete and castable to String. A value of 1 is added to all events/non-events
+    (goods/bads) to smooth the computation.
+
+    Parameters
+    ----------
+    x
+        The feature
+    target
+        The target variable. Should be 0s and 1s.
+    return_sum
+        If false, the output is a struct containing the categories and the corresponding IVs. If true,
+        it is the sum of the individual information values.
+
+    Reference
+    ---------
+    https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
+    """
+    out = pl_plugin(lib=_lib, symbol="pl_iv", args=[str_to_expr(x), target], changes_length=True)
+    return out.struct.field("iv").sum() if return_sum else out
+
+
 def integrate_trapz(y: StrOrExpr, x: Union[float, pl.Expr]) -> pl.Expr:
     """
     Integrate y along x using the trapezoidal rule. If x is not a single
@@ -1409,6 +1379,28 @@ def sinc(x: StrOrExpr) -> pl.Expr:
     xx = str_to_expr(x)
     y = math.pi * pl.when(xx == 0).then(1e-20).otherwise(xx)
     return y.sin() / y
+
+
+def detrend(x: StrOrExpr, method: DetrendMethod = "linear") -> pl.Expr:
+    """
+    Detrends self using either linear/mean method. This does not persist.
+
+    Parameters
+    ----------
+    method
+        Either `linear` or `mean`
+    """
+    ts = str_to_expr(x)
+    if method == "linear":
+        N = ts.count()
+        x = pl.int_range(0, N, eager=False)
+        coeff = pl.cov(ts, x) / x.var()
+        const = ts.mean() - coeff * (N - 1) / 2
+        return ts - x * coeff - const
+    elif method == "mean":
+        return ts - ts.mean()
+    else:
+        raise ValueError(f"Unknown detrend method: {method}")
 
 
 def rfft(series: StrOrExpr, n: Optional[int] = None, return_full: bool = False) -> pl.Expr:
