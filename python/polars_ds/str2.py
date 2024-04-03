@@ -90,7 +90,7 @@ class StrExt:
             expr = expr.str.replace_all(",", "")
 
         # Find all numbers
-        expr = expr.str.extract_all("(\d*\.?\d+)")
+        expr = expr.str.extract_all(r"(\d*\.?\d+)")
         if dtype in pl.NUMERIC_DTYPES:
             expr = expr.list.eval(pl.element().cast(dtype))
         elif dtype == pl.String:  # As a list of strings
