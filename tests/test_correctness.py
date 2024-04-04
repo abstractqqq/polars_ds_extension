@@ -20,15 +20,15 @@ from polars.testing import assert_frame_equal
     ],
 )
 def test_convolve(df, ft, res_full, res_valid, res_same):
-    res = df.select(pl.col("a").num.convolve(ft, mode="full"))
+    res = df.select(pds.convolve("a", ft, mode="full"))
 
     assert_frame_equal(res, res_full)
 
-    res = df.select(pl.col("a").num.convolve(ft, mode="valid"))
+    res = df.select(pds.convolve("a", ft, mode="valid"))
 
     assert_frame_equal(res, res_valid)
 
-    res = df.select(pl.col("a").num.convolve(ft, mode="same"))
+    res = df.select(pds.convolve("a", ft, mode="same"))
 
     assert_frame_equal(res, res_same)
 
@@ -45,7 +45,7 @@ def test_fft(arr, n):
     import scipy as sp
 
     df = pl.DataFrame({"a": arr})
-    res = df.select(pl.col("a").num.rfft(n=n).alias("fft")).select(
+    res = df.select(pds.rfft("a", n=n).alias("fft")).select(
         pl.col("fft").arr.first().alias("re"), pl.col("fft").arr.last().alias("im")
     )
     real_test = res["re"].to_numpy()
@@ -58,12 +58,12 @@ def test_fft(arr, n):
     assert np.isclose(im_test, imag).all()
 
     # Always run a check against scipy, with return_full=True as well
-    res2 = df.select(pl.col("a").num.rfft(return_full=True).alias("fft")).select(
+    res2 = df.select(pds.rfft("a", return_full=True).alias("fft")).select(
         pl.col("fft").arr.first().alias("re"), pl.col("fft").arr.last().alias("im")
     )
     real_test = res2["re"].to_numpy()
     im_test = res2["im"].to_numpy()
-    ans = sp.fft.fft(arr)
+    ans = sp.fft.fft(arr)  # always full fft
     real = ans.real
     imag = ans.imag
     assert np.isclose(real_test, real).all()
@@ -109,8 +109,8 @@ def test_f_test(df):
     ],
 )
 def test_signum(df, res):
-    assert_frame_equal(df.select(pl.col("a").num.signum()), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").num.signum()).collect(), res)
+    assert_frame_equal(df.select(pds.signum("a")), res)
+    assert_frame_equal(df.lazy().select(pds.signum("a")).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -123,8 +123,8 @@ def test_signum(df, res):
     ],
 )
 def test_trunc(df, res):
-    assert_frame_equal(df.select(pl.col("a").num.trunc()), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").num.trunc()).collect(), res)
+    assert_frame_equal(df.select(pds.trunc("a")), res)
+    assert_frame_equal(df.lazy().select(pds.trunc("a")).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -137,8 +137,8 @@ def test_trunc(df, res):
     ],
 )
 def test_fract(df, res):
-    assert_frame_equal(df.select(pl.col("a").num.fract()), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").num.fract()).collect(), res)
+    assert_frame_equal(df.select(pds.fract("a")), res)
+    assert_frame_equal(df.lazy().select(pds.fract("a")).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -157,9 +157,9 @@ def test_fract(df, res):
     ],
 )
 def test_gcd(df, other, res):
-    assert_frame_equal(df.select(pl.col("a").num.gcd(other)), res)
+    assert_frame_equal(df.select(pds.query_gcd("a", other).cast(pl.Int64)), res)
 
-    assert_frame_equal(df.lazy().select(pl.col("a").num.gcd(other)).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.query_gcd("a", other).cast(pl.Int64)).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -178,9 +178,9 @@ def test_gcd(df, other, res):
     ],
 )
 def test_lcm(df, other, res):
-    assert_frame_equal(df.select(pl.col("a").num.lcm(other)), res)
+    assert_frame_equal(df.select(pds.query_lcm("a", other).cast(pl.Int64)), res)
 
-    assert_frame_equal(df.lazy().select(pl.col("a").num.lcm(other)).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.query_lcm("a", other).cast(pl.Int64)).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -194,7 +194,7 @@ def test_lcm(df, other, res):
     ],
 )
 def test_trapz(df, x, res):
-    assert_frame_equal(df.select(pl.col("a").num.trapz(x=x)), res)
+    assert_frame_equal(df.select(pds.integrate_trapz("a", x=x)), res)
 
 
 @pytest.mark.parametrize(
@@ -213,9 +213,9 @@ def test_trapz(df, x, res):
     ],
 )
 def test_cond_entropy(df, res):
-    assert_frame_equal(df.select(pl.col("y").num.cond_entropy(pl.col("a"))), res)
+    assert_frame_equal(df.select(pds.query_cond_entropy("y", "a")), res)
 
-    assert_frame_equal(df.lazy().select(pl.col("y").num.cond_entropy(pl.col("a"))).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.query_cond_entropy("y", "a")).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -239,14 +239,10 @@ def test_cond_entropy(df, res):
     ],
 )
 def test_cross_entropy(df, res):
-    assert_frame_equal(
-        df.select(pl.col("y").metric.categorical_cross_entropy(pl.col("pred")).alias("a")), res
-    )
+    assert_frame_equal(df.select(pds.query_cat_cross_entropy("y", "pred").alias("a")), res)
 
     assert_frame_equal(
-        df.lazy()
-        .select(pl.col("y").metric.categorical_cross_entropy(pl.col("pred")).alias("a"))
-        .collect(),
+        df.lazy().select(pds.query_cat_cross_entropy("y", "pred").alias("a")).collect(),
         res,
     )
 
@@ -264,11 +260,11 @@ def test_cross_entropy(df, res):
         ),
     ],
 )
-def test_list_jaccard(df, res):
-    assert_frame_equal(df.select(pl.col("a").num.list_jaccard(pl.col("b")).alias("res")), res)
+def test_jaccard_row(df, res):
+    assert_frame_equal(df.select(pds.query_jaccard_row("a", "b").alias("res")), res)
 
     assert_frame_equal(
-        df.lazy().select(pl.col("a").num.list_jaccard(pl.col("b")).alias("res")).collect(), res
+        df.lazy().select(pds.query_jaccard_row("a", "b").alias("res")).collect(), res
     )
 
 
@@ -277,7 +273,7 @@ def test_lstsq():
     df = pl.DataFrame({"y": [1, 2, 3, 4, 5], "a": [2, 3, 4, 5, 6], "b": [-1, -1, -1, -1, -1]})
     res = pl.DataFrame({"y": [[1.0, 1.0]]})
     assert_frame_equal(
-        df.select(pl.col("y").num.lstsq(pl.col("a"), pl.col("b"), add_bias=False)), res
+        df.select(pds.query_lstsq(pl.col("a"), pl.col("b"), target="y", add_bias=False)), res
     )
 
     df = pl.DataFrame(
@@ -287,7 +283,7 @@ def test_lstsq():
         }
     )
     res = pl.DataFrame({"y": [[1.0, -1.0]]})
-    assert_frame_equal(df.select(pl.col("y").num.lstsq(pl.col("a"), add_bias=True)), res)
+    assert_frame_equal(df.select(pds.query_lstsq(pl.col("a"), target="y", add_bias=True)), res)
 
 
 # Hard to write generic tests because ncols can vary in X
@@ -303,9 +299,9 @@ def test_lstsq_skip_null():
     )
     assert_frame_equal(
         df.select(
-            pl.col("y")
-            .num.lstsq(pl.col("a"), pl.col("b"), skip_null=True, return_pred=True)
-            .alias("result")
+            pds.query_lstsq(
+                pl.col("a"), pl.col("b"), target="y", skip_null=True, return_pred=True
+            ).alias("result")
         ).unnest("result"),
         res,
     )
@@ -320,11 +316,11 @@ def test_lstsq_skip_null():
         ),
     ],
 )
-def test_col_jaccard(df, res):
-    assert_frame_equal(df.select(pl.col("a").num.jaccard(pl.col("b")).alias("j")), res)
+def test_jaccard_col(df, res):
+    assert_frame_equal(df.select(pds.query_jaccard_col("a", "b").alias("j")), res)
 
     assert_frame_equal(
-        df.lazy().select(pl.col("a").num.jaccard(pl.col("b")).alias("j")).collect(), res
+        df.lazy().select(df.select(pds.query_jaccard_col("a", "b").alias("j"))).collect(), res
     )
 
 
@@ -342,9 +338,9 @@ def test_col_jaccard(df, res):
     ],
 )
 def test_snowball(df, res):
-    assert_frame_equal(df.select(pl.col("a").str2.snowball()), res)
+    assert_frame_equal(df.select(pds.str_snowball("a")), res)
 
-    assert_frame_equal(df.lazy().select(pl.col("a").str2.snowball()).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.str_snowball("a")).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -362,9 +358,9 @@ def test_snowball(df, res):
     ],
 )
 def test_hamming(df, res):
-    assert_frame_equal(df.select(pl.col("a").str2.hamming(pl.col("b"))), res)
-    assert_frame_equal(df.select(pl.col("a").str2.hamming(pl.col("b"), parallel=True)), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").str2.hamming(pl.col("b"))).collect(), res)
+    assert_frame_equal(df.select(pds.str_hamming("a", pl.col("b"))), res)
+    assert_frame_equal(df.select(pds.str_hamming("a", pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.lazy().select(pds.str_hamming("a", pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -382,9 +378,9 @@ def test_hamming(df, res):
     ],
 )
 def test_jaro(df, res):
-    assert_frame_equal(df.select(pl.col("a").str2.jaro(pl.col("b"))), res)
-    assert_frame_equal(df.select(pl.col("a").str2.jaro(pl.col("b"), parallel=True)), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").str2.jaro(pl.col("b"))).collect(), res)
+    assert_frame_equal(df.select(pds.str_jaro("a", pl.col("b"))), res)
+    assert_frame_equal(df.select(pds.str_jaro("a", pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.lazy().select(pds.str_jaro("a", pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -455,11 +451,9 @@ def test_jaro(df, res):
     ],
 )
 def test_levenshtein(df, res):
-    assert_frame_equal(df.select(pl.col("a").str2.levenshtein(pl.col("b"))), res)
+    assert_frame_equal(df.select(pds.str_leven("a", pl.col("b"))), res)
 
-    assert_frame_equal(df.select(pl.col("a").str2.levenshtein(pl.col("b"), parallel=True)), res)
-
-    assert_frame_equal(df.lazy().select(pl.col("a").str2.levenshtein(pl.col("b"))).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.str_leven("a", pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -508,15 +502,15 @@ def test_levenshtein_filter(df, bound, res):
     ],
 )
 def test_hamming_filter(df, bound, res):
-    assert_frame_equal(df.select(pl.col("a").str2.hamming_filter(pl.col("b"), bound=bound)), res)
+    assert_frame_equal(df.select(pds.filter_by_hamming("a", pl.col("b"), bound=bound)), res)
 
     assert_frame_equal(
-        df.select(pl.col("a").str2.hamming_filter(pl.col("b"), bound=bound, parallel=True)),
+        df.select(pds.filter_by_hamming("a", pl.col("b"), bound=bound, parallel=True)),
         res,
     )
 
     assert_frame_equal(
-        df.lazy().select(pl.col("a").str2.hamming_filter(pl.col("b"), bound=bound)).collect(),
+        df.lazy().select(pds.filter_by_hamming("a", pl.col("b"), bound=bound)).collect(),
         res,
     )
 
@@ -561,15 +555,15 @@ def test_hamming_filter(df, bound, res):
     ],
 )
 def test_similar_words(df, vocab, k, metric, res):
-    assert_frame_equal(df.select(pl.col("a").str2.similar_words(vocab, k=k, metric=metric)), res)
+    assert_frame_equal(df.select(pds.query_similar_words("a", vocab, k=k, metric=metric)), res)
 
     assert_frame_equal(
-        df.select(pl.col("a").str2.similar_words(vocab, k=k, parallel=True, metric=metric)),
+        df.select(pds.query_similar_words("a", vocab, k=k, parallel=True, metric=metric)),
         res,
     )
 
     assert_frame_equal(
-        df.lazy().select(pl.col("a").str2.similar_words(vocab, k=k, metric=metric)).collect(),
+        df.lazy().select(pds.query_similar_words("a", vocab, k=k, metric=metric)).collect(),
         res,
     )
 
@@ -584,10 +578,10 @@ def test_similar_words(df, vocab, k, metric, res):
     ],
 )
 def test_osa(df, res):
-    assert_frame_equal(df.select(pl.col("a").str2.osa(pl.col("b"))), res)
+    assert_frame_equal(df.select(pds.str_osa("a", pl.col("b"))), res)
 
-    assert_frame_equal(df.select(pl.col("a").str2.osa(pl.col("b"), parallel=True)), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").str2.osa(pl.col("b"))).collect(), res)
+    assert_frame_equal(df.select(pds.str_osa("a", pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.lazy().select(pds.str_osa("a", pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -600,11 +594,11 @@ def test_osa(df, res):
     ],
 )
 def test_sorensen_dice(df, res):
-    assert_frame_equal(df.select(pl.col("a").str2.sorensen_dice(pl.col("b"))), res)
+    assert_frame_equal(df.select(pds.str_sorensen_dice("a", pl.col("b"))), res)
 
-    assert_frame_equal(df.select(pl.col("a").str2.sorensen_dice(pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.select(pds.str_sorensen_dice("a", pl.col("b"), parallel=True)), res)
 
-    assert_frame_equal(df.lazy().select(pl.col("a").str2.sorensen_dice(pl.col("b"))).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.str_sorensen_dice("a", pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -623,14 +617,14 @@ def test_sorensen_dice(df, res):
     ],
 )
 def test_str_jaccard(df, size, res):
-    assert_frame_equal(df.select(pl.col("a").str2.str_jaccard(pl.col("b"), substr_size=size)), res)
+    assert_frame_equal(df.select(pds.str_jaccard("a", pl.col("b"), substr_size=size)), res)
     assert_frame_equal(
-        df.select(pl.col("a").str2.str_jaccard(pl.col("b"), substr_size=size, parallel=True)),
+        df.select(pds.str_jaccard("a", pl.col("b"), substr_size=size, parallel=True)),
         res,
     )
     assert_frame_equal(
         df.lazy()
-        .select(pl.col("a").str2.str_jaccard(pl.col("b"), substr_size=size, parallel=True))
+        .select(pds.str_jaccard("a", pl.col("b"), substr_size=size, parallel=True))
         .collect(),
         res,
     )
@@ -659,15 +653,13 @@ def test_str_jaccard(df, size, res):
 )
 def test_tversky(df, size, alpha, beta, res):
     assert_frame_equal(
-        df.select(
-            pl.col("a").str2.tversky_sim(pl.col("b"), alpha=alpha, beta=beta, substr_size=size)
-        ),
+        df.select(pds.str_tversky_sim("a", pl.col("b"), alpha=alpha, beta=beta, substr_size=size)),
         res,
     )
     assert_frame_equal(
         df.select(
-            pl.col("a").str2.tversky_sim(
-                pl.col("b"), alpha=alpha, beta=beta, substr_size=size, parallel=True
+            pds.str_tversky_sim(
+                "a", pl.col("b"), alpha=alpha, beta=beta, substr_size=size, parallel=True
             )
         ),
         res,
@@ -675,31 +667,13 @@ def test_tversky(df, size, alpha, beta, res):
     assert_frame_equal(
         df.lazy()
         .select(
-            pl.col("a").str2.tversky_sim(
-                pl.col("b"), alpha=alpha, beta=beta, substr_size=size, parallel=True
+            pds.str_tversky_sim(
+                "a", pl.col("b"), alpha=alpha, beta=beta, substr_size=size, parallel=True
             )
         )
         .collect(),
         res,
     )
-
-
-@pytest.mark.parametrize(
-    "df, lower, upper, res",
-    [
-        (
-            pl.DataFrame({"a": [["a", "b", "c"], ["a", "b"], ["a"]]}),
-            0.05,
-            0.6,
-            pl.DataFrame({"a": [["b", "c"], ["b"], []]}),
-            # 0.05 is count of 1, nothing has < 1 count. 0.6 is 2. "a" has > 2 count
-            # so a is removed.
-        ),
-    ],
-)
-def test_freq_removal(df, lower, upper, res):
-    ans = df.select(pl.col("a").str2.freq_removal(lower=lower, upper=upper).list.sort())
-    assert_frame_equal(ans, res)
 
 
 @pytest.mark.parametrize(
@@ -742,61 +716,7 @@ def test_freq_removal(df, lower, upper, res):
     ],
 )
 def test_extract_numbers(df, dtype, join_by, res):
-    assert_frame_equal(
-        df.select(pl.col("a").str2.extract_numbers(join_by=join_by, dtype=dtype)), res
-    )
-
-
-@pytest.mark.parametrize(
-    "df, min_count, min_frac, res",
-    [
-        (
-            pl.DataFrame(
-                {
-                    "a": ["a", "b", "c", "c", "c", "c", "c", "c", "c", "c", "c", "c", "c", "c"],
-                }
-            ),
-            3,
-            None,
-            pl.DataFrame(
-                {"a": ["a|b", "a|b", "c", "c", "c", "c", "c", "c", "c", "c", "c", "c", "c", "c"]}
-            ),
-        ),
-        (
-            pl.DataFrame(
-                {
-                    "a": ["a", "b", "c", "d", "d", "d", "d", "d", "d", "d", "d", "d", "d", "d"],
-                }
-            ),
-            None,
-            0.1,
-            pl.DataFrame(
-                {
-                    "a": [
-                        "a|b|c",
-                        "a|b|c",
-                        "a|b|c",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                    ]
-                }
-            ),
-        ),
-    ],
-)
-def test_merge_infreq(df, min_count, min_frac, res):
-    assert_frame_equal(
-        df.select(pl.col("a").str2.merge_infreq(min_count=min_count, min_frac=min_frac)), res
-    )
+    assert_frame_equal(df.select(pds.extract_numbers("a", join_by=join_by, dtype=dtype)), res)
 
 
 @pytest.mark.parametrize(
@@ -880,7 +800,7 @@ def test_merge_infreq(df, min_count, min_frac, res):
     ],
 )
 def test_lempel_ziv_complexity(df, threshold, res):
-    test = df.select((pl.col("a") > threshold).num.lempel_ziv_complexity(as_ratio=False))
+    test = df.select(pds.query_lempel_ziv(pl.col("a") > threshold, as_ratio=False))
     assert test.item(0, 0) == res
 
 
@@ -1033,7 +953,7 @@ def test_normal_test(df):
 def test_expit(df):
     from scipy.special import expit
 
-    res = df.select(pl.col("a").num.expit())["a"].to_numpy()
+    res = df.select(pds.expit("a"))["a"].to_numpy()
     scipy_res = expit(df["a"].to_numpy())
     assert np.isclose(res, scipy_res, equal_nan=True).all()
 
@@ -1047,7 +967,7 @@ def test_expit(df):
 def test_logit(df):
     from scipy.special import logit
 
-    res = df.select(pl.col("a").num.logit())["a"].to_numpy()
+    res = df.select(pds.logit("a"))["a"].to_numpy()
     scipy_res = logit(df["a"].to_numpy())
     assert np.isclose(res, scipy_res, equal_nan=True).all()
 
@@ -1061,7 +981,7 @@ def test_logit(df):
 def test_gamma(df):
     from scipy.special import gamma
 
-    res = df.select(pl.col("a").num.gamma())["a"].to_numpy()
+    res = df.select(pds.gamma("a"))["a"].to_numpy()
     scipy_res = gamma(df["a"].to_numpy())
     assert np.isclose(res, scipy_res, equal_nan=True).all()
 
@@ -1105,12 +1025,10 @@ def test_multiclass_roc_auc():
     y_pred = np.stack(df["pred"].to_numpy())
     y_true = df["actuals"]
 
-    macro = df.select(pl.col("actuals").metric.multi_roc_auc(pl.col("pred"), 3, "macro")).item(0, 0)
+    macro = df.select(pds.query_multi_roc_auc("actuals", "pred", 3, "macro")).item(0, 0)
     macro_sklearn = roc_auc_score(y_true, y_pred, average="macro", multi_class="ovr")
 
-    weighted = df.select(
-        pl.col("actuals").metric.multi_roc_auc(pl.col("pred"), 3, "weighted")
-    ).item(0, 0)
+    weighted = df.select(pds.query_multi_roc_auc("actuals", "pred", 3, "weighted")).item(0, 0)
     weighted_sklearn = roc_auc_score(y_true, y_pred, average="weighted", multi_class="ovr")
 
     assert np.isclose(macro, macro_sklearn, rtol=1e-10, atol=1e-12)
@@ -1130,9 +1048,7 @@ def test_precision_recall_roc_auc():
     )
     for threshold in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
         res = df.select(
-            pl.col("y")
-            .metric.binary_metrics_combo(pl.col("a"), threshold=threshold)
-            .alias("metrics")
+            pds.query_binary_metrics("y", "a", threshold=threshold).alias("metrics")
         ).unnest("metrics")
         precision_res = res.get_column("precision")[0]
         recall_res = res.get_column("recall")[0]
@@ -1164,8 +1080,9 @@ def test_precision_recall_roc_auc():
 )
 def test_knn_ptwise(df, dist, k, res):
     df2 = df.select(
-        pl.col("id")
-        .num._knn_ptwise(pl.col("val1"), pl.col("val2"), pl.col("val3"), dist=dist, k=k)
+        pds.query_knn_ptwise(
+            pl.col("val1"), pl.col("val2"), pl.col("val3"), index="id", dist=dist, k=k
+        )
         .list.eval(pl.element().sort().cast(pl.UInt32))
         .alias("nn")
     )
@@ -1309,7 +1226,7 @@ def test_apprximate_entropy(s, m, r, scale, res):
     ],
 )
 def test_psi(df, n_bins, res):
-    ans = df.select(pl.col("act").num.psi(pl.col("ref"), n_bins=n_bins)).item(0, 0)
+    ans = df.select(pds.query_psi("act", pl.col("ref"), n_bins=n_bins)).item(0, 0)
     assert np.isclose(ans, res)
 
 
@@ -1337,7 +1254,7 @@ def test_psi(df, n_bins, res):
     ],
 )
 def test_psi_discrete(df, res):
-    ans = df.select(pl.col("act").num.psi_discrete(pl.col("ref"))).item(0, 0)
+    ans = df.select(pds.query_psi_discrete("act", pl.col("ref"))).item(0, 0)
     assert np.isclose(ans, res)
 
 
@@ -1365,15 +1282,7 @@ def test_shortest_dist(df, target, path, cost):
     df = df.explode([pl.col("conn"), pl.col("cost")])
 
     res = (
-        df.select(
-            pl.col("id")
-            .graph.shortest_path(
-                link=pl.col("conn"),
-                target=target,
-                cost=pl.col("cost"),
-            )
-            .alias("path")
-        )
+        df.select(pds.query_shortest_path("id", "conn", target=target, cost="cost").alias("path"))
         .unnest("path")
         .sort("id")
     )
