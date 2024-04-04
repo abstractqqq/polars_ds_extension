@@ -219,7 +219,7 @@ def query_log_loss(actual: StrOrExpr, pred: StrOrExpr, normalize: bool = True) -
     """
     a = str_to_expr(actual)
     p = str_to_expr(pred)
-    out = a.dot(p.log()) + (1 - a).dot((1 - pred).log())
+    out = a.dot(p.log()) + (1 - a).dot((1 - p).log())
     if normalize:
         return -(out / a.count())
     return -out

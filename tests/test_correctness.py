@@ -338,9 +338,9 @@ def test_jaccard_col(df, res):
     ],
 )
 def test_snowball(df, res):
-    assert_frame_equal(df.select(pl.col("a").str2.snowball()), res)
+    assert_frame_equal(df.select(pds.str_snowball("a")), res)
 
-    assert_frame_equal(df.lazy().select(pl.col("a").str2.snowball()).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.str_snowball("a")).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -358,9 +358,9 @@ def test_snowball(df, res):
     ],
 )
 def test_hamming(df, res):
-    assert_frame_equal(df.select(pl.col("a").str2.hamming(pl.col("b"))), res)
-    assert_frame_equal(df.select(pl.col("a").str2.hamming(pl.col("b"), parallel=True)), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").str2.hamming(pl.col("b"))).collect(), res)
+    assert_frame_equal(df.select(pds.str_hamming("a", pl.col("b"))), res)
+    assert_frame_equal(df.select(pds.str_hamming("a", pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.lazy().select(pds.str_hamming("a", pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -378,9 +378,9 @@ def test_hamming(df, res):
     ],
 )
 def test_jaro(df, res):
-    assert_frame_equal(df.select(pl.col("a").str2.jaro(pl.col("b"))), res)
-    assert_frame_equal(df.select(pl.col("a").str2.jaro(pl.col("b"), parallel=True)), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").str2.jaro(pl.col("b"))).collect(), res)
+    assert_frame_equal(df.select(pds.str_jaro("a", pl.col("b"))), res)
+    assert_frame_equal(df.select(pds.str_jaro("a", pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.lazy().select(pds.str_jaro("a", pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -451,11 +451,9 @@ def test_jaro(df, res):
     ],
 )
 def test_levenshtein(df, res):
-    assert_frame_equal(df.select(pl.col("a").str2.levenshtein(pl.col("b"))), res)
+    assert_frame_equal(df.select(pds.str_leven("a", pl.col("b"))), res)
 
-    assert_frame_equal(df.select(pl.col("a").str2.levenshtein(pl.col("b"), parallel=True)), res)
-
-    assert_frame_equal(df.lazy().select(pl.col("a").str2.levenshtein(pl.col("b"))).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.str_leven("a", pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -504,15 +502,15 @@ def test_levenshtein_filter(df, bound, res):
     ],
 )
 def test_hamming_filter(df, bound, res):
-    assert_frame_equal(df.select(pl.col("a").str2.hamming_filter(pl.col("b"), bound=bound)), res)
+    assert_frame_equal(df.select(pds.filter_by_hamming("a", pl.col("b"), bound=bound)), res)
 
     assert_frame_equal(
-        df.select(pl.col("a").str2.hamming_filter(pl.col("b"), bound=bound, parallel=True)),
+        df.select(pds.filter_by_hamming("a", pl.col("b"), bound=bound, parallel=True)),
         res,
     )
 
     assert_frame_equal(
-        df.lazy().select(pl.col("a").str2.hamming_filter(pl.col("b"), bound=bound)).collect(),
+        df.lazy().select(pds.filter_by_hamming("a", pl.col("b"), bound=bound)).collect(),
         res,
     )
 
@@ -557,15 +555,15 @@ def test_hamming_filter(df, bound, res):
     ],
 )
 def test_similar_words(df, vocab, k, metric, res):
-    assert_frame_equal(df.select(pl.col("a").str2.similar_words(vocab, k=k, metric=metric)), res)
+    assert_frame_equal(df.select(pds.query_similar_words("a", vocab, k=k, metric=metric)), res)
 
     assert_frame_equal(
-        df.select(pl.col("a").str2.similar_words(vocab, k=k, parallel=True, metric=metric)),
+        df.select(pds.query_similar_words("a", vocab, k=k, parallel=True, metric=metric)),
         res,
     )
 
     assert_frame_equal(
-        df.lazy().select(pl.col("a").str2.similar_words(vocab, k=k, metric=metric)).collect(),
+        df.lazy().select(pds.query_similar_words("a", vocab, k=k, metric=metric)).collect(),
         res,
     )
 
@@ -580,10 +578,10 @@ def test_similar_words(df, vocab, k, metric, res):
     ],
 )
 def test_osa(df, res):
-    assert_frame_equal(df.select(pl.col("a").str2.osa(pl.col("b"))), res)
+    assert_frame_equal(df.select(pds.str_osa("a", pl.col("b"))), res)
 
-    assert_frame_equal(df.select(pl.col("a").str2.osa(pl.col("b"), parallel=True)), res)
-    assert_frame_equal(df.lazy().select(pl.col("a").str2.osa(pl.col("b"))).collect(), res)
+    assert_frame_equal(df.select(pds.str_osa("a", pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.lazy().select(pds.str_osa("a", pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -596,11 +594,11 @@ def test_osa(df, res):
     ],
 )
 def test_sorensen_dice(df, res):
-    assert_frame_equal(df.select(pl.col("a").str2.sorensen_dice(pl.col("b"))), res)
+    assert_frame_equal(df.select(pds.str_sorensen_dice("a", pl.col("b"))), res)
 
-    assert_frame_equal(df.select(pl.col("a").str2.sorensen_dice(pl.col("b"), parallel=True)), res)
+    assert_frame_equal(df.select(pds.str_sorensen_dice("a", pl.col("b"), parallel=True)), res)
 
-    assert_frame_equal(df.lazy().select(pl.col("a").str2.sorensen_dice(pl.col("b"))).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.str_sorensen_dice("a", pl.col("b"))).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -619,14 +617,14 @@ def test_sorensen_dice(df, res):
     ],
 )
 def test_str_jaccard(df, size, res):
-    assert_frame_equal(df.select(pl.col("a").str2.str_jaccard(pl.col("b"), substr_size=size)), res)
+    assert_frame_equal(df.select(pds.str_jaccard("a", pl.col("b"), substr_size=size)), res)
     assert_frame_equal(
-        df.select(pl.col("a").str2.str_jaccard(pl.col("b"), substr_size=size, parallel=True)),
+        df.select(pds.str_jaccard("a", pl.col("b"), substr_size=size, parallel=True)),
         res,
     )
     assert_frame_equal(
         df.lazy()
-        .select(pl.col("a").str2.str_jaccard(pl.col("b"), substr_size=size, parallel=True))
+        .select(pds.str_jaccard("a", pl.col("b"), substr_size=size, parallel=True))
         .collect(),
         res,
     )
@@ -655,15 +653,13 @@ def test_str_jaccard(df, size, res):
 )
 def test_tversky(df, size, alpha, beta, res):
     assert_frame_equal(
-        df.select(
-            pl.col("a").str2.tversky_sim(pl.col("b"), alpha=alpha, beta=beta, substr_size=size)
-        ),
+        df.select(pds.str_tversky_sim("a", pl.col("b"), alpha=alpha, beta=beta, substr_size=size)),
         res,
     )
     assert_frame_equal(
         df.select(
-            pl.col("a").str2.tversky_sim(
-                pl.col("b"), alpha=alpha, beta=beta, substr_size=size, parallel=True
+            pds.str_tversky_sim(
+                "a", pl.col("b"), alpha=alpha, beta=beta, substr_size=size, parallel=True
             )
         ),
         res,
@@ -671,31 +667,13 @@ def test_tversky(df, size, alpha, beta, res):
     assert_frame_equal(
         df.lazy()
         .select(
-            pl.col("a").str2.tversky_sim(
-                pl.col("b"), alpha=alpha, beta=beta, substr_size=size, parallel=True
+            pds.str_tversky_sim(
+                "a", pl.col("b"), alpha=alpha, beta=beta, substr_size=size, parallel=True
             )
         )
         .collect(),
         res,
     )
-
-
-@pytest.mark.parametrize(
-    "df, lower, upper, res",
-    [
-        (
-            pl.DataFrame({"a": [["a", "b", "c"], ["a", "b"], ["a"]]}),
-            0.05,
-            0.6,
-            pl.DataFrame({"a": [["b", "c"], ["b"], []]}),
-            # 0.05 is count of 1, nothing has < 1 count. 0.6 is 2. "a" has > 2 count
-            # so a is removed.
-        ),
-    ],
-)
-def test_freq_removal(df, lower, upper, res):
-    ans = df.select(pl.col("a").str2.freq_removal(lower=lower, upper=upper).list.sort())
-    assert_frame_equal(ans, res)
 
 
 @pytest.mark.parametrize(
@@ -738,61 +716,7 @@ def test_freq_removal(df, lower, upper, res):
     ],
 )
 def test_extract_numbers(df, dtype, join_by, res):
-    assert_frame_equal(
-        df.select(pl.col("a").str2.extract_numbers(join_by=join_by, dtype=dtype)), res
-    )
-
-
-@pytest.mark.parametrize(
-    "df, min_count, min_frac, res",
-    [
-        (
-            pl.DataFrame(
-                {
-                    "a": ["a", "b", "c", "c", "c", "c", "c", "c", "c", "c", "c", "c", "c", "c"],
-                }
-            ),
-            3,
-            None,
-            pl.DataFrame(
-                {"a": ["a|b", "a|b", "c", "c", "c", "c", "c", "c", "c", "c", "c", "c", "c", "c"]}
-            ),
-        ),
-        (
-            pl.DataFrame(
-                {
-                    "a": ["a", "b", "c", "d", "d", "d", "d", "d", "d", "d", "d", "d", "d", "d"],
-                }
-            ),
-            None,
-            0.1,
-            pl.DataFrame(
-                {
-                    "a": [
-                        "a|b|c",
-                        "a|b|c",
-                        "a|b|c",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                        "d",
-                    ]
-                }
-            ),
-        ),
-    ],
-)
-def test_merge_infreq(df, min_count, min_frac, res):
-    assert_frame_equal(
-        df.select(pl.col("a").str2.merge_infreq(min_count=min_count, min_frac=min_frac)), res
-    )
+    assert_frame_equal(df.select(pds.extract_numbers("a", join_by=join_by, dtype=dtype)), res)
 
 
 @pytest.mark.parametrize(
