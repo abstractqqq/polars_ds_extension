@@ -610,11 +610,11 @@ def query_approx_entropy(
         r: pl.Expr = pl.lit(filtering_level, dtype=pl.Float64)
 
     rows = t.count() - m + 1
-    data = [t.slice(0, length=rows)]
+    data = [r, t.slice(0, length=rows)]
     # See rust code for more comment on why I put m + 1 here.
     data.extend(t.shift(-i).slice(0, length=rows).alias(f"{i}") for i in range(1, m + 1))
     # More errors are handled in Rust
-    return r.register_plugin(
+    return pl_plugin(
         lib=_lib,
         symbol="pl_approximate_entropy",
         args=data,

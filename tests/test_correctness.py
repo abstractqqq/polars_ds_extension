@@ -239,14 +239,10 @@ def test_cond_entropy(df, res):
     ],
 )
 def test_cross_entropy(df, res):
-    assert_frame_equal(
-        df.select(pl.col("y").metric.categorical_cross_entropy(pl.col("pred")).alias("a")), res
-    )
+    assert_frame_equal(df.select(pds.query_cat_cross_entropy("y", "pred").alias("a")), res)
 
     assert_frame_equal(
-        df.lazy()
-        .select(pl.col("y").metric.categorical_cross_entropy(pl.col("pred")).alias("a"))
-        .collect(),
+        df.lazy().select(pds.query_cat_cross_entropy("y", "pred").alias("a")).collect(),
         res,
     )
 
@@ -1105,12 +1101,10 @@ def test_multiclass_roc_auc():
     y_pred = np.stack(df["pred"].to_numpy())
     y_true = df["actuals"]
 
-    macro = df.select(pl.col("actuals").metric.multi_roc_auc(pl.col("pred"), 3, "macro")).item(0, 0)
+    macro = df.select(pds.query_multi_roc_auc("actuals", "pred", 3, "macro")).item(0, 0)
     macro_sklearn = roc_auc_score(y_true, y_pred, average="macro", multi_class="ovr")
 
-    weighted = df.select(
-        pl.col("actuals").metric.multi_roc_auc(pl.col("pred"), 3, "weighted")
-    ).item(0, 0)
+    weighted = df.select(pds.query_multi_roc_auc("actuals", "pred", 3, "weighted")).item(0, 0)
     weighted_sklearn = roc_auc_score(y_true, y_pred, average="weighted", multi_class="ovr")
 
     assert np.isclose(macro, macro_sklearn, rtol=1e-10, atol=1e-12)
@@ -1130,9 +1124,7 @@ def test_precision_recall_roc_auc():
     )
     for threshold in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
         res = df.select(
-            pl.col("y")
-            .metric.binary_metrics_combo(pl.col("a"), threshold=threshold)
-            .alias("metrics")
+            pds.query_binary_metrics("y", "a", threshold=threshold).alias("metrics")
         ).unnest("metrics")
         precision_res = res.get_column("precision")[0]
         recall_res = res.get_column("recall")[0]
@@ -1366,15 +1358,7 @@ def test_shortest_dist(df, target, path, cost):
     df = df.explode([pl.col("conn"), pl.col("cost")])
 
     res = (
-        df.select(
-            pl.col("id")
-            .graph.shortest_path(
-                link=pl.col("conn"),
-                target=target,
-                cost=pl.col("cost"),
-            )
-            .alias("path")
-        )
+        df.select(pds.query_shortest_path("id", "conn", target=target, cost="cost").alias("path"))
         .unnest("path")
         .sort("id")
     )
