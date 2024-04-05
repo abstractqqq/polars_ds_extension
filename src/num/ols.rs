@@ -1,7 +1,7 @@
 /// OLS using Faer.
 use faer::solvers::SolverCore;
-use faer::{prelude::*, MatRef, Side};
-use faer::{IntoFaer, Mat};
+use faer::{prelude::*, Side};
+use faer_ext::IntoFaer;
 // use faer_ext::IntoFaer;
 use crate::utils::rechunk_to_frame;
 use itertools::Itertools;
@@ -17,13 +17,13 @@ pub(crate) struct LstsqKwargs {
 }
 
 fn report_output(_: &[Field]) -> PolarsResult<Field> {
-    let index = Field::new("feat_idx", DataType::UInt16); // index of feature
+    let index = Field::new("idx", DataType::UInt16); // index of feature
     let coeff = Field::new("coeff", DataType::Float64); // estimated value for this coefficient
     let stderr = Field::new("std_err", DataType::Float64); // Std Err for this coefficient
     let t = Field::new("t", DataType::Float64); // t value for this coefficient
     let p = Field::new("p>|t|", DataType::Float64); // p value for this coefficient
     let v: Vec<Field> = vec![index, coeff, stderr, t, p];
-    Ok(Field::new("", DataType::Struct(v)))
+    Ok(Field::new("lstsq_report", DataType::Struct(v)))
 }
 
 fn pred_residue_output(_: &[Field]) -> PolarsResult<Field> {
@@ -41,19 +41,22 @@ fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 /// Returns the coefficients for lstsq as a nrows x 1 matrix
-fn faer_cholesky_lstsq(x: MatRef<f64>, xt: MatRef<f64>, y: MatRef<f64>) -> PolarsResult<Mat<f64>> {
-    let xtx = xt * &x;
-    let cholesky = xtx.cholesky(Side::Lower).map_err(|_| {
-        PolarsError::ComputeError("Lstsq: X^t X is not numerically positive definite.".into())
-    })?;
-    let xtx_inv = cholesky.inverse();
-    let coeffs = &xtx_inv * xt * y;
-    Ok(coeffs)
+/// The uses Cholesky decomposition as default method to compute inverse, 
+/// and falls back to LU decomposition
+fn faer_cholesky_lstsq(x: MatRef<f64>, xt: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
+    let xtx = xt * x;
+    let inv = match xtx.cholesky(Side::Lower) {
+        Ok(cho) => cho.inverse(),
+        // Fall back to LU decomp
+        Err(_) => xtx.partial_piv_lu().inverse()
+    };
+    let coeffs = inv * xt * y;
+    coeffs
 }
 
 /// Returns a Array2 ready for linear regression, and a mask, indicates valid rows
 #[inline(always)]
-fn series_to_mat_lstsq(
+fn series_to_mat_for_lstsq(
     inputs: &[Series],
     add_bias: bool,
     skip_null: bool,
@@ -100,7 +103,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let skip_null = kwargs.skip_null;
     // Copy data
     // Target y is at index 0
-    match series_to_mat_lstsq(inputs, add_bias, skip_null) {
+    match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
         Ok((mat, _)) => {
             let nrows = mat.nrows();
             let y = mat.slice(s![0..nrows, 0..1]);
@@ -109,7 +112,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
             let xt = x.t().into_faer();
             let x = x.view().into_faer();
             // Solving Least Square
-            let coeffs = faer_cholesky_lstsq(x, xt, y)?;
+            let coeffs = faer_cholesky_lstsq(x, xt, y);
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new("betas", 1, coeffs.nrows(), DataType::Float64);
 
@@ -127,7 +130,7 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
     let skip_null = kwargs.skip_null;
     // Copy data
     // Target y is at index 0
-    match series_to_mat_lstsq(inputs, add_bias, skip_null) {
+    match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
         Ok((mat, mask)) => {
             // Mask = True indicates the the nulls that we skipped.
             let nrows = mat.nrows();
@@ -137,7 +140,7 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let xt = x.t().into_faer();
             let x = x.view().into_faer();
             // Solving Least Square
-            let coeffs = faer_cholesky_lstsq(x, xt, y)?;
+            let coeffs = faer_cholesky_lstsq(x, xt, y);
 
             let pred = x * &coeffs;
             let resid = y - &pred;
@@ -183,7 +186,7 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
     let skip_null = kwargs.skip_null;
     // Copy data
     // Target y is at index 0
-    match series_to_mat_lstsq(inputs, add_bias, skip_null) {
+    match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
         Ok((mat, _)) => {
             let ncols = mat.ncols() - 1;
             let nrows = mat.nrows();
@@ -195,13 +198,10 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
             let x = x.view().into_faer();
             // Solving Least Square
             let xtx = xt * &x;
-            let cholesky = xtx.cholesky(Side::Lower).map_err(|_| {
-                PolarsError::ComputeError(
-                    "Lstsq: X^t X is not numerically positive definite.".into(),
-                )
-            })?;
-
-            let xtx_inv = cholesky.inverse();
+            let xtx_inv = match xtx.cholesky(Side::Lower) {
+                Ok(cho) => cho.inverse(),
+                Err(_) => xtx.partial_piv_lu().inverse()
+            };
             let coeffs = &xtx_inv * xt * y;
             let betas = coeffs.col_as_slice(0);
             // Degree of Freedom
@@ -228,11 +228,10 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
                         Ok(p) => 2.0 * p,
                         Err(_) => f64::NAN,
                     },
-                )
-                .collect_vec();
+                ).collect_vec();
             // Finalize
             let idx_series = UInt16Chunked::from_iter((0..ncols).map(|i| Some(i as u16)));
-            let idx_series = idx_series.with_name("feat_idx").into_series();
+            let idx_series = idx_series.with_name("idx").into_series();
             let coeffs_series = Float64Chunked::from_slice("coeff", betas);
             let coeffs_series = coeffs_series.into_series();
             let stderr_series = Float64Chunked::from_vec("std_err", std_err);
