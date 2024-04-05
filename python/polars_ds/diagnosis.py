@@ -3,7 +3,7 @@ import polars as pl
 import logging
 from typing import Union, List, Optional
 from functools import lru_cache
-from .num import query_cond_entropy  # noqa: F401
+from .num import query_cond_entropy
 from itertools import combinations
 import graphviz
 from great_tables import GT
@@ -100,7 +100,7 @@ class DIA:
 
     def meta(self):
         """
-        Returns internal data in this class as a dictionary by copying the data.
+        Returns internal data in this class as a dictionary.
         """
         out = self.__dict__.copy()
         out.pop("_frame")
@@ -134,6 +134,65 @@ class DIA:
             for c in to_check
         ]
         return pl.concat(pl.collect_all(frames))
+
+    def corr(self, subset: Union[str, List[str], pl.Expr]) -> pl.DataFrame:
+        """
+        Returns a dataframe containing correlation information between the subset and all numeric columns.
+
+        Parameters
+        ----------
+        subset
+            Either a str representing a column name or a list of strings representing column names, or a Polars
+            selector/expression which select columns
+        """
+        if isinstance(subset, str):
+            temp = [subset]
+        elif isinstance(subset, list):
+            temp = [s for s in subset if isinstance(s, str)]
+        elif isinstance(subset, pl.Expr):
+            temp = self._frame.select(subset).columns
+        else:
+            raise ValueError("Unknown subset type.")
+
+        to_check = [c for c in temp if c in self.numerics]
+        if len(to_check) != len(temp):
+            removed = list(set(temp).difference(to_check))
+            logger.info(
+                f"The following columns are not numeric/not in the dataframe, skipped: \n{removed}"
+            )
+
+        corrs = [
+            self._frame.select(
+                pl.lit(x).alias("column"), *(pl.corr(x, y).alias(y) for y in self.numerics)
+            )
+            for x in to_check
+        ]
+
+        return pl.concat(pl.collect_all(corrs))
+
+    def plot_corr(self, subset: Union[str, List[str], pl.Expr]):
+        """
+        Plots the correlations using classic heat maps.
+
+        Parameters
+        ----------
+        subset
+            Either a str representing a column name or a list of strings representing column names, or a Polars
+            selector/expression which select columns
+        """
+        corr = self.corr(subset)
+        cols = [c for c in corr.columns if c != "column"]
+        return (
+            GT(corr)
+            .fmt_number(columns=cols, decimals=3)
+            .data_color(
+                columns=cols,
+                palette=["#0202bd", "#bd0237"],
+                domain=[-1, 1],
+                alpha=0.5,
+                na_color="#000000",
+            )
+        )
 
     @lru_cache
     def infer_high_null(self, threshold: float = 0.75) -> List[str]:
@@ -293,7 +352,8 @@ class DIA:
     @lru_cache
     def infer_corr(self) -> pl.DataFrame:
         """
-        Computes correlation between all numerical (including boolean) columns.
+        Trying to infer highly correlated columns by computing correlation between
+        all numerical (including boolean) columns.
         """
         to_check = self.numerics + self.bools
         correlation = (
@@ -353,7 +413,7 @@ class DIA:
 
         ce = (
             self._frame.select(
-                query_cond_entropy(x, y).abs().alais(f"{i}")
+                query_cond_entropy(x, y).abs().alias(f"{i}")
                 for i, (x, y) in enumerate(combinations(check, 2))
             )
             .collect()
@@ -384,7 +444,7 @@ class DIA:
             If conditional entropy is < threshold, we draw a line indicating dependency.
         exclude
             None or a list of column names to exclude from plotting. E.g. ID column will always
-            unique determine values in other columns. So plotting ID will make the plot crowded
+            uniquely determine values in other columns. So plotting ID will make the plot crowded
             and provides no additional information.
         """
 
