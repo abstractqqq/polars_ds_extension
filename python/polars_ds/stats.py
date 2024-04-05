@@ -306,8 +306,7 @@ def query_ttest_ind(
         If true, perform standard student t 2 sample test. Otherwise, perform Welch's
         t test.
     """
-    y1 = str_to_expr(var1)
-    y2 = str_to_expr(var2)
+    y1, y2 = str_to_expr(var1), str_to_expr(var2)
     if equal_var:
         m1 = y1.mean()
         m2 = y2.mean()
@@ -458,8 +457,7 @@ def query_ks_2samp(
     ---------
     https://en.wikipedia.org/wiki/Kolmogorov%E2%80%93Smirnov_test#Two-sample_Kolmogorov%E2%80%93Smirnov_test
     """
-    y1 = str_to_expr(var1)
-    y2 = str_to_expr(var2)
+    y1, y2 = str_to_expr(var1), str_to_expr(var2)
     if is_binary:
         z = y2.filter(y2.is_finite()).cast(pl.Float64)
         z1 = z.filter(y1 == 1).sort()
@@ -703,12 +701,6 @@ def random_str(min_size: int, max_size: int) -> pl.Expr:
     )
 
 
-# def random_str_from_vocab(vocab:Union[pl.Series, List[str]]) -> pl.Expr:
-#     """
-#     Generates a column of
-#     """
-
-
 def random_binomial(n: int, p: int, seed: Optional[int] = None) -> pl.Expr:
     """
     Generates random integer following a binomial distribution.
@@ -804,8 +796,7 @@ def gmean(var: StrOrExpr) -> pl.Expr:
     var
         The variable
     """
-    x = str_to_expr(var)
-    return x.ln().mean().exp()
+    return str_to_expr(var).ln().mean().exp()
 
 
 def weighted_gmean(var: StrOrExpr, weights: StrOrExpr, is_normalized: bool = False) -> pl.Expr:
@@ -821,8 +812,7 @@ def weighted_gmean(var: StrOrExpr, weights: StrOrExpr, is_normalized: bool = Fal
     is_normalized
         If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
     """
-    x = str_to_expr(var)
-    w = str_to_expr(weights)
+    x, w = str_to_expr(var), str_to_expr(weights)
     if is_normalized:
         return (x.ln().dot(w)).exp()
     else:
@@ -845,8 +835,7 @@ def weighted_mean(var: StrOrExpr, weights: StrOrExpr, is_normalized: bool = Fals
     is_normalized
         If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
     """
-    x = str_to_expr(var)
-    w = str_to_expr(weights)
+    x, w = str_to_expr(var), str_to_expr(weights)
     out = x.dot(w)
     if is_normalized:
         return out
@@ -874,8 +863,7 @@ def weighted_var(var: StrOrExpr, weights: StrOrExpr, freq_weights: bool = False)
     ---------
     https://en.wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
     """
-    x = str_to_expr(var)
-    w = str_to_expr(weights)
+    x, w = str_to_expr(var), str_to_expr(weights)
     wm = weighted_mean(x, w, False)
     summand = w.dot((x - wm).pow(2))
     if freq_weights:
@@ -903,11 +891,8 @@ def weighted_cov(x: StrOrExpr, y: StrOrExpr, weights: Union[pl.Expr, float]) -> 
     ---------
     https://en.wikipedia.org/wiki/Pearson_correlation_coefficient#Weighted_correlation_coefficient
     """
-    xx = str_to_expr(x)
-    yy = str_to_expr(y)
-    w = str_to_expr(weights)
-    wx = weighted_mean(xx, w, False)
-    wy = weighted_mean(yy, w, False)
+    xx, yy, w = str_to_expr(x), str_to_expr(y), str_to_expr(weights)
+    wx, wy = weighted_mean(xx, w, False), weighted_mean(yy, w, False)
     return w.dot((xx - wx) * (yy - wy)) / w.sum()
 
 
@@ -931,8 +916,7 @@ def weighted_corr(x: StrOrExpr, y: StrOrExpr, weights: Union[pl.Expr, float]) ->
     ---------
     https://en.wikipedia.org/wiki/Pearson_correlation_coefficient#Weighted_correlation_coefficient
     """
-    xx = str_to_expr(x)
-    yy = str_to_expr(y)
+    xx, yy = str_to_expr(x), str_to_expr(y)
     w = str_to_expr(weights)
     numerator = weighted_cov(xx, yy, w)
     sxx = w.dot((xx - weighted_mean(xx, w, False)).pow(2))
@@ -951,8 +935,7 @@ def cosine_sim(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
     y
         The second variable
     """
-    xx = str_to_expr(x)
-    yy = str_to_expr(y)
+    xx, yy = str_to_expr(x), str_to_expr(y)
     x2 = xx.dot(xx).sqrt()
     y2 = yy.dot(yy).sqrt()
     return xx.dot(yy) / (x2 * y2).sqrt()
@@ -978,8 +961,7 @@ def weighted_cosine_sim(x: StrOrExpr, y: StrOrExpr, weights: Union[pl.Expr, str]
     ---------
     https://en.wikipedia.org/wiki/Pearson_correlation_coefficient#Weighted_correlation_coefficient
     """
-    xx = str_to_expr(x)
-    yy = str_to_expr(y)
+    xx, yy = str_to_expr(x), str_to_expr(y)
     w = str_to_expr(weights)
     wx2 = xx.pow(2).dot(w)
     wy2 = yy.pow(2).dot(w)
