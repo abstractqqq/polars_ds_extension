@@ -36,6 +36,11 @@ jobs:
           pip install .
           pip install -r tests/requirements-test.txt
           pytest tests/test_correctness.py
+
+      - name: Update Cargo packages
+        run : | 
+          cargo update --recursive 
+
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
