@@ -16,6 +16,7 @@ polars = {version = "0.38.3", features = ["performant", "lazy", "parquet", "dtyp
 num = "0.4.1"
 faer = {version = "0.18.2", features = ["nightly"]}
 faer-ext = {version = "0.1.0", features = ["ndarray"]}
+pulp = {version="0.18.9", features=["nightly"]} # One of Fear's dependency
 serde = {version = "*", features=["derive"]}
 ndarray = {version="0.15.6"}
 hashbrown = {version = "0.14.2", features=["nightly"]}
