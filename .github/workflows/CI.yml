@@ -133,6 +133,7 @@ jobs:
         if: matrix.architecture == 'x86-64'
         run: |
           pip install --force-reinstall --verbose dist/*.whl
+          pip install typing_extensions
           python -c 'import polars_ds'
 
       - name: Upload wheel
