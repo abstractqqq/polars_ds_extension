@@ -70,10 +70,10 @@ jobs:
       fail-fast: false
       matrix:
         package: [polars_ds]
-        os: [ubuntu-latest, macos-latest, windows-32gb-ram]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         architecture: [x86-64, aarch64]
         exclude:
-          - os: windows-32gb-ram
+          - os: windows-latest
             architecture: aarch64
 
     steps:
