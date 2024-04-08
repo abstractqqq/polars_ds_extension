@@ -40,7 +40,7 @@ jobs:
         with:
           command: sdist
           args: >
-            --manifest-path py-polars/Cargo.toml
+            --manifest-path Cargo.toml
             --out dist
 
       - name: Test sdist
