@@ -14,6 +14,10 @@ on:
         description: Commit SHA
         type: string
 
+defaults:
+  run:
+    shell: bash
+
 env:
   PYTHON_VERSION: '3.8'
 
