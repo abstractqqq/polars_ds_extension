@@ -10,11 +10,13 @@ crate-type = ["cdylib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-pyo3 = {version = "*", features = ["extension-module"]}
+pyo3 = {version = "*", features = ["abi3-py38", "extension-module"]}
 pyo3-polars = {version = "0.12", features = ["derive"]}
-polars = {version = "0.38.1", features = ["performant", "lazy", "parquet", "dtype-array", "array_count", "cross_join", "ndarray", "log", "cum_agg", "nightly"]}
+polars = {version = "0.38.3", features = ["performant", "lazy", "parquet", "dtype-array", "array_count", "cross_join", "ndarray", "log", "cum_agg", "nightly"]}
 num = "0.4.1"
-faer = {version = "0.16", features = ["ndarray", "nightly"]}
+faer = {version = "0.18.2", features = ["nightly"]}
+faer-ext = {version = "0.1.0", features = ["ndarray"]}
+pulp = {version="0.18.9", features=["nightly"]} # One of Fear's dependency
 serde = {version = "*", features=["derive"]}
 ndarray = {version="0.15.6"}
 hashbrown = {version = "0.14.2", features=["nightly"]}
@@ -28,6 +30,7 @@ kdtree = {git = "https://github.com/mrhooray/kdtree-rs.git"}
 petgraph = "0.6.4"
 ordered-float = "4.2.0"
 approx = "*"
+ahash = ">=0.8.5"
 
 [target.'cfg(any(not(target_os = "linux"), use_mimalloc))'.dependencies]
 mimalloc = { version = "0.1", default-features = false }

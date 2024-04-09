@@ -1,7 +1,7 @@
 /// All things true positive, false positive related.
 /// ROC AUC, Average Precision, precision, recall, etc. m
 use ndarray::ArrayView1;
-use polars::{lazy::dsl::len, prelude::*};
+use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 fn combo_output(_: &[Field]) -> PolarsResult<Field> {
