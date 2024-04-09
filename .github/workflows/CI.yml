@@ -155,6 +155,7 @@ jobs:
       - uses: actions/download-artifact@v3
         with:
           path: dist
+          pattern: wheel-*
           merge-multiple: true
           
       - name: Publish to PyPI
