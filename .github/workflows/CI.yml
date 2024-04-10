@@ -158,6 +158,12 @@ jobs:
           pattern: wheel-*
           merge-multiple: true
 
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: sdist-*
+          merge-multiple: true
+
       - name: Show Files
         run: |
           ls -a dist/
