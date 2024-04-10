@@ -160,7 +160,7 @@ jobs:
 
       - name: Show Files
         run: |
-          ls - a dist/
+          ls -a dist/
           
       # - name: Publish to PyPI
       #   uses: PyO3/maturin-action@v1
