@@ -7,7 +7,5 @@ scipy
 pyarrow
 pandas
 pytest
-networkx
-memray
-pytest-memray
 pytest-benchmark
+# networkx
