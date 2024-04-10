@@ -147,15 +147,21 @@ jobs:
           path: dist/*.whl
 
   release:
-    name: Release
+    name: Test Release
     runs-on: ubuntu-latest
     if: "startsWith(github.ref, 'refs/tags/')"
     needs: [build-wheels, create-sdist]
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           path: dist
           pattern: wheel-*
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: sdist-*
           merge-multiple: true
           
       - name: Publish to PyPI
