@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.2,<2.0"]
+requires = ["maturin>=1.3.2"]
 build-backend = "maturin"
 
 [project]
@@ -31,6 +31,7 @@ plot = [
 ]
 
 [tool.maturin]
+strip = true
 python-source = "python"
 features = ["pyo3/extension-module"]
 module-name = "polars_ds._polars_ds"
