@@ -7,6 +7,43 @@ import polars_ds as pds
 from polars.testing import assert_frame_equal
 
 
+def test_pca():
+    from sklearn.decomposition import PCA
+
+    df = pds.random_data(size=2000, n_cols=0).select(
+        pds.random(0.0, 1.0).alias("x1"),
+        pds.random(0.0, 1.0).alias("x2"),
+        pds.random(0.0, 1.0).alias("x3"),
+    )
+
+    singular_values = df.select(pds.query_singular_values("x1", "x2", "x3").alias("res"))["res"][
+        0
+    ].to_numpy()
+
+    pca = PCA()
+    data_matrix = df.select("x1", "x2", "x3").to_numpy().astype(np.float64)
+    pca.fit(data_matrix)
+    ans_singular_values = pca.singular_values_
+
+    assert np.isclose(singular_values, ans_singular_values).all()
+
+    singular_values = df.select(pds.query_singular_values("x1", "x2", "x3").alias("res"))["res"][
+        0
+    ].to_numpy()
+
+    vectors = df.select(pds.query_pca("x1", "x2", "x3").alias("vectors")).unnest("vectors")[
+        "principal_vectors"
+    ]
+
+    ans_vectors = pca.components_
+    for i in range(len(vectors)):
+        vi = vectors[i].to_numpy()
+        ans_vi = ans_vectors[i, :]
+        # The principal vector can be either v or -v. It doesn't matter and depends on backend algo's choice.
+        # Have a more relaxed rtol
+        assert np.isclose(np.abs(vi), np.abs(ans_vi), rtol=1e-5).all()
+
+
 @pytest.mark.parametrize(
     "df, ft, res_full, res_valid, res_same",
     [

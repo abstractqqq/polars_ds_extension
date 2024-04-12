@@ -66,7 +66,7 @@ fn pl_ks_2samp(inputs: &[Series]) -> PolarsResult<Series> {
         let s = Series::from_vec("statistic", vec![f64::INFINITY]);
         let p = Series::from_vec("threshold", vec![f64::NAN]);
         let out = StructChunked::new("ks", &[s, p])?;
-        return Ok(out.into_series())
+        return Ok(out.into_series());
     }
 
     let v1 = s1.cont_slice().unwrap();

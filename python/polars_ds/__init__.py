@@ -12,7 +12,7 @@ from polars_ds.str2 import *  # noqa: F403
 
 logging.basicConfig(level=logging.INFO)
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 
 
 def l_inf_horizontal(*v: Union[str, pl.Expr], normalize: bool = False) -> pl.Expr:

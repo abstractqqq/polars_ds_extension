@@ -25,7 +25,7 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
     let mut high = high.get(0).unwrap();
     if low == high {
         let out = Int32Chunked::from_vec("", vec![low; n]);
-        return Ok(out.into_series())
+        return Ok(out.into_series());
     } else if high < low {
         std::mem::swap(&mut low, &mut high);
     }

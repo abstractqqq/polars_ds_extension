@@ -41,14 +41,14 @@ fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 /// Returns the coefficients for lstsq as a nrows x 1 matrix
-/// The uses Cholesky decomposition as default method to compute inverse, 
+/// The uses Cholesky decomposition as default method to compute inverse,
 /// and falls back to LU decomposition
 fn faer_cholesky_lstsq(x: MatRef<f64>, xt: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
     let xtx = xt * x;
     let inv = match xtx.cholesky(Side::Lower) {
         Ok(cho) => cho.inverse(),
         // Fall back to LU decomp
-        Err(_) => xtx.partial_piv_lu().inverse()
+        Err(_) => xtx.partial_piv_lu().inverse(),
     };
     let coeffs = inv * xt * y;
     coeffs
@@ -200,7 +200,7 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
             let xtx = xt * &x;
             let xtx_inv = match xtx.cholesky(Side::Lower) {
                 Ok(cho) => cho.inverse(),
-                Err(_) => xtx.partial_piv_lu().inverse()
+                Err(_) => xtx.partial_piv_lu().inverse(),
             };
             let coeffs = &xtx_inv * xt * y;
             let betas = coeffs.col_as_slice(0);
@@ -228,7 +228,8 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
                         Ok(p) => 2.0 * p,
                         Err(_) => f64::NAN,
                     },
-                ).collect_vec();
+                )
+                .collect_vec();
             // Finalize
             let idx_series = UInt16Chunked::from_iter((0..ncols).map(|i| Some(i as u16)));
             let idx_series = idx_series.with_name("idx").into_series();
