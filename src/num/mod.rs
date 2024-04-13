@@ -13,6 +13,7 @@ mod jaccard;
 mod knn;
 mod lempel_ziv;
 mod ols;
+mod pca;
 mod psi;
 mod target_encode;
 mod tp_fp;
@@ -22,7 +23,7 @@ mod woe_iv;
 // Collection of distances, most will be used as function pointers in kd tree related queries,
 // which may be bad for perf.
 
-// Are these fast?
+// Are these fast? Try with PULP?
 
 #[inline]
 pub fn l_inf_dist<T: Float>(a: &[T], b: &[T]) -> T {

@@ -303,6 +303,71 @@ def haversine(
     )
 
 
+def query_singular_values(
+    *features: StrOrExpr,
+    center: bool = True,
+    as_explained_var: bool = False,
+    as_ratio: bool = False,
+) -> pl.Expr:
+    """
+    Finds all principal values (singular values) for the data matrix formed by the given features
+    and returns them in descending order.
+
+    Note: if a row has null values, it will be dropped.
+
+    Paramters
+    ---------
+    features
+        Feature columns
+    center
+        Whether to center the data or not. If you want to standard-normalize, set this to False,
+        and do it for input features by hand.
+    as_explained_var
+        If true, return the explained variance, which is singular_value ^ 2 / (n_samples - 1)
+    as_ratio
+        If true, normalize output to between 0 and 1.
+    """
+    feats = [str_to_expr(f) for f in features]
+    if center:
+        actual_inputs = [f - f.mean() for f in feats]
+    else:
+        actual_inputs = feats
+
+    out = pl_plugin(
+        lib=_lib, symbol="pl_principal_components", args=actual_inputs, returns_scalar=True
+    )
+    if as_explained_var:
+        out = out.list.eval(pl.element().pow(2) / (pl.count() - 1))
+    if as_ratio:
+        out = out.list.eval(pl.element() / pl.element().sum())
+
+    return out
+
+
+def query_pca(
+    *features: StrOrExpr,
+    center: bool = True,
+) -> pl.Expr:
+    """
+    Finds all singular values as well as the principle vectors.
+
+    Paramters
+    ---------
+    features
+        Feature columns
+    center
+        Whether to center the data or not. If you want to standard normalize, set this to False,
+        and do it for input features by hand.
+    """
+    feats = [str_to_expr(f) for f in features]
+    if center:
+        actual_inputs = [f - f.mean() for f in feats]
+    else:
+        actual_inputs = feats
+
+    return pl_plugin(lib=_lib, symbol="pl_pca", args=actual_inputs, changes_length=True)
+
+
 def query_knn_ptwise(
     *features: StrOrExpr,
     index: StrOrExpr,
