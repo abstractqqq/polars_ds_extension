@@ -28,7 +28,36 @@ class DIA:
         self.strs: List[str] = df.select(cs.string()).columns
         self.bools: List[str] = df.select(cs.boolean()).columns
         self.cats: List[str] = df.select(cs.categorical()).columns
-        self.simple_types: List[str] = self.numerics + self.strs + self.bools + self.cats
+        self.list_floats: List[str] = [
+            c
+            for c, t in df.schema.items()
+            if (t.is_(pl.List(pl.Float32)) or (t.is_(pl.List(pl.Float64))))
+        ]
+        self.list_ints: List[str] = [
+            c
+            for c, t in df.schema.items()
+            if t.is_(pl.List(pl.UInt8))
+            or t.is_(pl.List(pl.UInt16))
+            or t.is_(pl.List(pl.UInt32))
+            or t.is_(pl.List(pl.UInt64))
+            or t.is_(pl.List(pl.Int8))
+            or t.is_(pl.List(pl.Int16))
+            or t.is_(pl.List(pl.Int32))
+            or t.is_(pl.List(pl.Int64))
+        ]
+        self.list_bool: List[str] = [c for c, t in df.schema.items() if t.is_(pl.List(pl.Boolean))]
+        self.list_str: List[str] = [c for c, t in df.schema.items() if t.is_(pl.List(pl.String))]
+
+        self.simple_types: List[str] = (
+            self.numerics
+            + self.strs
+            + self.bools
+            + self.cats
+            + self.list_floats
+            + self.list_ints
+            + self.list_bool
+            + self.list_str
+        )
         self.other_types: List[str] = [c for c in self._frame.columns if c not in self.simple_types]
 
     def numeric_profile(self, n_bins: int = 20, iqr_multiplier: float = 1.5):
@@ -193,6 +222,34 @@ class DIA:
                 na_color="#000000",
             )
         )
+
+    def infer_prob(self) -> List[str]:
+        """
+        Infers columns that can potentially be probabilities. For f32/f64 columns, this checks if all values are
+        between 0 and 1. For List[f32] or List[f64] columns, this checks whether the column can potentially be
+        multi-class probabilities.
+        """
+        is_ok = (
+            self._frame.select(
+                *((pl.col(c).is_between(0.0, 1.0).all()).alias(c) for c in self.floats),
+                *(
+                    (
+                        (
+                            pl.col(c).list.eval((pl.element() >= 0.0).all()).list.first()
+                        )  # every number must be positive
+                        & (pl.col(c).list.sum() == 1.0)  # class prob must sum to 1
+                        & (
+                            pl.col(c).list.len().min() == pl.col(c).list.len().max()
+                        )  # class prob column must have the same length
+                    ).alias(c)
+                    for c in self.list_floats
+                ),
+            )
+            .collect()
+            .row(0)
+        )
+
+        return [c for c, ok in zip(self.floats + self.list_floats, is_ok) if ok is True]
 
     @lru_cache
     def infer_high_null(self, threshold: float = 0.75) -> List[str]:
