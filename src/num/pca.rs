@@ -25,7 +25,7 @@ pub fn pca_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 #[polars_expr(output_type_func=singular_values_output)]
-fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
+fn pl_singular_values(inputs: &[Series]) -> PolarsResult<Series> {
     let df = rechunk_to_frame(inputs)?.drop_nulls::<String>(None)?;
     let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
     let mat = mat.view().into_faer();

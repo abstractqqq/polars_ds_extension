@@ -333,9 +333,7 @@ def query_singular_values(
     else:
         actual_inputs = feats
 
-    out = pl_plugin(
-        lib=_lib, symbol="pl_principal_components", args=actual_inputs, returns_scalar=True
-    )
+    out = pl_plugin(lib=_lib, symbol="pl_singular_values", args=actual_inputs, returns_scalar=True)
     if as_explained_var:
         out = out.list.eval(pl.element().pow(2) / (pl.count() - 1))
     if as_ratio:
