@@ -366,6 +366,37 @@ def query_pca(
     return pl_plugin(lib=_lib, symbol="pl_pca", args=actual_inputs, changes_length=True)
 
 
+def query_principal_components(
+    *features: StrOrExpr,
+    k: int = 2,
+    center: bool = True,
+) -> pl.Expr:
+    """
+    Transforms the features to get the first k principal components.
+
+    Paramters
+    ---------
+    features
+        Feature columns
+    center
+        Whether to center the data or not. If you want to standard normalize, set this to False,
+        and do it for input features by hand.
+    """
+    feats = [str_to_expr(f) for f in features]
+    if k > len(feats) or k < 0:
+        raise ValueError("Input `k` should be between 1 and the number of features inclusive.")
+
+    if center:
+        actual_inputs = [f - f.mean() for f in feats]
+    else:
+        actual_inputs = feats
+
+    actual_inputs.insert(0, pl.lit(k, dtype=pl.UInt32).alias("principal_components"))
+    return pl_plugin(
+        lib=_lib, symbol="pl_principal_components", args=actual_inputs, changes_length=True
+    )
+
+
 def query_knn_ptwise(
     *features: StrOrExpr,
     index: StrOrExpr,
