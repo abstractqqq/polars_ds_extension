@@ -1,12 +1,13 @@
 import polars.selectors as cs
 import polars as pl
 import logging
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Iterable
 from functools import lru_cache
-from .num import query_cond_entropy
+from .num import query_cond_entropy, query_principal_components
 from itertools import combinations
 import graphviz
 from great_tables import GT
+from polars.type_aliases import IntoExpr
 
 logger = logging.getLogger(__name__)
 
@@ -543,3 +544,33 @@ class DIA:
                 dot.edge(p, c)
 
         return dot
+
+    def plot_pc2(
+        self, *features: Union[IntoExpr, Iterable[IntoExpr]], by: str, center: bool = True, **kwargs
+    ):
+        """
+        Creates a 2D scatter plot based on the reduced dimensions via PCA, and color it by `by`.
+
+        Paramters
+        ---------
+        features
+            Any selection expression for Polars
+        by
+            Color the 2-D PCA plot by the values in the column
+        center
+            Whether to automatically center the features
+        kwargs
+            Anything else that will be passed to hvplot's scatter function
+        """
+        feats = self._frame.select(features).columns
+        if len(feats) < 2:
+            raise ValueError("You must pass >= 2 features.")
+
+        temp = (
+            self._frame.select(
+                query_principal_components(*feats, center=center, k=2).alias("pc"), by
+            )
+            .collect()
+            .unnest("pc")
+        )
+        return temp.plot.scatter("pc1", "pc2", by=by, **kwargs)
