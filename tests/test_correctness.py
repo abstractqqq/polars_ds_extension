@@ -32,7 +32,7 @@ def test_pca():
     ].to_numpy()
 
     vectors = df.select(pds.query_pca("x1", "x2", "x3").alias("vectors")).unnest("vectors")[
-        "principal_vectors"
+        "weight_vector"
     ]
 
     ans_vectors = pca.components_

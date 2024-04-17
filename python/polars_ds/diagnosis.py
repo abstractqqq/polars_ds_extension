@@ -165,25 +165,16 @@ class DIA:
         ]
         return pl.concat(pl.collect_all(frames))
 
-    def corr(self, subset: Union[str, List[str], pl.Expr]) -> pl.DataFrame:
+    def corr(self, subset: Union[IntoExpr, Iterable[IntoExpr]]) -> pl.DataFrame:
         """
         Returns a dataframe containing correlation information between the subset and all numeric columns.
 
         Parameters
         ----------
         subset
-            Either a str representing a column name or a list of strings representing column names, or a Polars
-            selector/expression which select columns
+            Anything that can be put into a Polars .select statement.
         """
-        if isinstance(subset, str):
-            temp = [subset]
-        elif isinstance(subset, list):
-            temp = [s for s in subset if isinstance(s, str)]
-        elif isinstance(subset, pl.Expr):
-            temp = self._frame.select(subset).columns
-        else:
-            raise ValueError("Unknown subset type.")
-
+        temp = self._frame.select(subset).columns
         to_check = [c for c in temp if c in self.numerics]
         if len(to_check) != len(temp):
             removed = list(set(temp).difference(to_check))
@@ -200,15 +191,14 @@ class DIA:
 
         return pl.concat(pl.collect_all(corrs))
 
-    def plot_corr(self, subset: Union[str, List[str], pl.Expr]):
+    def plot_corr(self, subset: Union[IntoExpr, Iterable[IntoExpr]]):
         """
         Plots the correlations using classic heat maps.
 
         Parameters
         ----------
         subset
-            Either a str representing a column name or a list of strings representing column names, or a Polars
-            selector/expression which select columns
+            Anything that can be put into a Polars .select statement.
         """
         corr = self.corr(subset)
         cols = [c for c in corr.columns if c != "column"]
