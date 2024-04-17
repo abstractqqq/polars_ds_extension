@@ -1,12 +1,13 @@
 import polars.selectors as cs
 import polars as pl
 import logging
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Iterable
 from functools import lru_cache
-from .num import query_cond_entropy
+from .num import query_cond_entropy, query_principal_components
 from itertools import combinations
 import graphviz
 from great_tables import GT
+from polars.type_aliases import IntoExpr
 
 logger = logging.getLogger(__name__)
 
@@ -164,25 +165,16 @@ class DIA:
         ]
         return pl.concat(pl.collect_all(frames))
 
-    def corr(self, subset: Union[str, List[str], pl.Expr]) -> pl.DataFrame:
+    def corr(self, subset: Union[IntoExpr, Iterable[IntoExpr]]) -> pl.DataFrame:
         """
         Returns a dataframe containing correlation information between the subset and all numeric columns.
 
         Parameters
         ----------
         subset
-            Either a str representing a column name or a list of strings representing column names, or a Polars
-            selector/expression which select columns
+            Anything that can be put into a Polars .select statement.
         """
-        if isinstance(subset, str):
-            temp = [subset]
-        elif isinstance(subset, list):
-            temp = [s for s in subset if isinstance(s, str)]
-        elif isinstance(subset, pl.Expr):
-            temp = self._frame.select(subset).columns
-        else:
-            raise ValueError("Unknown subset type.")
-
+        temp = self._frame.select(subset).columns
         to_check = [c for c in temp if c in self.numerics]
         if len(to_check) != len(temp):
             removed = list(set(temp).difference(to_check))
@@ -199,15 +191,14 @@ class DIA:
 
         return pl.concat(pl.collect_all(corrs))
 
-    def plot_corr(self, subset: Union[str, List[str], pl.Expr]):
+    def plot_corr(self, subset: Union[IntoExpr, Iterable[IntoExpr]]):
         """
         Plots the correlations using classic heat maps.
 
         Parameters
         ----------
         subset
-            Either a str representing a column name or a list of strings representing column names, or a Polars
-            selector/expression which select columns
+            Anything that can be put into a Polars .select statement.
         """
         corr = self.corr(subset)
         cols = [c for c in corr.columns if c != "column"]
@@ -543,3 +534,33 @@ class DIA:
                 dot.edge(p, c)
 
         return dot
+
+    def plot_pc2(
+        self, *features: Union[IntoExpr, Iterable[IntoExpr]], by: str, center: bool = True, **kwargs
+    ):
+        """
+        Creates a 2D scatter plot based on the reduced dimensions via PCA, and color it by `by`.
+
+        Paramters
+        ---------
+        features
+            Any selection expression for Polars
+        by
+            Color the 2-D PCA plot by the values in the column
+        center
+            Whether to automatically center the features
+        kwargs
+            Anything else that will be passed to hvplot's scatter function
+        """
+        feats = self._frame.select(features).columns
+        if len(feats) < 2:
+            raise ValueError("You must pass >= 2 features.")
+
+        temp = (
+            self._frame.select(
+                query_principal_components(*feats, center=center, k=2).alias("pc"), by
+            )
+            .collect()
+            .unnest("pc")
+        )
+        return temp.plot.scatter("pc1", "pc2", by=by, **kwargs)

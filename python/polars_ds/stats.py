@@ -500,7 +500,7 @@ def query_f_test(*variables: StrOrExpr, group: StrOrExpr) -> pl.Expr:
         return pl_plugin(lib=_lib, symbol="pl_f_test", args=vars_, changes_length=True)
 
 
-def query_chi2(var1: Union[pl.Expr, float], var2: Union[pl.Expr, float]) -> pl.Expr:
+def query_chi2(var1: StrOrExpr, var2: StrOrExpr) -> pl.Expr:
     """
     Computes the Chi Squared statistic and p value between two categorical values.
 
@@ -523,7 +523,7 @@ def query_chi2(var1: Union[pl.Expr, float], var2: Union[pl.Expr, float]) -> pl.E
     )
 
 
-def perturb(var: Union[pl.Expr, float], epsilon: float, positive: bool = False):
+def perturb(var: StrOrExpr, epsilon: float, positive: bool = False):
     """
     Perturb the var by a small amount. This only applies to float columns.
 
@@ -557,7 +557,7 @@ def perturb(var: Union[pl.Expr, float], epsilon: float, positive: bool = False):
     )
 
 
-def normal_test(var: Union[pl.Expr, float]) -> pl.Expr:
+def normal_test(var: StrOrExpr) -> pl.Expr:
     """
     Perform a normality test which is based on D'Agostino and Pearson's test
     that combines skew and kurtosis to produce an omnibus test of normality.
@@ -615,7 +615,7 @@ def random(
     )
 
 
-def random_null(var: Union[pl.Expr, float], pct: float, seed: Optional[int] = None) -> pl.Expr:
+def random_null(var: StrOrExpr, pct: float, seed: Optional[int] = None) -> pl.Expr:
     """
     Creates random null values in var. If var contains nulls originally, they
     will stay null.
@@ -896,7 +896,7 @@ def weighted_cov(x: StrOrExpr, y: StrOrExpr, weights: Union[pl.Expr, float]) -> 
     return w.dot((xx - wx) * (yy - wy)) / w.sum()
 
 
-def weighted_corr(x: StrOrExpr, y: StrOrExpr, weights: Union[pl.Expr, float]) -> pl.Expr:
+def weighted_corr(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Expr:
     """
     Computes the weighted correlation between x and y. The weights column must have the same
     length as both x an y.
@@ -941,7 +941,7 @@ def cosine_sim(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
     return xx.dot(yy) / (x2 * y2).sqrt()
 
 
-def weighted_cosine_sim(x: StrOrExpr, y: StrOrExpr, weights: Union[pl.Expr, str]) -> pl.Expr:
+def weighted_cosine_sim(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Expr:
     """
     Computes the weighted cosine similarity between x and y (column-wise). The weights column
     must have the same length as both x an y.

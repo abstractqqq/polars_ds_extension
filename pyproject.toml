@@ -27,7 +27,8 @@ keywords = ["polars-extension", "scientific-computing", "data-science"]
 [project.optional-dependencies]
 plot = [
     "great-tables >= 0.5",
-    "graphviz >= 0.20"
+    "graphviz >= 0.20",
+    "hvplot >= 0.9.1" # Polars's plot backend for now, which in term is backed by Bokeh
 ]
 
 [tool.maturin]
