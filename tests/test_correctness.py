@@ -56,7 +56,7 @@ def test_xi_corr():
     y = df["y"].to_numpy()
     xi_obj = Xi(x, y)
     ans_statistic = xi_obj.correlation
-    test_statistic = df.select(pds.xi_corr("x", "y").struct.field("statistic")).item(0, 0)
+    test_statistic = df.select(pds.xi_corr("x", "y")).item(0, 0)
 
     assert np.isclose(ans_statistic, test_statistic, rtol=1e-4)
 
