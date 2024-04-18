@@ -14,10 +14,7 @@ pub fn singular_values_output(_: &[Field]) -> PolarsResult<Field> {
 
 pub fn pca_output(_: &[Field]) -> PolarsResult<Field> {
     let singular_value = Field::new("singular_value", DataType::Float64);
-    let weights = Field::new(
-        "weight_vector",
-        DataType::List(Box::new(DataType::Float64)),
-    );
+    let weights = Field::new("weight_vector", DataType::List(Box::new(DataType::Float64)));
     Ok(Field::new(
         "pca",
         DataType::Struct(vec![singular_value, weights]),
@@ -25,9 +22,9 @@ pub fn pca_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 pub fn principal_components_output(fields: &[Field]) -> PolarsResult<Field> {
-    let components:Vec<_> = (0..fields.len()).map(|i|
-        Field::new(format!("pc{}", i+1).as_ref(), DataType::Float64)
-    ).collect();
+    let components: Vec<_> = (0..fields.len())
+        .map(|i| Field::new(format!("pc{}", i + 1).as_ref(), DataType::Float64))
+        .collect();
     Ok(Field::new(
         "principal_components",
         DataType::Struct(components),
@@ -74,9 +71,8 @@ fn pl_singular_values(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type_func=principal_components_output)]
 fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
-
     let k = inputs[0].u32()?;
-    let k = k.get(0).unwrap() as usize; 
+    let k = k.get(0).unwrap() as usize;
 
     let df = rechunk_to_frame(&inputs[1..])?.drop_nulls::<String>(None)?;
     let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
@@ -106,17 +102,18 @@ fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
         params,
     );
 
-    let components = mat * v; 
+    let components = mat * v;
 
-    let series:Vec<_> = (0..k).map(|i| {
-        let name = format!("pc{}", i+1);
-        let s = Float64Chunked::from_slice(name.as_ref(), components.col_as_slice(i));
-        s.into_series()
-    }).collect();
+    let series: Vec<_> = (0..k)
+        .map(|i| {
+            let name = format!("pc{}", i + 1);
+            let s = Float64Chunked::from_slice(name.as_ref(), components.col_as_slice(i));
+            s.into_series()
+        })
+        .collect();
 
     let ca = StructChunked::new("principal_components", &series)?;
     Ok(ca.into_series())
-    
 }
 
 #[polars_expr(output_type_func=pca_output)]

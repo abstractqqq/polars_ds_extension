@@ -44,6 +44,23 @@ def test_pca():
         assert np.isclose(np.abs(vi), np.abs(ans_vi), rtol=1e-5).all()
 
 
+def test_xi_corr():
+    df = pds.random_data(size=2_000, n_cols=0).select(
+        pds.random(0.0, 12.0).alias("x"),
+        pds.random(0.0, 1.0).alias("y"),
+    )
+
+    from xicor.xicor import Xi
+
+    x = df["x"].to_numpy()
+    y = df["y"].to_numpy()
+    xi_obj = Xi(x, y)
+    ans_statistic = xi_obj.correlation
+    test_statistic = df.select(pds.xi_corr("x", "y").struct.field("statistic")).item(0, 0)
+
+    assert np.isclose(ans_statistic, test_statistic, rtol=1e-4)
+
+
 @pytest.mark.parametrize(
     "df, ft, res_full, res_valid, res_same",
     [

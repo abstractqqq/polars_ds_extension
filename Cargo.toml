@@ -11,8 +11,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = {version = "*", features = ["abi3-py38", "extension-module"]}
-pyo3-polars = {version = "0.12", features = ["derive"]}
-polars = {version = "0.38.3", features = ["performant", "lazy", "parquet", "dtype-array", "array_count", "cross_join", "ndarray", "log", "cum_agg", "nightly"]}
+pyo3-polars = {version = "0.13", features = ["derive"]}
+polars = {version = "0.39", features = ["performant", "lazy", "parquet", "dtype-array", "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", "cum_agg", "nightly"]}
 num = "0.4.1"
 faer = {version = "0.18.2", features = ["nightly"]}
 faer-ext = {version = "0.1.0", features = ["ndarray"]}

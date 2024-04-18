@@ -287,8 +287,8 @@ def query_ttest_ind(
     to be equivalent to SciPy's ttest_ind, with fewer options. The result is not exact but
     within 1e-10 precision from SciPy's.
 
-    In the case of student's t test, the data is assumed to have no nulls, and n = self._expr.count()
-    is used. Note self._expr.count() only counts non-null elements after polars 0.20.
+    In the case of student's t test, the data is assumed to have no nulls, and n = expr.count()
+    is used. Note expr.count() only counts non-null elements after polars 0.20.
     The degree of freedom will be 2n - 2. As a result, nulls might cause problems.
 
     In the case of Welch's t test, data will be sanitized (nulls, NaNs, Infs will be dropped
@@ -326,8 +326,8 @@ def query_ttest_ind(
         m2 = s2.mean()
         v1 = s1.var()
         v2 = s2.var()
-        n1 = s1.count().cast(pl.UInt64)
-        n2 = s2.count().cast(pl.UInt64)
+        n1 = s1.len().cast(pl.UInt64)
+        n2 = s2.len().cast(pl.UInt64)
         return pl_plugin(
             lib=_lib,
             symbol="pl_welch_t",
@@ -357,7 +357,7 @@ def query_ttest_1samp(
     sm = s1.mean()
     pm = pl.lit(pop_mean, dtype=pl.Float64)
     var = s1.var()
-    cnt = s1.count().cast(pl.UInt64)
+    cnt = s1.len().cast(pl.UInt64)
     alt = pl.lit(alternative, dtype=pl.String)
     return pl_plugin(
         lib=_lib,
@@ -415,7 +415,7 @@ def query_ttest_ind_from_stats(
         m2 = pl.lit(mean, pl.Float64)
         v1 = s1.var()
         v2 = pl.lit(var, pl.Float64)
-        n1 = s1.count().cast(pl.UInt64)
+        n1 = s1.len().cast(pl.UInt64)
         n2 = pl.lit(cnt, pl.UInt64)
         return pl_plugin(
             lib=_lib,
@@ -966,3 +966,49 @@ def weighted_cosine_sim(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Ex
     wx2 = xx.pow(2).dot(w)
     wy2 = yy.pow(2).dot(w)
     return (w * xx).dot(yy) / (wx2 * wy2).sqrt()
+
+
+def xi_corr(
+    x: StrOrExpr, y: StrOrExpr, seed: Optional[int] = None, return_p: bool = False
+) -> pl.Expr:
+    """
+    Computes the ξ(xi) correlation developed by SOURAV CHATTERJEE in the paper in the reference.
+    This will return both the correlation (the statistic) and the p-value. Note that if sample size
+    is smaller than 30, p-value will always be NaN. The ξ correlation is not symmetric, and this only
+    tries to explain whether y is a function of x.
+
+    Parameters
+    ----------
+    x
+        The first variable
+    y
+        The second variable
+    seed
+        Whether to have a seed when we break ties at random
+    return_p
+        Whether to return a two-sided p value for the statistic
+
+    Reference
+    ---------
+    https://arxiv.org/pdf/1909.10140.pdf
+    """
+    xx, yy = str_to_expr(x), str_to_expr(y)
+    args = [
+        xx.rank(method="random", seed=seed),
+        yy.rank(method="max").cast(pl.Float64),
+        (-yy).rank(method="max").cast(pl.Float64),
+    ]
+    if return_p:
+        return pl_plugin(
+            lib=_lib,
+            symbol="pl_xi_corr_w_p",
+            args=args,
+            returns_scalar=True,
+        )
+    else:
+        return pl_plugin(
+            lib=_lib,
+            symbol="pl_xi_corr",
+            args=args,
+            returns_scalar=True,
+        )
