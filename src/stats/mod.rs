@@ -4,6 +4,7 @@ mod ks;
 mod normal_test;
 mod sample;
 mod t_test;
+mod xi_corr;
 
 use polars::prelude::*;
 

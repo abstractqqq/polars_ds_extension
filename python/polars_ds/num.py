@@ -222,6 +222,20 @@ class NumExt:
 # ----------------------------------------------------------------------------------
 
 
+def softmax(x: StrOrExpr) -> pl.Expr:
+    """
+    Applies the softmax function to the column, which turns any real valued column into valid probability
+    values. This is simply a shorthand for x.exp() / x.exp().sum() for expressions x.
+
+    Paramters
+    ---------
+    x
+        Either a str represeting a column name or a Polars expression
+    """
+    xx = str_to_expr(x)
+    return xx.exp() / (xx.exp().sum())
+
+
 def query_gcd(x: StrOrExpr, y: Union[int, str, pl.Expr]) -> pl.Expr:
     """
     Computes GCD of two integer columns. This will try to cast everything to int32.
