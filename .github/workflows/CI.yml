@@ -147,7 +147,7 @@ jobs:
           path: dist/*.whl
 
   release:
-    name: Test Release
+    name: Release
     runs-on: ubuntu-latest
     if: "startsWith(github.ref, 'refs/tags/')"
     needs: [build-wheels, create-sdist]
