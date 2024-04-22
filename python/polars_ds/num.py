@@ -1467,17 +1467,17 @@ def trunc(x: StrOrExpr) -> pl.Expr:
     )
 
 
-def signum(x: StrOrExpr) -> pl.Expr:
-    """
-    Returns sign of the input values. Note: NaN is returned for NaN. This is faster
-    and more accurate than doing pl.when(..).then().otherwise().
-    """
-    return pl_plugin(
-        args=[str_to_expr(x)],
-        lib=_lib,
-        symbol="pl_signum",
-        is_elementwise=True,
-    )
+# def signum(x: StrOrExpr) -> pl.Expr:
+#     """
+#     Returns sign of the input values. Note: NaN is returned for NaN. This is faster
+#     and more accurate than doing pl.when(..).then().otherwise().
+#     """
+#     return pl_plugin(
+#         args=[str_to_expr(x)],
+#         lib=_lib,
+#         symbol="pl_signum",
+#         is_elementwise=True,
+#     )
 
 
 def sinc(x: StrOrExpr) -> pl.Expr:

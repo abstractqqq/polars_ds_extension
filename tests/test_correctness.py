@@ -153,18 +153,18 @@ def test_f_test(df):
     assert np.isclose(pvalue, scikit_p)
 
 
-@pytest.mark.parametrize(
-    "df, res",
-    [
-        (
-            pl.DataFrame({"a": [2.0, None, -2.0, float("nan")]}),
-            pl.DataFrame({"a": [1.0, None, -1.0, float("nan")]}),
-        ),
-    ],
-)
-def test_signum(df, res):
-    assert_frame_equal(df.select(pds.signum("a")), res)
-    assert_frame_equal(df.lazy().select(pds.signum("a")).collect(), res)
+# @pytest.mark.parametrize(
+#     "df, res",
+#     [
+#         (
+#             pl.DataFrame({"a": [2.0, None, -2.0, float("nan")]}),
+#             pl.DataFrame({"a": [1.0, None, -1.0, float("nan")]}),
+#         ),
+#     ],
+# )
+# def test_signum(df, res):
+#     assert_frame_equal(df.select(pds.signum("a")), res)
+#     assert_frame_equal(df.lazy().select(pds.signum("a")).collect(), res)
 
 
 @pytest.mark.parametrize(
