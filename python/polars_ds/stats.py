@@ -968,13 +968,34 @@ def weighted_cosine_sim(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Ex
     return (w * xx).dot(yy) / (wx2 * wy2).sqrt()
 
 
+def kendall_tau(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
+    """
+    Computes Kendall's Tau (b) correlation between x and y. This automatically drops rows with null/nans.
+
+    Note: this function is about 3x slower than SciPy right now because of its naive implementation.
+
+    Parameters
+    ----------
+    x
+        The first variable
+    y
+        The second variable
+    """
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_kendall_tau",
+        args=[str_to_expr(x), str_to_expr(y)],
+        returns_scalar=True,
+    )
+
+
 def xi_corr(
     x: StrOrExpr, y: StrOrExpr, seed: Optional[int] = None, return_p: bool = False
 ) -> pl.Expr:
     """
     Computes the ξ(xi) correlation developed by SOURAV CHATTERJEE in the paper in the reference.
     This will return both the correlation (the statistic) and the p-value. Note that if sample size
-    is smaller than 30, p-value will always be NaN. The ξ correlation is not symmetric, and this only
+    is smaller than 30, p-value will always be NaN. The ξ correlation is not symmetric, as it only
     tries to explain whether y is a function of x.
 
     Parameters

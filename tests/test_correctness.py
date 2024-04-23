@@ -61,6 +61,21 @@ def test_xi_corr():
     assert np.isclose(ans_statistic, test_statistic, rtol=1e-4)
 
 
+def test_kendall_tau():
+    from scipy.stats import kendalltau
+
+    df = pds.random_data(size=2000, n_cols=0).select(
+        pds.random_int(0, 200).alias("x"),
+        pds.random_int(0, 200).alias("y"),
+    )
+
+    test = df.select(pds.kendall_tau("x", "y")).item(0, 0)
+
+    res = kendalltau(df["x"].to_numpy(), df["y"].to_numpy())
+
+    assert np.isclose(test, res.statistic)
+
+
 @pytest.mark.parametrize(
     "df, ft, res_full, res_valid, res_same",
     [
