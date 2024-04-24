@@ -10,16 +10,9 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
     let mut df = df!("x" => &inputs[0], "y" => &inputs[1])?
         .lazy()
         .filter(
-            col("x")
-                .is_finite()
-                .and(col("y").is_finite())
-                .and(col("x").is_not_null().and(col("y").is_not_null())),
+            col("x").is_not_null().and(col("y").is_not_null())
         )
         .sort(["x", "y"], Default::default())
-        .select([
-            col("x").cast(DataType::Float64),
-            col("y").cast(DataType::Float64),
-        ])
         .collect()?
         .agg_chunks();
 
@@ -32,10 +25,8 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
 
     let x = df.drop_in_place("x").unwrap();
     let y = df.drop_in_place("y").unwrap();
-
-    let x = x.f64().unwrap();
-    let y = y.f64().unwrap();
-
+    let x = x.u32().unwrap();
+    let y = y.u32().unwrap();
     let x = x.cont_slice().unwrap();
     let y = y.cont_slice().unwrap();
 
@@ -52,27 +43,25 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
             if yi == yj {
                 consecutive_xy_ties += 1;
             } else {
-                tied_xy += consecutive_xy_ties * (consecutive_xy_ties - 1);
+                tied_xy += (consecutive_xy_ties * (consecutive_xy_ties - 1)) >> 1;
                 consecutive_xy_ties = 1;
             }
         } else {
-            tied_x += consecutive_x_ties * (consecutive_x_ties - 1);
+            tied_x += (consecutive_x_ties * (consecutive_x_ties - 1)) >> 1;
             consecutive_x_ties = 1;
-            tied_xy += consecutive_xy_ties * (consecutive_xy_ties - 1);
+            tied_xy += (consecutive_xy_ties * (consecutive_xy_ties - 1)) >> 1;
             consecutive_xy_ties = 1;
         }
         xj = xi;
         yj = yi;
     }
 
-    tied_x += consecutive_x_ties * (consecutive_x_ties - 1);
-    tied_xy += consecutive_xy_ties * (consecutive_xy_ties - 1);
-    tied_x >>= 1; // divide by 2
-    tied_xy >>= 1; // divide by 2
+    tied_x += (consecutive_x_ties * (consecutive_x_ties - 1)) >> 1;
+    tied_xy += (consecutive_xy_ties * (consecutive_xy_ties - 1)) >> 1;
 
     let mut swaps: usize = 0;
-    let mut xx: Vec<f64> = x.to_vec();
-    let mut yy: Vec<f64> = y.to_vec();
+    let mut xx = x.to_vec();
+    let mut yy = y.to_vec();
     let mut x_copy = x.to_vec();
     let mut y_copy = y.to_vec();
     let mut seg_size: usize = 1;
@@ -124,18 +113,16 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
         if yy[i] == prev {
             consecutive_y_ties += 1;
         } else {
-            tied_y += consecutive_y_ties * (consecutive_y_ties - 1);
+            tied_y += (consecutive_y_ties * (consecutive_y_ties - 1)) >> 1;
             consecutive_y_ties = 1;
         }
         prev = yy[i];
     }
-    tied_y += consecutive_y_ties * (consecutive_y_ties - 1);
-    tied_y >>= 1; // divide by 2
+    tied_y += (consecutive_y_ties * (consecutive_y_ties - 1)) >> 1;
 
     let nc_m_nd = n_pairs - tied_x - tied_y + tied_xy - ((swaps << 1) as i64);
     // Prevent overflow
-    let denom = (n_pairs - tied_x) * (n_pairs - tied_y);
-
-    let out = nc_m_nd as f64 / (denom as f64).sqrt();
+    let denom = ((n_pairs - tied_x) as f64) * ((n_pairs - tied_y) as f64);
+    let out = nc_m_nd as f64 / denom.sqrt();
     Ok(Series::from_vec(name, vec![out]))
 }

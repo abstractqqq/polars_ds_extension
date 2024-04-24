@@ -970,7 +970,8 @@ def weighted_cosine_sim(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Ex
 
 def kendall_tau(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
     """
-    Computes Kendall's Tau (b) correlation between x and y. This automatically drops rows with null/nans.
+    Computes Kendall's Tau (b) correlation between x and y. This automatically drops rows with null, and
+    will consider NaN to be the largest value, bigger than Inf.
 
     Note: this function is about 3x slower than SciPy right now because of its naive implementation.
 
@@ -981,10 +982,11 @@ def kendall_tau(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
     y
         The second variable
     """
+    xx, yy = str_to_expr(x).fill_nan(None), str_to_expr(y).fill_nan(None)
     return pl_plugin(
         lib=_lib,
         symbol="pl_kendall_tau",
-        args=[str_to_expr(x), str_to_expr(y)],
+        args=[xx.rank(method="min"), yy.rank(method="min")],
         returns_scalar=True,
     )
 
