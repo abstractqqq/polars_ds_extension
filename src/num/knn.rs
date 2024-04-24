@@ -48,7 +48,7 @@ pub fn build_standard_kdtree<'a>(
     // Building the tree
     let mut tree = KdTree::with_capacity(dim, leaf_size);
     for (i, p) in data.axis_iter(Axis(0)).enumerate() {
-        // C order makes sure rows are contiguous
+        // C order makes sure rows are contiguous. If error, then ignore the addition of that row
         match tree.add(p.to_slice().unwrap(), i) {
             Ok(_) => {}
             Err(_) => {}

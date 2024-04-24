@@ -18,6 +18,7 @@ defaults:
   run:
     shell: bash
 
+# Drop 3.8 once it reaches end of life
 env:
   PYTHON_VERSION: '3.8'
 
@@ -74,7 +75,7 @@ jobs:
       fail-fast: false
       matrix:
         package: [polars_ds]
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-13, windows-latest]
         architecture: [x86-64, aarch64]
         exclude:
           - os: windows-latest
@@ -94,7 +95,7 @@ jobs:
         id: features
         if: matrix.architecture == 'x86-64'
         env:
-          IS_MACOS: ${{ matrix.os == 'macos-latest' }}
+          IS_MACOS: ${{ matrix.os == 'macos-13' }}
         run: |
           if [[ "$IS_MACOS" = true ]]; then
             FEATURES=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+fma,+pclmulqdq
@@ -113,7 +114,7 @@ jobs:
         if: matrix.architecture == 'aarch64'
         id: target
         run: |
-          TARGET=${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin' || 'aarch64-unknown-linux-gnu'}}
+          TARGET=${{ matrix.os == 'macos-13' && 'aarch64-apple-darwin' || 'aarch64-unknown-linux-gnu'}}
           echo "target=$TARGET" >> $GITHUB_OUTPUT
 
       - name: Set jemalloc for aarch64 Linux
@@ -147,7 +148,7 @@ jobs:
           path: dist/*.whl
 
   release:
-    name: Test Release
+    name: Release
     runs-on: ubuntu-latest
     if: "startsWith(github.ref, 'refs/tags/')"
     needs: [build-wheels, create-sdist]

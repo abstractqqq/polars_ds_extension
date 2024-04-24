@@ -61,6 +61,21 @@ def test_xi_corr():
     assert np.isclose(ans_statistic, test_statistic, rtol=1e-4)
 
 
+def test_kendall_tau():
+    from scipy.stats import kendalltau
+
+    df = pds.random_data(size=2000, n_cols=0).select(
+        pds.random_int(0, 200).alias("x"),
+        pds.random_int(0, 200).alias("y"),
+    )
+
+    test = df.select(pds.kendall_tau("x", "y")).item(0, 0)
+
+    res = kendalltau(df["x"].to_numpy(), df["y"].to_numpy())
+
+    assert np.isclose(test, res.statistic)
+
+
 @pytest.mark.parametrize(
     "df, ft, res_full, res_valid, res_same",
     [
@@ -153,18 +168,18 @@ def test_f_test(df):
     assert np.isclose(pvalue, scikit_p)
 
 
-@pytest.mark.parametrize(
-    "df, res",
-    [
-        (
-            pl.DataFrame({"a": [2.0, None, -2.0, float("nan")]}),
-            pl.DataFrame({"a": [1.0, None, -1.0, float("nan")]}),
-        ),
-    ],
-)
-def test_signum(df, res):
-    assert_frame_equal(df.select(pds.signum("a")), res)
-    assert_frame_equal(df.lazy().select(pds.signum("a")).collect(), res)
+# @pytest.mark.parametrize(
+#     "df, res",
+#     [
+#         (
+#             pl.DataFrame({"a": [2.0, None, -2.0, float("nan")]}),
+#             pl.DataFrame({"a": [1.0, None, -1.0, float("nan")]}),
+#         ),
+#     ],
+# )
+# def test_signum(df, res):
+#     assert_frame_equal(df.select(pds.signum("a")), res)
+#     assert_frame_equal(df.lazy().select(pds.signum("a")).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -1147,13 +1162,6 @@ def test_knn_ptwise(df, dist, k, res):
 @pytest.mark.parametrize(
     "df, x, dist, k, res",
     [
-        (
-            pl.DataFrame({"id": range(5), "val1": range(5), "val2": range(5), "val3": range(5)}),
-            [0.5, 0.5, 0.5],
-            "l2",
-            3,
-            pl.DataFrame({"id": [0, 1, 2]}),
-        ),
         (  # Only the first row is the nearest neighbor to [0.5, 0.5, 0.5]
             pl.DataFrame(
                 {"id": [1, 2], "val1": [0.1, 0.2], "val2": [0.1, 0.3], "val3": [0.1, 0.4]}

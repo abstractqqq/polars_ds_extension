@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "polars_ds"
 requires-python = ">=3.8"
-version = "0.4.2"
+version = "0.4.3"
 
 license = {file = "LICENSE.txt"}
 classifiers = [
@@ -28,7 +28,9 @@ keywords = ["polars-extension", "scientific-computing", "data-science"]
 plot = [
     "great-tables >= 0.5",
     "graphviz >= 0.20",
-    "hvplot >= 0.9.1" # Polars's plot backend for now, which in term is backed by Bokeh
+    # Polars's plot backend for now, which in turn is backed by Bokeh
+    # Not the best in terms of dependency management. But keep it for now.
+    "hvplot >= 0.9.1" 
 ]
 
 [tool.maturin]

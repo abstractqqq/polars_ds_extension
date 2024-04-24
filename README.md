@@ -15,19 +15,29 @@
 
 # The Project
 
-The goal of the project is to **reduce dependencies**, **improve code organization**, **simplify data pipelines** and overall **faciliate analysis of various kinds of tabular data** that a data scientist may encounter. It is a package built around your favorite **Polars dataframe**. Here are the current namespaces (Polars Extensions) provided by the package:
+The goal of the project is to **reduce dependencies**, **improve code organization**, **simplify data pipelines** and overall **faciliate analysis of various kinds of tabular data** that a data scientist may encounter. It is a package built around your favorite **Polars dataframe**. Here are some of the main areas of data science that is covered by the package:
 
-1. A numerical extension (num), which focuses on numerical quantities common in many fields of data analysis (credit modelling, time series, other well-known quantities, etc.), such as rfft, entropies, k-nearest-neighbors queries, Population Stability Index, Information Value, etc.
+1. Well-known numerical transform/quantities. E.g. fft, conditional entropy, singular values, basic linear regression related quantities, population stability index, weight of evidence, column-wise/row-wise jaccard similarity etc.
 
-2. A metrics extension (metric), which contains a lot of common error/loss functions, model evaluation metrics. This module is mostly designed to generate model performance monitoring data.
+2. Statistics. Basic tests such as the t-test, f-test, KS statistics. Miscallaneous functions like weighted correlation, Xi-correlation. In-dataframe random column generations, etc. 
 
-3. A str extension (str2), which focuses on str distances/similarities, and other commonly used string manipulation procedures.
+3. Metrics. ML metrics for common model performance reporting. E.g ROC AUC for binary/multiclass classification, logloss, r2, MAPE, etc.
 
-4. A stats extension (stats), which has common statistical tests such as t-test, chi2, and f-test, etc., and random sampling from a distribution, etc.
+4. KNN-related queries. E.g. filter to k-nearest neighbors to point, find indices of all neighbors within a certain distance, etc.
 
-5. A complex extension (c), which treats complex numbers as a column of array of size 2. Sometimes complex numbers are needed for processing FFT outputs.
+5. String metrics such as Levenshtein distance, Damure Levenshtein distance, other string distances, snowball stemming (English only), string Jaccard similarity, etc.
 
-6. A graph extension (graph) for very simple graph queries, such as shortest path queries, eigenvector centrality computations. More will be added. (Usable but limited. Will to be refactored/redesigned.)
+6. Diagnosis. This modules contains the DIA (Data Inspection Assitant) class, which can help you profile your data, visualize data in lower dimensions, detect functional dependencies, detect other common data quality issues like null rate or high correlation.
+
+7. Sample. Traditional dataset sampling. No time series sampling yet. This module provides functionalities such as stratified downsample, volume neutral random sampling, etc.
+
+8. Polars Native ML Pipeline. Planned but not started yet. The goal is to have a Polars native pipeline that can replace Scikit-learn's pipeline and provides all the benefits of Polars. All the basic transforms in Scikit-leran, categorical-encoders are planned. This can be super powerful together with Polars's expressions. (Basically, once you have expressions, you don't need to write custom transforms like col(A)/col(B), log transform, sqrt transform, linear/polynomial transforms, etc.)
+
+Some other areas that currently exist, but is de-prioritized:
+
+1. Complex number related queries.
+
+2. Graph related queries. (The various representations of "Graphs" in tabular dataframe makes it hard to have consistent backend handling of such data.)
 
 # But why? Why not use Sklearn? SciPy? NumPy?
 
@@ -124,12 +134,12 @@ The end result is simpler, more intuitive code that is also easier to reason abo
 ```python
 import polars_ds as pds
 ```
-when you want to access the namespaces provided by the package.
+
+To make full use of the Diagnosis module, do
 
 ```python
 pip install "polars_ds[plot]"
 ```
-for dataframe diagnosis related features.
 
 ## Examples
 
