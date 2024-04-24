@@ -970,10 +970,11 @@ def weighted_cosine_sim(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Ex
 
 def kendall_tau(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
     """
-    Computes Kendall's Tau (b) correlation between x and y. This automatically drops rows with null, and
-    will consider NaN to be the largest value, bigger than Inf.
+    Computes Kendall's Tau (b) correlation between x and y. This automatically drops rows with null.
 
-    Note: this function is about 3x slower than SciPy right now because of its naive implementation.
+    Note: this will map NaN to null and drop all rows with null. Inf will be kept and cosidered as
+    the largest value and multiple Infs will be equal. -Inf will be the smallest if it exists in the
+    data. A value of NaN will be returned if the data has < 2 rows after nulls are dropped.
 
     Parameters
     ----------

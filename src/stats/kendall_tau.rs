@@ -1,5 +1,5 @@
 /// O(nlogn) implementation of Kendall's Tau correlation
-/// Implemented by translating the Java implementation:
+/// Implemented by translating the Java code:
 /// https://www.hipparchus.org/xref/org/hipparchus/stat/correlation/KendallsCorrelation.html
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
@@ -9,9 +9,7 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
     let name = inputs[0].name();
     let mut df = df!("x" => &inputs[0], "y" => &inputs[1])?
         .lazy()
-        .filter(
-            col("x").is_not_null().and(col("y").is_not_null())
-        )
+        .filter(col("x").is_not_null().and(col("y").is_not_null()))
         .sort(["x", "y"], Default::default())
         .collect()?
         .agg_chunks();
@@ -122,7 +120,7 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
 
     let nc_m_nd = n_pairs - tied_x - tied_y + tied_xy - ((swaps << 1) as i64);
     // Prevent overflow
-    let denom = ((n_pairs - tied_x) as f64) * ((n_pairs - tied_y) as f64);
-    let out = nc_m_nd as f64 / denom.sqrt();
+    let denom = (((n_pairs - tied_x) as f64) * ((n_pairs - tied_y) as f64)).sqrt();
+    let out = nc_m_nd as f64 / denom;
     Ok(Series::from_vec(name, vec![out]))
 }
