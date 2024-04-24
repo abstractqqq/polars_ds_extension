@@ -8,12 +8,13 @@ if sys.version_info >= (3, 10):
 else:  # 3.9, 3.8
     from typing_extensions import TypeAlias
 
-# Custom Enum Types
+# Custom "Enum" Types
 DetrendMethod: TypeAlias = Literal["linear", "mean"]
 Alternative: TypeAlias = Literal["two-sided", "less", "greater"]
 ROCAUCStrategy: TypeAlias = Literal["macro", "weighted"]
 Distance: TypeAlias = Literal["l1", "l2", "inf", "h", "cosine", "haversine"]
 ConvMode: TypeAlias = Literal["same", "left", "right", "full", "valid"]
+CorrMethod: TypeAlias = Literal["pearson", "spearman", "xi", "kendall"]
 
 # Other Custom Types
 PolarsFrame: TypeAlias = Union[pl.DataFrame, pl.LazyFrame]

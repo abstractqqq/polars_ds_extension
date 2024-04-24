@@ -1,7 +1,7 @@
 from __future__ import annotations
 import polars as pl
 import math
-from .type_alias import Alternative, str_to_expr, StrOrExpr
+from .type_alias import Alternative, str_to_expr, StrOrExpr, CorrMethod
 from typing import Optional, Union
 from polars.utils.udfs import _get_shared_lib_location
 from ._utils import pl_plugin
@@ -1036,3 +1036,27 @@ def xi_corr(
             args=args,
             returns_scalar=True,
         )
+
+
+def corr(x: StrOrExpr, y: StrOrExpr, method: CorrMethod = "pearson") -> pl.Expr:
+    """
+    A convenience function for calling different types of correlations. Pearson and Spearman correlation
+    runs on Polar's native expression, while Kendall and Xi correlation runs on code in this package.
+
+    Paramters
+    ---------
+    x
+        The first variable
+    y
+        The second variable
+    method
+        One of ["pearson", "spearman", "xi", "kendall"]
+    """
+    if method in ["pearson", "spearman"]:
+        return pl.corr(x, y, method=method)
+    elif method == "xi":
+        return xi_corr(x, y)
+    elif method == "kendall":
+        return kendall_tau(x, y)
+    else:
+        raise ValueError(f"Unknown correlation method: {method}.")
