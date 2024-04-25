@@ -5,6 +5,8 @@ from typing import Union, List, Optional, Iterable
 from functools import lru_cache
 from .num import query_cond_entropy, query_principal_components
 from itertools import combinations
+from .type_alias import CorrMethod
+from .stats import corr
 import graphviz
 from great_tables import GT
 from polars.type_aliases import IntoExpr
@@ -165,7 +167,9 @@ class DIA:
         ]
         return pl.concat(pl.collect_all(frames))
 
-    def corr(self, subset: Union[IntoExpr, Iterable[IntoExpr]]) -> pl.DataFrame:
+    def corr(
+        self, subset: Union[IntoExpr, Iterable[IntoExpr]], method: CorrMethod = "pearson"
+    ) -> pl.DataFrame:
         """
         Returns a dataframe containing correlation information between the subset and all numeric columns.
 
@@ -173,6 +177,8 @@ class DIA:
         ----------
         subset
             Anything that can be put into a Polars .select statement.
+        method
+            One of ["pearson", "spearman", "xi", "kendall"]
         """
         temp = self._frame.select(subset).columns
         to_check = [c for c in temp if c in self.numerics]
@@ -184,14 +190,16 @@ class DIA:
 
         corrs = [
             self._frame.select(
-                pl.lit(x).alias("column"), *(pl.corr(x, y).alias(y) for y in self.numerics)
+                pl.lit(x).alias("column"), *(corr(x, y).alias(y) for y in self.numerics)
             )
             for x in to_check
         ]
 
         return pl.concat(pl.collect_all(corrs))
 
-    def plot_corr(self, subset: Union[IntoExpr, Iterable[IntoExpr]]):
+    def plot_corr(
+        self, subset: Union[IntoExpr, Iterable[IntoExpr]], method: CorrMethod = "pearson"
+    ):
         """
         Plots the correlations using classic heat maps.
 
@@ -199,11 +207,13 @@ class DIA:
         ----------
         subset
             Anything that can be put into a Polars .select statement.
+        method
+            One of ["pearson", "spearman", "xi", "kendall"]
         """
-        corr = self.corr(subset)
-        cols = [c for c in corr.columns if c != "column"]
+        corr_values = self.corr(subset, method)
+        cols = [c for c in corr_values.columns if c != "column"]
         return (
-            GT(corr)
+            GT(corr_values)
             .fmt_number(columns=cols, decimals=3)
             .data_color(
                 columns=cols,
@@ -398,17 +408,20 @@ class DIA:
         return [c for c, ok in zip(self._frame.columns, is_ok) if ok is True]
 
     @lru_cache
-    def infer_corr(self) -> pl.DataFrame:
+    def infer_corr(self, method: CorrMethod = "pearson") -> pl.DataFrame:
         """
         Trying to infer highly correlated columns by computing correlation between
         all numerical (including boolean) columns.
+
+        Parameters
+        ----------
+        method
+            One of ["pearson", "spearman", "xi", "kendall"]
         """
         to_check = self.numerics + self.bools
         correlation = (
             self._frame.with_columns(pl.col(c).cast(pl.UInt8) for c in self.bools)
-            .select(
-                pl.corr(x, y).alias(f"{i}") for i, (x, y) in enumerate(combinations(to_check, 2))
-            )
+            .select(corr(x, y).alias(f"{i}") for i, (x, y) in enumerate(combinations(to_check, 2)))
             .collect()
             .row(0)
         )
