@@ -1,12 +1,15 @@
 import polars.selectors as cs
 import polars as pl
 import logging
-from typing import Union, List, Optional, Iterable
+import plotly.express as px
+import plotly.graph_objects as go
+from typing import Union, List, Optional, Iterable, Tuple
 from functools import lru_cache
-from .num import query_cond_entropy, query_principal_components
+from .num import query_cond_entropy, query_principal_components, query_lstsq_report
 from itertools import combinations
 from .type_alias import CorrMethod
 from .stats import corr
+from .sample import sample
 import graphviz
 from great_tables import GT
 from polars.type_aliases import IntoExpr
@@ -18,7 +21,8 @@ logger = logging.getLogger(__name__)
 class DIA:
 
     """
-    Data Inspection Assistant.
+    Data Inspection Assistant. Most plots are powered by plotly/great_tables. Plotly may require
+    additional package downloads.
 
     If you cannot import this module, please try: pip install "polars_ds[plot]"
     """
@@ -548,11 +552,77 @@ class DIA:
 
         return dot
 
-    def plot_pc2(
-        self, *features: Union[IntoExpr, Iterable[IntoExpr]], by: str, center: bool = True, **kwargs
-    ):
+    def plot_lstsq(
+        self,
+        x: Union[IntoExpr, Iterable[IntoExpr]],
+        target: Union[IntoExpr, Iterable[IntoExpr]],
+        add_bias: bool = False,
+        max_points: int = 20_000,
+        **kwargs,
+    ) -> Tuple[pl.DataFrame, go.Figure]:
         """
-        Creates a 2D scatter plot based on the reduced dimensions via PCA, and color it by `by`.
+        Plots the least squares between x and target.
+
+        Paramters
+        ---------
+        x
+            The preditive variable
+        target
+            The target variable
+        add_bias
+            Whether to add bias in the linear regression
+        max_points
+            The max number of points to be displayed. If data > this limit, the data will be sampled
+        kwargs
+            Kwargs to be passed to Plotly's Figure object
+        """
+        temp = self._frame.select(x, target)
+        x_name, y_name = temp.columns
+        coeffs = (
+            temp.select(
+                query_lstsq_report(x_name, target=y_name, add_bias=add_bias).alias("report")
+            )
+            .unnest("report")
+            .select(
+                pl.all().exclude("idx")  # All but the idx column in lstsq_report
+            )
+            .collect()
+        )
+        if add_bias:
+            b1, alpha = coeffs["coeff"]
+        else:
+            b1, alpha = coeffs["coeff"][0], 0
+        # Get the data necessary for plotting
+        temp = self._frame.select(
+            pl.col(x_name).alias("x"),
+            pl.col(y_name).alias("y"),
+            (pl.col(x_name) * b1 + alpha).alias("y_pred"),
+        )  # Sample down. If len(temp) < max_points, all temp will be selected. This sample supports lazy.
+        df = sample(temp, value=max_points)
+
+        fig = go.Figure(**kwargs)
+        fig.update_layout(
+            title=f"y={y_name}, x={x_name}, y_pred = ({x_name}) * {b1:.5f} + {alpha:.5f}",
+            xaxis_title=x_name,
+            yaxis_title=y_name,
+        )
+
+        fig.add_trace(go.Scatter(x=df["x"], y=df["y"], mode="markers", name="data scatter"))
+        fig.add_trace(go.Scatter(x=df["x"], y=df["y_pred"], mode="lines", name="Least Squares"))
+        print(coeffs)
+        return fig
+
+    def plot_pca(
+        self,
+        *features: Union[IntoExpr, Iterable[IntoExpr]],
+        by: Union[IntoExpr, Iterable[IntoExpr]],
+        center: bool = True,
+        dim: int = 2,
+        max_points: int = 20_000,
+        **kwargs,
+    ) -> go.Figure:
+        """
+        Creates a scatter plot based on the reduced dimensions via PCA, and color it by `by`.
 
         Paramters
         ---------
@@ -562,18 +632,41 @@ class DIA:
             Color the 2-D PCA plot by the values in the column
         center
             Whether to automatically center the features
+        dim
+            Either 2 or 3. Plot either a 2d principal component plot or a 3d one.
+        max_points
+            The max number of points to be displayed. If data > this limit, the data will be sampled.
         kwargs
-            Anything else that will be passed to hvplot's scatter function
+            Anything else that will be passed to plotly's scatter function
         """
         feats = self._frame.select(features).columns
         if len(feats) < 2:
             raise ValueError("You must pass >= 2 features.")
+        if dim < 2 or dim > 3:
+            raise ValueError("Input `dim` must either be 2 or 3.")
 
-        temp = (
-            self._frame.select(
-                query_principal_components(*feats, center=center, k=2).alias("pc"), by
-            )
-            .collect()
-            .unnest("pc")
+        temp = self._frame.select(
+            query_principal_components(*feats, center=center, k=dim).alias("pc"), by
         )
-        return temp.plot.scatter("pc1", "pc2", by=by, **kwargs)
+        df = sample(temp, value=max_points).unnest("pc")
+
+        if dim == 2:
+            fig = px.scatter(
+                x=df["pc1"],
+                y=df["pc2"],
+                color=df[by],
+                labels={"x": "pc1", "y": "pc2"},
+                title="2 Principal Components",
+                **kwargs,
+            )
+        else:
+            fig = px.scatter_3d(
+                x=df["pc1"],
+                y=df["pc2"],
+                z=df["pc3"],
+                color=df[by],
+                labels={"x": "pc1", "y": "pc2", "z": "pc3"},
+                title="3 Principal Components",
+                **kwargs,
+            )
+        return fig
