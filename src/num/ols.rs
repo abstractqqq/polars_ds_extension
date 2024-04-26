@@ -2,7 +2,6 @@
 use faer::solvers::SolverCore;
 use faer::{prelude::*, Side};
 use faer_ext::IntoFaer;
-use pyo3_polars::export::polars_core::utils::rayon::iter;
 // use faer_ext::IntoFaer;
 use crate::utils::rechunk_to_frame;
 use itertools::Itertools;
@@ -76,7 +75,7 @@ fn series_to_mat_for_lstsq(
 
     if has_null && !skip_null {
         Err(PolarsError::ComputeError(
-            "Lstsq: Data must not contain nulls.".into(),
+            "Lstsq: Data must not contain nulls when skip_null is False.".into(),
         ))
     } else {
         let mut df_x = if add_bias {
