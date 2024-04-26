@@ -11,7 +11,7 @@ from .type_alias import CorrMethod
 from .stats import corr
 from .sample import sample
 import graphviz
-from great_tables import GT
+from great_tables import GT, nanoplot_options
 from polars.type_aliases import IntoExpr
 
 logger = logging.getLogger(__name__)
@@ -132,6 +132,61 @@ class DIA:
                 columns=["mean", "std", "min", "q1", "median", "q3", "max", "IQR"], decimals=3
             )
             .fmt_nanoplot(columns="histogram", plot_type="bar")
+        )
+
+    def plot_null_distribution(
+        self, subset: Union[IntoExpr, Iterable[IntoExpr]] = pl.all(), n_bins: int = 50
+    ):
+        """
+        Checks the null percentages per row group. Row groups are consecutive rows grouped by row number,
+        with each group having len//n_bins number of elements. The height of each bin is the percentage
+        of nulls in the row group.
+
+        This plot shows whether nulls in one feature is correlated with nulls in other features.
+
+        Parameters
+        ----------
+        subset
+            Anything that can be put into a Polars .select statement. Defaults to pl.all()
+        n_bins
+            The number
+        """
+        cols = self._frame.select(subset).columns
+        temp = (
+            self._frame.with_row_index(name="row_group")
+            .group_by((pl.col("row_group") // (pl.len() // n_bins)).alias("row_group"))
+            .agg(pl.col(cols).null_count() / pl.len())
+            .sort("row_group")
+            .select(
+                pl.col(cols).exclude(["row_group"]).implode(),
+            )
+            .collect()
+        )
+        # Values for plot. The first n are list[f64] used in nanoplot. The rest are overall null rates
+        percentages = temp.row(0)
+
+        temp2 = self._frame.select(pl.col(cols).null_count() / pl.len()).collect()
+        null_rates = temp2.row(0)
+
+        null_table = pl.DataFrame(
+            {
+                "column": cols,
+                "percentages in row groups": [{"val": values} for values in percentages],
+                "null%": null_rates,
+            }
+        )
+
+        return (
+            GT(null_table, rowname_col="column")
+            .tab_header(title="Null Distribution")
+            .tab_stubhead("column")
+            .fmt_number(columns=["null%"], decimals=5)
+            .fmt_percent(columns="null%")
+            .fmt_nanoplot(
+                columns="percentages in row groups",
+                plot_type="bar",
+                options=nanoplot_options(data_bar_fill_color="red"),
+            )
         )
 
     def meta(self):
