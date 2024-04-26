@@ -5,6 +5,8 @@ use pyo3_polars::derive::polars_expr;
 fn pl_psi(inputs: &[Series]) -> PolarsResult<Series> {
     // The actual data
     let data = inputs[0].f64()?;
+    let name = data.name();
+    let data = data.cont_slice().unwrap();
     // breaks according to reference, already sorted, should be contiguous
     let brk = inputs[1].f64()?;
     if brk.len() < 2 {
@@ -14,11 +16,13 @@ fn pl_psi(inputs: &[Series]) -> PolarsResult<Series> {
     }
     // cnts for each brk in ref
     let cnt_ref = inputs[2].u32()?;
+    let cnt_ref = cnt_ref.cont_slice().unwrap();
     // slice to do binary search with.
     let brk_sl = brk.cont_slice().unwrap();
     // Compute the correct cnt (of values that are inside the bins defined by ref)
     let mut cnt_data = vec![0_u32; brk_sl.len()];
-    for d in data.into_no_null_iter() {
+
+    for d in data {
         // values in brk_sl is guaranteed to be sorted, unique, and finite
         let idx = match brk_sl.binary_search_by(|x| x.partial_cmp(&d).unwrap()) {
             Ok(i) => i,
@@ -27,24 +31,25 @@ fn pl_psi(inputs: &[Series]) -> PolarsResult<Series> {
         cnt_data[idx] += 1;
     }
     // Total cnt in ref
-    let ref_total = cnt_ref.sum().unwrap_or(0) as f64;
+    let ref_total = cnt_ref.into_iter().sum::<u32>() as f64;
     // Total cnt in actual
     let act_total = data.len() as f64; // cnt_data.iter().sum::<u32>() as f64;
-                                       // PSI
+
     let psi = cnt_ref
-        .into_no_null_iter()
-        .zip(cnt_data.into_iter())
+        .iter()
+        .zip(cnt_data.iter())
         .fold(0., |acc, (a, b)| {
-            let aa = ((a as f64) / ref_total).max(0.0001_f64);
-            let bb = ((b as f64) / act_total).max(0.0001_f64);
+            let aa = ((*a as f64) / ref_total).max(0.0001_f64);
+            let bb = ((*b as f64) / act_total).max(0.0001_f64);
             acc + (aa - bb) * (aa / bb).ln()
         });
-    let out = Float64Chunked::from_iter([Some(psi)]);
+    let out = Float64Chunked::from_vec(name, vec![psi]);
     Ok(out.into_series())
 }
 
 #[polars_expr(output_type=Float64)]
 fn pl_psi_discrete(inputs: &[Series]) -> PolarsResult<Series> {
+    let name = inputs[0].name();
     if inputs[0].len() == 1 && inputs[2].len() == 1 {
         let v1 = inputs[0].get(0).unwrap();
         let v2 = inputs[1].get(0).unwrap();
@@ -98,6 +103,6 @@ fn pl_psi_discrete(inputs: &[Series]) -> PolarsResult<Series> {
             let bb = ((b as f64) / data_total).max(0.0001_f64);
             acc + (aa - bb) * (aa / bb).ln()
         });
-    let out = Float64Chunked::from_iter([Some(psi)]);
+    let out = Float64Chunked::from_vec(name, vec![psi]);
     Ok(out.into_series())
 }

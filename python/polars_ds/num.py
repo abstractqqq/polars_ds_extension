@@ -978,7 +978,6 @@ def query_lstsq(
             symbol="pl_lstsq_pred",
             args=cols,
             kwargs={"bias": add_bias, "skip_null": skip_null},
-            is_elementwise=True,
         )
     else:
         return pl_plugin(
@@ -1155,7 +1154,7 @@ def query_psi(
     return pl_plugin(
         lib=_lib,
         symbol="pl_psi",
-        args=[valid_x, brk, cnt_ref],
+        args=[valid_x.rechunk(), brk, cnt_ref],
         returns_scalar=True,
     )
 

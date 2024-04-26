@@ -54,7 +54,7 @@ fn faer_cholesky_lstsq(x: MatRef<f64>, xt: MatRef<f64>, y: MatRef<f64>) -> Mat<f
     coeffs
 }
 
-/// Returns a Array2 ready for linear regression, and a mask, indicates valid rows
+/// Returns a Array2 ready for linear regression, and a mask, indicating valid rows
 #[inline(always)]
 fn series_to_mat_for_lstsq(
     inputs: &[Series],
@@ -62,46 +62,49 @@ fn series_to_mat_for_lstsq(
     skip_null: bool,
 ) -> PolarsResult<(Array2<f64>, BooleanChunked)> {
     let nrows = inputs[0].len();
-    let mut ncols = inputs.len();
-    // Should we actually skip nulls? Create null mask
+    // minus 1 because target is also in inputs
+    let n_features = inputs.len().abs_diff(1);
+    // Create null mask
     let mut has_null = inputs[0].has_validity();
-    let mut mask = inputs[0].is_not_null();
+    let mut mask = inputs[0].is_null();
     for s in inputs[1..].iter() {
         has_null |= s.has_validity();
-        mask = mask & s.is_not_null();
+        mask = mask | s.is_null();
     }
+    mask = !mask; // Return a mask where true is kept (true means not null).
+
     if has_null && !skip_null {
-        return Err(PolarsError::ComputeError(
-            "Lstsq: Data must not contain nulls.".into(),
-        ));
-    }
-
-    let mut df_x = if add_bias {
-        ncols += 1;
-        let mut series_vec = inputs.to_vec(); // cheap copy
-        series_vec.push(Series::from_vec("const", vec![1_f64; nrows]));
-        rechunk_to_frame(&series_vec)
+        Err(PolarsError::ComputeError(
+            "Lstsq: Data must not contain nulls when skip_null is False.".into(),
+        ))
     } else {
-        rechunk_to_frame(&inputs)
-    }?;
+        let mut df_x = if add_bias {
+            let mut series_vec = inputs.to_vec(); // cheap copy
+            series_vec.push(Series::from_iter(std::iter::repeat(1f64).take(nrows)));
+            rechunk_to_frame(&series_vec)
+        } else {
+            rechunk_to_frame(&inputs)
+        }?;
+    
+        if has_null && skip_null {
+            df_x = df_x.filter(&mask)?;
+        }
+        if df_x.height() < n_features {
+            Err(PolarsError::ComputeError(
+                "Lstsq: #Data < #features. No conclusive result.".into(),
+            ))
+        } else {
+            let mat = df_x.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
+            Ok((mat, mask))
+        }
+    }
 
-    if skip_null && has_null {
-        df_x = df_x.filter(&mask)?;
-    }
-    if df_x.height() <= ncols {
-        return Err(PolarsError::ComputeError(
-            "Lstsq: #Data < #features. No conclusive result.".into(),
-        ));
-    }
-    let mat = df_x.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
-    Ok((mat, mask))
 }
 
 #[polars_expr(output_type_func=coeff_output)]
 fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
     let skip_null = kwargs.skip_null;
-    // Copy data
     // Target y is at index 0
     match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
         Ok((mat, _)) => {

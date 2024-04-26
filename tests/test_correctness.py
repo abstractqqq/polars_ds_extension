@@ -376,6 +376,48 @@ def test_lstsq_skip_null():
     )
 
 
+def test_lstsq_in_group_by():
+    df = pl.DataFrame(
+        {
+            "A": [1] * 4 + [2] * 4,
+            "Y": [1] * 8,
+            "X1": [1, 2, 3, 4, 5, 6, 7, 8],
+            "X2": [2, 3, 4, 1, 6, 7, 8, 5],
+        }
+    )
+
+    first = df.filter(pl.col("A").eq(1)).with_columns(
+        pds.query_lstsq(
+            pl.col("X1"), pl.col("X2"), target=pl.col("Y"), add_bias=False, return_pred=True
+        ).alias("pred")
+    )
+
+    second = df.filter(pl.col("A").eq(2)).with_columns(
+        pds.query_lstsq(
+            pl.col("X1"), pl.col("X2"), target=pl.col("Y"), add_bias=False, return_pred=True
+        ).alias("pred")
+    )
+
+    test = (
+        df.group_by("A", maintain_order=True)
+        .agg(
+            "Y",
+            "X1",
+            "X2",
+            pds.query_lstsq(
+                pl.col("X1"), pl.col("X2"), target=pl.col("Y"), add_bias=False, return_pred=True
+            ).alias("pred"),
+        )
+        .explode("Y", "X1", "X2", "pred")
+    )
+
+    test_first = test.filter(pl.col("A") == 1)
+    test_second = test.filter(pl.col("A") == 2)
+
+    assert_frame_equal(first, test_first)
+    assert_frame_equal(second, test_second)
+
+
 @pytest.mark.parametrize(
     "df, res",
     [
