@@ -101,6 +101,18 @@ def test_convolve(df, ft, res_full, res_valid, res_same):
 
     assert_frame_equal(res, res_same)
 
+    res = df.select(pds.convolve("a", ft, mode="full", method="fft"))
+
+    assert_frame_equal(res, res_full)
+
+    res = df.select(pds.convolve("a", ft, mode="valid", method="fft"))
+
+    assert_frame_equal(res, res_valid)
+
+    res = df.select(pds.convolve("a", ft, mode="same", method="fft"))
+
+    assert_frame_equal(res, res_same)
+
 
 @pytest.mark.parametrize(
     "arr, n",

@@ -35,14 +35,11 @@ fn pl_psi(inputs: &[Series]) -> PolarsResult<Series> {
     // Total cnt in actual
     let act_total = data.len() as f64; // cnt_data.iter().sum::<u32>() as f64;
 
-    let psi = cnt_ref
-        .iter()
-        .zip(cnt_data.iter())
-        .fold(0., |acc, (a, b)| {
-            let aa = ((*a as f64) / ref_total).max(0.0001_f64);
-            let bb = ((*b as f64) / act_total).max(0.0001_f64);
-            acc + (aa - bb) * (aa / bb).ln()
-        });
+    let psi = cnt_ref.iter().zip(cnt_data.iter()).fold(0., |acc, (a, b)| {
+        let aa = ((*a as f64) / ref_total).max(0.0001_f64);
+        let bb = ((*b as f64) / act_total).max(0.0001_f64);
+        acc + (aa - bb) * (aa / bb).ln()
+    });
     let out = Float64Chunked::from_vec(name, vec![psi]);
     Ok(out.into_series())
 }

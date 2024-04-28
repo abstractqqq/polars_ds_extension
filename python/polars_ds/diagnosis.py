@@ -495,8 +495,9 @@ class DIA:
             pl.col("corr").abs(), descending=True
         )
 
-    @lru_cache
-    def infer_dependency(self) -> pl.DataFrame:
+    def infer_dependency(
+        self, subset: Union[IntoExpr, Iterable[IntoExpr]] = pl.all()
+    ) -> pl.DataFrame:
         """
         Infers (functional) dependency using the method of conditional entropy. This only evaluates
         potential qualifying columns. Potential qualifying columns are columns of type:
@@ -505,10 +506,18 @@ class DIA:
         If returned conditional entropy is very low, that means knowning the column in
         `by` is enough to to infer the column in `column`, or the column in `column` can
         be determined by the column in `by`.
+
+        Parameters
+        ----------
+        subset
+            A subset of columns to try running the dependency check. The subset input can be
+            anything that can be turned into a Polars selector. Only valid columns will be checked,
+            however.
         """
 
         # Infer valid columns to run this detection
-        to_check = self.ints + self.strs + self.cats + self.bools
+        valid = self.ints + self.strs + self.cats + self.bools
+        to_check = [x for x in self._frame.select(subset).columns if x in valid]
 
         n_uniques = self._frame.select(pl.col(c).n_unique() for c in to_check).collect().row(0)
 
@@ -552,7 +561,7 @@ class DIA:
         return out
 
     def plot_dependency(
-        self, threshold: float = 0.01, exclude: Optional[list[str]] = None
+        self, threshold: float = 0.01, subset: Union[IntoExpr, Iterable[IntoExpr]] = pl.all()
     ) -> graphviz.Digraph:
         """
         Plot dependency using the result of self.infer_dependency and positively dtermines
@@ -562,20 +571,14 @@ class DIA:
         ----------
         threshold
             If conditional entropy is < threshold, we draw a line indicating dependency.
-        exclude
-            None or a list of column names to exclude from plotting. E.g. ID column will always
-            uniquely determine values in other columns. So plotting ID will make the plot crowded
-            and provides no additional information.
+        subset
+            A subset of columns to try running the dependency check. The subset input can be
+            anything that can be turned into a Polars selector
         """
 
-        dep_frame = self.infer_dependency()
-        to_exclude = (
-            pl.lit(True, dtype=pl.Boolean)
-            if exclude is None
-            else pl.col("by").is_in(exclude).not_()
-        )
+        dep_frame = self.infer_dependency(subset=subset)
 
-        df_local = dep_frame.filter((pl.col("cond_entropy") < threshold) & to_exclude).select(
+        df_local = dep_frame.filter((pl.col("cond_entropy") < threshold)).select(
             pl.col("column").alias("child"),  # c for child
             pl.col("by").alias("parent"),  # p for parent
         )
@@ -612,6 +615,7 @@ class DIA:
         x: Union[IntoExpr, Iterable[IntoExpr]],
         target: Union[IntoExpr, Iterable[IntoExpr]],
         add_bias: bool = False,
+        condition: Optional[pl.Expr] = None,
         max_points: int = 20_000,
         **kwargs,
     ) -> Tuple[pl.DataFrame, go.Figure]:
@@ -626,12 +630,21 @@ class DIA:
             The target variable
         add_bias
             Whether to add bias in the linear regression
+        condition
+            An additional filter condition you want to apply before runing lstsq on the data. This must
+            be a boolean expression. If none, run this on the entire dataset. (The frame used to initialize DIA.)
         max_points
             The max number of points to be displayed. If data > this limit, the data will be sampled
         kwargs
             Kwargs to be passed to Plotly's Figure object
         """
-        temp = self._frame.select(x, target)
+        if condition is None:
+            temp = self._frame.select(x, target)
+            condition_str = ""
+        else:
+            temp = self._frame.filter(condition).select(x, target)
+            condition_str = "\nCondition: " + str(condition)
+
         x_name, y_name = temp.columns
         coeffs = (
             temp.select(
@@ -657,7 +670,7 @@ class DIA:
 
         fig = go.Figure(**kwargs)
         fig.update_layout(
-            title=f"y={y_name}, x={x_name}, y_pred = ({x_name}) * {b1:.5f} + {alpha:.5f}",
+            title=f"y={y_name}, x={x_name}, y_pred = ({x_name}) * {b1:.5f} + {alpha:.5f}<br><sup>{condition_str}</sup>",
             xaxis_title=x_name,
             yaxis_title=y_name,
         )
