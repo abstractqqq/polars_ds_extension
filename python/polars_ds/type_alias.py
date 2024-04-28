@@ -14,6 +14,7 @@ Alternative: TypeAlias = Literal["two-sided", "less", "greater"]
 ROCAUCStrategy: TypeAlias = Literal["macro", "weighted"]
 Distance: TypeAlias = Literal["l1", "l2", "inf", "h", "cosine", "haversine"]
 ConvMode: TypeAlias = Literal["same", "left", "right", "full", "valid"]
+ConvMethod: TypeAlias = Literal["fft", "direct"]
 CorrMethod: TypeAlias = Literal["pearson", "spearman", "xi", "kendall"]
 
 # Other Custom Types

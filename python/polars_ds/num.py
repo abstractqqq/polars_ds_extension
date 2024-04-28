@@ -2,7 +2,7 @@ from __future__ import annotations
 import math
 import polars as pl
 from typing import Union, Optional, List, Iterable
-from .type_alias import DetrendMethod, Distance, ConvMode, str_to_expr, StrOrExpr
+from .type_alias import DetrendMethod, Distance, ConvMode, ConvMethod, str_to_expr, StrOrExpr
 from polars.utils.udfs import _get_shared_lib_location
 from ._utils import pl_plugin
 
@@ -1350,22 +1350,29 @@ def integrate_trapz(y: StrOrExpr, x: Union[float, pl.Expr]) -> pl.Expr:
 
 def convolve(
     x: StrOrExpr,
-    filter_: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
+    kernel: Union[List[float], "np.ndarray", pl.Series, pl.Expr],  # noqa: F821
     fill_value: Union[float, pl.Expr] = 0.0,
+    method: ConvMethod = "direct",
     mode: ConvMode = "full",
 ) -> pl.Expr:
     """
     Performs a convolution with the filter via FFT. The current implementation's performance is worse
-    than SciPy but offers parallelization within Polars Context.
+    than SciPy but offers parallelization within Polars.
+
+    For large kernels (usually kernel length > 120), convolving with FFT is faster, but for smaller kernels,
+    convolving with direct method is faster.
 
     parameters
     ----------
     x
         A column of numbers
-    filter_
-        The filter for the convolution. Anything that can be turned into a Polars Series will work.
+    kernel
+        The filter for the convolution. Anything that can be turned into a Polars Series will work. All non-finite
+        values will be filtered out before the convolution.
     fill_value
         Fill null values in `x` with this value. Either a float or a polars's expression representing 1 element
+    method
+        Either `fft` or `direct`.
     mode
         Please check the reference. One of `same`, `left` (left-aligned same), `right` (right-aligned same),
         `valid` or `full`.
@@ -1373,49 +1380,23 @@ def convolve(
     Reference
     ---------
     https://brianmcfee.net/dstbook-site/content/ch03-convolution/Modes.html
+    https://en.wikipedia.org/wiki/Convolution
     """
     xx = str_to_expr(x).fill_null(fill_value).cast(pl.Float64).rechunk()  # One cont slice
-    f = pl.Series(values=filter_, dtype=pl.Float64).rechunk()  # One cont slice
+    if isinstance(kernel, pl.Expr):
+        f = kernel.filter(kernel.is_finite()).rechunk()  # One cont slice
+    else:
+        f = pl.Series(values=kernel, dtype=pl.Float64)
+        f = f.filter(f.is_finite()).rechunk()  # One cont slice
+
+    if method == "direct":
+        f = f.reverse()
+
     return pl_plugin(
         lib=_lib,
-        symbol="pl_fft_convolve",
-        args=[xx, f, pl.lit(mode, dtype=pl.String)],
-        changes_length=True,
-    )
-
-
-def convolve2(
-    x: StrOrExpr,
-    filter_: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
-    fill_value: Union[float, pl.Expr] = 0.0,
-    mode: ConvMode = "full",
-) -> pl.Expr:
-    """
-    Performs a convolution with the filter via FFT. The current implementation's performance is worse
-    than SciPy but offers parallelization within Polars Context.
-
-    parameters
-    ----------
-    x
-        A column of numbers
-    filter_
-        The filter for the convolution. Anything that can be turned into a Polars Series will work.
-    fill_value
-        Fill null values in `x` with this value. Either a float or a polars's expression representing 1 element
-    mode
-        Please check the reference. One of `same`, `left` (left-aligned same), `right` (right-aligned same),
-        `valid` or `full`.
-
-    Reference
-    ---------
-    https://brianmcfee.net/dstbook-site/content/ch03-convolution/Modes.html
-    """
-    xx = str_to_expr(x).fill_null(fill_value).cast(pl.Float64).rechunk()  # One cont slice
-    f = pl.Series(values=filter_, dtype=pl.Float64).reverse()  # One cont slice, reversed
-    return pl_plugin(
-        lib=_lib,
-        symbol="pl_fft_convolve2",
-        args=[xx, f, pl.lit(mode, dtype=pl.String)],
+        symbol="pl_convolve",
+        args=[xx, f],
+        kwargs={"mode": mode, "method": method},
         changes_length=True,
     )
 
