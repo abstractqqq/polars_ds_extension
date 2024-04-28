@@ -1,6 +1,7 @@
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use realfft::RealFftPlanner;
+use ndarray::{ArrayView1, Array1};
 use serde::Deserialize;
 
 // Pending: small vec optimizations? Fixed sized allocation for <= 4096?
@@ -73,20 +74,20 @@ fn valid_fft_convolve(input: &[f64], filter: &[f64]) -> PolarsResult<Vec<f64>> {
     let mut planner: RealFftPlanner<f64> = RealFftPlanner::new();
     let r2c = planner.plan_fft_forward(in_shape);
     let c2r = planner.plan_fft_inverse(in_shape);
-    let mut spec_p = r2c.make_output_vec();
-    let mut spec_q = r2c.make_output_vec();
+    // let mut spec_p = r2c.make_output_vec();
+    let mut spec_p = Array1::from_vec(r2c.make_output_vec());
+    // let mut spec_q = r2c.make_output_vec();
+    let mut spec_q = Array1::from_vec(r2c.make_output_vec());
     // Forward FFT on the inputs
-    let _ = r2c.process(&mut output_vec, &mut spec_p);
+    let _ = r2c.process(&mut output_vec, spec_p.as_slice_mut().unwrap());
     // .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
-    let _ = r2c.process(&mut oth, &mut spec_q);
+    let _ = r2c.process(&mut oth, spec_q.as_slice_mut().unwrap());
     // .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
 
-    // After forward FFT, multiply in place in spec_p.
-    for (z1, z2) in spec_p.iter_mut().zip(spec_q.into_iter()) {
-        *z1 = *z1 * z2;
-    }
+    // After forward FFT, multiply elementwise
+    spec_p = spec_p * spec_q;
     // Inverse FFT
-    let _ = c2r.process(&mut spec_p, &mut output_vec);
+    let _ = c2r.process(spec_p.as_slice_mut().unwrap(), &mut output_vec);
     // .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
 
     Ok(output_vec)
@@ -152,14 +153,20 @@ fn convolve(input: &[f64], filter: &[f64], mode: ConvMode) -> PolarsResult<Vec<f
             let out = convolve(input, filter, ConvMode::FULL)?;
             Ok(out.into_iter().skip(filter.len() - 1).collect())
         }
-        ConvMode::VALID => Ok(input
-            .windows(filter.len())
-            .map(|sl| {
-                sl.iter()
-                    .zip(filter.iter())
-                    .fold(0., |acc, (x, y)| acc + x * y)
-            })
-            .collect()),
+        ConvMode::VALID => {
+            let kernel = ArrayView1::from(filter);
+            Ok(
+                input
+                .windows(filter.len())
+                .map(|sl| {
+                    let slice = ArrayView1::from(sl);
+                    kernel.dot(&slice)
+                })
+                .collect()
+            )
+        }
+        
+        
     }
 }
 
@@ -184,7 +191,6 @@ fn pl_convolve(inputs: &[Series], kwargs: ConvolveKwargs) -> PolarsResult<Series
         ConvMethod::FFT => fft_convolve(input, filter, mode),
         ConvMethod::DIRECT => convolve(input, filter, mode),
     }?;
-
-    let ca = Float64Chunked::from_slice(s1.name(), &out);
+    let ca = Float64Chunked::from_vec(s1.name(), out);
     Ok(ca.into_series())
 }
