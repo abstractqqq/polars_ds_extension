@@ -1351,6 +1351,7 @@ def integrate_trapz(y: StrOrExpr, x: Union[float, pl.Expr]) -> pl.Expr:
 def convolve(
     x: StrOrExpr,
     filter_: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
+    fill_value: Union[float, pl.Expr] = 0.0,
     mode: ConvMode = "full",
 ) -> pl.Expr:
     """
@@ -1363,6 +1364,8 @@ def convolve(
         A column of numbers
     filter_
         The filter for the convolution. Anything that can be turned into a Polars Series will work.
+    fill_value
+        Fill null values in `x` with this value. Either a float or a polars's expression representing 1 element
     mode
         Please check the reference. One of `same`, `left` (left-aligned same), `right` (right-aligned same),
         `valid` or `full`.
@@ -1371,11 +1374,47 @@ def convolve(
     ---------
     https://brianmcfee.net/dstbook-site/content/ch03-convolution/Modes.html
     """
-    xx = str_to_expr(x).cast(pl.Float64)
-    f = pl.Series(values=filter_, dtype=pl.Float64)
+    xx = str_to_expr(x).fill_null(fill_value).cast(pl.Float64).rechunk()  # One cont slice
+    f = pl.Series(values=filter_, dtype=pl.Float64).rechunk()  # One cont slice
     return pl_plugin(
         lib=_lib,
         symbol="pl_fft_convolve",
+        args=[xx, f, pl.lit(mode, dtype=pl.String)],
+        changes_length=True,
+    )
+
+
+def convolve2(
+    x: StrOrExpr,
+    filter_: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
+    fill_value: Union[float, pl.Expr] = 0.0,
+    mode: ConvMode = "full",
+) -> pl.Expr:
+    """
+    Performs a convolution with the filter via FFT. The current implementation's performance is worse
+    than SciPy but offers parallelization within Polars Context.
+
+    parameters
+    ----------
+    x
+        A column of numbers
+    filter_
+        The filter for the convolution. Anything that can be turned into a Polars Series will work.
+    fill_value
+        Fill null values in `x` with this value. Either a float or a polars's expression representing 1 element
+    mode
+        Please check the reference. One of `same`, `left` (left-aligned same), `right` (right-aligned same),
+        `valid` or `full`.
+
+    Reference
+    ---------
+    https://brianmcfee.net/dstbook-site/content/ch03-convolution/Modes.html
+    """
+    xx = str_to_expr(x).fill_null(fill_value).cast(pl.Float64).rechunk()  # One cont slice
+    f = pl.Series(values=filter_, dtype=pl.Float64).reverse()  # One cont slice, reversed
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_fft_convolve2",
         args=[xx, f, pl.lit(mode, dtype=pl.String)],
         changes_length=True,
     )

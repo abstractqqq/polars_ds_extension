@@ -85,7 +85,7 @@ fn series_to_mat_for_lstsq(
         } else {
             rechunk_to_frame(&inputs)
         }?;
-    
+
         if has_null && skip_null {
             df_x = df_x.filter(&mask)?;
         }
@@ -98,7 +98,6 @@ fn series_to_mat_for_lstsq(
             Ok((mat, mask))
         }
     }
-
 }
 
 #[polars_expr(output_type_func=coeff_output)]
