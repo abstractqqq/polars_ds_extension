@@ -1,5 +1,5 @@
 use polars::prelude::*;
-use pyo3_polars::derive::polars_expr;
+use pyo3_polars::{derive::{polars_expr, CallerContext}, export::polars_core::utils::rayon::{iter::{IndexedParallelIterator, ParallelIterator}, slice::ParallelSlice}};
 use realfft::RealFftPlanner;
 use ndarray::{ArrayView1, Array1};
 use serde::Deserialize;
@@ -9,6 +9,7 @@ use serde::Deserialize;
 pub(crate) struct ConvolveKwargs {
     pub(crate) mode: String,
     pub(crate) method: String,
+    pub(crate) parallel: bool
 }
 
 enum ConvMode {
@@ -129,41 +130,53 @@ fn fft_convolve(input: &[f64], filter: &[f64], mode: ConvMode) -> PolarsResult<V
     }
 }
 
-fn convolve(input: &[f64], filter: &[f64], mode: ConvMode) -> PolarsResult<Vec<f64>> {
+fn convolve(input: &[f64], filter: &[f64], mode: ConvMode, parallel:bool) -> PolarsResult<Vec<f64>> {
     match mode {
         ConvMode::FULL => {
             let t = filter.len() - 1;
             let mut padded_input = vec![0.; input.len() + 2 * t];
             let from_to = t..(t + input.len());
             padded_input[from_to].copy_from_slice(input);
-            convolve(&padded_input, filter, ConvMode::VALID)
+            convolve(&padded_input, filter, ConvMode::VALID, parallel)
         }
         ConvMode::SAME => {
             let skip = (filter.len() - 1) / 2;
-            let out = convolve(input, filter, ConvMode::FULL)?;
+            let out = convolve(input, filter, ConvMode::FULL, parallel)?;
             Ok(out.into_iter().skip(skip).take(input.len()).collect())
         }
         ConvMode::LEFT => {
             let n = input.len();
-            let mut out = convolve(input, filter, ConvMode::FULL)?;
+            let mut out = convolve(input, filter, ConvMode::FULL, parallel)?;
             out.truncate(n);
             Ok(out)
         }
         ConvMode::RIGHT => {
-            let out = convolve(input, filter, ConvMode::FULL)?;
+            let out = convolve(input, filter, ConvMode::FULL, parallel)?;
             Ok(out.into_iter().skip(filter.len() - 1).collect())
         }
         ConvMode::VALID => {
             let kernel = ArrayView1::from(filter);
-            Ok(
+            if parallel {
+                let mut out = vec![0f64; input.len() - kernel.len() + 1];
                 input
-                .windows(filter.len())
-                .map(|sl| {
-                    let slice = ArrayView1::from(sl);
-                    kernel.dot(&slice)
-                })
-                .collect()
-            )
+                    .par_windows(filter.len())
+                    .map(|sl| {
+                        let slice = ArrayView1::from(sl);
+                        kernel.dot(&slice)
+                    })
+                    .collect_into_vec(&mut out);
+                Ok(out)
+            } else {
+                Ok(
+                    input
+                    .windows(filter.len())
+                    .map(|sl| {
+                        let slice = ArrayView1::from(sl);
+                        kernel.dot(&slice)
+                    })
+                    .collect()
+                )
+            }
         }
         
         
@@ -171,12 +184,13 @@ fn convolve(input: &[f64], filter: &[f64], mode: ConvMode) -> PolarsResult<Vec<f
 }
 
 #[polars_expr(output_type=Float64)]
-fn pl_convolve(inputs: &[Series], kwargs: ConvolveKwargs) -> PolarsResult<Series> {
+fn pl_convolve(inputs: &[Series], context: CallerContext, kwargs: ConvolveKwargs) -> PolarsResult<Series> {
     let s1 = inputs[0].f64()?;
     let s2 = inputs[1].f64()?;
 
     let mode: ConvMode = kwargs.mode.try_into()?;
     let method: ConvMethod = kwargs.method.try_into()?;
+    let par = kwargs.parallel && !context.parallel();
 
     if s1.len() < s2.len() || s2.len() < 2 {
         return Err(PolarsError::ComputeError(
@@ -189,7 +203,7 @@ fn pl_convolve(inputs: &[Series], kwargs: ConvolveKwargs) -> PolarsResult<Series
 
     let out = match method {
         ConvMethod::FFT => fft_convolve(input, filter, mode),
-        ConvMethod::DIRECT => convolve(input, filter, mode),
+        ConvMethod::DIRECT => convolve(input, filter, mode, par),
     }?;
     let ca = Float64Chunked::from_vec(s1.name(), out);
     Ok(ca.into_series())
