@@ -1354,6 +1354,7 @@ def convolve(
     fill_value: Union[float, pl.Expr] = 0.0,
     method: ConvMethod = "direct",
     mode: ConvMode = "full",
+    parallel: bool = False,
 ) -> pl.Expr:
     """
     Performs a convolution with the filter via FFT. The current implementation's performance is worse
@@ -1376,6 +1377,10 @@ def convolve(
     mode
         Please check the reference. One of `same`, `left` (left-aligned same), `right` (right-aligned same),
         `valid` or `full`.
+    parallel
+        Only applies when method = direct. Whether to compute the convulition in parallel. Note that this may not
+        have the expected performance when you are in group_by or other parallel context already. It is recommended
+        to use this in select/with_columns context, when few expressions are being run at the same time.
 
     Reference
     ---------
@@ -1396,7 +1401,7 @@ def convolve(
         lib=_lib,
         symbol="pl_convolve",
         args=[xx, f],
-        kwargs={"mode": mode, "method": method},
+        kwargs={"mode": mode, "method": method, "parallel": parallel},
         changes_length=True,
     )
 
