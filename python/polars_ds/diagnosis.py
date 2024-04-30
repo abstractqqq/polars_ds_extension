@@ -135,7 +135,10 @@ class DIA:
         )
 
     def plot_null_distribution(
-        self, subset: Union[IntoExpr, Iterable[IntoExpr]] = pl.all(), n_bins: int = 50
+        self,
+        subset: Union[IntoExpr, Iterable[IntoExpr]] = pl.all(),
+        condition: pl.Expr = pl.lit(True),
+        n_bins: int = 50,
     ):
         """
         Checks the null percentages per row group. Row groups are consecutive rows grouped by row number,
@@ -148,12 +151,15 @@ class DIA:
         ----------
         subset
             Anything that can be put into a Polars .select statement. Defaults to pl.all()
+        condition
+            A boolean expression
         n_bins
-            The number
+            The number of bins to group the rows
         """
         cols = self._frame.select(subset).columns
+        frame = self._frame.filter(condition)
         temp = (
-            self._frame.with_row_index(name="row_group")
+            frame.with_row_index(name="row_group")
             .group_by((pl.col("row_group") // (pl.len() // n_bins)).alias("row_group"))
             .agg(pl.col(cols).null_count() / pl.len())
             .sort("row_group")
@@ -165,14 +171,17 @@ class DIA:
         # Values for plot. The first n are list[f64] used in nanoplot. The rest are overall null rates
         percentages = temp.row(0)
 
-        temp2 = self._frame.select(pl.col(cols).null_count() / pl.len()).collect()
-        null_rates = temp2.row(0)
+        temp2 = frame.select(pl.len(), pl.col(cols).null_count() / pl.len()).collect()
+        row = temp2.row(0)
+        total = row[0]
+        null_rates = row[1:]
 
         null_table = pl.DataFrame(
             {
                 "column": cols,
                 "percentages in row groups": [{"val": values} for values in percentages],
                 "null%": null_rates,
+                "total": total,
             }
         )
 
@@ -661,7 +670,7 @@ class DIA:
         else:
             b1, alpha = coeffs["coeff"][0], 0
         # Get the data necessary for plotting
-        temp = self._frame.select(
+        temp = temp.select(
             pl.col(x_name).alias("x"),
             pl.col(y_name).alias("y"),
             (pl.col(x_name) * b1 + alpha).alias("y_pred"),
@@ -679,6 +688,71 @@ class DIA:
         fig.add_trace(go.Scatter(x=df["x"], y=df["y_pred"], mode="lines", name="Least Squares"))
         print(coeffs)
         return fig
+
+    def plot_distribution(
+        self,
+        feature: Union[IntoExpr, Iterable[IntoExpr]],
+        n_bins: Optional[int] = None,
+        by: Optional[Union[IntoExpr, Iterable[IntoExpr]]] = None,
+        density: bool = False,
+        condition: Optional[pl.Expr] = None,
+        include_null: bool = True,
+        **kwargs,
+    ) -> go.Figure:
+        """
+        Plot distribution of the feature.
+
+        Parameters
+        ----------
+        feature
+            A polars expression to a column where a histogram makes sense
+        n_bins
+            The number of bins used for histograms. Not used when the feature column is categorical.
+        by
+            Optionally provide a segment to plot multiple distributions of the same features
+        density
+            Whether to plot a probability density or not
+        condition
+            An extra condition you may want to impose on the underlying dataset
+        include_null
+            When by is not null, whether to consider null a segment or not. If true, null values will be
+            mapped to the name "__null__". The string "__null__" should not exist originally in the column.
+            This is a workaround to get plotly to recognize null values.
+        kwargs
+            Keyword arguments for plotly's histogram function
+        """
+
+        histnorm: Optional[str] = "probability density" if density else None
+        if condition is None:
+            frame = self._frame
+        else:
+            frame = self._frame.filter(condition)
+
+        if by is None:
+            df = frame.select(feature).collect()
+            feat = df.columns[0]
+            seg_name = ""
+        else:
+            feat, by_col_name = frame.select(feature, by).columns
+            by_output = pl.col(by_col_name).alias("by")
+            if (
+                include_null
+            ):  # if data column already has a string value called __null__ it will be wrong
+                by_output = by_output.cast(pl.String).fill_null("__null__")
+
+            # The first select deals with the case when by is an expression
+            df = frame.select(feature, by).select(feat, by_output).collect()
+            seg_name = f"by {by}"
+
+        return px.histogram(
+            x=df[feat],
+            title=f"{feat} Distribution {seg_name}",
+            color=None if by is None else df["by"],
+            nbins=n_bins,
+            labels={"x": feat},
+            histnorm=histnorm,
+            **kwargs,
+        )
 
     def plot_pca(
         self,
