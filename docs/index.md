@@ -99,8 +99,8 @@ This is ok, but not great, because (1) we are running for loops in Python, which
 
 ```
 df.lazy().group_by("segments").agg(
-    pl.col("actual").metric.roc_auc(pl.col("predicted")).alias("roc_auc"),
-    pl.col("actual").metric.log_loss(pl.col("predicted")).alias("log_loss"),
+    pds.query_roc_auc("actual", "predicted").alias("roc_auc"),
+    pds.query_log_loss("actual", "predicted").alias("log_loss"),
 ).collect()
 
 shape: (2, 3)
