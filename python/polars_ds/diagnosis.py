@@ -3,7 +3,7 @@ import polars as pl
 import logging
 import plotly.express as px
 import plotly.graph_objects as go
-from typing import Union, List, Optional, Iterable, Tuple
+from typing import Union, List, Optional, Iterable
 from functools import lru_cache
 from .num import query_cond_entropy, query_principal_components, query_lstsq_report
 from itertools import combinations
@@ -67,7 +67,7 @@ class DIA:
         )
         self.other_types: List[str] = [c for c in self._frame.columns if c not in self.simple_types]
 
-    def numeric_profile(self, n_bins: int = 20, iqr_multiplier: float = 1.5):
+    def numeric_profile(self, n_bins: int = 20, iqr_multiplier: float = 1.5) -> GT:
         """
         Creates a numerical profile with a histogram plot. Notice that the histograms may have
         completely different scales on the x-axis.
@@ -139,7 +139,7 @@ class DIA:
         subset: Union[IntoExpr, Iterable[IntoExpr]] = pl.all(),
         condition: pl.Expr = pl.lit(True),
         n_bins: int = 50,
-    ):
+    ) -> GT:
         """
         Checks the null percentages per row group. Row groups are consecutive rows grouped by row number,
         with each group having len//n_bins number of elements. The height of each bin is the percentage
@@ -253,7 +253,7 @@ class DIA:
         if len(to_check) != len(temp):
             removed = list(set(temp).difference(to_check))
             logger.info(
-                f"The following columns are not numeric/not in the dataframe, skipped: \n{removed}"
+                f"The following columns are not numeric or not in the dataframe, skipped: \n{removed}"
             )
 
         corrs = [
@@ -267,7 +267,7 @@ class DIA:
 
     def plot_corr(
         self, subset: Union[IntoExpr, Iterable[IntoExpr]], method: CorrMethod = "pearson"
-    ):
+    ) -> GT:
         """
         Plots the correlations using classic heat maps.
 
@@ -627,7 +627,7 @@ class DIA:
         condition: Optional[pl.Expr] = None,
         max_points: int = 20_000,
         **kwargs,
-    ) -> Tuple[pl.DataFrame, go.Figure]:
+    ) -> go.Figure:
         """
         Plots the least squares between x and target.
 
