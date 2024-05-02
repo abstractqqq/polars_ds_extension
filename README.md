@@ -27,7 +27,7 @@ The goal of the project is to **reduce dependencies**, **improve code organizati
 
 5. String metrics such as Levenshtein distance, Damure Levenshtein distance, other string distances, snowball stemming (English only), string Jaccard similarity, etc.
 
-6. Diagnosis. This modules contains the DIA (Data Inspection Assitant) class, which can help you profile your data, visualize data in lower dimensions, detect functional dependencies, detect other common data quality issues like null rate or high correlation.
+6. Diagnosis. This modules contains the DIA (Data Inspection Assitant) class, which can help you profile your data, visualize data in lower dimensions, detect functional dependencies, detect other common data quality issues like null rate or high correlation. (Need plotly, great_tables, graphviz as optional dependencies.)
 
 7. Sample. Traditional dataset sampling. No time series sampling yet. This module provides functionalities such as stratified downsample, volume neutral random sampling, etc.
 
@@ -108,8 +108,8 @@ This is ok, but not great, because (1) we are running for loops in Python, which
 
 ```
 df.lazy().group_by("segments").agg(
-    pl.col("actual").metric.roc_auc(pl.col("predicted")).alias("roc_auc"),
-    pl.col("actual").metric.log_loss(pl.col("predicted")).alias("log_loss"),
+    pds.query_roc_auc("actual", "predicted").alias("roc_auc"),
+    pds.query_log_loss("actual", "predicted").alias("log_loss"),
 ).collect()
 
 shape: (2, 3)

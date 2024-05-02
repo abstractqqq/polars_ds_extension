@@ -178,8 +178,6 @@ fn convolve(input: &[f64], filter: &[f64], mode: ConvMode, parallel:bool) -> Pol
                 )
             }
         }
-        
-        
     }
 }
 
