@@ -475,7 +475,6 @@ class DIA:
 
         return [c for c, ok in zip(self._frame.columns, is_ok) if ok is True]
 
-    @lru_cache
     def infer_corr(self, method: CorrMethod = "pearson") -> pl.DataFrame:
         """
         Trying to infer highly correlated columns by computing correlation between
@@ -489,7 +488,10 @@ class DIA:
         to_check = self.numerics + self.bools
         correlation = (
             self._frame.with_columns(pl.col(c).cast(pl.UInt8) for c in self.bools)
-            .select(corr(x, y).alias(f"{i}") for i, (x, y) in enumerate(combinations(to_check, 2)))
+            .select(
+                corr(x, y, method=method).alias(f"{i}")
+                for i, (x, y) in enumerate(combinations(to_check, 2))
+            )
             .collect()
             .row(0)
         )
