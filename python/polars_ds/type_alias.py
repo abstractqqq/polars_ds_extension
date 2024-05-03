@@ -16,6 +16,8 @@ Distance: TypeAlias = Literal["l1", "l2", "inf", "h", "cosine", "haversine"]
 ConvMode: TypeAlias = Literal["same", "left", "right", "full", "valid"]
 ConvMethod: TypeAlias = Literal["fft", "direct"]
 CorrMethod: TypeAlias = Literal["pearson", "spearman", "xi", "kendall"]
+SimpleImputeMethod: TypeAlias = Literal["mean", "median", "mode", "const"]
+SimpleScaleMethod: TypeAlias = Literal["min_max", "standard", "center", "const"]
 
 # Other Custom Types
 PolarsFrame: TypeAlias = Union[pl.DataFrame, pl.LazyFrame]
