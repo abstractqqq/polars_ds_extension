@@ -1,9 +1,12 @@
 from __future__ import annotations
+
+from typing import List, Literal, Union
+
 import polars as pl
-from typing import Union, Literal, List
 from polars.utils.udfs import _get_shared_lib_location
-from .type_alias import str_to_expr, StrOrExpr
+
 from ._utils import pl_plugin
+from .type_alias import StrOrExpr, str_to_expr
 
 _lib = _get_shared_lib_location(__file__)
 
@@ -168,13 +171,22 @@ def filter_by_levenshtein(
     return pl_plugin(
         lib=_lib,
         symbol="pl_levenshtein_filter",
-        args=[str_to_expr(c), other_, pl.lit(abs(bound), pl.UInt32), pl.lit(parallel, pl.Boolean)],
+        args=[
+            str_to_expr(c),
+            other_,
+            pl.lit(abs(bound), pl.UInt32),
+            pl.lit(parallel, pl.Boolean),
+        ],
         is_elementwise=True,
     )
 
 
 def filter_by_hamming(
-    c: StrOrExpr, other: Union[str, pl.Expr], bound: int, pad: bool = False, parallel: bool = False
+    c: StrOrExpr,
+    other: Union[str, pl.Expr],
+    bound: int,
+    pad: bool = False,
+    parallel: bool = False,
 ) -> pl.Expr:
     """
     Returns whether the hamming distance between self and other is <= bound. This is
@@ -398,7 +410,9 @@ def str_snowball(c: StrOrExpr, no_stopwords: bool = True) -> pl.Expr:
     )
 
 
-def str_tokenize(c: StrOrExpr, pattern: str = r"(?u)\b\w\w+\b", stem: bool = False) -> pl.Expr:
+def str_tokenize(
+    c: StrOrExpr, pattern: str = r"(?u)\b\w\w+\b", stem: bool = False
+) -> pl.Expr:
     """
     Tokenize the string according to the pattern. This will only extract the words
     satisfying the pattern.
@@ -420,7 +434,10 @@ def str_tokenize(c: StrOrExpr, pattern: str = r"(?u)\b\w\w+\b", stem: bool = Fal
 
 
 def str_jaccard(
-    c: StrOrExpr, other: Union[str, pl.Expr], substr_size: int = 2, parallel: bool = False
+    c: StrOrExpr,
+    other: Union[str, pl.Expr],
+    substr_size: int = 2,
+    parallel: bool = False,
 ) -> pl.Expr:
     """
     Treats substrings of size `substr_size` as a set. And computes the jaccard similarity between
@@ -451,13 +468,21 @@ def str_jaccard(
     return pl_plugin(
         lib=_lib,
         symbol="pl_str_jaccard",
-        args=[str_to_expr(c), other_, pl.lit(substr_size, pl.UInt32), pl.lit(parallel, pl.Boolean)],
+        args=[
+            str_to_expr(c),
+            other_,
+            pl.lit(substr_size, pl.UInt32),
+            pl.lit(parallel, pl.Boolean),
+        ],
         is_elementwise=True,
     )
 
 
 def str_overlap_coeff(
-    c: StrOrExpr, other: Union[str, pl.Expr], substr_size: int = 2, parallel: bool = False
+    c: StrOrExpr,
+    other: Union[str, pl.Expr],
+    substr_size: int = 2,
+    parallel: bool = False,
 ) -> pl.Expr:
     """
     Treats substrings of size `substr_size` as a set. And computes the overlap coefficient as
@@ -488,13 +513,21 @@ def str_overlap_coeff(
     return pl_plugin(
         lib=_lib,
         symbol="pl_overlap_coeff",
-        args=[str_to_expr(c), other_, pl.lit(substr_size, pl.UInt32), pl.lit(parallel, pl.Boolean)],
+        args=[
+            str_to_expr(c),
+            other_,
+            pl.lit(substr_size, pl.UInt32),
+            pl.lit(parallel, pl.Boolean),
+        ],
         is_elementwise=True,
     )
 
 
 def str_sorensen_dice(
-    c: StrOrExpr, other: Union[str, pl.Expr], substr_size: int = 2, parallel: bool = False
+    c: StrOrExpr,
+    other: Union[str, pl.Expr],
+    substr_size: int = 2,
+    parallel: bool = False,
 ) -> pl.Expr:
     """
     Treats substrings of size `substr_size` as a set. And computes the Sorensen-Dice similarity between
@@ -525,7 +558,12 @@ def str_sorensen_dice(
     return pl_plugin(
         lib=_lib,
         symbol="pl_sorensen_dice",
-        args=[str_to_expr(c), other_, pl.lit(substr_size, pl.UInt32), pl.lit(parallel, pl.Boolean)],
+        args=[
+            str_to_expr(c),
+            other_,
+            pl.lit(substr_size, pl.UInt32),
+            pl.lit(parallel, pl.Boolean),
+        ],
         is_elementwise=True,
     )
 
@@ -594,7 +632,10 @@ def str_tversky_sim(
 
 
 def str_jw(
-    c: StrOrExpr, other: Union[str, pl.Expr], weight: float = 0.1, parallel: bool = False
+    c: StrOrExpr,
+    other: Union[str, pl.Expr],
+    weight: float = 0.1,
+    parallel: bool = False,
 ) -> pl.Expr:
     """
     Computes the Jaro-Winkler similarity between this and the other str.
@@ -622,12 +663,19 @@ def str_jw(
     return pl_plugin(
         lib=_lib,
         symbol="pl_jw",
-        args=[str_to_expr(c), other_, pl.lit(weight, pl.Float64), pl.lit(parallel, pl.Boolean)],
+        args=[
+            str_to_expr(c),
+            other_,
+            pl.lit(weight, pl.Float64),
+            pl.lit(parallel, pl.Boolean),
+        ],
         is_elementwise=True,
     )
 
 
-def str_jaro(c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
+def str_jaro(
+    c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False
+) -> pl.Expr:
     """
     Computes the Jaro similarity between this and the other str. Jaro distance = 1 - Jaro sim.
 
@@ -657,7 +705,10 @@ def str_jaro(c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False) -
 
 
 def str_d_leven(
-    c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False, return_sim: bool = False
+    c: StrOrExpr,
+    other: Union[str, pl.Expr],
+    parallel: bool = False,
+    return_sim: bool = False,
 ) -> pl.Expr:
     """
     Computes the Damerau-Levenshtein distance between this and the other str.
@@ -698,7 +749,10 @@ def str_d_leven(
 
 
 def str_leven(
-    c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False, return_sim: bool = False
+    c: StrOrExpr,
+    other: Union[str, pl.Expr],
+    parallel: bool = False,
+    return_sim: bool = False,
 ) -> pl.Expr:
     """
     Computes the Levenshtein distance between this and the other str.
@@ -739,7 +793,10 @@ def str_leven(
 
 
 def str_osa(
-    c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False, return_sim: bool = False
+    c: StrOrExpr,
+    other: Union[str, pl.Expr],
+    parallel: bool = False,
+    return_sim: bool = False,
 ) -> pl.Expr:
     """
     Computes the Optimal String Alignment distance between this and the other str.
@@ -779,7 +836,9 @@ def str_osa(
         )
 
 
-def str_fuzz(c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
+def str_fuzz(
+    c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False
+) -> pl.Expr:
     """
     A string similarity based on Longest Common Subsequence.
 
@@ -859,7 +918,10 @@ def similar_to_vocab(
 
 
 def extract_numbers(
-    c: StrOrExpr, ignore_comma: bool = False, join_by: str = "", dtype: pl.DataType = pl.String
+    c: StrOrExpr,
+    ignore_comma: bool = False,
+    join_by: str = "",
+    dtype: pl.DataType = pl.String,
 ) -> pl.Expr:
     """
     Extracts numbers from the string column, and stores them in a list.
@@ -925,3 +987,45 @@ def extract_numbers(
             expr = expr.list.join(join_by)
 
     return expr
+
+
+def replace_non_ascii(c: StrOrExpr, value: str = "") -> pl.Expr:
+    """Replaces non-Ascii values with the specified value.
+
+    Parameters
+    ----------
+    c : StrOrExpr
+        The column name or expression
+    value : str, optional
+        The value to replace non-Ascii values with, by default ""
+
+    Examples
+    --------
+    >>> df = pl.DataFrame({"x": ["mercy", "xbĤ", "ĤŇƏ"]})
+    >>> df.select(pds.replace_non_ascii("x"))
+    shape: (3, 1)
+    ┌───────┐
+    │ x     │
+    │ ---   │
+    │ str   │
+    ╞═══════╡
+    │ mercy │
+    │ xb    │
+    │       │
+    └───────┘
+
+    Returns
+    -------
+    pl.Expr
+    """
+    expr = str_to_expr(c)
+
+    if value == "":
+        return pl_plugin(
+            lib=_lib,
+            symbol="remove_non_ascii",
+            args=[expr],
+            is_elementwise=True,
+        )
+
+    return expr.str.replace_all(r"[^\p{Ascii}]", value)

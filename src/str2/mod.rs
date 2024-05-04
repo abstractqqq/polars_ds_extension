@@ -11,6 +11,7 @@ mod overlap;
 mod snowball;
 mod snowball_stem;
 mod sorensen_dice;
+mod str_cleaning;
 mod str_jaccard;
 mod tversky;
 
