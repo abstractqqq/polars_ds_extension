@@ -1,3 +1,4 @@
+import functools
 import timeit
 import unicodedata
 from pathlib import Path
@@ -27,9 +28,9 @@ class Bench:
         for n_rows in self.sizes:
             df = self.df.sample(n_rows, seed=208)
 
-            for func in funcs:
-                func_name = func.__name__
-                time = timeit.timeit(lambda: func(df), number=self.timing_runs)
+            for f in funcs:
+                func_name = f.func.__name__ if isinstance(f, functools.partial) else f.__name__
+                time = timeit.timeit(lambda: f(df), number=self.timing_runs)
 
                 self.benchmark_data["Function"].append(func_name)
                 self.benchmark_data["Size"].append(n_rows)
@@ -83,8 +84,39 @@ def pds_normalize_string(df: pl.DataFrame):
     df.select(pds.normalize_string("RANDOM_STRING", "NFD"))
 
 
+def python_map_words(df: pl.DataFrame, mapping: dict[str, str]):
+    df.select(
+        pl.col("RANDOM_ADDRESS").map_elements(
+            lambda s: " ".join(mapping.get(word, word) for word in s.split()),
+            return_dtype=pl.String,
+        )
+    )
+
+
+def regex_map_words(df: pl.DataFrame, mapping: dict[str, str]):
+    expr = pl.col("RANDOM_ADDRESS")
+    for k, v in mapping.items():
+        expr = expr.str.replace_all(k, v)
+    df.select(expr)
+
+
+def pds_map_words(df: pl.DataFrame, mapping: dict[str, str]):
+    df.select(pds.map_words("RANDOM_ADDRESS", mapping))
+
+
 def main():
     benchmark_df = pl.read_parquet(BASE_PATH / "benchmark_df.parquet")
+
+    map_words_mapping = {
+        "Apt.": "Apartment",
+        "NY": "New York",
+        "CT": "Connecticut",
+        "Street": "ST",
+        "Bypass": "BYP",
+        "GA": "Georgia",
+        "Parkways": "Pkwy",
+        "PA": "Pennsylvania",
+    }
 
     Bench(benchmark_df).run(
         [
@@ -95,6 +127,12 @@ def main():
             pds_remove_diacritics,
             python_normalize_string,
             pds_normalize_string,
+            functools.partial(python_map_words, mapping=map_words_mapping),
+            functools.partial(
+                regex_map_words,
+                mapping={f"\b{k}\b": v for k, v in map_words_mapping.items()},
+            ),
+            functools.partial(pds_map_words, mapping=map_words_mapping),
         ]
     ).save(BASE_PATH / "benchmark_data.parquet")
 

@@ -1104,3 +1104,13 @@ def normalize_string(c: StrOrExpr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) 
         kwargs={"form": form},
         is_elementwise=True,
     )
+
+
+def map_words(c: StrOrExpr, mapping: dict[str, str]) -> pl.Expr:
+    return pl_plugin(
+        lib=_lib,
+        symbol="map_words",
+        args=[str_to_expr(c)],
+        kwargs={"mapping": mapping},
+        is_elementwise=True,
+    )
