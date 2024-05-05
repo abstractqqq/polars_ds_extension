@@ -3,6 +3,7 @@ import string
 from pathlib import Path
 
 import polars as pl
+from faker import Faker
 
 random.seed(208)
 
@@ -61,6 +62,15 @@ class DataGenerator:
 
         return column
 
+    def random_address_column(self) -> list[str]:
+        column = []
+        fake = Faker()
+        for i in range(self.height):
+            Faker.seed(i)
+            column.append(fake.address())
+
+        return column
+
     def random_integer_column(self, min_value: int, max_value: int) -> list[int]:
         return [random.randint(min_value, max_value) for _ in range(self.height)]
 
@@ -75,14 +85,13 @@ class DataGenerator:
             {
                 "RANDOM_STRING": self.random_unicode_column(min_length, max_length),
                 "RANDOM_ASCII": self.random_ascii_column(min_length, max_length),
+                "RANDOM_ADDRESS": self.random_address_column(),
             }
         )
 
 
 def main():
-    DataGenerator(1_000_000).generate().write_parquet(
-        BASE_PATH / "benchmark_df.parquet"
-    )
+    DataGenerator(1_000_000).generate().write_parquet(BASE_PATH / "benchmark_df.parquet")
 
 
 if __name__ == "__main__":
