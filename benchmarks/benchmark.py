@@ -1,4 +1,5 @@
 import timeit
+import unicodedata
 from pathlib import Path
 from typing import Callable
 
@@ -57,11 +58,30 @@ def pds_remove_non_ascii(df: pl.DataFrame):
     df.select(pds.replace_non_ascii("RANDOM_STRING"))
 
 
+def python_remove_diacritics(df: pl.DataFrame):
+    df.select(
+        pl.col("RANDOM_STRING").map_elements(
+            lambda s: unicodedata.normalize("NFD", s).encode("ASCII", "ignore"),
+            return_dtype=pl.String,
+        )
+    )
+
+
+def pds_remove_diacritics(df: pl.DataFrame):
+    df.select(pds.remove_diacritics("RANDOM_STRING"))
+
+
 def main():
     benchmark_df = pl.read_parquet(BASE_PATH / "benchmark_df.parquet")
 
     Bench(benchmark_df).run(
-        [python_remove_non_ascii, regex_remove_non_ascii, pds_remove_non_ascii]
+        [
+            python_remove_non_ascii,
+            regex_remove_non_ascii,
+            pds_remove_non_ascii,
+            python_remove_diacritics,
+            pds_remove_diacritics,
+        ]
     ).save(BASE_PATH / "benchmark_data.parquet")
 
 

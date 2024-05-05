@@ -410,9 +410,7 @@ def str_snowball(c: StrOrExpr, no_stopwords: bool = True) -> pl.Expr:
     )
 
 
-def str_tokenize(
-    c: StrOrExpr, pattern: str = r"(?u)\b\w\w+\b", stem: bool = False
-) -> pl.Expr:
+def str_tokenize(c: StrOrExpr, pattern: str = r"(?u)\b\w\w+\b", stem: bool = False) -> pl.Expr:
     """
     Tokenize the string according to the pattern. This will only extract the words
     satisfying the pattern.
@@ -673,9 +671,7 @@ def str_jw(
     )
 
 
-def str_jaro(
-    c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False
-) -> pl.Expr:
+def str_jaro(c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
     """
     Computes the Jaro similarity between this and the other str. Jaro distance = 1 - Jaro sim.
 
@@ -836,9 +832,7 @@ def str_osa(
         )
 
 
-def str_fuzz(
-    c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False
-) -> pl.Expr:
+def str_fuzz(c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
     """
     A string similarity based on Longest Common Subsequence.
 
@@ -1029,3 +1023,37 @@ def replace_non_ascii(c: StrOrExpr, value: str = "") -> pl.Expr:
         )
 
     return expr.str.replace_all(r"[^\p{Ascii}]", value)
+
+
+def remove_diacritics(c: StrOrExpr) -> pl.Expr:
+    """Remove diacritics (e.g. è -> e) by converting the string to its NFD normalized
+    form and removing the resulting non-ASCII components.
+
+    Parameters
+    ----------
+    c : StrOrExpr
+
+    Returns
+    -------
+    pl.Expr
+
+    Examples
+    --------
+    >>> df = pl.DataFrame({"x": ["mercy", "mèrcy"]})
+    >>> df.select(pds.replace_non_ascii("x"))
+    shape: (2, 1)
+    ┌───────┐
+    │ x     │
+    │ ---   │
+    │ str   │
+    ╞═══════╡
+    │ mercy │
+    │ mercy │
+    └───────┘
+    """
+    return pl_plugin(
+        lib=_lib,
+        symbol="remove_diacritics",
+        args=[str_to_expr(c)],
+        is_elementwise=True,
+    )
