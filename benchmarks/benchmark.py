@@ -71,6 +71,18 @@ def pds_remove_diacritics(df: pl.DataFrame):
     df.select(pds.remove_diacritics("RANDOM_STRING"))
 
 
+def python_normalize_string(df: pl.DataFrame):
+    df.select(
+        pl.col("RANDOM_STRING").map_elements(
+            lambda s: unicodedata.normalize("NFD", s), return_dtype=pl.String
+        )
+    )
+
+
+def pds_normalize_string(df: pl.DataFrame):
+    df.select(pds.normalize_string("RANDOM_STRING", "NFD"))
+
+
 def main():
     benchmark_df = pl.read_parquet(BASE_PATH / "benchmark_df.parquet")
 
@@ -81,6 +93,8 @@ def main():
             pds_remove_non_ascii,
             python_remove_diacritics,
             pds_remove_diacritics,
+            python_normalize_string,
+            pds_normalize_string,
         ]
     ).save(BASE_PATH / "benchmark_data.parquet")
 

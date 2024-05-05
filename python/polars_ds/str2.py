@@ -1057,3 +1057,50 @@ def remove_diacritics(c: StrOrExpr) -> pl.Expr:
         args=[str_to_expr(c)],
         is_elementwise=True,
     )
+
+
+def normalize_string(c: StrOrExpr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) -> pl.Expr:
+    """Normalize Unicode string using one of 'NFC', 'NFKC', 'NFD', or 'NFKD'
+    normalization.
+
+    See https://en.wikipedia.org/wiki/Unicode_equivalence for more information.
+
+    Parameters
+    ----------
+    c : StrOrExpr
+
+    Returns
+    -------
+    pl.Expr
+
+    Examples
+    --------
+    >>> df = pl.DataFrame({"x": ["\u0043\u0327"], "y": ["\u00c7"]})
+    >>> df.with_columns(
+    >>>     pl.col("x").eq(pl.col("y")).alias("is_equal"),
+    >>>     pds.normalize_string("x", "NFC")
+    >>>     .eq(pds.normalize_string("y", "NFC"))
+    >>>     .alias("normalized_is_equal"),
+    >>> )
+    shape: (1, 4)
+    ┌─────┬─────┬──────────┬─────────────────────┐
+    │ x   ┆ y   ┆ is_equal ┆ normalized_is_equal │
+    │ --- ┆ --- ┆ ---      ┆ ---                 │
+    │ str ┆ str ┆ bool     ┆ bool                │
+    ╞═════╪═════╪══════════╪═════════════════════╡
+    │ Ç   ┆ Ç   ┆ false    ┆ true                │
+    └─────┴─────┴──────────┴─────────────────────┘
+    """
+    if form not in ("NFC", "NFKC", "NFD", "NFKD"):
+        raise ValueError(
+            f"{form} is not a valid Unicode normalization form.",
+            " Please specify one of `NFC, NFKC, NFD, NFKD`",
+        )
+
+    return pl_plugin(
+        lib=_lib,
+        symbol="normalize_string",
+        args=[str_to_expr(c)],
+        kwargs={"form": form},
+        is_elementwise=True,
+    )
