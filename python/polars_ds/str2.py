@@ -1107,6 +1107,31 @@ def normalize_string(c: StrOrExpr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) 
 
 
 def map_words(c: StrOrExpr, mapping: dict[str, str]) -> pl.Expr:
+    """Replace words based on the specified mapping.
+
+    Parameters
+    ----------
+    c : StrOrExpr
+    mapping : dict[str, str]
+        A dictionary of {word: replace_with}
+
+    Returns
+    -------
+    pl.Expr
+
+    Examples
+    --------
+    >>> df = pl.DataFrame({"x": ["one two three"]})
+    >>> df.select(pds.map_words("x", {"two": "2"}))
+    shape: (1, 1)
+    ┌─────────────┐
+    │ x           │
+    │ ---         │
+    │ str         │
+    ╞═════════════╡
+    │ one 2 three │
+    └─────────────┘
+    """
     return pl_plugin(
         lib=_lib,
         symbol="map_words",
