@@ -31,6 +31,7 @@ petgraph = "0.6.4"
 ordered-float = "4.2.0"
 approx = "*"
 ahash = ">=0.8.5"
+unicode-normalization = "0.1.23"
 
 [target.'cfg(any(not(target_os = "linux"), use_mimalloc))'.dependencies]
 mimalloc = { version = "0.1", default-features = false }
