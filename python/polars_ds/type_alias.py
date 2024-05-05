@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Literal, Union
+from typing import Literal, Union, List
 import sys
 import polars as pl
 
@@ -22,6 +22,7 @@ SimpleScaleMethod: TypeAlias = Literal["min_max", "standard", "center", "const"]
 # Other Custom Types
 PolarsFrame: TypeAlias = Union[pl.DataFrame, pl.LazyFrame]
 StrOrExpr: TypeAlias = Union[str, pl.Expr]
+ExprTransform: TypeAlias = Union[pl.Expr, List[pl.Expr]]
 
 
 # Auxiliary functions for type conversions
