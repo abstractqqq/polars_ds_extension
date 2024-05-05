@@ -30,3 +30,15 @@ def test_remove_diacritics():
         df.select(pds.remove_diacritics("x")),
         pl.DataFrame({"x": ["mercy", "mercy", "francoise", "uber"]}),
     )
+
+
+def test_normalize_string():
+    df = pl.DataFrame({"x": ["\u0043\u0327"], "y": ["\u00c7"]}).with_columns(
+        pl.col("x").eq(pl.col("y")).alias("is_equal"),
+        pds.normalize_string("x", "NFC")
+        .eq(pds.normalize_string("y", "NFC"))
+        .alias("normalized_is_equal"),
+    )
+
+    assert df["is_equal"].sum() == 0
+    assert df["normalized_is_equal"].sum() == df.height
