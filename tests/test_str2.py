@@ -45,19 +45,19 @@ def test_normalize_string():
 
 
 def test_map_words():
-    df = pl.DataFrame({"x": ["one two three"]})
+    df = pl.DataFrame({"x": ["one two three", "onetwo three"]})
 
     assert_frame_equal(
         df.select(pds.map_words("x", {"two": "2"})),
-        pl.DataFrame({"x": ["one 2 three"]}),
+        pl.DataFrame({"x": ["one 2 three", "onetwo three"]}),
     )
 
     assert_frame_equal(
         df.select(pds.map_words("x", {"two": "2", "three": "3"})),
-        pl.DataFrame({"x": ["one 2 3"]}),
+        pl.DataFrame({"x": ["one 2 3", "onetwo 3"]}),
     )
 
     assert_frame_equal(
         df.select(pds.map_words("x", {"four": "4"})),
-        pl.DataFrame({"x": ["one two three"]}),
+        pl.DataFrame({"x": ["one two three", "onetwo three"]}),
     )
