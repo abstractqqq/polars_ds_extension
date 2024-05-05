@@ -50,3 +50,28 @@ fn normalize_string(inputs: &[Series], kwargs: NormalizeKwargs) -> PolarsResult<
 
     Ok(out.into_series())
 }
+
+#[derive(serde::Deserialize)]
+struct MapWordsKwargs {
+    mapping: ahash::HashMap<String, String>,
+}
+
+fn _map_words(value: &str, mapping: &ahash::HashMap<String, String>, output: &mut String) {
+    let vec: Vec<&str> = value
+        .split_whitespace()
+        .map(|word| match mapping.get(word) {
+            Some(val) => val,
+            None => word,
+        })
+        .collect();
+
+    output.push_str(vec.join(" ").as_str())
+}
+
+#[polars_expr(output_type=String)]
+fn map_words(inputs: &[Series], kwargs: MapWordsKwargs) -> PolarsResult<Series> {
+    let ca = inputs[0].str()?;
+    let out = ca.apply_to_buffer(|val, buf| _map_words(val, &kwargs.mapping, buf));
+
+    Ok(out.into_series())
+}

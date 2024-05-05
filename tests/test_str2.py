@@ -42,3 +42,22 @@ def test_normalize_string():
 
     assert df["is_equal"].sum() == 0
     assert df["normalized_is_equal"].sum() == df.height
+
+
+def test_map_words():
+    df = pl.DataFrame({"x": ["one two three"]})
+
+    assert_frame_equal(
+        df.select(pds.map_words("x", {"two": "2"})),
+        pl.DataFrame({"x": ["one 2 three"]}),
+    )
+
+    assert_frame_equal(
+        df.select(pds.map_words("x", {"two": "2", "three": "3"})),
+        pl.DataFrame({"x": ["one 2 3"]}),
+    )
+
+    assert_frame_equal(
+        df.select(pds.map_words("x", {"four": "4"})),
+        pl.DataFrame({"x": ["one two three"]}),
+    )
