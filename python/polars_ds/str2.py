@@ -993,6 +993,10 @@ def replace_non_ascii(c: StrOrExpr, value: str = "") -> pl.Expr:
     value : str, optional
         The value to replace non-Ascii values with, by default ""
 
+    Returns
+    -------
+    pl.Expr
+
     Examples
     --------
     >>> df = pl.DataFrame({"x": ["mercy", "xbĤ", "ĤŇƏ"]})
@@ -1007,10 +1011,6 @@ def replace_non_ascii(c: StrOrExpr, value: str = "") -> pl.Expr:
     │ xb    │
     │       │
     └───────┘
-
-    Returns
-    -------
-    pl.Expr
     """
     expr = str_to_expr(c)
 
@@ -1068,6 +1068,8 @@ def normalize_string(c: StrOrExpr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) 
     Parameters
     ----------
     c : StrOrExpr
+    form: Literal["NFC", "NFKC", "NFD", "NFKD"]
+        The Unicode normalization form to use
 
     Returns
     -------
