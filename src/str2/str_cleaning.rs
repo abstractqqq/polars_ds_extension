@@ -1,5 +1,6 @@
+use itertools::Itertools;
 use polars::prelude::*;
-use pyo3_polars::derive::polars_expr;
+use pyo3_polars::{derive::polars_expr, export::polars_core::utils::rayon::str::ParallelString};
 use unicode_normalization::UnicodeNormalization;
 
 fn _remove_non_ascii(value: &str, output: &mut String) {
@@ -72,6 +73,18 @@ fn _map_words(value: &str, mapping: &ahash::HashMap<String, String>, output: &mu
 fn map_words(inputs: &[Series], kwargs: MapWordsKwargs) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
     let out = ca.apply_to_buffer(|val, buf| _map_words(val, &kwargs.mapping, buf));
+
+    Ok(out.into_series())
+}
+
+fn _normalize_whitespace(value: &str, output: &mut String) {
+    *output = value.split_whitespace().join(" ")
+}
+
+#[polars_expr(output_type=String)]
+fn normalize_whitespace(inputs: &[Series]) -> PolarsResult<Series> {
+    let ca = inputs[0].str()?;
+    let out = ca.apply_to_buffer(_normalize_whitespace);
 
     Ok(out.into_series())
 }

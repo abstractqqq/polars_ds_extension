@@ -61,3 +61,17 @@ def test_map_words():
         df.select(pds.map_words("x", {"four": "4"})),
         pl.DataFrame({"x": ["one two three", "onetwo three"]}),
     )
+
+
+def test_normalize_whitespace():
+    df = pl.DataFrame({"x": ["a   b", "ab", "a b", "a\t\nb"]})
+
+    assert_frame_equal(
+        df.select(pds.normalize_whitespace("x")),
+        pl.DataFrame({"x": ["a b", "ab", "a b", "a b"]}),
+    )
+
+    assert_frame_equal(
+        df.select(pds.normalize_whitespace("x", only_spaces=True)),
+        pl.DataFrame({"x": ["a b", "ab", "a b", "a\t\nb"]}),
+    )

@@ -1139,3 +1139,42 @@ def map_words(c: StrOrExpr, mapping: dict[str, str]) -> pl.Expr:
         kwargs={"mapping": mapping},
         is_elementwise=True,
     )
+
+
+def normalize_whitespace(c: StrOrExpr, only_spaces: bool = False) -> pl.Expr:
+    """Normalize whitespace to one, e.g. 'a   b' -> 'a b'.
+
+    Parameters
+    ----------
+    c : StrOrExpr
+    only_spaces: bool
+        If True, only split on the space character ' ' instead of any whitespace
+        character such as '\t' and '\n', by default False
+
+    Returns
+    -------
+    pl.Expr
+
+    Examples
+    --------
+    shape: (2, 3)
+    ┌─────────┬─────┬────────┐
+    │ x       ┆ y   ┆ z      │
+    │ ---     ┆ --- ┆ ---    │
+    │ str     ┆ str ┆ str    │
+    ╞═════════╪═════╪════════╡
+    │ a     b ┆ a b ┆ a b    │
+    │ a	    b ┆ a b ┆ a	    b│
+    └─────────┴─────┴────────┘
+    """
+    expr = str_to_expr(c)
+
+    if only_spaces:
+        return expr.str.replace_all(" +", " ")
+
+    return pl_plugin(
+        lib=_lib,
+        symbol="normalize_whitespace",
+        args=[expr],
+        is_elementwise=True,
+    )

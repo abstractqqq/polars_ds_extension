@@ -104,6 +104,32 @@ def pds_map_words(df: pl.DataFrame, mapping: dict[str, str]):
     df.select(pds.map_words("RANDOM_ADDRESS", mapping))
 
 
+def python_normalize_whitespace(df: pl.DataFrame):
+    df.select(
+        pl.col("RANDOM_STRING").map_elements(lambda s: " ".join(s.split()), return_dtype=pl.String)
+    )
+
+
+def python_normalize_whitespace_only_spaces(df: pl.DataFrame):
+    df.select(
+        pl.col("RANDOM_STRING").map_elements(
+            lambda s: " ".join(s.split(" ")), return_dtype=pl.String
+        )
+    )
+
+
+def expr_normalize_whitespace_only_spaces(df: pl.DataFrame):
+    df.select(pl.col("RANDOM_STRING").str.split(" ").list.join(" "))
+
+
+def pds_normalize_whitespace(df: pl.DataFrame):
+    df.select(pds.normalize_whitespace("RANDOM_STRING"))
+
+
+def pds_normalize_whitespace_only_spaces(df: pl.DataFrame):
+    df.select(pds.normalize_whitespace("RANDOM_STRING", only_spaces=True))
+
+
 def main():
     benchmark_df = pl.read_parquet(BASE_PATH / "benchmark_df.parquet")
 
@@ -133,6 +159,11 @@ def main():
                 mapping={f"\b{k}\b": v for k, v in map_words_mapping.items()},
             ),
             functools.partial(pds_map_words, mapping=map_words_mapping),
+            python_normalize_whitespace,
+            python_normalize_whitespace_only_spaces,
+            expr_normalize_whitespace_only_spaces,
+            pds_normalize_whitespace,
+            pds_normalize_whitespace_only_spaces,
         ]
     ).save(BASE_PATH / "benchmark_data.parquet")
 
