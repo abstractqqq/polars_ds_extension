@@ -24,7 +24,7 @@ PipeComponentType: TypeAlias = Literal["with_columns", "select", "fit"]
 PolarsFrame: TypeAlias = Union[pl.DataFrame, pl.LazyFrame]
 StrOrExpr: TypeAlias = Union[str, pl.Expr]
 ExprTransform: TypeAlias = Union[pl.Expr, List[pl.Expr]]
-FitTransformFunc: TypeAlias = Callable[[PolarsFrame, ...], ExprTransform]
+FitTransformFunc: TypeAlias = Callable[[PolarsFrame, List[str]], ExprTransform]
 
 
 # Auxiliary functions for type conversions
