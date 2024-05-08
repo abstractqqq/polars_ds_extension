@@ -410,9 +410,7 @@ def str_snowball(c: StrOrExpr, no_stopwords: bool = True) -> pl.Expr:
     )
 
 
-def str_tokenize(
-    c: StrOrExpr, pattern: str = r"(?u)\b\w\w+\b", stem: bool = False
-) -> pl.Expr:
+def str_tokenize(c: StrOrExpr, pattern: str = r"(?u)\b\w\w+\b", stem: bool = False) -> pl.Expr:
     """
     Tokenize the string according to the pattern. This will only extract the words
     satisfying the pattern.
@@ -673,9 +671,7 @@ def str_jw(
     )
 
 
-def str_jaro(
-    c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False
-) -> pl.Expr:
+def str_jaro(c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
     """
     Computes the Jaro similarity between this and the other str. Jaro distance = 1 - Jaro sim.
 
@@ -836,9 +832,7 @@ def str_osa(
         )
 
 
-def str_fuzz(
-    c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False
-) -> pl.Expr:
+def str_fuzz(c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
     """
     A string similarity based on Longest Common Subsequence.
 
@@ -999,6 +993,10 @@ def replace_non_ascii(c: StrOrExpr, value: str = "") -> pl.Expr:
     value : str, optional
         The value to replace non-Ascii values with, by default ""
 
+    Returns
+    -------
+    pl.Expr
+
     Examples
     --------
     >>> df = pl.DataFrame({"x": ["mercy", "xbĤ", "ĤŇƏ"]})
@@ -1013,10 +1011,6 @@ def replace_non_ascii(c: StrOrExpr, value: str = "") -> pl.Expr:
     │ xb    │
     │       │
     └───────┘
-
-    Returns
-    -------
-    pl.Expr
     """
     expr = str_to_expr(c)
 
@@ -1029,3 +1023,160 @@ def replace_non_ascii(c: StrOrExpr, value: str = "") -> pl.Expr:
         )
 
     return expr.str.replace_all(r"[^\p{Ascii}]", value)
+
+
+def remove_diacritics(c: StrOrExpr) -> pl.Expr:
+    """Remove diacritics (e.g. è -> e) by converting the string to its NFD normalized
+    form and removing the resulting non-ASCII components.
+
+    Parameters
+    ----------
+    c : StrOrExpr
+
+    Returns
+    -------
+    pl.Expr
+
+    Examples
+    --------
+    >>> df = pl.DataFrame({"x": ["mercy", "mèrcy"]})
+    >>> df.select(pds.replace_non_ascii("x"))
+    shape: (2, 1)
+    ┌───────┐
+    │ x     │
+    │ ---   │
+    │ str   │
+    ╞═══════╡
+    │ mercy │
+    │ mercy │
+    └───────┘
+    """
+    return pl_plugin(
+        lib=_lib,
+        symbol="remove_diacritics",
+        args=[str_to_expr(c)],
+        is_elementwise=True,
+    )
+
+
+def normalize_string(c: StrOrExpr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) -> pl.Expr:
+    """Normalize Unicode string using one of 'NFC', 'NFKC', 'NFD', or 'NFKD'
+    normalization.
+
+    See https://en.wikipedia.org/wiki/Unicode_equivalence for more information.
+
+    Parameters
+    ----------
+    c : StrOrExpr
+    form: Literal["NFC", "NFKC", "NFD", "NFKD"]
+        The Unicode normalization form to use
+
+    Returns
+    -------
+    pl.Expr
+
+    Examples
+    --------
+    >>> df = pl.DataFrame({"x": ["\u0043\u0327"], "y": ["\u00c7"]})
+    >>> df.with_columns(
+    >>>     pl.col("x").eq(pl.col("y")).alias("is_equal"),
+    >>>     pds.normalize_string("x", "NFC")
+    >>>     .eq(pds.normalize_string("y", "NFC"))
+    >>>     .alias("normalized_is_equal"),
+    >>> )
+    shape: (1, 4)
+    ┌─────┬─────┬──────────┬─────────────────────┐
+    │ x   ┆ y   ┆ is_equal ┆ normalized_is_equal │
+    │ --- ┆ --- ┆ ---      ┆ ---                 │
+    │ str ┆ str ┆ bool     ┆ bool                │
+    ╞═════╪═════╪══════════╪═════════════════════╡
+    │ Ç   ┆ Ç   ┆ false    ┆ true                │
+    └─────┴─────┴──────────┴─────────────────────┘
+    """
+    if form not in ("NFC", "NFKC", "NFD", "NFKD"):
+        raise ValueError(
+            f"{form} is not a valid Unicode normalization form.",
+            " Please specify one of `NFC, NFKC, NFD, NFKD`",
+        )
+
+    return pl_plugin(
+        lib=_lib,
+        symbol="normalize_string",
+        args=[str_to_expr(c)],
+        kwargs={"form": form},
+        is_elementwise=True,
+    )
+
+
+def map_words(c: StrOrExpr, mapping: dict[str, str]) -> pl.Expr:
+    """Replace words based on the specified mapping.
+
+    Parameters
+    ----------
+    c : StrOrExpr
+    mapping : dict[str, str]
+        A dictionary of {word: replace_with}
+
+    Returns
+    -------
+    pl.Expr
+
+    Examples
+    --------
+    >>> df = pl.DataFrame({"x": ["one two three"]})
+    >>> df.select(pds.map_words("x", {"two": "2"}))
+    shape: (1, 1)
+    ┌─────────────┐
+    │ x           │
+    │ ---         │
+    │ str         │
+    ╞═════════════╡
+    │ one 2 three │
+    └─────────────┘
+    """
+    return pl_plugin(
+        lib=_lib,
+        symbol="map_words",
+        args=[str_to_expr(c)],
+        kwargs={"mapping": mapping},
+        is_elementwise=True,
+    )
+
+
+def normalize_whitespace(c: StrOrExpr, only_spaces: bool = False) -> pl.Expr:
+    """Normalize whitespace to one, e.g. 'a   b' -> 'a b'.
+
+    Parameters
+    ----------
+    c : StrOrExpr
+    only_spaces: bool
+        If True, only split on the space character ' ' instead of any whitespace
+        character such as '\t' and '\n', by default False
+
+    Returns
+    -------
+    pl.Expr
+
+    Examples
+    --------
+    shape: (2, 3)
+    ┌─────────┬─────┬────────┐
+    │ x       ┆ y   ┆ z      │
+    │ ---     ┆ --- ┆ ---    │
+    │ str     ┆ str ┆ str    │
+    ╞═════════╪═════╪════════╡
+    │ a     b ┆ a b ┆ a b    │
+    │ a	    b ┆ a b ┆ a	    b│
+    └─────────┴─────┴────────┘
+    """
+    expr = str_to_expr(c)
+
+    if only_spaces:
+        return expr.str.replace_all(" +", " ")
+
+    return pl_plugin(
+        lib=_lib,
+        symbol="normalize_whitespace",
+        args=[expr],
+        is_elementwise=True,
+    )
