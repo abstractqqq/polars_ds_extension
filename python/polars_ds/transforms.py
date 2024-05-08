@@ -1,9 +1,17 @@
+"""
+This module provides classic ML dataset transforms. Note all functions here are single-use only, meaning
+that the data learned (e.g. mean value in mean imputation) will not be preserved. For pipeline usage, which
+preserves the learned values and optimizes the transform query, see pipeline.py.
+"""
+
+
 import polars as pl
-from .type_alias import PolarsFrame, SimpleImputeMethod, SimpleScaleMethod
+import polars.selectors as cs
+from .type_alias import PolarsFrame, SimpleImputeMethod, SimpleScaleMethod, ExprTransform
 from typing import List
 
 
-def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean") -> List[pl.Expr]:
+def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean") -> ExprTransform:
     """
     Impute null values in the given columns. This transform will collect if input is lazy.
 
@@ -30,7 +38,7 @@ def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean"
         raise ValueError(f"Unknown input method: {method}")
 
 
-def center(df: PolarsFrame, cols: List[str]) -> List[pl.Expr]:
+def center(df: PolarsFrame, cols: List[str]) -> ExprTransform:
     """
     Center the given columns so that they will have 0 mean.
 
@@ -49,9 +57,9 @@ def scale(
     df: PolarsFrame,
     cols: List[str],
     method: SimpleScaleMethod = "standard",
-) -> List[pl.Expr]:
+) -> ExprTransform:
     """
-    Impute null values in the given columns. This transform will collect if input is lazy.
+    Scales values in the given columns. This transform will collect if input is lazy.
 
     Parameters
     ----------
@@ -100,7 +108,7 @@ def scale(
 
 def robust_scale(
     df: PolarsFrame, cols: List[str], q1: float = 0.25, q2: float = 0.75
-) -> List[pl.Expr]:
+) -> ExprTransform:
     """
     Like min-max scaling, but scales each column by the quantile value at q1 and q2.
 
@@ -131,3 +139,45 @@ def robust_scale(
     )
     n = len(cols)
     return [(pl.col(c) - temp[i]) / (temp[n + i] - temp[i]) for i, c in enumerate(cols)]
+
+
+def one_hot_encode(
+    df: PolarsFrame, cols: List[str], separator: str = "_", drop_first: bool = False
+) -> ExprTransform:
+    """
+    Find the unique values in the string/categorical columns and one-hot encode them. This will NOT
+    consider nulls as one of the unique values.
+
+    Parameters
+    ----------
+    df
+        Either a lazy or an eager dataframe
+    cols
+        A list of strings representing column names. None string/categorical columns will produce no expressions.
+    separator
+        E.g. if column name is `col` and `a` is an elemenet in it, then the one-hot encoded column will be called
+        `col_a` where the separator `_` is used.
+    drop_first
+        Whether to drop the first distinct value (in terms of str/categorical order). This helps with reducing
+        dimension and prevents some issues from linear dependency.
+    """
+
+    temp = (
+        df.lazy()
+        .select(cols)
+        .select((cs.string() | cs.categorical()).unique().drop_nulls().implode().list.sort())
+    )
+    exprs: list[pl.Expr] = []
+    for t in temp.collect().get_columns():
+        u: pl.Series = t[0]  # t is a Series which contains a single series, so u is a series
+        if len(u) > 1:
+            exprs.extend(
+                pl.col(t.name)
+                .eq(u[i])
+                .fill_null(False)
+                .cast(pl.UInt8)
+                .alias(t.name + separator + u[i])
+                for i in range(int(drop_first), len(u))
+            )
+
+    return exprs

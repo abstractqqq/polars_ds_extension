@@ -18,7 +18,6 @@ ConvMethod: TypeAlias = Literal["fft", "direct"]
 CorrMethod: TypeAlias = Literal["pearson", "spearman", "xi", "kendall"]
 SimpleImputeMethod: TypeAlias = Literal["mean", "median", "mode"]
 SimpleScaleMethod: TypeAlias = Literal["min_max", "standard", "abs_max"]
-PipeComponentType: TypeAlias = Literal["with_columns", "select", "fit"]
 
 # Other Custom Types
 PolarsFrame: TypeAlias = Union[pl.DataFrame, pl.LazyFrame]
