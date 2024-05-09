@@ -3,9 +3,9 @@ use pyo3_polars::derive::polars_expr;
 use serde::Deserialize;
 
 fn target_encode_output(_: &[Field]) -> PolarsResult<Field> {
-    let values = Field::new("values", DataType::String);
-    let value = Field::new("value", DataType::Float64);
-    let v: Vec<Field> = vec![values, value];
+    let values = Field::new("value", DataType::String);
+    let to = Field::new("to", DataType::Float64);
+    let v: Vec<Field> = vec![values, to];
     Ok(Field::new("target_encoded", DataType::Struct(v)))
 }
 
@@ -24,13 +24,13 @@ fn get_target_encode_frame(
     smoothing: f64,
 ) -> PolarsResult<LazyFrame> {
     let df = df!(
-        "values" => discrete_col.cast(&DataType::String)?,
+        "value" => discrete_col.cast(&DataType::String)?,
         "target" => target
     )?;
 
     Ok(df
         .lazy()
-        .group_by([col("values")])
+        .group_by([col("value")])
         .agg([len().alias("cnt"), col("target").mean().alias("cond_p")])
         .with_column(
             (lit(1f64)
@@ -41,7 +41,7 @@ fn get_target_encode_frame(
             .alias("alpha"),
         )
         .select([
-            col("values"),
+            col("value"),
             (col("alpha") * col("cond_p") + (lit(1f64) - col("alpha")) * lit(target_mean))
                 .alias("to"),
         ]))

@@ -198,26 +198,6 @@ class NumExt:
             .otherwise(pl.lit(float("inf"), dtype=pl.Float64))
         )
 
-    def target_encode(
-        self, target: pl.Expr, min_samples_leaf: int = 20, smoothing: float = 10.0
-    ) -> pl.Expr:
-        """
-        Compute information necessary to target encode a string column. Target must be binary
-        and be 0s and 1s.
-
-        Parameters
-        ----------
-        target
-            The target variable. Should be 0s and 1s.
-        """
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_target_encode",
-            args=[target, target.mean()],
-            kwargs={"min_samples_leaf": float(min_samples_leaf), "smoothing": smoothing},
-            changes_length=True,
-        )
-
 
 # ----------------------------------------------------------------------------------
 
@@ -1388,6 +1368,7 @@ def convolve(
     https://en.wikipedia.org/wiki/Convolution
     """
     xx = str_to_expr(x).fill_null(fill_value).cast(pl.Float64).rechunk()  # One cont slice
+    f: Union[pl.Expr, pl.Series]
     if isinstance(kernel, pl.Expr):
         f = kernel.filter(kernel.is_finite()).rechunk()  # One cont slice
     else:
@@ -1558,3 +1539,36 @@ def rfft(series: StrOrExpr, n: Optional[int] = None, return_full: bool = False) 
     nn = pl.lit(n, pl.UInt32)
     x: pl.Expr = str_to_expr(series).cast(pl.Float64)
     return pl_plugin(lib=_lib, symbol="pl_rfft", args=[x, nn, full], changes_length=True)
+
+
+def target_encode(
+    s: StrOrExpr, target: StrOrExpr, min_samples_leaf: int = 20, smoothing: float = 10.0
+) -> pl.Expr:
+    """
+    Compute information necessary to target encode a string column.
+
+    Note: nulls will be encoded as well.
+
+    Parameters
+    ----------
+    s
+        The string column to encode
+    target
+        The target column. Should be 0s and 1s.
+    min_samples_leaf
+        A regularization factor
+    smoothing
+        Smoothing effect to balance categorical average vs prior
+
+    Reference
+    ---------
+    https://contrib.scikit-learn.org/category_encoders/targetencoder.html
+    """
+    t = str_to_expr(target)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_target_encode",
+        args=[str_to_expr(s), t, t.mean()],
+        kwargs={"min_samples_leaf": float(min_samples_leaf), "smoothing": smoothing},
+        changes_length=True,
+    )

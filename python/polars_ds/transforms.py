@@ -4,11 +4,11 @@ that the data learned (e.g. mean value in mean imputation) will not be preserved
 preserves the learned values and optimizes the transform query, see pipeline.py.
 """
 
-
 import polars as pl
 import polars.selectors as cs
 from .type_alias import PolarsFrame, SimpleImputeMethod, SimpleScaleMethod, ExprTransform
-from typing import List
+from . import num as pds_num
+from typing import List, Union, Optional
 
 
 def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean") -> ExprTransform:
@@ -75,7 +75,7 @@ def scale(
             df.lazy()
             .select(
                 pl.col(cols).mean().name.prefix("mean:"),
-                pl.col(cols).mean().name.prefix("std:"),
+                pl.col(cols).std().name.prefix("std:"),
             )
             .collect()
             .row(0)
@@ -93,6 +93,7 @@ def scale(
             .row(0)
         )
         n = len(cols)
+        # If input is constant, this will return all NaNs.
         return [(pl.col(c) - temp[i]) / (temp[n + i] - temp[i]) for i, c in enumerate(cols)]
     elif method == "abs_max":
         temp = (
@@ -153,7 +154,7 @@ def one_hot_encode(
     df
         Either a lazy or an eager dataframe
     cols
-        A list of strings representing column names. None string/categorical columns will produce no expressions.
+        A list of strings representing column names. Columns of type != string/categorical will not produce any expression.
     separator
         E.g. if column name is `col` and `a` is an elemenet in it, then the one-hot encoded column will be called
         `col_a` where the separator `_` is used.
@@ -165,7 +166,14 @@ def one_hot_encode(
     temp = (
         df.lazy()
         .select(cols)
-        .select((cs.string() | cs.categorical()).unique().drop_nulls().implode().list.sort())
+        .select(
+            (cs.string() | cs.categorical())
+            .unique()
+            .drop_nulls()
+            .cast(pl.String)
+            .implode()
+            .list.sort()
+        )
     )
     exprs: list[pl.Expr] = []
     for t in temp.collect().get_columns():
@@ -174,10 +182,64 @@ def one_hot_encode(
             exprs.extend(
                 pl.col(t.name)
                 .eq(u[i])
-                .fill_null(False)
+                .fill_null(False)  # In the EQ comparison, None will result in None
                 .cast(pl.UInt8)
                 .alias(t.name + separator + u[i])
                 for i in range(int(drop_first), len(u))
             )
 
+    return exprs
+
+
+def target_encode(
+    df: PolarsFrame,
+    cols: List[str],
+    /,
+    target: Union[str, pl.Expr],
+    min_samples_leaf: int = 20,
+    smoothing: float = 10.0,
+    default: Optional[float] = None,
+) -> ExprTransform:
+    """
+    Target encode the given variables.
+
+    Note: nulls will be encoded as well.
+
+    Parameters
+    ----------
+    df
+        Either a lazy or an eager dataframe
+    cols
+        A list of strings representing column names. Columns of type != string/categorical will not produce any expression.
+    target
+        The target column
+    min_samples_leaf
+        A regularization factor
+    smoothing
+        Smoothing effect to balance categorical average vs prior
+    default
+        If new value is encountered during transform, it will be mapped to default
+
+    Reference
+    ---------
+    https://contrib.scikit-learn.org/category_encoders/targetencoder.html
+    """
+    valid_cols = df.lazy().select(cols).select((cs.string() | cs.categorical())).columns
+    temp = (
+        df.lazy()
+        .select(
+            pds_num.target_encode(
+                c, target, min_samples_leaf=min_samples_leaf, smoothing=smoothing
+            ).implode()
+            for c in valid_cols
+        )
+        .collect()
+    )  # add collect config..
+    exprs = [
+        # c[0] will be a series of struct because of the implode above.
+        pl.col(c.name).replace(
+            old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default
+        )
+        for c in temp.get_columns()
+    ]
     return exprs

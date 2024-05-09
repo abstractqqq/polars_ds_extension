@@ -44,7 +44,7 @@ class FitComponent:
     # to specify input columns, which adds flexibility.
     # We still need real column names so that the functions in transforms.py will work.
     def fit(self, df: PolarsFrame) -> ExprTransform:
-        real_cols = df.select(self.cols).columns
+        real_cols: List[str] = df.select(self.cols).columns
         return self.func(df, real_cols)
 
 
@@ -58,7 +58,13 @@ class Pipeline:
     If the input df is lazy, the pipeline will collect at the time of fit.
     """
 
-    def __init__(self, df: PolarsFrame, lowercase: bool = False):
+    def __init__(
+        self,
+        df: PolarsFrame,
+        name: str = "test",
+        lowercase: bool = False,
+        target: Optional[str] = None,
+    ):
         """ """
         if lowercase:
             self._df: pl.LazyFrame = df.lazy().select(
@@ -67,6 +73,8 @@ class Pipeline:
         else:
             self._df: pl.LazyFrame = df.lazy()
 
+        self.name: str = name
+        self.target: Optional[str] = target
         self._steps: List[PipeComponent] = []
         self._transform_queue: List[FittedPipeComponent] = []
 
@@ -176,10 +184,71 @@ class Pipeline:
     def one_hot_encode(
         self, cols: IntoExprColumn, separator: str = "_", drop_first: bool = False
     ) -> Self:
-        """ """
+        """
+        Find the unique values in the string/categorical columns and one-hot encode them. This will NOT
+        consider nulls as one of the unique values. Append pl.col(c).is_null().cast(pl.UInt8)
+        expression to the pipeline if you want null indicators.
+
+        Parameters
+        ----------
+        cols
+            Any Polars expression that can be understood as columns.
+        separator
+            E.g. if column name is `col` and `a` is an elemenet in it, then the one-hot encoded column will be called
+            `col_a` where the separator `_` is used.
+        drop_first
+            Whether to drop the first distinct value (in terms of str/categorical order). This helps with reducing
+            dimension and prevents some issues from linear dependency.
+        """
         self._steps.append(
             FitComponent(
                 partial(t.one_hot_encode, separator=separator, drop_first=drop_first), cols
+            )
+        )
+        return self.remove(cols)
+
+    def target_encode(
+        self,
+        cols: IntoExprColumn,
+        /,
+        target: Union[str, pl.Expr],
+        min_samples_leaf: int = 20,
+        smoothing: float = 10.0,
+        default: Optional[float] = None,
+    ) -> Self:
+        """
+        Target encode the given variables.
+
+        Note: nulls will be encoded as well.
+
+        Parameters
+        ----------
+        cols
+            Any Polars expression that can be understood as columns. Columns of type != string/categorical
+            will not produce any expression.
+        target
+            The target column
+        min_samples_leaf
+            A regularization factor
+        smoothing
+            Smoothing effect to balance categorical average vs prior
+        default
+            If new value is encountered during transform, it will be mapped to default
+
+        Reference
+        ---------
+        https://contrib.scikit-learn.org/category_encoders/targetencoder.html
+        """
+        self._steps.append(
+            FitComponent(
+                partial(
+                    t.target_encode,
+                    target=target,
+                    min_samples_leaf=min_samples_leaf,
+                    smoothing=smoothing,
+                    default=default,
+                ),
+                cols,
             )
         )
         return self
@@ -214,17 +283,17 @@ class Pipeline:
         # Let this lazy plan go through the fit process. The frame will be collected temporarily but
         # the collect should be and optimized.
         df_lazy: pl.LazyFrame = df.lazy()
-        for comp in self._steps:
-            if isinstance(comp, FitComponent):
-                exprs = comp.fit(df_lazy)
+        for component in self._steps:
+            if isinstance(component, FitComponent):
+                exprs = component.fit(df_lazy)
                 self._transform_queue.append(WithColumnsComponent(exprs))
                 df_lazy = df_lazy.with_columns(exprs)
-            elif isinstance(comp, WithColumnsComponent):
-                self._transform_queue.append(comp)
-                df_lazy = df_lazy.with_columns(comp.exprs)
-            elif isinstance(comp, SelectComponent):
-                self._transform_queue.append(comp)
-                df_lazy = df_lazy.select(comp.exprs)
+            elif isinstance(component, WithColumnsComponent):
+                self._transform_queue.append(component)
+                df_lazy = df_lazy.with_columns(component.exprs)
+            elif isinstance(component, SelectComponent):
+                self._transform_queue.append(component)
+                df_lazy = df_lazy.select(component.exprs)
             else:
                 raise ValueError("Not a valid PipeComponent.")
         return self
@@ -235,7 +304,28 @@ class Pipeline:
         """
         return self.finish()
 
-    def transform(self, df: Optional[PolarsFrame] = None) -> pl.DataFrame:
+    def _generate_lazy_plan(self, df: Optional[PolarsFrame] = None) -> pl.LazyFrame:
+        """
+        Generates a lazy plan for the incoming df
+
+        Paramters
+        ---------
+        df
+            If none, create the plan for the df that the pipe is initialized with. Otherwise,
+            create the plan for the incoming df.
+        """
+        plan = self._df if df is None else df.lazy()
+        for comp in self._transform_queue:
+            if isinstance(comp, WithColumnsComponent):
+                plan = plan.with_columns(comp.exprs)
+            elif isinstance(comp, SelectComponent):
+                plan = plan.select(comp.exprs)
+            else:
+                raise ValueError("Not a valid FittedPipeComponent.")
+
+        return plan
+
+    def transform(self, df: Optional[PolarsFrame] = None, return_lazy: bool = False) -> PolarsFrame:
         """
         Transforms the df using the learned expressions.
 
@@ -244,21 +334,11 @@ class Pipeline:
         df
             If none, transform the df that the pipe is initialized with. Otherwise, perform
             the learned transformations on the incoming df.
+        return_lazy
+            If true, return the lazy plan for the transformations
         """
-        if df is None:
-            df_out = self._df.lazy()
-        else:
-            df_out = df.lazy()
-
-        for comp in self._transform_queue:
-            if isinstance(comp, WithColumnsComponent):
-                df_out = df_out.with_columns(comp.exprs)
-            elif isinstance(comp, SelectComponent):
-                df_out = df_out.select(comp.exprs)
-            else:
-                raise ValueError("Not a valid FittedPipeComponent.")
-
-        return df_out.collect()  # Add config here if streaming is needed
+        plan = self._generate_lazy_plan(df)
+        return plan if return_lazy else plan.collect()  # Add config here if streaming is needed
 
     def show_graph(self, optimized: bool = True) -> Optional[str]:
         """
@@ -269,11 +349,4 @@ class Pipeline:
         optimized
             Whether this will show the optimized plan or not.
         """
-        df_out = self._df.lazy()
-        for comp in self._transform_queue:
-            if isinstance(comp, WithColumnsComponent):
-                df_out = df_out.with_columns(comp.exprs)
-            elif isinstance(comp, SelectComponent):
-                df_out = df_out.select(comp.exprs)
-
-        return df_out.show_graph(optimized=optimized)
+        return self._generate_lazy_plan().show_graph(optimized=optimized)
