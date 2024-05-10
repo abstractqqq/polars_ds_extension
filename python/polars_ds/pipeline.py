@@ -40,7 +40,7 @@ class FitComponent:
     func: FitTransformFunc
     cols: IntoExprColumn
 
-    # Here we allow cols as input so that users can use selectors, or other polars expressions
+    # Here we allow IntoExprColumn as input so that users can use selectors, or other polars expressions
     # to specify input columns, which adds flexibility.
     # We still need real column names so that the functions in transforms.py will work.
     def fit(self, df: PolarsFrame) -> ExprTransform:
@@ -74,9 +74,27 @@ class Pipeline:
             self._df: pl.LazyFrame = df.lazy()
 
         self.name: str = name
+        self.feature_names_in_: list[str] = list(df.columns)
+        self.n_features_in_: int = len(self.feature_names_in_)
+        self.feature_names_out_: list[str] = []
+        self.n_features_out_: int = 0
         self.target: Optional[str] = target
         self._steps: List[PipeComponent] = []
         self._transform_queue: List[FittedPipeComponent] = []
+
+    def reset_df(self, df: PolarsFrame) -> Self:
+        from copy import deepcopy
+
+        self._df = df.lazy()
+        self.name = str(self.name)
+        self.target = None if self.target is None else str(self.target)
+        self._steps = [deepcopy(s) for s in self._steps]
+        self.feature_names_in_ = list(self.feature_names_in_)
+        self.n_features_in_: int = len(self.feature_names_in_)
+        self.feature_names_out_.clear()
+        self.n_features_out_ = 0
+        self._transform_queue.clear()
+        return self
 
     def impute(self, cols: IntoExprColumn, method: SimpleImputeMethod = "mean") -> Self:
         """
@@ -296,9 +314,11 @@ class Pipeline:
                 df_lazy = df_lazy.select(component.exprs)
             else:
                 raise ValueError("Not a valid PipeComponent.")
+
+        self.feature_names_out_ = list(df_lazy.columns)
         return self
 
-    def fit(self) -> Self:
+    def fit(self, X=None, y=None) -> Self:
         """
         Alias for self.finish()
         """

@@ -75,7 +75,7 @@ def scale(
             df.lazy()
             .select(
                 pl.col(cols).mean().name.prefix("mean:"),
-                pl.col(cols).std().name.prefix("std:"),
+                pl.col(cols).std(ddof=0).name.prefix("std:"),
             )
             .collect()
             .row(0)
