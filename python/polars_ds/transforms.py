@@ -201,7 +201,7 @@ def target_encode(
     default: Optional[float] = None,
 ) -> ExprTransform:
     """
-    Target encode the given variables.
+    Target encode the given variables. This will overwrite the columns that will be encoded.
 
     Note: nulls will be encoded as well.
 
