@@ -8,6 +8,36 @@ from ._utils import pl_plugin
 
 _lib = _get_shared_lib_location(__file__)
 
+__all__ = [
+    "query_ttest_ind",
+    "query_ttest_1samp",
+    "query_ttest_ind_from_stats",
+    "query_ks_2samp",
+    "query_f_test",
+    "query_chi2",
+    "perturb",
+    "normal_test",
+    "random",
+    "random_null",
+    "random_int",
+    "random_str",
+    "random_binomial",
+    "random_exp",
+    "random_normal",
+    "hmean",
+    "gmean",
+    "weighted_gmean",
+    "weighted_mean",
+    "weighted_var",
+    "weighted_cov",
+    "weighted_corr",
+    "cosine_sim",
+    "weighted_cosine_sim",
+    "xi_corr",
+    "kendall_tau",
+    "corr",
+]
+
 
 @pl.api.register_expr_namespace("stats")
 class StatsExt:

@@ -8,6 +8,52 @@ from ._utils import pl_plugin
 
 _lib = _get_shared_lib_location(__file__)
 
+__all__ = [
+    "softmax",
+    "query_gcd",
+    "query_lcm",
+    "haversine",
+    "query_singular_values",
+    "query_pca",
+    "query_principal_components",
+    "query_knn_ptwise",
+    "query_knn_filter",
+    "query_knn_entropy",
+    "query_within_dist_from",
+    "query_radius_ptwise",
+    "query_nb_cnt",
+    "query_approx_entropy",
+    "query_sample_entropy",
+    "query_cond_entropy",
+    "query_copula_entropy",
+    "query_cond_indep",
+    "query_transfer_entropy",
+    "query_permute_entropy",
+    "query_lstsq",
+    "query_lstsq_report",
+    "query_lempel_ziv",
+    "query_jaccard_row",
+    "query_jaccard_col",
+    "query_psi",
+    "query_psi_discrete",
+    "query_woe",
+    "query_woe_discrete",
+    "query_iv",
+    "query_iv_discrete",
+    "integrate_trapz",
+    "convolve",
+    "list_amax",
+    "gamma",
+    "expit",
+    "exp2",
+    "expit",
+    "logit",
+    "trunc",
+    "detrend",
+    "rfft",
+    "fract",
+]
+
 
 @pl.api.register_expr_namespace("num")
 class NumExt:
@@ -196,26 +242,6 @@ class NumExt:
             .when((self._expr == 0) & (other >= 0))
             .then(other)
             .otherwise(pl.lit(float("inf"), dtype=pl.Float64))
-        )
-
-    def target_encode(
-        self, target: pl.Expr, min_samples_leaf: int = 20, smoothing: float = 10.0
-    ) -> pl.Expr:
-        """
-        Compute information necessary to target encode a string column. Target must be binary
-        and be 0s and 1s.
-
-        Parameters
-        ----------
-        target
-            The target variable. Should be 0s and 1s.
-        """
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_target_encode",
-            args=[target, target.mean()],
-            kwargs={"min_samples_leaf": float(min_samples_leaf), "smoothing": smoothing},
-            changes_length=True,
         )
 
 
@@ -1388,6 +1414,7 @@ def convolve(
     https://en.wikipedia.org/wiki/Convolution
     """
     xx = str_to_expr(x).fill_null(fill_value).cast(pl.Float64).rechunk()  # One cont slice
+    f: Union[pl.Expr, pl.Series]
     if isinstance(kernel, pl.Expr):
         f = kernel.filter(kernel.is_finite()).rechunk()  # One cont slice
     else:
@@ -1558,3 +1585,36 @@ def rfft(series: StrOrExpr, n: Optional[int] = None, return_full: bool = False) 
     nn = pl.lit(n, pl.UInt32)
     x: pl.Expr = str_to_expr(series).cast(pl.Float64)
     return pl_plugin(lib=_lib, symbol="pl_rfft", args=[x, nn, full], changes_length=True)
+
+
+def target_encode(
+    s: StrOrExpr, target: StrOrExpr, min_samples_leaf: int = 20, smoothing: float = 10.0
+) -> pl.Expr:
+    """
+    Compute information necessary to target encode a string column.
+
+    Note: nulls will be encoded as well.
+
+    Parameters
+    ----------
+    s
+        The string column to encode
+    target
+        The target column. Should be 0s and 1s.
+    min_samples_leaf
+        A regularization factor
+    smoothing
+        Smoothing effect to balance categorical average vs prior
+
+    Reference
+    ---------
+    https://contrib.scikit-learn.org/category_encoders/targetencoder.html
+    """
+    t = str_to_expr(target)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_target_encode",
+        args=[str_to_expr(s), t, t.mean()],
+        kwargs={"min_samples_leaf": float(min_samples_leaf), "smoothing": smoothing},
+        changes_length=True,
+    )

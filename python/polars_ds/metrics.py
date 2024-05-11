@@ -6,72 +6,23 @@ from ._utils import pl_plugin
 
 _lib = _get_shared_lib_location(__file__)
 
-
-# @pl.api.register_expr_namespace("metric")
-# class MetricExt:
-
-#     """
-#     All the metrics/losses provided here is meant for model evaluation outside training,
-#     e.g. for report generation, model performance monitoring, etc., not for actual use in ML models.
-#     All metrics follow the convention by treating self as the actual column, and pred as the column
-#     of predictions.
-
-#     Polars Namespace: metric
-
-#     Example: pl.col("a").metric.hubor_loss(pl.col("pred"), delta = 0.5)
-#     """
-
-#     def __init__(self, expr: pl.Expr):
-#         self._expr: pl.Expr = expr
-
-#     def max_error(self, pred: pl.Expr) -> pl.Expr:
-#         """
-#         Computes the max absolute error between actual and pred.
-#         """
-#         x = self._expr - pred
-#         return pl.max_horizontal(x.max(), -x.min())
-
-#     # def mean_gamma_deviance(self, pred: pl.Expr) -> pl.Expr:
-#     #     """
-#     #     Computes the mean gamma deviance between actual and pred.
-
-#     #     Note that this will return NaNs when any value is < 0. This only makes sense when y_true
-#     #     and y_pred as strictly positive.
-#     #     """
-#     #     x = self._expr / pred
-#     #     return 2.0 * (x.log() + x - 1).mean()
-
-#     def pinball_loss(self, pred: pl.Expr, tau: float = 0.5) -> pl.Expr:
-#         """
-#         This loss yields an estimator of the tau conditional quantile in quantile regression models.
-#         This will treat self as y_true.
-
-#         Parameters
-#         ----------
-#         pred
-#             An expression represeting the column which is the prediction.
-#         tau
-#             A float in [0,1] represeting the conditional quantile level
-#         """
-#         return pl.max_horizontal(tau * (self._expr - pred), (tau - 1) * (self._expr - pred))
-
-
-#     def kl_divergence(self, pred: pl.Expr) -> pl.Expr:
-#         """
-#         Computes the discrete KL Divergence.
-
-#         Parameters
-#         ----------
-#         pred
-#             An expression represeting the predicted probabilities for the classes
-
-#         Reference
-#         ---------
-#         https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence
-#         """
-#         return self._expr * (self._expr / pred).log()
-
-# ----------------------------------------------------------------------------------
+__all__ = [
+    "query_r2",
+    "query_adj_r2",
+    "query_log_cosh",
+    "query_hubor_loss",
+    "query_l2",
+    "query_l1",
+    "query_l_inf",
+    "query_log_loss",
+    "query_mape",
+    "query_smape",
+    "query_msle",
+    "query_roc_auc",
+    "query_binary_metrics",
+    "query_multi_roc_auc",
+    "query_cat_cross_entropy",
+]
 
 
 def query_r2(actual: StrOrExpr, pred: StrOrExpr) -> pl.Expr:
