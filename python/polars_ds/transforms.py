@@ -6,6 +6,7 @@ preserves the learned values and optimizes the transform query, see pipeline.py.
 
 import polars as pl
 import polars.selectors as cs
+from polars.type_aliases import RollingInterpolationMethod
 from .type_alias import PolarsFrame, SimpleImputeMethod, SimpleScaleMethod, ExprTransform
 from . import num as pds_num
 from typing import List, Union, Optional
@@ -36,6 +37,42 @@ def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean"
         return [pl.col(c).fill_null(m) for c, m in zip(cols, temp)]
     else:
         raise ValueError(f"Unknown input method: {method}")
+
+
+def linear_impute(
+    df: PolarsFrame, features: List[str], target: Union[str, pl.Expr], add_bias: bool = False
+) -> ExprTransform:
+    """
+    Imputes the target by training a simple linear regression using the other features.
+
+    Note: The linear regression will skip nulls whenever there is a null in the features or in the target.
+
+    Parameters
+    ----------
+    features
+        A list of strings representing column names that will be used as features in the linear regression
+    target
+        The target column
+    add_bias
+        Whether to add a bias term to the linear regression
+    """
+    target_name = df.select(target).columns[0]
+    temp = (
+        df.lazy()
+        .select(pds_num.query_lstsq(*features, target=target, add_bias=add_bias, skip_null=True))
+        .collect()
+    )  # Add streaming config
+    coeffs = temp.item(0, 0)
+    linear_eq = [pl.col(f) * coeffs[i] for i, f in enumerate(features)]
+    if add_bias:
+        linear_eq.append(pl.lit(coeffs[-1], dtype=pl.Float64))
+
+    return [
+        pl.when(pl.col(target_name).is_null())
+        .then(pl.sum_horizontal(linear_eq))
+        .otherwise(pl.col(target_name))
+        .alias(target_name)
+    ]
 
 
 def center(df: PolarsFrame, cols: List[str]) -> ExprTransform:
@@ -108,7 +145,11 @@ def scale(
 
 
 def robust_scale(
-    df: PolarsFrame, cols: List[str], q1: float = 0.25, q2: float = 0.75
+    df: PolarsFrame,
+    cols: List[str],
+    q1: float = 0.25,
+    q2: float = 0.75,
+    method: RollingInterpolationMethod = "midpoint",
 ) -> ExprTransform:
     """
     Like min-max scaling, but scales each column by the quantile value at q1 and q2.
@@ -123,11 +164,11 @@ def robust_scale(
         The lower quantile value
     q2
         The higher quantile value
+    method
+        Method to compute quantile. One of `nearest`, `higher`, `lower`, `midpoint`, `linear`.
     """
-    if q1 > 1.0 or q1 < 0.0 or q2 > 1.0 or q2 < 0.0 or q1 > q2:
-        raise ValueError(
-            "Input `q1` and `q2` must be between 0 and 1 and q1 must be smaller than q2."
-        )
+    if q1 > 1.0 or q1 < 0.0 or q2 > 1.0 or q2 < 0.0 or q1 >= q2:
+        raise ValueError("Input `q1` and `q2` must be between 0 and 1 and q1 must be < than q2.")
 
     temp = (
         df.lazy()

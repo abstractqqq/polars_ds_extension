@@ -10,6 +10,36 @@ from .type_alias import StrOrExpr, str_to_expr
 
 _lib = _get_shared_lib_location(__file__)
 
+__all__ = [
+    "filter_by_levenshtein",
+    "filter_by_hamming",
+    "str_hamming",
+    "is_stopword",
+    "to_camel_case",
+    "to_snake_case",
+    "to_pascal_case",
+    "to_constant_case",
+    "query_similar_words",
+    "str_snowball",
+    "str_tokenize",
+    "str_jaccard",
+    "str_sorensen_dice",
+    "str_tversky_sim",
+    "str_jw",
+    "str_jaro",
+    "str_d_leven",
+    "str_leven",
+    "str_osa",
+    "str_fuzz",
+    "similar_to_vocab",
+    "extract_numbers",
+    "replace_non_ascii",
+    "remove_diacritics",
+    "normalize_string",
+    "map_words",
+    "normalize_whitespace",
+]
+
 # @pl.api.register_expr_namespace("str2")
 # class StrExt:
 

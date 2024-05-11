@@ -1,7 +1,29 @@
 use itertools::Itertools;
 use polars::prelude::*;
-use pyo3_polars::{derive::polars_expr, export::polars_core::utils::rayon::str::ParallelString};
+use pyo3_polars::derive::polars_expr;
 use unicode_normalization::UnicodeNormalization;
+
+enum NormalForm {
+    NFC,
+    NFKC,
+    NFD,
+    NFKD
+}
+
+impl TryFrom<String> for NormalForm {
+    type Error = PolarsError;
+    fn try_from(value: String) -> PolarsResult<Self> {
+        match value.to_uppercase().as_ref() {
+            "NFC" => Ok(Self::NFC),
+            "NFKC" => Ok(Self::NFKC),
+            "NFD" => Ok(Self::NFD),
+            "NFKD" => Ok(Self::NFKD),
+            _ => Err(PolarsError::ComputeError(
+                "Unknown NormalizeForm.".into(),
+            )),
+        }
+    }
+}
 
 fn _remove_non_ascii(value: &str, output: &mut String) {
     *output = value.chars().filter(char::is_ascii).collect()
@@ -35,20 +57,13 @@ struct NormalizeKwargs {
 #[polars_expr(output_type=String)]
 fn normalize_string(inputs: &[Series], kwargs: NormalizeKwargs) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
-    let form = kwargs.form;
-
-    let out = if form == "NFC" {
-        ca.apply_to_buffer(|val, buf| *buf = val.nfc().collect())
-    } else if form == "NFKC" {
-        ca.apply_to_buffer(|val, buf| *buf = val.nfkc().collect())
-    } else if form == "NFD" {
-        ca.apply_to_buffer(|val, buf| *buf = val.nfd().collect())
-    } else if form == "NFKD" {
-        ca.apply_to_buffer(|val, buf| *buf = val.nfkd().collect())
-    } else {
-        panic!()
+    let form:NormalForm = kwargs.form.try_into()?;
+    let out = match form {
+        NormalForm::NFC => ca.apply_to_buffer(|val, buf| *buf = val.nfc().collect()),
+        NormalForm::NFKC => ca.apply_to_buffer(|val, buf| *buf = val.nfkc().collect()),
+        NormalForm::NFD => ca.apply_to_buffer(|val, buf| *buf = val.nfd().collect()),
+        NormalForm::NFKD => ca.apply_to_buffer(|val, buf| *buf = val.nfkd().collect()),
     };
-
     Ok(out.into_series())
 }
 

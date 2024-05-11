@@ -8,6 +8,52 @@ from ._utils import pl_plugin
 
 _lib = _get_shared_lib_location(__file__)
 
+__all__ = [
+    "softmax",
+    "query_gcd",
+    "query_lcm",
+    "haversine",
+    "query_singular_values",
+    "query_pca",
+    "query_principal_components",
+    "query_knn_ptwise",
+    "query_knn_filter",
+    "query_knn_entropy",
+    "query_within_dist_from",
+    "query_radius_ptwise",
+    "query_nb_cnt",
+    "query_approx_entropy",
+    "query_sample_entropy",
+    "query_cond_entropy",
+    "query_copula_entropy",
+    "query_cond_indep",
+    "query_transfer_entropy",
+    "query_permute_entropy",
+    "query_lstsq",
+    "query_lstsq_report",
+    "query_lempel_ziv",
+    "query_jaccard_row",
+    "query_jaccard_col",
+    "query_psi",
+    "query_psi_discrete",
+    "query_woe",
+    "query_woe_discrete",
+    "query_iv",
+    "query_iv_discrete",
+    "integrate_trapz",
+    "convolve",
+    "list_amax",
+    "gamma",
+    "expit",
+    "exp2",
+    "expit",
+    "logit",
+    "trunc",
+    "detrend",
+    "rfft",
+    "fract",
+]
+
 
 @pl.api.register_expr_namespace("num")
 class NumExt:

@@ -4,11 +4,8 @@ import sys
 from functools import partial
 from dataclasses import dataclass
 from polars.type_aliases import IntoExprColumn
+from typing import List, Optional, Union, Dict
 from .type_alias import (
-    List,
-    Optional,
-    Union,
-    Dict,
     TypeAlias,
     PolarsFrame,
     ExprTransform,
@@ -22,21 +19,27 @@ if sys.version_info >= (3, 11):
 else:  # 3.10, 3.9, 3.8
     from typing_extensions import Self
 
-__all__ = ["Pipeline"]
+__all__ = ["Pipeline", "Blueprint"]
 
 
 @dataclass
-class SelectComponent:
+class SelectStep:
     exprs: ExprTransform
 
+    def __iter__(self):
+        return [self.exprs].__iter__() if isinstance(self.exprs, pl.Expr) else self.exprs.__iter__()
+
 
 @dataclass
-class WithColumnsComponent:
+class WithColumnsStep:
     exprs: ExprTransform
 
+    def __iter__(self):
+        return [self.exprs].__iter__() if isinstance(self.exprs, pl.Expr) else self.exprs.__iter__()
+
 
 @dataclass
-class FitComponent:
+class FitStep:
     func: FitTransformFunc
     cols: IntoExprColumn
 
@@ -48,12 +51,75 @@ class FitComponent:
         return self.func(df, real_cols)
 
 
-PipeComponent: TypeAlias = Union[FitComponent, SelectComponent, WithColumnsComponent]
-FittedPipeComponent: TypeAlias = Union[SelectComponent, WithColumnsComponent]
+Step: TypeAlias = Union[FitStep, SelectStep, WithColumnsStep]
+FittedStep: TypeAlias = Union[SelectStep, WithColumnsStep]
 
 
+@dataclass
 class Pipeline:
     """
+    A ML/data transform pipeline. Pipelines should always come from the materialize call from a
+    blueprint. In other words, a pipeline is a fitted blueprint.
+    """
+
+    name: str
+    feature_names_in_: List[str]
+    feature_names_out_: List[str]
+    transforms: List[FittedStep]
+
+    def __str__(self) -> str:
+        return self.transforms.__str__()
+
+    def __repr__(self) -> str:
+        text: str = "Naive Query Steps: \n\n"
+        for i, step in enumerate(self.transforms):
+            text += f"Step {i+1}:\n"
+            text += ",\n".join(str(e) for e in step)  # SelectStep, WithColumnsStep are iterable
+            text += "\n\n"
+
+        return text
+
+    def _generate_lazy_plan(self, df: PolarsFrame) -> pl.LazyFrame:
+        """
+        Generates a lazy plan for the incoming df
+
+        Paramters
+        ---------
+        df
+            If none, create the plan for the df that the pipe is initialized with. Otherwise,
+            create the plan for the incoming df.
+        """
+        plan = df.lazy()
+        for step in self.transforms:
+            if isinstance(step, WithColumnsStep):
+                plan = plan.with_columns(step.exprs)
+            elif isinstance(step, SelectStep):
+                plan = plan.select(step.exprs)
+            else:
+                raise ValueError(f"Transform is not a valid FittedStep: {str(step)}")
+
+        return plan
+
+    def transform(self, df: Optional[PolarsFrame] = None, return_lazy: bool = False) -> PolarsFrame:
+        """
+        Transforms the df using the learned expressions.
+
+        Paramters
+        ---------
+        df
+            If none, transform the df that the pipe is initialized with. Otherwise, perform
+            the learned transformations on the incoming df.
+        return_lazy
+            If true, return the lazy plan for the transformations
+        """
+        plan = self._generate_lazy_plan(df)
+        return plan if return_lazy else plan.collect()  # Add config here if streaming is needed
+
+
+class Blueprint:
+    """
+    Blueprints for a ML/data transformation pipeline. In other words, this is a description of
+    what a pipeline will be. No learning/fitting is done until self.materialize() is called.
 
     If the input df is lazy, the pipeline will collect at the time of fit.
     """
@@ -63,9 +129,7 @@ class Pipeline:
         df: PolarsFrame,
         name: str = "test",
         lowercase: bool = False,
-        target: Optional[str] = None,
     ):
-        """ """
         if lowercase:
             self._df: pl.LazyFrame = df.lazy().select(
                 pl.col(c).alias(c.lower()) for c in df.columns
@@ -73,27 +137,33 @@ class Pipeline:
         else:
             self._df: pl.LazyFrame = df.lazy()
 
-        self.name: str = name
+        self.name: str = str(name)
         self.feature_names_in_: list[str] = list(df.columns)
-        self.n_features_in_: int = len(self.feature_names_in_)
-        self.feature_names_out_: list[str] = []
-        self.n_features_out_: int = 0
-        self.target: Optional[str] = target
-        self._steps: List[PipeComponent] = []
-        self._transform_queue: List[FittedPipeComponent] = []
+        self._steps: List[Step] = []
+
+    def __str__(self) -> str:
+        out: str = ""
+        out += f"Blueprint name: {self.name}\n"
+        out += f"Blueprint current steps: {len(self._steps)}\n"
+        out += f"Features Expected: {self.feature_names_in_}\n"
+        return out
 
     def reset_df(self, df: PolarsFrame) -> Self:
+        """
+        Resets the underlying dataset to learn from. This will keep all the existing
+        steps in the blueprint.
+
+        Parameters
+        ----------
+        df
+            The new dataframe to use when materializing.
+        """
         from copy import deepcopy
 
         self._df = df.lazy()
         self.name = str(self.name)
-        self.target = None if self.target is None else str(self.target)
+        self.feature_names_in_ = list(self._df.columns)
         self._steps = [deepcopy(s) for s in self._steps]
-        self.feature_names_in_ = list(self.feature_names_in_)
-        self.n_features_in_: int = len(self.feature_names_in_)
-        self.feature_names_out_.clear()
-        self.n_features_out_ = 0
-        self._transform_queue.clear()
         return self
 
     def impute(self, cols: IntoExprColumn, method: SimpleImputeMethod = "mean") -> Self:
@@ -108,7 +178,16 @@ class Pipeline:
             One of `mean`, `median`, `mode`. If `mode`, a random value will be chosen if there is
             a tie.
         """
-        self._steps.append(FitComponent(partial(t.impute, method=method), cols))
+        self._steps.append(FitStep(partial(t.impute, method=method), cols))
+        return self
+
+    def linear_impute(
+        self, features: IntoExprColumn, target: Union[str, pl.Expr], add_bias: bool = False
+    ) -> Self:
+        """ """
+        self._steps.append(
+            FitStep(partial(t.linear_impute, target=target, add_bias=add_bias), features)
+        )
         return self
 
     def scale(self, cols: IntoExprColumn, method: SimpleScaleMethod = "standard") -> Self:
@@ -122,7 +201,7 @@ class Pipeline:
         method
             One of `standard`, `min_max`, `abs_max`
         """
-        self._steps.append(FitComponent(partial(t.scale, method=method), cols))
+        self._steps.append(FitStep(partial(t.scale, method=method), cols))
         return self
 
     def robust_scale(self, cols: IntoExprColumn, q1: float, q2: float) -> Self:
@@ -138,7 +217,7 @@ class Pipeline:
         q2
             The higher quantile value
         """
-        self._steps.append(FitComponent(partial(t.robust_scale, q1=q1, q2=q2), cols))
+        self._steps.append(FitStep(partial(t.robust_scale, q1=q1, q2=q2), cols))
         return self
 
     def center(self, cols: IntoExprColumn) -> Self:
@@ -150,7 +229,7 @@ class Pipeline:
         cols
             Any Polars expression that can be understood as columns.
         """
-        self._steps.append(FitComponent(partial(t.center), cols))
+        self._steps.append(FitStep(partial(t.center), cols))
         return self
 
     def select(self, cols: IntoExprColumn) -> Self:
@@ -162,7 +241,7 @@ class Pipeline:
         cols
             Any Polars expression that can be understood as columns.
         """
-        self._steps.append(SelectComponent(cols))
+        self._steps.append(SelectStep(cols))
         return self
 
     def remove(self, cols: IntoExprColumn) -> Self:
@@ -174,7 +253,7 @@ class Pipeline:
         cols
             Any Polars expression that can be understood as columns.
         """
-        self._steps.append(SelectComponent(pl.all().exclude(cols)))
+        self._steps.append(SelectStep(pl.all().exclude(cols)))
         return self
 
     def rename(self, rename_dict: Dict[str, str]) -> pl.Expr:
@@ -187,16 +266,14 @@ class Pipeline:
             The name mapping
         """
         old = list(rename_dict.keys())
-        self._steps.append(
-            WithColumnsComponent([pl.col(k).alias(v) for k, v in rename_dict.items()])
-        )
+        self._steps.append(WithColumnsStep([pl.col(k).alias(v) for k, v in rename_dict.items()]))
         return self.remove(old)
 
     def lowercase(self) -> Self:
         """
         Lowercases all column names.
         """
-        self._steps.append(SelectComponent([pl.col(c).alias(c.lower()) for c in self._df.columns]))
+        self._steps.append(SelectStep([pl.col(c).alias(c.lower()) for c in self._df.columns]))
         return self
 
     def one_hot_encode(
@@ -219,9 +296,7 @@ class Pipeline:
             dimension and prevents some issues from linear dependency.
         """
         self._steps.append(
-            FitComponent(
-                partial(t.one_hot_encode, separator=separator, drop_first=drop_first), cols
-            )
+            FitStep(partial(t.one_hot_encode, separator=separator, drop_first=drop_first), cols)
         )
         return self.remove(cols)
 
@@ -258,7 +333,7 @@ class Pipeline:
         https://contrib.scikit-learn.org/category_encoders/targetencoder.html
         """
         self._steps.append(
-            FitComponent(
+            FitStep(
                 partial(
                     t.target_encode,
                     target=target,
@@ -271,7 +346,7 @@ class Pipeline:
         )
         return self
 
-    def append_expr(self, exprs: ExprTransform, is_select: bool = False) -> Self:
+    def append_expr(self, *exprs: ExprTransform, is_select: bool = False) -> Self:
         """
         Appends the expressions to the pipeline.
 
@@ -284,89 +359,55 @@ class Pipeline:
             will be executed in a .with_columns(..) context.
         """
         if is_select:
-            self._steps.append(SelectComponent(exprs))
+            self._steps.append(SelectStep(list(exprs)))
         else:
-            self._steps.append(WithColumnsComponent(exprs))
+            self._steps.append(WithColumnsStep(list(exprs)))
         return self
 
     def append_fit_func(self, *args, **kwargs) -> Self:
         return NotImplemented
 
-    def finish(self) -> Self:
+    def materialize(self) -> Pipeline:
         """
-        Finish the pipeline preparation, fit and learn all the paramters needed.
+        Materialize the blueprint, which means that it will fit and learn all the paramters needed.
         """
-        self._transform_queue.clear()
+        transforms: List[FittedStep] = []
         df: pl.DataFrame = self._df.collect()  # Add config here if streaming is needed
         # Let this lazy plan go through the fit process. The frame will be collected temporarily but
         # the collect should be and optimized.
         df_lazy: pl.LazyFrame = df.lazy()
-        for component in self._steps:
-            if isinstance(component, FitComponent):
-                exprs = component.fit(df_lazy)
-                self._transform_queue.append(WithColumnsComponent(exprs))
+        for step in self._steps:
+            if isinstance(step, FitStep):
+                exprs = step.fit(df_lazy)
+                transforms.append(WithColumnsStep(exprs))
                 df_lazy = df_lazy.with_columns(exprs)
-            elif isinstance(component, WithColumnsComponent):
-                self._transform_queue.append(component)
-                df_lazy = df_lazy.with_columns(component.exprs)
-            elif isinstance(component, SelectComponent):
-                self._transform_queue.append(component)
-                df_lazy = df_lazy.select(component.exprs)
+            elif isinstance(step, WithColumnsStep):
+                transforms.append(step)
+                df_lazy = df_lazy.with_columns(step.exprs)
+            elif isinstance(step, SelectStep):
+                transforms.append(step)
+                df_lazy = df_lazy.select(step.exprs)
             else:
-                raise ValueError("Not a valid PipeComponent.")
+                raise ValueError("Not a valid step.")
 
-        self.feature_names_out_ = list(df_lazy.columns)
-        return self
+        return Pipeline(
+            name=self.name,
+            feature_names_in_=list(self.feature_names_in_),
+            feature_names_out_=list(df_lazy.columns),
+            transforms=transforms,
+        )
 
-    def fit(self, X=None, y=None) -> Self:
+    def fit(self, X=None, y=None) -> Pipeline:
         """
-        Alias for self.finish()
+        Alias for self.materialize()
         """
-        return self.finish()
+        return self.materialize()
 
-    def _generate_lazy_plan(self, df: Optional[PolarsFrame] = None) -> pl.LazyFrame:
+    def transform(self, df: PolarsFrame) -> pl.DataFrame:
+        return self.materialize().transform(df)
+
+    def finish(self) -> Pipeline:
         """
-        Generates a lazy plan for the incoming df
-
-        Paramters
-        ---------
-        df
-            If none, create the plan for the df that the pipe is initialized with. Otherwise,
-            create the plan for the incoming df.
+        Alias for self.materialize()
         """
-        plan = self._df if df is None else df.lazy()
-        for comp in self._transform_queue:
-            if isinstance(comp, WithColumnsComponent):
-                plan = plan.with_columns(comp.exprs)
-            elif isinstance(comp, SelectComponent):
-                plan = plan.select(comp.exprs)
-            else:
-                raise ValueError("Not a valid FittedPipeComponent.")
-
-        return plan
-
-    def transform(self, df: Optional[PolarsFrame] = None, return_lazy: bool = False) -> PolarsFrame:
-        """
-        Transforms the df using the learned expressions.
-
-        Paramters
-        ---------
-        df
-            If none, transform the df that the pipe is initialized with. Otherwise, perform
-            the learned transformations on the incoming df.
-        return_lazy
-            If true, return the lazy plan for the transformations
-        """
-        plan = self._generate_lazy_plan(df)
-        return plan if return_lazy else plan.collect()  # Add config here if streaming is needed
-
-    def show_graph(self, optimized: bool = True) -> Optional[str]:
-        """
-        Shows the execution graph.
-
-        Parameters
-        ----------
-        optimized
-            Whether this will show the optimized plan or not.
-        """
-        return self._generate_lazy_plan().show_graph(optimized=optimized)
+        return self.materialize()
