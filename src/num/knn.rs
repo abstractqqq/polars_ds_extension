@@ -64,16 +64,28 @@ fn pl_knn_ptwise(
     kwargs: KdtreeKwargs,
 ) -> PolarsResult<Series> {
     // Set up params
-    let id = inputs[0].u32()?;
+    let mut inputs_offset = 0;
+
+    let id = inputs[inputs_offset].u32()?;
     let id = id.rechunk();
     let id = id.cont_slice()?;
+    inputs_offset += 1;
 
-    let dim = inputs[1..].len();
+    let filter = if let Ok(skip_index) = inputs[inputs_offset].bool() {
+        inputs_offset += 1;
+        let filter: Vec<_> = skip_index.iter().map(|b| !b.unwrap_or(false)).collect();
+        Some(filter)
+    } else {
+        None
+    };
+    let filter = filter.as_ref();
+
+    let dim = inputs[inputs_offset..].len();
     if dim == 0 {
         return Err(PolarsError::ComputeError("KNN: No column found.".into()));
     }
 
-    let data = rechunk_to_frame(&inputs[1..])?;
+    let data = rechunk_to_frame(&inputs[inputs_offset..])?;
     let nrows = data.height();
     let k = kwargs.k;
     let leaf_size = kwargs.leaf_size;
@@ -89,6 +101,8 @@ fn pl_knn_ptwise(
     let binding = data.view();
     let tree = build_standard_kdtree(dim, leaf_size, &binding);
 
+    let values_capacity = if filter.is_none() { k + 1 } else { 0 };
+
     // Building output
     let ca = if can_parallel {
         POOL.install(|| {
@@ -100,13 +114,19 @@ fn pl_knn_ptwise(
                     let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
                         "",
                         len,
-                        k + 1,
+                        values_capacity,
                         DataType::UInt32,
                     );
                     let piece = data.slice(s![offset..offset + len, 0..dim]);
-                    for p in piece.axis_iter(Axis(0)) {
-                        let sl = p.to_slice().unwrap();
-                        if let Ok(v) = tree.nearest(sl, k + 1, &dist_func) {
+                    for (i, p) in piece.axis_iter(Axis(0)).enumerate() {
+                        let nearest = if filter.map(|f| f[i]).unwrap_or(true) {
+                            let s = p.to_slice().unwrap();
+                            tree.nearest(s, k + 1, &dist_func).ok()
+                        } else {
+                            None
+                        };
+
+                        if let Some(v) = nearest {
                             let s = v.into_iter().map(|(_, i)| id[*i]).collect_vec();
                             builder.append_slice(&s);
                         } else {
@@ -120,12 +140,22 @@ fn pl_knn_ptwise(
             ListChunked::from_chunk_iter("knn", chunks.into_iter().flatten())
         })
     } else {
-        let mut builder =
-            ListPrimitiveChunkedBuilder::<UInt32Type>::new("", id.len(), k + 1, DataType::UInt32);
+        let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
+            "",
+            id.len(),
+            values_capacity,
+            DataType::UInt32,
+        );
 
-        for p in data.rows() {
-            let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
-            if let Ok(v) = tree.nearest(s, k + 1, &dist_func) {
+        for (i, p) in data.rows().into_iter().enumerate() {
+            let nearest = if filter.map(|f| f[i]).unwrap_or(true) {
+                let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
+                tree.nearest(s, k + 1, &dist_func).ok()
+            } else {
+                None
+            };
+
+            if let Some(v) = nearest {
                 let sl = v.into_iter().map(|(_, i)| id[*i]).collect_vec();
                 builder.append_slice(&sl);
             } else {
@@ -222,13 +252,25 @@ fn pl_knn_ptwise_w_dist(
     kwargs: KdtreeKwargs,
 ) -> PolarsResult<Series> {
     // Set up params
-    let id = inputs[0].u32()?;
+    let mut inputs_offset = 0;
+
+    let id = inputs[inputs_offset].u32()?;
     let id = id.rechunk();
     let id = id.cont_slice().unwrap();
+    inputs_offset += 1;
 
-    let dim = inputs[1..].len();
+    let filter = if let Ok(skip_index) = inputs[inputs_offset].bool() {
+        inputs_offset += 1;
+        let filter: Vec<_> = skip_index.iter().map(|b| !b.unwrap_or(false)).collect();
+        Some(filter)
+    } else {
+        None
+    };
+    let filter = filter.as_ref();
 
-    let data = rechunk_to_frame(&inputs[1..])?;
+    let dim = inputs[inputs_offset..].len();
+
+    let data = rechunk_to_frame(&inputs[inputs_offset..])?;
     let nrows = data.height();
     let k = kwargs.k;
     let leaf_size = kwargs.leaf_size;
@@ -243,6 +285,8 @@ fn pl_knn_ptwise_w_dist(
     let binding = data.view();
     let tree = build_standard_kdtree(dim, leaf_size, &binding);
 
+    let values_capacity = if filter.is_none() { k + 1 } else { 0 };
+
     //Building output
     if can_parallel {
         POOL.install(|| {
@@ -254,19 +298,24 @@ fn pl_knn_ptwise_w_dist(
                     let mut nn_builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
                         "",
                         len,
-                        8,
+                        values_capacity,
                         DataType::UInt32,
                     );
                     let mut rr_builder = ListPrimitiveChunkedBuilder::<Float64Type>::new(
                         "",
                         len,
-                        8,
+                        values_capacity,
                         DataType::Float64,
                     );
                     let piece = data.slice(s![offset..offset + len, 0..dim]);
-                    for p in piece.axis_iter(Axis(0)) {
-                        let sl = p.to_slice().unwrap();
-                        if let Ok(v) = tree.nearest(sl, k + 1, &dist_func) {
+                    for (i, p) in piece.axis_iter(Axis(0)).enumerate() {
+                        let nearest = if filter.map(|f| f[i + offset]).unwrap_or(true) {
+                            let s = p.to_slice().unwrap();
+                            tree.nearest(s, k + 1, &dist_func).ok()
+                        } else {
+                            None
+                        };
+                        if let Some(v) = nearest {
                             let mut nn: Vec<u32> = Vec::with_capacity(k + 1);
                             let mut rr: Vec<f64> = Vec::with_capacity(k + 1);
                             //.map(|(_, i)| id[*i]).collect_vec();
@@ -298,14 +347,27 @@ fn pl_knn_ptwise_w_dist(
             Ok(out.into_series())
         })
     } else {
-        let mut nn_builder =
-            ListPrimitiveChunkedBuilder::<UInt32Type>::new("", id.len(), k + 1, DataType::UInt32);
+        let mut nn_builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
+            "",
+            id.len(),
+            values_capacity,
+            DataType::UInt32,
+        );
 
-        let mut rr_builder =
-            ListPrimitiveChunkedBuilder::<Float64Type>::new("", id.len(), k + 1, DataType::Float64);
-        for p in data.rows() {
-            let s = p.to_slice().unwrap(); // C order makes sure rows are contiguous
-            if let Ok(v) = tree.nearest(s, k + 1, &dist_func) {
+        let mut rr_builder = ListPrimitiveChunkedBuilder::<Float64Type>::new(
+            "",
+            id.len(),
+            values_capacity,
+            DataType::Float64,
+        );
+        for (i, p) in data.rows().into_iter().enumerate() {
+            let nearest = if filter.map(|f| f[i]).unwrap_or(true) {
+                let s = p.to_slice().unwrap();
+                tree.nearest(s, k + 1, &dist_func).ok()
+            } else {
+                None
+            };
+            if let Some(v) = nearest {
                 // By construction, this unwrap is safe
                 let mut w_idx: Vec<u32> = Vec::with_capacity(k + 1);
                 let mut w_dist: Vec<f64> = Vec::with_capacity(k + 1);
