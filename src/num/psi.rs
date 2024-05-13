@@ -1,6 +1,40 @@
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
+// let data1 = inputs[0].f64().unwrap();
+// let data2 = inputs[1].f64().unwrap();
+// let breakpoints = inputs[2].f64().unwrap();
+
+// let s1 = data1.cont_slice().unwrap();
+// let s2 = data2.cont_slice().unwrap();
+// let bp = breakpoints.cont_slice().unwrap();
+
+/// Computs counts in each bucket given by the breakpoints in
+/// a PSI computation. This returns the count for the first series
+/// and the count for the second series.
+fn pl_psi_with_breakpoints_helper(s1:&[f64], s2:&[f64], bp:&[f64]) -> (Vec<u32>, Vec<u32>) {
+    // s1: data1, s2: data2
+    // bp: breakpoints
+    let mut c1 = vec![0u32; bp.len() + 1];
+    let mut c2 = vec![0u32; bp.len() + 1];
+    for s in s1 {
+        let i = match bp.binary_search_by(|b| b.partial_cmp(s).unwrap()) {
+            Ok(j) => j,
+            Err(k) => k,    
+        };
+        c1[i] += 1;
+    }
+    for s in s2 {
+        let i = match bp.binary_search_by(|b| b.partial_cmp(s).unwrap()) {
+            Ok(j) => j,
+            Err(k) => k,    
+        };
+        c2[i] += 1;
+    }
+    (c1, c2)
+}
+
+
 #[polars_expr(output_type=Float64)]
 fn pl_psi(inputs: &[Series]) -> PolarsResult<Series> {
     // The actual data

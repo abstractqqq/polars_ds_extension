@@ -137,11 +137,11 @@ fn pl_knn_entropy(
     let (dist_func, cd): (fn(&[f64], &[f64]) -> f64, f64) = if metric_str == "l2" {
         let half_d: f64 = d / 2.0;
         let cd = std::f64::consts::PI.powf(half_d) / (2f64.powf(d)) / (1.0 + half_d).gamma();
-        (super::l2_dist, cd)
+        (super::l2_dist, cd) // Need l2 with square root
     } else if metric_str == "inf" {
         (super::l_inf_dist, 1.0)
     } else {
-        return Err(PolarsError::ComputeError("Not implemented.".into()));
+        return Err(PolarsError::ComputeError("Distance metric not implemented.".into()));
     };
 
     // G1

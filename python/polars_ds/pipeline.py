@@ -100,7 +100,7 @@ class Pipeline:
 
         return plan
 
-    def transform(self, df: Optional[PolarsFrame] = None, return_lazy: bool = False) -> PolarsFrame:
+    def transform(self, df: PolarsFrame, return_lazy: bool = False) -> PolarsFrame:
         """
         Transforms the df using the learned expressions.
 
