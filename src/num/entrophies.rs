@@ -141,7 +141,9 @@ fn pl_knn_entropy(
     } else if metric_str == "inf" {
         (super::l_inf_dist, 1.0)
     } else {
-        return Err(PolarsError::ComputeError("Distance metric not implemented.".into()));
+        return Err(PolarsError::ComputeError(
+            "Distance metric not implemented.".into(),
+        ));
     };
 
     // G1

@@ -24,8 +24,6 @@ fn binary_search_right<T: PartialOrd>(arr: &[T], t: &T) -> Option<usize> {
     Some(left)
 }
 
-
-
 /// Currently only supports two-sided. Won't be too hard to do add one-sided? I hope.
 /// Reference:
 /// https://github.com/scipy/scipy/blob/v1.11.3/scipy/stats/_stats_py.py#L8644-L8875
@@ -33,7 +31,6 @@ fn binary_search_right<T: PartialOrd>(arr: &[T], t: &T) -> Option<usize> {
 /// https://en.wikipedia.org/wiki/Kolmogorov%E2%80%93Smirnov_test
 #[inline]
 fn ks_2samp(v1: &[f64], v2: &[f64], alpha: f64) -> StatsResult {
-
     // It is possible to not do binary search because v1 and v2 are already sorted.
     // But that makes the algorithm more complicated.
 

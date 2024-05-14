@@ -35,6 +35,7 @@ __all__ = [
     "query_jaccard_row",
     "query_jaccard_col",
     "query_psi",
+    "query_psi_w_breakpoints",
     "query_psi_discrete",
     "query_woe",
     "query_woe_discrete",
@@ -1234,6 +1235,51 @@ def query_psi_discrete(
     )
 
 
+def query_psi_w_breakpoints(
+    baseline: Union[StrOrExpr, Iterable[float]],
+    actual: Union[StrOrExpr, Iterable[float]],
+    breakpoints: List[float],  # noqa: F821
+    skip_cleansing: bool = False,
+) -> pl.Expr:
+    """
+
+    Parameters
+    ----------
+    baseline
+        The data representing the baseline data. Any sequence of numerical values that
+        can be turned into a Polars'series, or an expression representing a column will work
+    actual
+        The data representing the actual, observed data. Any sequence of numerical values that
+        can be turned into a Polars'series, or an expression representing a column will work
+    breakpoints
+        The data that represents breakpoints. Input must be sorted, distinct, finite numeric values.
+        This function will not cleanse the breakpoints for the user. E.g. [0.1, 0.5, 0.9] will create
+        four bins: (-inf. 0.1], (0.1, 0.5], (0.5, 0.9] and (0.9, inf).
+    """
+    if isinstance(baseline, (str, pl.Expr)):
+        x: pl.Expr = str_to_expr(baseline)
+        x = x.filter(x.is_finite())
+    else:
+        temp = pl.Series(values=baseline)
+        x: pl.Expr = pl.lit(temp.filter(temp.is_finite()))
+
+    if isinstance(actual, (str, pl.Expr)):
+        y: pl.Expr = str_to_expr(actual)
+        y = y.filter(y.is_finite())
+    else:
+        temp = pl.Series(values=actual)
+        y: pl.Expr = pl.lit(temp.filter(temp.is_finite()))
+
+    bp = breakpoints + [float("inf")]
+
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_psi_w_bps",
+        args=[x.rechunk(), y.rechunk(), pl.Series(values=bp)],
+        changes_length=True,
+    ).alias("psi_report")
+
+
 def query_woe(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10) -> pl.Expr:
     """
     Compute the Weight of Evidence for x with respect to target. This assumes x
@@ -1516,19 +1562,6 @@ def trunc(x: StrOrExpr) -> pl.Expr:
         symbol="pl_trunc",
         is_elementwise=True,
     )
-
-
-# def signum(x: StrOrExpr) -> pl.Expr:
-#     """
-#     Returns sign of the input values. Note: NaN is returned for NaN. This is faster
-#     and more accurate than doing pl.when(..).then().otherwise().
-#     """
-#     return pl_plugin(
-#         args=[str_to_expr(x)],
-#         lib=_lib,
-#         symbol="pl_signum",
-#         is_elementwise=True,
-#     )
 
 
 def sinc(x: StrOrExpr) -> pl.Expr:
