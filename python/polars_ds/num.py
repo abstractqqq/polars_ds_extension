@@ -1124,9 +1124,10 @@ def query_jaccard_col(first: StrOrExpr, second: StrOrExpr, count_null: bool = Fa
 
 
 def query_psi(
-    x: StrOrExpr,
-    ref: Union[pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
+    new: Union[pl.Expr, Iterable[float]],
+    baseline: Union[pl.Expr, Iterable[float]],
     n_bins: int = 10,
+    return_report: bool = False,
 ) -> pl.Expr:
     """
     Compute the Population Stability Index between x and the reference column (usually x's historical values).
@@ -1144,13 +1145,16 @@ def query_psi(
 
     Parameters
     ----------
-    x
-        The feature
-    ref
-        An expression, or any iterable that can be turned into a Polars series. Usually this should
-        be x's historical values
+    new
+        An expression or any iterable that can be turned into a Polars series that represents newly
+        arrived feature values
+    baseline
+        An expression or any iterable that can be turned into a Polars series. Usually this should
+        be the feature's historical values
     n_bins : int, > 1
         The number of quantile bins to use
+    return_report
+        Whether to return a PSI report or not.
 
     Reference
     ---------
@@ -1160,14 +1164,19 @@ def query_psi(
     if n_bins <= 1:
         raise ValueError("Input `n_bins` must be >= 2.")
 
-    xx = str_to_expr(x)
-    valid_x = xx.filter(xx.is_finite()).cast(pl.Float64)
-    if isinstance(ref, pl.Expr):
-        valid_ref = ref.filter(ref.is_finite()).cast(pl.Float64)
+    if isinstance(new, (str, pl.Expr)):
+        new_ = str_to_expr(new)
+        valid_new: Union[pl.Series, pl.Expr] = new_.filter(new_.is_finite()).cast(pl.Float64)
     else:
-        temp = pl.Series(values=ref, dtype=pl.Float64)
-        temp = temp.filter(temp.is_finite())
-        valid_ref = pl.lit(temp)
+        temp = pl.Series(values=new, dtype=pl.Float64)
+        valid_new: Union[pl.Series, pl.Expr] = temp.filter(temp.is_finite())
+
+    if isinstance(baseline, (str, pl.Expr)):
+        base = str_to_expr(baseline)
+        valid_ref: Union[pl.Series, pl.Expr] = base.filter(base.is_finite()).cast(pl.Float64)
+    else:
+        temp = pl.Series(values=baseline, dtype=pl.Float64)
+        valid_ref: Union[pl.Series, pl.Expr] = temp.filter(temp.is_finite())
 
     vc = (
         valid_ref.qcut(n_bins, left_closed=False, allow_duplicates=True, include_breaks=True)
@@ -1175,29 +1184,35 @@ def query_psi(
         .value_counts()
         .sort()
     )
+    # breakpoints learned from ref
     brk = vc.struct.field("brk")  # .cast(pl.Float64)
+    # counts of points in the buckets
     cnt_ref = vc.struct.field("count")  # .cast(pl.UInt32)
-
-    return pl_plugin(
+    psi_report = pl_plugin(
         lib=_lib,
-        symbol="pl_psi",
-        args=[valid_x.rechunk(), brk, cnt_ref],
-        returns_scalar=True,
-    )
+        symbol="pl_psi_report",
+        args=[valid_new, brk, cnt_ref],
+        changes_length=True,
+    ).alias("psi_report")
+    if return_report:
+        return psi_report
+
+    return psi_report.struct.field("psi_bin").sum()
 
 
 def query_psi_discrete(
-    x: StrOrExpr,
-    ref: Union[pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
+    new: Union[StrOrExpr, Iterable[str]],
+    baseline: Union[StrOrExpr, Iterable[str]],
+    return_report: bool = False,
 ) -> pl.Expr:
     """
-    Compute the Population Stability Index between self (actual) and the reference column. The reference
-    column will be used as bins which are the basis of comparison.
+    Compute the Population Stability Index between self (actual) and the reference column. The baseline
+    column will be used as categories which are the basis of comparison.
 
-    Note this assumes values in x and ref are discrete columns (str categories). This will treat each
-    value as a distinct category and null will be treated as a category by itself. If a category
-    exists in actual but not in ref, then 0 is imputed, and 0.0001 is used to avoid numerical issue.
-    This is recommended to use for str-str column PSI comparison.
+    Note this assumes values in new and ref baseline discrete columns (e.g. str categories). This will
+    treat each value as a distinct category and null will be treated as a category by itself. If a category
+    exists in new but not in baseline, the percentage will be imputed by 0.0001. If you do not wish to include
+    new distinct values in PSI calculation, you can still compute the PSI by generating the report and filtering.
 
     Also note that discrete columns must have the same type in order to be considered the same.
 
@@ -1205,43 +1220,57 @@ def query_psi_discrete(
     ----------
     x
         The feature
-    ref
+    baseline
         An expression, or any iterable that can be turned into a Polars series. Usually this should
         be x's historical values
+    return_report
+        Whether to return a PSI report or not.
 
     Reference
     ---------
     https://www.listendata.com/2015/05/population-stability-index.html
     """
-    if isinstance(ref, pl.Expr):
-        temp = ref.value_counts().struct.rename_fields(["ref", "count"])
-        ref_cnt = temp.struct.field("count")
-        ref_cats = temp.struct.field("ref")
+    if isinstance(new, (str, pl.Expr)):
+        new_ = str_to_expr(new)
+        temp = new_.value_counts().struct.rename_fields(["", "count"])
+        new_cnt: Union[pl.Series, pl.Expr] = temp.struct.field("count")
+        new_cat: Union[pl.Series, pl.Expr] = temp.struct.field("")
     else:
-        temp = pl.Series(values=ref, dtype=pl.Float64)
-        temp = temp.value_counts()  # This is a df in this case
-        ref_cnt = temp.drop_in_place("count")
-        ref_cats = temp[temp.columns[0]]
+        temp = pl.Series(values=new)
+        temp: pl.DataFrame = temp.value_counts()  # This is a df in this case
+        ref_cnt: Union[pl.Series, pl.Expr] = temp.drop_in_place("count")
+        ref_cat: Union[pl.Series, pl.Expr] = temp[temp.columns[0]]
 
-    vc = str_to_expr(x).value_counts().struct.rename_fields(["self", "count"])
-    data_cnt = vc.struct.field("count")
-    data_cats = vc.struct.field("self")
+    if isinstance(baseline, (str, pl.Expr)):
+        base = str_to_expr(baseline)
+        temp = base.value_counts().struct.rename_fields(["", "count"])
+        ref_cnt: Union[pl.Series, pl.Expr] = temp.struct.field("count")
+        ref_cat: Union[pl.Series, pl.Expr] = temp.struct.field("")
+    else:
+        temp = pl.Series(values=baseline)
+        temp: pl.DataFrame = temp.value_counts()  # This is a df in this case
+        ref_cnt: Union[pl.Series, pl.Expr] = temp.drop_in_place("count")
+        ref_cat: Union[pl.Series, pl.Expr] = temp[temp.columns[0]]
 
-    return pl_plugin(
+    psi_report = pl_plugin(
         lib=_lib,
-        symbol="pl_psi_discrete",
-        args=[data_cats, data_cnt, ref_cats, ref_cnt],
-        returns_scalar=True,
+        symbol="pl_psi_discrete_report",
+        args=[new_cat, new_cnt, ref_cat, ref_cnt],
+        changes_length=True,
     )
+    if return_report:
+        return psi_report
+
+    return psi_report.struct.field("psi_bin").sum()
 
 
 def query_psi_w_breakpoints(
+    new: Union[StrOrExpr, Iterable[float]],
     baseline: Union[StrOrExpr, Iterable[float]],
-    actual: Union[StrOrExpr, Iterable[float]],
     breakpoints: List[float],  # noqa: F821
-    skip_cleansing: bool = False,
 ) -> pl.Expr:
     """
+    Creates a PSI report using the custom breakpoints.
 
     Parameters
     ----------
@@ -1263,15 +1292,17 @@ def query_psi_w_breakpoints(
         temp = pl.Series(values=baseline)
         x: pl.Expr = pl.lit(temp.filter(temp.is_finite()))
 
-    if isinstance(actual, (str, pl.Expr)):
-        y: pl.Expr = str_to_expr(actual)
+    if isinstance(new, (str, pl.Expr)):
+        y: pl.Expr = str_to_expr(new)
         y = y.filter(y.is_finite())
     else:
-        temp = pl.Series(values=actual)
+        temp = pl.Series(values=new)
         y: pl.Expr = pl.lit(temp.filter(temp.is_finite()))
 
-    bp = breakpoints + [float("inf")]
+    if len(breakpoints) == 0:
+        raise ValueError("Breakpoints is empty.")
 
+    bp = breakpoints + [float("inf")]
     return pl_plugin(
         lib=_lib,
         symbol="pl_psi_w_bps",
