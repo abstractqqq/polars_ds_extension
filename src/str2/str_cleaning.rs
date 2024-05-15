@@ -7,7 +7,7 @@ enum NormalForm {
     NFC,
     NFKC,
     NFD,
-    NFKD
+    NFKD,
 }
 
 impl TryFrom<String> for NormalForm {
@@ -18,9 +18,7 @@ impl TryFrom<String> for NormalForm {
             "NFKC" => Ok(Self::NFKC),
             "NFD" => Ok(Self::NFD),
             "NFKD" => Ok(Self::NFKD),
-            _ => Err(PolarsError::ComputeError(
-                "Unknown NormalizeForm.".into(),
-            )),
+            _ => Err(PolarsError::ComputeError("Unknown NormalizeForm.".into())),
         }
     }
 }
@@ -57,7 +55,7 @@ struct NormalizeKwargs {
 #[polars_expr(output_type=String)]
 fn normalize_string(inputs: &[Series], kwargs: NormalizeKwargs) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
-    let form:NormalForm = kwargs.form.try_into()?;
+    let form: NormalForm = kwargs.form.try_into()?;
     let out = match form {
         NormalForm::NFC => ca.apply_to_buffer(|val, buf| *buf = val.nfc().collect()),
         NormalForm::NFKC => ca.apply_to_buffer(|val, buf| *buf = val.nfkc().collect()),

@@ -192,18 +192,28 @@ def test_f_test(df):
     assert np.isclose(pvalue, scikit_p)
 
 
-# @pytest.mark.parametrize(
-#     "df, res",
-#     [
-#         (
-#             pl.DataFrame({"a": [2.0, None, -2.0, float("nan")]}),
-#             pl.DataFrame({"a": [1.0, None, -1.0, float("nan")]}),
-#         ),
-#     ],
-# )
-# def test_signum(df, res):
-#     assert_frame_equal(df.select(pds.signum("a")), res)
-#     assert_frame_equal(df.lazy().select(pds.signum("a")).collect(), res)
+@pytest.mark.parametrize(
+    "df, res",
+    [
+        (
+            pl.DataFrame({"a": list(range(24))}),
+            [11, 5, 1, 1, 1, 1, 1, 1, 1],
+        ),
+        (
+            pl.DataFrame({"a": [1, 2, 3, 4, float("nan"), float("inf"), None]}),
+            [1, 1, 1, 1, 0, 0, 0, 0, 0],  # NaN, Inf, None are ignored
+        ),
+    ],
+)
+def test_first_digit_cnt(df, res):
+    assert_frame_equal(
+        df.select(pds.query_first_digit_cnt("a").explode().cast(pl.UInt32)),
+        pl.DataFrame({"a": pl.Series(values=res, dtype=pl.UInt32)}),
+    )
+    assert_frame_equal(
+        df.lazy().select(pds.query_first_digit_cnt("a").explode().cast(pl.UInt32)).collect(),
+        pl.DataFrame({"a": pl.Series(values=res, dtype=pl.UInt32)}),
+    )
 
 
 @pytest.mark.parametrize(

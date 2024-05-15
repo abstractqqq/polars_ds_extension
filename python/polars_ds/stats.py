@@ -15,6 +15,7 @@ __all__ = [
     "query_ks_2samp",
     "query_f_test",
     "query_chi2",
+    "query_first_digit_cnt",
     "perturb",
     "normal_test",
     "random",
@@ -36,6 +37,7 @@ __all__ = [
     "xi_corr",
     "kendall_tau",
     "corr",
+    "StatsExt",
 ]
 
 
@@ -304,6 +306,29 @@ class StatsExt:
 
 
 # -------------------------------------------------------------------------------------------------------
+
+
+def query_first_digit_cnt(var: StrOrExpr) -> pl.Expr:
+    """
+    Finds the first digit count in the data. This is closely related to Benford's law,
+    which states that the the first digits (1-9) follow a certain distribution.
+
+    The output is a single element column of type list[u32]. The first value represents the count of 1s
+    that are the first digit, the second value represents the count of 2s that are the first digit, etc.
+
+    E.g. first digit of 12 is 1, of 0.0312 is 3. For integers, it is possible to have value = 0, and this
+    will not be counted as a first digit.
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Benford%27s_law
+    """
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_benford_law",
+        args=[str_to_expr(var)],
+        returns_scalar=True,
+    )
 
 
 def query_ttest_ind(

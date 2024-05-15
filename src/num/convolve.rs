@@ -1,7 +1,13 @@
+use ndarray::{Array1, ArrayView1};
 use polars::prelude::*;
-use pyo3_polars::{derive::{polars_expr, CallerContext}, export::polars_core::utils::rayon::{iter::{IndexedParallelIterator, ParallelIterator}, slice::ParallelSlice}};
+use pyo3_polars::{
+    derive::{polars_expr, CallerContext},
+    export::polars_core::utils::rayon::{
+        iter::{IndexedParallelIterator, ParallelIterator},
+        slice::ParallelSlice,
+    },
+};
 use realfft::RealFftPlanner;
-use ndarray::{ArrayView1, Array1};
 use serde::Deserialize;
 
 // Pending: small vec optimizations? Fixed sized allocation for <= 4096?
@@ -9,7 +15,7 @@ use serde::Deserialize;
 pub(crate) struct ConvolveKwargs {
     pub(crate) mode: String,
     pub(crate) method: String,
-    pub(crate) parallel: bool
+    pub(crate) parallel: bool,
 }
 
 enum ConvMode {
@@ -130,7 +136,12 @@ fn fft_convolve(input: &[f64], filter: &[f64], mode: ConvMode) -> PolarsResult<V
     }
 }
 
-fn convolve(input: &[f64], filter: &[f64], mode: ConvMode, parallel:bool) -> PolarsResult<Vec<f64>> {
+fn convolve(
+    input: &[f64],
+    filter: &[f64],
+    mode: ConvMode,
+    parallel: bool,
+) -> PolarsResult<Vec<f64>> {
     match mode {
         ConvMode::FULL => {
             let t = filter.len() - 1;
@@ -167,22 +178,24 @@ fn convolve(input: &[f64], filter: &[f64], mode: ConvMode, parallel:bool) -> Pol
                     .collect_into_vec(&mut out);
                 Ok(out)
             } else {
-                Ok(
-                    input
+                Ok(input
                     .windows(filter.len())
                     .map(|sl| {
                         let slice = ArrayView1::from(sl);
                         kernel.dot(&slice)
                     })
-                    .collect()
-                )
+                    .collect())
             }
         }
     }
 }
 
 #[polars_expr(output_type=Float64)]
-fn pl_convolve(inputs: &[Series], context: CallerContext, kwargs: ConvolveKwargs) -> PolarsResult<Series> {
+fn pl_convolve(
+    inputs: &[Series],
+    context: CallerContext,
+    kwargs: ConvolveKwargs,
+) -> PolarsResult<Series> {
     let s1 = inputs[0].f64()?;
     let s2 = inputs[1].f64()?;
 
