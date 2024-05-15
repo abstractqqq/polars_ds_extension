@@ -2,6 +2,7 @@ use kdtree::distance::squared_euclidean;
 use num::Float;
 use polars::error::{PolarsError, PolarsResult};
 
+mod benford;
 mod cond_entropy;
 mod convolve;
 mod entrophies;

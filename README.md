@@ -31,7 +31,7 @@ The goal of the project is to **reduce dependencies**, **improve code organizati
 
 7. Sample. Traditional dataset sampling. No time series sampling yet. This module provides functionalities such as stratified downsample, volume neutral random sampling, etc.
 
-8. Polars Native ML Pipeline. Planned but not started yet. The goal is to have a Polars native pipeline that can replace Scikit-learn's pipeline and provides all the benefits of Polars. All the basic transforms in Scikit-leran, categorical-encoders are planned. This can be super powerful together with Polars's expressions. (Basically, once you have expressions, you don't need to write custom transforms like col(A)/col(B), log transform, sqrt transform, linear/polynomial transforms, etc.)
+8. Polars Native ML Pipeline. See examples [here](./examples/pipeline.ipynb). The goal is to have a Polars native pipeline that can replace Scikit-learn's pipeline and provides all the benefits of Polars. All the basic transforms in Scikit-learn and categorical-encoders are planned. This can be super powerful together with Polars's expressions. (Basically, once you have expressions, you don't need to write custom transforms like col(A)/col(B), log transform, sqrt transform, linear/polynomial transforms, etc.) Polar's expressions also offer JSON serialization in higher versions so this can also be desirable for use in the cloud. (This part is under active development.)
 
 Some other areas that currently exist, but is de-prioritized:
 
