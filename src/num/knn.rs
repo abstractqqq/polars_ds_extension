@@ -122,15 +122,11 @@ fn pl_knn_ptwise(
     } else {
         None
     };
-
-    let dim = inputs[inputs_offset..].len();
-    if dim == 0 {
-        return Err(PolarsError::ComputeError("KNN: No column found.".into()));
-    }
-    let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
-
-    let data = build_knn_matrix_data(&inputs[inputs_offset..])?;
+    
+    let data = build_knn_matrix_data(&inputs[inputs_offset+1..])?;
     let nrows = data.nrows();
+    let dim = data.ncols();
+    let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
 
     // Building the tree
     let binding = data.view();
@@ -208,7 +204,7 @@ fn pl_query_radius_ptwise(
 
     let data = build_knn_matrix_data(&inputs[1..])?;
     let nrows = data.nrows();
-    let dim = inputs[1..].len();
+    let dim = data.ncols();
     let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
 
     // Building the tree
@@ -307,11 +303,11 @@ fn pl_knn_ptwise_w_dist(
         None
     };
 
-    let dim = inputs[inputs_offset..].len();
-    let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
-
-    let data = build_knn_matrix_data(&inputs[inputs_offset..])?;
+    
+    let data = build_knn_matrix_data(&inputs[inputs_offset+1..])?;
     let nrows = data.nrows();
+    let dim = data.ncols();
+    let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
 
     // Building the tree
     let binding = data.view();
@@ -434,7 +430,10 @@ fn pl_knn_filter(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
     let k = kwargs.k;
     let leaf_size = kwargs.leaf_size;
     // Check len
+    let data = build_knn_matrix_data(&inputs[1..])?;
+    let nrows = data.nrows();
     let pt = inputs[0].f64()?;
+    let p = pt.cont_slice()?;
     let dim = inputs[1..].len();
     let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
     if pt.len() != dim {
@@ -443,10 +442,6 @@ fn pl_knn_filter(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
         ));
     }
     // Set up the point to query
-    let p = pt.cont_slice()?;
-    // Set up params
-    let data = build_knn_matrix_data(&inputs[1..])?;
-    let nrows = data.nrows();
 
     // Building the tree
     // let binding = data.view();
