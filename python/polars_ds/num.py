@@ -441,6 +441,7 @@ def query_principal_components(
 def query_knn_ptwise(
     *features: StrOrExpr,
     index: StrOrExpr,
+    skip_index: Optional[StrOrExpr] = None,
     k: int = 5,
     leaf_size: int = 32,
     dist: Distance = "l2",
@@ -484,6 +485,8 @@ def query_knn_ptwise(
     idx = str_to_expr(index).cast(pl.UInt32)
     metric = str(dist).lower()
     cols = [idx]
+    if skip_index is not None:
+        cols.append(str_to_expr(skip_index))
     cols.extend(str_to_expr(x) for x in features)
     if return_dist:
         return pl_plugin(
