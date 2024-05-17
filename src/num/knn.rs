@@ -145,7 +145,7 @@ fn pl_knn_ptwise(
                 ListPrimitiveChunkedBuilder::<UInt32Type>::new("", len, k + 1, DataType::UInt32);
             let piece = data.slice(s![offset..offset + len, 0..dim]);
             for (i, p) in piece.axis_iter(Axis(0)).enumerate() {
-                if eval_mask.map(|f| f[i]).unwrap_or(true) {
+                if eval_mask.map(|f| f[i + offset]).unwrap_or(true) {
                     let s = p.to_slice().unwrap();
                     match tree.nearest(s, k + 1, &dist_func) {
                         Ok(v) => {

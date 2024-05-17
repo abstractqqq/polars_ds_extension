@@ -450,7 +450,7 @@ def query_knn_ptwise(
     data_mask: Optional[StrOrExpr] = None,
 ) -> pl.Expr:
     """
-    Takes the index column, and uses other columns to determine the k nearest neighbors
+    Takes the index column, and uses feature columns to determine the k nearest neighbors
     to every id in the index columns. By default, this will return k + 1 neighbors, because in almost
     all cases, the point is a neighbor to itself and this returns k actual neighbors. The only exception
     is when data_mask excludes the point from being a neighbor, in which case, k + 1 distinct neighbors will
@@ -507,20 +507,22 @@ def query_knn_ptwise(
         skip_data = True
         cols.append(str_to_expr(data_mask))
 
+    kwargs = {
+        "k": k,
+        "leaf_size": leaf_size,
+        "metric": metric,
+        "parallel": parallel,
+        "skip_eval": skip_eval,
+        "skip_data": skip_data,
+    }
+
     cols.extend(str_to_expr(x) for x in features)
     if return_dist:
         return pl_plugin(
             lib=_lib,
             symbol="pl_knn_ptwise_w_dist",
             args=cols,
-            kwargs={
-                "k": k,
-                "leaf_size": leaf_size,
-                "metric": metric,
-                "parallel": parallel,
-                "skip_eval": skip_eval,
-                "skip_data": skip_data,
-            },
+            kwargs=kwargs,
             is_elementwise=True,
         )
     else:
@@ -528,14 +530,7 @@ def query_knn_ptwise(
             lib=_lib,
             symbol="pl_knn_ptwise",
             args=cols,
-            kwargs={
-                "k": k,
-                "leaf_size": leaf_size,
-                "metric": metric,
-                "parallel": parallel,
-                "skip_eval": skip_eval,
-                "skip_data": skip_data,
-            },
+            kwargs=kwargs,
             is_elementwise=True,
         )
 
@@ -696,7 +691,14 @@ def query_nb_cnt(
         lib=_lib,
         symbol="pl_nb_cnt",
         args=[rad] + [str_to_expr(x) for x in features],
-        kwargs={"k": 0, "leaf_size": leaf_size, "metric": dist, "parallel": parallel},
+        kwargs={
+            "k": 0,
+            "leaf_size": leaf_size,
+            "metric": dist,
+            "parallel": parallel,
+            "skip_eval": False,
+            "skip_data": False,
+        },
         is_elementwise=True,
     )
 
@@ -734,7 +736,14 @@ def query_knn_filter(
         lib=_lib,
         symbol="pl_knn_filter",
         args=[p] + [str_to_expr(x) for x in features],
-        kwargs={"k": k, "leaf_size": 32, "metric": metric, "parallel": False},
+        kwargs={
+            "k": k,
+            "leaf_size": 32,
+            "metric": metric,
+            "parallel": False,
+            "skip_eval": False,
+            "skip_data": False,
+        },
         is_elementwise=True,
     )
 
@@ -792,7 +801,14 @@ def query_approx_entropy(
         lib=_lib,
         symbol="pl_approximate_entropy",
         args=data,
-        kwargs={"k": 0, "leaf_size": 32, "metric": "inf", "parallel": parallel},
+        kwargs={
+            "k": 0,
+            "leaf_size": 32,
+            "metric": "inf",
+            "parallel": parallel,
+            "skip_eval": False,
+            "skip_data": False,
+        },
         returns_scalar=True,
     )
 
@@ -836,7 +852,14 @@ def query_sample_entropy(
         lib=_lib,
         symbol="pl_sample_entropy",
         args=data,
-        kwargs={"k": 0, "leaf_size": 32, "metric": "inf", "parallel": parallel},
+        kwargs={
+            "k": 0,
+            "leaf_size": 32,
+            "metric": "inf",
+            "parallel": parallel,
+            "skip_eval": False,
+            "skip_data": False,
+        },
         returns_scalar=True,
     )
 
@@ -890,7 +913,14 @@ def query_knn_entropy(
         lib=_lib,
         symbol="pl_knn_entropy",
         args=[str_to_expr(e) for e in features],
-        kwargs={"k": k, "leaf_size": 32, "metric": dist, "parallel": parallel},
+        kwargs={
+            "k": k,
+            "leaf_size": 32,
+            "metric": dist,
+            "parallel": parallel,
+            "skip_eval": False,
+            "skip_data": False,
+        },
         is_elementwise=True,
     )
 
