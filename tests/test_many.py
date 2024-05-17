@@ -1235,6 +1235,71 @@ def test_knn_ptwise(df, dist, k, res):
     assert_frame_equal(df2, res)
 
 
+def test_knn_ptwise_skip():
+    df = pl.DataFrame(
+        {
+            "id": [0, 1, 2, 3],
+            "a1": [0.1, 0.2, 0.3, 0.4],
+            "a2": [0.1, 0.2, 0.3, 0.4],
+            "a3": [0.1, 0.2, 0.3, 0.4],
+            "can_eval": [1, 0, 1, 1],
+        }
+    )
+
+    res1 = df.with_columns(
+        pds.query_knn_ptwise(
+            "a1",
+            "a2",
+            "a3",
+            index="id",
+            k=1,
+            dist="l2",  # squared l2
+            parallel=False,
+            eval_mask=pl.col("can_eval") == 1,
+        ).alias("best friends")
+    )
+    friends = list(res1["best friends"])
+    assert friends[1] is None  # should be true because we are skipping this evaluation
+    assert list(friends[0]) == [0, 1]  # id 1 can still be a neighbor
+
+    res2 = df.with_columns(
+        pds.query_knn_ptwise(
+            "a1",
+            "a2",
+            "a3",
+            index="id",
+            k=1,
+            dist="l2",  # squared l2
+            parallel=False,
+            data_mask=pl.col("can_eval") == 1,
+        ).alias("best friends")
+    )
+    friends = list(res2["best friends"])
+    assert list(friends[0]) == [0, 2]  # id 1 cannot be a neighbor anymore
+    all_neighbors = []
+    for f in friends:
+        all_neighbors += list(f)
+    assert 1 not in set(all_neighbors)  # id 1 cannot be a neighbor anymore
+
+    res3 = df.with_columns(
+        pds.query_knn_ptwise(
+            "a1",
+            "a2",
+            "a3",
+            index="id",
+            k=1,
+            dist="l2",  # squared l2
+            parallel=False,
+            eval_mask=pl.col("can_eval") == 1,
+            data_mask=pl.col("can_eval") == 1,
+        ).alias("best friends")
+    )
+    friends = list(res3["best friends"])
+    # Now 1 cannot be a neighbor, and we don't evaluate for 1
+    assert friends[1] is None  # should be true because we are skipping this evaluation
+    assert list(friends[0]) == [0, 2]  # id 1 can still be a neighbor
+
+
 @pytest.mark.parametrize(
     "df, x, dist, k, res",
     [

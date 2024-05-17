@@ -441,17 +441,20 @@ def query_principal_components(
 def query_knn_ptwise(
     *features: StrOrExpr,
     index: StrOrExpr,
-    skip_index: Optional[StrOrExpr] = None,
     k: int = 5,
     leaf_size: int = 32,
     dist: Distance = "l2",
     parallel: bool = False,
     return_dist: bool = False,
+    eval_mask: Optional[StrOrExpr] = None,
+    data_mask: Optional[StrOrExpr] = None,
 ) -> pl.Expr:
     """
-    Takes the index column, and uses other columns to determine the k nearest neighbors
-    to every id in the index columns. By default, this will return self, and k more neighbors.
-    So the output size is actually k + 1. This will throw an error if any null value is found.
+    Takes the index column, and uses feature columns to determine the k nearest neighbors
+    to every id in the index columns. By default, this will return k + 1 neighbors, because in almost
+    all cases, the point is a neighbor to itself and this returns k actual neighbors. The only exception
+    is when data_mask excludes the point from being a neighbor, in which case, k + 1 distinct neighbors will
+    be returned.
 
     Note that the index column must be convertible to u32. If you do not have a u32 column,
     you can generate one using pl.int_range(..), which should be a step before this. The index column
@@ -478,22 +481,48 @@ def query_knn_ptwise(
         are running only this expression, and not in group_by context.
     return_dist
         If true, return a struct with indices and distances.
+    eval_mask
+        Either None or a boolean expression or the name of a boolean column. If not none, this will
+        only evaluate KNN for rows where this is true. This can speed up computation with K is large
+        and when only results on a subset are nedded.
+    data_mask
+        Either None or a boolean expression or the name of a boolean column. If none, all rows can be
+        neighbors. If not None, the pool of possible neighbors will be rows where this is true.
     """
     if k < 1:
         raise ValueError("Input `k` must be >= 1.")
 
-    idx = str_to_expr(index).cast(pl.UInt32)
+    idx = str_to_expr(index).cast(pl.UInt32).rechunk()
     metric = str(dist).lower()
     cols = [idx]
-    if skip_index is not None:
-        cols.append(str_to_expr(skip_index))
+    if eval_mask is None:
+        skip_eval = False
+    else:
+        skip_eval = True
+        cols.append(str_to_expr(eval_mask))
+
+    if data_mask is None:
+        skip_data = False
+    else:
+        skip_data = True
+        cols.append(str_to_expr(data_mask))
+
+    kwargs = {
+        "k": k,
+        "leaf_size": leaf_size,
+        "metric": metric,
+        "parallel": parallel,
+        "skip_eval": skip_eval,
+        "skip_data": skip_data,
+    }
+
     cols.extend(str_to_expr(x) for x in features)
     if return_dist:
         return pl_plugin(
             lib=_lib,
             symbol="pl_knn_ptwise_w_dist",
             args=cols,
-            kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
+            kwargs=kwargs,
             is_elementwise=True,
         )
     else:
@@ -501,7 +530,7 @@ def query_knn_ptwise(
             lib=_lib,
             symbol="pl_knn_ptwise",
             args=cols,
-            kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
+            kwargs=kwargs,
             is_elementwise=True,
         )
 
@@ -536,6 +565,11 @@ def query_within_dist_from(
             pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
             <= r
         )
+    elif dist == "l2":
+        return (
+            pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(pt, oth))
+            <= r
+        )
     elif dist == "inf":
         return (
             pl.max_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
@@ -562,11 +596,8 @@ def query_within_dist_from(
         y_long = pl.lit(pt_as_list[1], dtype=pl.Float64)
         dist = haversine(oth[0], oth[1], y_lat, y_long)
         return dist <= r
-    else:  # defaults to l2, actually squared l2
-        return (
-            pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(pt, oth))
-            <= r
-        )
+    else:
+        raise ValueError(f"Unknown distance function: {dist}")
 
 
 def query_radius_ptwise(
@@ -577,7 +608,7 @@ def query_radius_ptwise(
     parallel: bool = False,
 ) -> pl.Expr:
     """
-    Takes the index column, and uses other columns to determine distance, and query all neighbors
+    Takes the index column, and uses features columns to determine distance, and query all neighbors
     within distance r from each id in the index column.
 
     Note that the index column must be convertible to u32. If you do not have a u32 ID column,
@@ -606,7 +637,7 @@ def query_radius_ptwise(
     elif isinstance(r, pl.Expr):
         raise ValueError("Input `r` must be a scalar now. Expression input is not implemented.")
 
-    idx = str_to_expr(index).cast(pl.UInt32)
+    idx = str_to_expr(index).cast(pl.UInt32).rechunk()
     metric = str(dist).lower()
     cols = [idx]
     cols.extend(str_to_expr(x) for x in features)
@@ -660,7 +691,14 @@ def query_nb_cnt(
         lib=_lib,
         symbol="pl_nb_cnt",
         args=[rad] + [str_to_expr(x) for x in features],
-        kwargs={"k": 0, "leaf_size": leaf_size, "metric": dist, "parallel": parallel},
+        kwargs={
+            "k": 0,
+            "leaf_size": leaf_size,
+            "metric": dist,
+            "parallel": parallel,
+            "skip_eval": False,
+            "skip_data": False,
+        },
         is_elementwise=True,
     )
 
@@ -698,7 +736,14 @@ def query_knn_filter(
         lib=_lib,
         symbol="pl_knn_filter",
         args=[p] + [str_to_expr(x) for x in features],
-        kwargs={"k": k, "leaf_size": 32, "metric": metric, "parallel": False},
+        kwargs={
+            "k": k,
+            "leaf_size": 32,
+            "metric": metric,
+            "parallel": False,
+            "skip_eval": False,
+            "skip_data": False,
+        },
         is_elementwise=True,
     )
 
@@ -756,7 +801,14 @@ def query_approx_entropy(
         lib=_lib,
         symbol="pl_approximate_entropy",
         args=data,
-        kwargs={"k": 0, "leaf_size": 32, "metric": "inf", "parallel": parallel},
+        kwargs={
+            "k": 0,
+            "leaf_size": 32,
+            "metric": "inf",
+            "parallel": parallel,
+            "skip_eval": False,
+            "skip_data": False,
+        },
         returns_scalar=True,
     )
 
@@ -800,7 +852,14 @@ def query_sample_entropy(
         lib=_lib,
         symbol="pl_sample_entropy",
         args=data,
-        kwargs={"k": 0, "leaf_size": 32, "metric": "inf", "parallel": parallel},
+        kwargs={
+            "k": 0,
+            "leaf_size": 32,
+            "metric": "inf",
+            "parallel": parallel,
+            "skip_eval": False,
+            "skip_data": False,
+        },
         returns_scalar=True,
     )
 
@@ -854,7 +913,14 @@ def query_knn_entropy(
         lib=_lib,
         symbol="pl_knn_entropy",
         args=[str_to_expr(e) for e in features],
-        kwargs={"k": k, "leaf_size": 32, "metric": dist, "parallel": parallel},
+        kwargs={
+            "k": k,
+            "leaf_size": 32,
+            "metric": dist,
+            "parallel": parallel,
+            "skip_eval": False,
+            "skip_data": False,
+        },
         is_elementwise=True,
     )
 
