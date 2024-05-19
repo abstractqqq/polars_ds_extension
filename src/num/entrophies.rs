@@ -119,8 +119,11 @@ fn pl_knn_entropy(
     let dim = inputs.len();
 
     let data = build_knn_matrix_data(inputs)?;
-    let n1 = data.nrows();
     let nrows = data.nrows();
+
+    if nrows <= k {
+        return Ok(Series::from_vec(name, vec![f64::NAN]));
+    }
 
     // Get cd
     let metric_str = kwargs.metric.as_str();

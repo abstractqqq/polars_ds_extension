@@ -44,6 +44,42 @@ def test_pca():
         assert np.isclose(np.abs(vi), np.abs(ans_vi), rtol=1e-5).all()
 
 
+def test_copula_entropy():
+    from numpy.random import multivariate_normal as mnorm
+    import copent
+
+    rho = 0.6
+    mean1 = [0, 0]
+    cov1 = [[1, rho], [rho, 1]]
+    x = mnorm(mean1, cov1, 200)  # bivariate gaussian
+    ce1 = copent.copent(x, dtype="euclidean")  # estimated copula entropy
+
+    df = pl.from_numpy(x, schema=["x1", "x2"])
+    res = df.select(pds.query_copula_entropy("x1", "x2", k=3)).item(0, 0)
+
+    assert np.isclose(res, ce1)
+
+
+def test_cond_indep_and_transfer():
+    from copent import ci, transent
+
+    df = pds.random_data(size=2_000, n_cols=0).select(
+        pds.random(0.0, 1.0).alias("x1"),
+        pds.random(0.0, 1.0).alias("x2"),
+        pds.random(0.0, 1.0).alias("x3"),
+    )
+
+    ci_ans = ci(df["x1"].to_numpy(), df["x2"].to_numpy(), df["x3"].to_numpy(), dtype="euclidean")
+    ci_res = df.select(pds.query_cond_indep("x1", "x2", "x3", k=3)).item(0, 0)
+
+    assert np.isclose(ci_ans, ci_res)
+
+    t_ans = transent(df["x1"].to_numpy(), df["x2"].to_numpy(), dtype="euclidean")
+    t_res = df.select(pds.query_transfer_entropy("x1", "x2", k=3)).item(0, 0)
+
+    assert np.isclose(t_ans, t_res)
+
+
 def test_xi_corr():
     df = pds.random_data(size=2_000, n_cols=0).select(
         pds.random(0.0, 12.0).alias("x"),

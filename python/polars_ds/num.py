@@ -870,8 +870,10 @@ def query_cond_entropy(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
 
     Parameters
     ----------
-    other : str | pl.Expr
-        Either a str represeting a column name or a Polars expression
+    x
+        Either a string or a polars expression
+    y
+        Either a string or a polars expression
     """
     return pl_plugin(
         lib=_lib,
@@ -883,12 +885,14 @@ def query_cond_entropy(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
 
 def query_knn_entropy(
     *features: StrOrExpr,
-    k: int = 2,
+    k: int = 3,
     dist: Distance = "l2",
     parallel: bool = False,
 ) -> pl.Expr:
     """
-    Computes KNN entropy among all the rows
+    Computes KNN entropy among all the rows.
+
+    Note if rows <= k, NaN will be returned.
 
     Parameters
     ----------
@@ -896,7 +900,7 @@ def query_knn_entropy(
         Columns used as features
     k
         The number of nearest neighbor to consider. Usually 2 or 3.
-    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
+    dist : Literal[`l2`, `inf`]
         Note `l2` is actually squared `l2` for computational efficiency.
     parallel : bool
         Whether to run the distance query in parallel. This is recommended when you
@@ -906,8 +910,10 @@ def query_knn_entropy(
     ---------
     https://arxiv.org/pdf/1506.06501v1.pdf
     """
-    if k < 0:
+    if k <= 0:
         raise ValueError("Input `k` must be > 0.")
+    if dist not in ["l2", "inf"]:
+        raise ValueError("Invalid metric for KNN entropy.")
 
     return pl_plugin(
         lib=_lib,
@@ -921,11 +927,11 @@ def query_knn_entropy(
             "skip_eval": False,
             "skip_data": False,
         },
-        is_elementwise=True,
+        returns_scalar=True,
     )
 
 
-def query_copula_entropy(*features: StrOrExpr, k: int = 2, parallel: bool = False) -> pl.Expr:
+def query_copula_entropy(*features: StrOrExpr, k: int = 3, parallel: bool = False) -> pl.Expr:
     """
     Estimates Copula Entropy via rank statistics.
 
@@ -933,12 +939,13 @@ def query_copula_entropy(*features: StrOrExpr, k: int = 2, parallel: bool = Fals
     ---------
     Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
     """
-    ranks = [str_to_expr(x).rank() / pl.len() for x in features]
+    exprs = (str_to_expr(x) for x in features)
+    ranks = [x.rank() / x.len() for x in exprs]
     return -query_knn_entropy(*ranks, k=k, dist="l2", parallel=parallel)
 
 
 def query_cond_indep(
-    x: StrOrExpr, y: StrOrExpr, z: StrOrExpr, k: int = 2, parallel: bool = False
+    x: StrOrExpr, y: StrOrExpr, z: StrOrExpr, k: int = 3, parallel: bool = False
 ) -> pl.Expr:
     """
     Computes the conditional independance of `x`  and `y`, conditioned on `z`
@@ -958,7 +965,7 @@ def query_cond_indep(
 
 
 def query_transfer_entropy(
-    x: StrOrExpr, source: StrOrExpr, lag: int = 1, k: int = 2, parallel: bool = False
+    x: StrOrExpr, source: StrOrExpr, lag: int = 1, k: int = 3, parallel: bool = False
 ) -> pl.Expr:
     """
     Estimating transfer entropy from `source` to `x` with a lag
@@ -972,7 +979,7 @@ def query_transfer_entropy(
 
     xx = str_to_expr(x)
     x1 = xx.slice(0, pl.len() - lag)
-    x2 = xx.slice(lag, pl.len())
+    x2 = xx.slice(lag, None)
     s = str_to_expr(source).slice(0, pl.len() - lag)
     return query_cond_indep(x2, s, x1, k=k, parallel=parallel)
 
@@ -1002,14 +1009,16 @@ def query_permute_entropy(
     ---------
     https://www.aptech.com/blog/permutation-entropy/
     """
-    t = str_to_expr(ts)
     if n_dims <= 1:
         raise ValueError("Input `n_dims` has to be > 1.")
+    if tau < 1:
+        raise ValueError("Input `tau` has to be >= 1.")
 
+    t = str_to_expr(ts)
     if tau == 1:  # Fast track the most common use case
         return (
             pl.concat_list(t, *(t.shift(-i) for i in range(1, n_dims)))
-            .head(t.count() - n_dims + 1)
+            .head(t.len() - n_dims + 1)
             .list.eval(pl.element().arg_sort())
             .value_counts()  # groupby and count, but returns a struct
             .struct.field("count")  # extract the field named "counts"
@@ -1021,7 +1030,7 @@ def query_permute_entropy(
                 t.gather_every(tau),
                 *(t.shift(-i).gather_every(tau) for i in range(1, n_dims)),
             )
-            .slice(0, length=(t.count() // tau) + 1 - (n_dims // tau))
+            .slice(0, length=(t.len() // tau) + 1 - (n_dims // tau))
             .list.eval(pl.element().arg_sort())
             .value_counts()
             .struct.field("count")
