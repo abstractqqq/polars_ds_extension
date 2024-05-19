@@ -931,6 +931,18 @@ def query_knn_entropy(
     )
 
 
+# def query_mutual_info(*features: StrOrExpr, k: int = 3, parallel: bool = False) -> pl.Expr:
+#     """
+#     Estimates Copula Entropy via rank statistics.
+
+#     Reference
+#     ---------
+#     Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
+#     """
+#     ranks = [x.rank(method="max") / x.len() for x in (str_to_expr(f) for f in features)]
+#     return query_knn_entropy(*ranks, k=k, dist="l2", parallel=parallel)
+
+
 def query_copula_entropy(*features: StrOrExpr, k: int = 3, parallel: bool = False) -> pl.Expr:
     """
     Estimates Copula Entropy via rank statistics.
@@ -939,8 +951,7 @@ def query_copula_entropy(*features: StrOrExpr, k: int = 3, parallel: bool = Fals
     ---------
     Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
     """
-    exprs = (str_to_expr(x) for x in features)
-    ranks = [x.rank() / x.len() for x in exprs]
+    ranks = [x.rank() / x.len() for x in (str_to_expr(f) for f in features)]
     return -query_knn_entropy(*ranks, k=k, dist="l2", parallel=parallel)
 
 
