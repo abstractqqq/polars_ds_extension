@@ -1422,8 +1422,8 @@ def query_woe(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10) -> pl.Expr:
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
     xx = str_to_expr(x)
-    valid = xx.filter(xx.is_finite()).cast(pl.Float64)
-    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True)
+    valid = xx.filter(xx.is_finite())
+    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
     return pl_plugin(
         lib=_lib, symbol="pl_woe_discrete", args=[brk, str_to_expr(target)], changes_length=True
     )
@@ -1452,7 +1452,7 @@ def query_woe_discrete(
     return pl_plugin(
         lib=_lib,
         symbol="pl_woe_discrete",
-        args=[str_to_expr(x), str_to_expr(target)],
+        args=[str_to_expr(x).cast(pl.String), str_to_expr(target)],
         changes_length=True,
     )
 
@@ -1468,7 +1468,7 @@ def query_iv(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10, return_sum: bool
     Parameters
     ----------
     x
-        The feature
+        The feature. Must be numeric.
     target
         The target column. Should be 0s and 1s.
     n_bins
@@ -1482,8 +1482,8 @@ def query_iv(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10, return_sum: bool
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
     xx = str_to_expr(x)
-    valid = xx.filter(xx.is_finite()).cast(pl.Float64)
-    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True)
+    valid = xx.filter(xx.is_finite())
+    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
     out = pl_plugin(lib=_lib, symbol="pl_iv", args=[brk, str_to_expr(target)], changes_length=True)
     return out.struct.field("iv").sum() if return_sum else out
 
@@ -1497,7 +1497,7 @@ def query_iv_discrete(x: StrOrExpr, target: StrOrExpr, return_sum: bool = True) 
     Parameters
     ----------
     x
-        The feature
+        The feature. The column must be castable to String
     target
         The target variable. Should be 0s and 1s.
     return_sum
@@ -1508,7 +1508,9 @@ def query_iv_discrete(x: StrOrExpr, target: StrOrExpr, return_sum: bool = True) 
     ---------
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
-    out = pl_plugin(lib=_lib, symbol="pl_iv", args=[str_to_expr(x), target], changes_length=True)
+    out = pl_plugin(
+        lib=_lib, symbol="pl_iv", args=[str_to_expr(x).cast(pl.String), target], changes_length=True
+    )
     return out.struct.field("iv").sum() if return_sum else out
 
 

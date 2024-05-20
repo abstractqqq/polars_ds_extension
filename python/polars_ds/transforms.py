@@ -7,7 +7,7 @@ preserves the learned values and optimizes the transform query, see pipeline.py.
 import polars as pl
 import polars.selectors as cs
 from polars.type_aliases import RollingInterpolationMethod
-from .type_alias import PolarsFrame, SimpleImputeMethod, SimpleScaleMethod, ExprTransform
+from .type_alias import PolarsFrame, SimpleImputeMethod, SimpleScaleMethod, ExprTransform, StrOrExpr
 from . import num as pds_num
 from typing import List, Union, Optional
 
@@ -236,7 +236,7 @@ def target_encode(
     df: PolarsFrame,
     cols: List[str],
     /,
-    target: Union[str, pl.Expr],
+    target: StrOrExpr,
     min_samples_leaf: int = 20,
     smoothing: float = 10.0,
     default: Optional[float] = None,
@@ -280,6 +280,100 @@ def target_encode(
         # c[0] will be a series of struct because of the implode above.
         pl.col(c.name).replace(
             old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default
+        )
+        for c in temp.get_columns()
+    ]
+    return exprs
+
+
+def woe_encode(
+    df: PolarsFrame,
+    cols: List[str],
+    /,
+    target: StrOrExpr,
+    default: Optional[float] = None,
+) -> ExprTransform:
+    """
+    Use Weight of Evidence to encode a discrete variable x with respect to target. This assumes x
+    is discrete and castable to String. A value of 1 is added to all events/non-events
+    (goods/bads) to smooth the computation. This is -1 * output of the package category_encoder's WOEEncoder.
+
+    Note: nulls will be encoded as well.
+
+    Parameters
+    ----------
+    df
+        Either a lazy or an eager dataframe
+    cols
+        A list of strings representing column names. Columns of type != string/categorical will not produce any expression.
+    target
+        The target column
+    default
+        If new value is encountered during transform, it will be mapped to default
+
+    Reference
+    ---------
+    https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
+    """
+    valid_cols = df.lazy().select(cols).select((cs.string() | cs.categorical())).columns
+    temp = (
+        df.lazy()
+        .select(pds_num.query_woe_discrete(c, target).implode() for c in valid_cols)
+        .collect()
+    )  # add collect config..
+
+    exprs = [
+        # c[0] will be a series of struct because of the implode above. # .fill_nan(default)
+        pl.col(c.name).replace(
+            old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default
+        )
+        for c in temp.get_columns()
+    ]
+
+    return exprs
+
+
+def iv_encode(
+    df: PolarsFrame,
+    cols: List[str],
+    /,
+    target: StrOrExpr,
+    default: Optional[float] = None,
+) -> ExprTransform:
+    """
+    Use Information Value to encode a discrete variable x with respect to target. This assumes x
+    is discrete and castable to String. A value of 1 is added to all events/non-events
+    (goods/bads) to smooth the computation.
+
+    Note: nulls will be encoded as well.
+
+    Parameters
+    ----------
+    df
+        Either a lazy or an eager dataframe
+    cols
+        A list of strings representing column names. Columns of type != string/categorical will not produce any expression.
+    target
+        The target column
+    default
+        If new value is encountered during transform, it will be mapped to default
+
+    Reference
+    ---------
+    https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
+    """
+    valid_cols = df.lazy().select(cols).select((cs.string() | cs.categorical())).columns
+    temp = (
+        df.lazy()
+        .select(
+            pds_num.query_iv_discrete(c, target, return_sum=False).implode() for c in valid_cols
+        )
+        .collect()
+    )  # add collect config..
+    exprs = [
+        # c[0] will be a series of struct because of the implode above. # .fill_nan(default)
+        pl.col(c.name).replace(
+            old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default
         )
         for c in temp.get_columns()
     ]

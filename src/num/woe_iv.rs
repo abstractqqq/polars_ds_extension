@@ -2,36 +2,36 @@ use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 fn woe_output(_: &[Field]) -> PolarsResult<Field> {
-    let values = Field::new("values", DataType::String);
+    let value = Field::new("value", DataType::String);
     let woe: Field = Field::new("woe", DataType::Float64);
-    let v: Vec<Field> = vec![values, woe];
+    let v: Vec<Field> = vec![value, woe];
     Ok(Field::new("woe_output", DataType::Struct(v)))
 }
 
 fn iv_output(_: &[Field]) -> PolarsResult<Field> {
-    let values = Field::new("values", DataType::String);
-    let woe: Field = Field::new("iv", DataType::Float64);
-    let v: Vec<Field> = vec![values, woe];
+    let value = Field::new("value", DataType::String);
+    let iv: Field = Field::new("iv", DataType::Float64);
+    let v: Vec<Field> = vec![value, iv];
     Ok(Field::new("iv_output", DataType::Struct(v)))
 }
 
 /// Get a lazyframe needed to compute WOE.
-/// Inputs[0] by default is the discrete bins / categories
+/// Inputs[0] by default is the discrete bins / categories (cast to String at Python side)
 /// Inputs[1] by default is the target (0s and 1s)
 fn get_woe_frame(discrete_col: &Series, target: &Series) -> PolarsResult<LazyFrame> {
-    // let categories = &inputs[1].cast(&DataType::String)?;
+
     let df = df!(
-        "values" => discrete_col.cast(&DataType::String)?,
+        "value" => discrete_col,
         "target" => target,
     )?;
     // Here we are adding 1 to make sure the event/non-event (goods/bads) are nonzero,
     // so that the computation will not yield inf as output.
     let out = df
         .lazy()
-        .group_by([col("values")])
+        .group_by([col("value")])
         .agg([len().alias("cnt"), col("target").sum().alias("goods")])
         .select([
-            col("values"),
+            col("value"),
             ((col("goods") + lit(1)).cast(DataType::Float64)
                 / (col("goods").sum() + lit(2)).cast(DataType::Float64))
             .alias("good_pct"),
@@ -40,7 +40,7 @@ fn get_woe_frame(discrete_col: &Series, target: &Series) -> PolarsResult<LazyFra
             .alias("bad_pct"),
         ])
         .with_column(
-            (col("bad_pct") / col("good_pct"))
+            (col("good_pct") / col("bad_pct"))
                 .log(std::f64::consts::E)
                 .alias("woe"),
         );
@@ -51,7 +51,7 @@ fn get_woe_frame(discrete_col: &Series, target: &Series) -> PolarsResult<LazyFra
 #[polars_expr(output_type_func=woe_output)]
 fn pl_woe_discrete(inputs: &[Series]) -> PolarsResult<Series> {
     let df = get_woe_frame(&inputs[0], &inputs[1])?
-        .select([col("values"), col("woe")])
+        .select([col("value"), col("woe")])
         .collect()?;
 
     Ok(df.into_struct("woe_output").into_series())
@@ -63,8 +63,8 @@ fn pl_woe_discrete(inputs: &[Series]) -> PolarsResult<Series> {
 fn pl_iv(inputs: &[Series]) -> PolarsResult<Series> {
     let df = get_woe_frame(&inputs[0], &inputs[1])?
         .select([
-            col("values"),
-            ((col("bad_pct") - col("good_pct")) * col("woe")).alias("iv"),
+            col("value"),
+            ((col("good_pct") - col("bad_pct")) * col("woe")).alias("iv"),
         ])
         .collect()?;
 
