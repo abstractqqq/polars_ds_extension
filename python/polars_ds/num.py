@@ -931,6 +931,18 @@ def query_knn_entropy(
     )
 
 
+# def query_mutual_info(*features: StrOrExpr, k: int = 3, parallel: bool = False) -> pl.Expr:
+#     """
+#     Estimates Copula Entropy via rank statistics.
+
+#     Reference
+#     ---------
+#     Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
+#     """
+#     ranks = [x.rank(method="max") / x.len() for x in (str_to_expr(f) for f in features)]
+#     return query_knn_entropy(*ranks, k=k, dist="l2", parallel=parallel)
+
+
 def query_copula_entropy(*features: StrOrExpr, k: int = 3, parallel: bool = False) -> pl.Expr:
     """
     Estimates Copula Entropy via rank statistics.
@@ -939,8 +951,7 @@ def query_copula_entropy(*features: StrOrExpr, k: int = 3, parallel: bool = Fals
     ---------
     Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
     """
-    exprs = (str_to_expr(x) for x in features)
-    ranks = [x.rank() / x.len() for x in exprs]
+    ranks = [x.rank() / x.len() for x in (str_to_expr(f) for f in features)]
     return -query_knn_entropy(*ranks, k=k, dist="l2", parallel=parallel)
 
 
@@ -1411,8 +1422,8 @@ def query_woe(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10) -> pl.Expr:
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
     xx = str_to_expr(x)
-    valid = xx.filter(xx.is_finite()).cast(pl.Float64)
-    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True)
+    valid = xx.filter(xx.is_finite())
+    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
     return pl_plugin(
         lib=_lib, symbol="pl_woe_discrete", args=[brk, str_to_expr(target)], changes_length=True
     )
@@ -1441,7 +1452,7 @@ def query_woe_discrete(
     return pl_plugin(
         lib=_lib,
         symbol="pl_woe_discrete",
-        args=[str_to_expr(x), str_to_expr(target)],
+        args=[str_to_expr(x).cast(pl.String), str_to_expr(target)],
         changes_length=True,
     )
 
@@ -1457,7 +1468,7 @@ def query_iv(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10, return_sum: bool
     Parameters
     ----------
     x
-        The feature
+        The feature. Must be numeric.
     target
         The target column. Should be 0s and 1s.
     n_bins
@@ -1471,8 +1482,8 @@ def query_iv(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10, return_sum: bool
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
     xx = str_to_expr(x)
-    valid = xx.filter(xx.is_finite()).cast(pl.Float64)
-    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True)
+    valid = xx.filter(xx.is_finite())
+    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
     out = pl_plugin(lib=_lib, symbol="pl_iv", args=[brk, str_to_expr(target)], changes_length=True)
     return out.struct.field("iv").sum() if return_sum else out
 
@@ -1486,7 +1497,7 @@ def query_iv_discrete(x: StrOrExpr, target: StrOrExpr, return_sum: bool = True) 
     Parameters
     ----------
     x
-        The feature
+        The feature. The column must be castable to String
     target
         The target variable. Should be 0s and 1s.
     return_sum
@@ -1497,7 +1508,9 @@ def query_iv_discrete(x: StrOrExpr, target: StrOrExpr, return_sum: bool = True) 
     ---------
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
-    out = pl_plugin(lib=_lib, symbol="pl_iv", args=[str_to_expr(x), target], changes_length=True)
+    out = pl_plugin(
+        lib=_lib, symbol="pl_iv", args=[str_to_expr(x).cast(pl.String), target], changes_length=True
+    )
     return out.struct.field("iv").sum() if return_sum else out
 
 

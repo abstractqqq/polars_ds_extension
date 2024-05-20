@@ -12,6 +12,7 @@ from .type_alias import (
     FitTransformFunc,
     SimpleImputeMethod,
     SimpleScaleMethod,
+    StrOrExpr,
 )
 
 if sys.version_info >= (3, 11):
@@ -42,12 +43,13 @@ class WithColumnsStep:
 class FitStep:
     func: FitTransformFunc
     cols: IntoExprColumn
+    exclude: List[str]
 
     # Here we allow IntoExprColumn as input so that users can use selectors, or other polars expressions
     # to specify input columns, which adds flexibility.
     # We still need real column names so that the functions in transforms.py will work.
     def fit(self, df: PolarsFrame) -> ExprTransform:
-        real_cols: List[str] = df.select(self.cols).columns
+        real_cols: List[str] = [x for x in df.select(self.cols).columns if x not in self.exclude]
         return self.func(df, real_cols)
 
 
@@ -129,7 +131,32 @@ class Blueprint:
         df: PolarsFrame,
         name: str = "test",
         lowercase: bool = False,
+        target: Optional[str] = None,
+        exclude: Optional[
+            List[str]
+        ] = None,  # Exclude all these columns from any transformation that requires a fit
     ):
+        """
+        Creates a blueprint object.
+
+        Parameters
+        ----------
+        df
+            Either a lazy or an eager Polars dataframe
+        name
+            Name of the blueprint.
+        lowercase
+            Whether lowercase all column names at the beginning
+        target
+            Optionally indicate the target column in the ML pipeline. This will automatically prevent any transformation
+            from changing the target column. (To be implemented: this should also automatically fill any transformation
+            that requires a target name)
+        exclude
+            Any other column to exclude from global transformation. Note: this is only needed if you are not specifiying
+            the exact columns to transform. E.g. when you are using a selector like cs.numeric() for all numeric columns.
+            If this is the case and target is not set nor excluded, then the transformation may be applied to the target
+            as well, which is not desired in most cases. Therefore, it is highly recommended you initialize with target name.
+        """
         if lowercase:
             self._df: pl.LazyFrame = df.lazy().select(
                 pl.col(c).alias(c.lower()) for c in df.columns
@@ -140,6 +167,9 @@ class Blueprint:
         self.name: str = str(name)
         self.feature_names_in_: list[str] = list(df.columns)
         self._steps: List[Step] = []
+        self.exclude: List[str] = [] if target is None else [target]
+        if exclude is not None:  # dedup in case user accidentally puts the same column name twice
+            self.exclude = list(set(self.exclude + exclude))
 
     def __str__(self) -> str:
         out: str = ""
@@ -178,15 +208,17 @@ class Blueprint:
             One of `mean`, `median`, `mode`. If `mode`, a random value will be chosen if there is
             a tie.
         """
-        self._steps.append(FitStep(partial(t.impute, method=method), cols))
+        self._steps.append(FitStep(partial(t.impute, method=method), cols, self.exclude))
         return self
 
     def linear_impute(
-        self, features: IntoExprColumn, target: Union[str, pl.Expr], add_bias: bool = False
+        self, features: IntoExprColumn, target: StrOrExpr, add_bias: bool = False
     ) -> Self:
         """ """
         self._steps.append(
-            FitStep(partial(t.linear_impute, target=target, add_bias=add_bias), features)
+            FitStep(
+                partial(t.linear_impute, target=target, add_bias=add_bias), features, self.exclude
+            )
         )
         return self
 
@@ -201,7 +233,7 @@ class Blueprint:
         method
             One of `standard`, `min_max`, `abs_max`
         """
-        self._steps.append(FitStep(partial(t.scale, method=method), cols))
+        self._steps.append(FitStep(partial(t.scale, method=method), cols, self.exclude))
         return self
 
     def robust_scale(self, cols: IntoExprColumn, q1: float, q2: float) -> Self:
@@ -217,7 +249,7 @@ class Blueprint:
         q2
             The higher quantile value
         """
-        self._steps.append(FitStep(partial(t.robust_scale, q1=q1, q2=q2), cols))
+        self._steps.append(FitStep(partial(t.robust_scale, q1=q1, q2=q2), cols, self.exclude))
         return self
 
     def center(self, cols: IntoExprColumn) -> Self:
@@ -229,7 +261,7 @@ class Blueprint:
         cols
             Any Polars expression that can be understood as columns.
         """
-        self._steps.append(FitStep(partial(t.center), cols))
+        self._steps.append(FitStep(partial(t.center), cols, self.exclude))
         return self
 
     def select(self, cols: IntoExprColumn) -> Self:
@@ -296,7 +328,11 @@ class Blueprint:
             dimension and prevents some issues from linear dependency.
         """
         self._steps.append(
-            FitStep(partial(t.one_hot_encode, separator=separator, drop_first=drop_first), cols)
+            FitStep(
+                partial(t.one_hot_encode, separator=separator, drop_first=drop_first),
+                cols,
+                self.exclude,
+            )
         )
         return self.remove(cols)
 
@@ -304,7 +340,7 @@ class Blueprint:
         self,
         cols: IntoExprColumn,
         /,
-        target: Union[str, pl.Expr],
+        target: StrOrExpr,
         min_samples_leaf: int = 20,
         smoothing: float = 10.0,
         default: Optional[float] = None,
@@ -342,6 +378,89 @@ class Blueprint:
                     default=default,
                 ),
                 cols,
+                self.exclude,
+            )
+        )
+        return self
+
+    def woe_encode(
+        self,
+        cols: IntoExprColumn,
+        /,
+        target: StrOrExpr,
+        default: Optional[float] = None,
+    ) -> Self:
+        """
+        Use Weight of Evidence to encode a discrete variable x with respect to target. This assumes x
+        is discrete and castable to String. A value of 1 is added to all events/non-events
+        (goods/bads) to smooth the computation. This is -1 * output of the package category_encoder's WOEEncoder.
+
+        Note: nulls will be encoded as well.
+
+        Parameters
+        ----------
+        cols
+            Any Polars expression that can be understood as columns. Columns of type != string/categorical
+            will not produce any expression.
+        target
+            The target column
+        default
+            If new value is encountered during transform, it will be mapped to default
+
+        Reference
+        ---------
+        https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
+        """
+        self._steps.append(
+            FitStep(
+                partial(
+                    t.woe_encode,
+                    target=target,
+                    default=default,
+                ),
+                cols,
+                self.exclude,
+            )
+        )
+        return self
+
+    def iv_encode(
+        self,
+        cols: IntoExprColumn,
+        /,
+        target: StrOrExpr,
+        default: Optional[float] = None,
+    ) -> Self:
+        """
+        Use Information Value to encode a discrete variable x with respect to target. This assumes x
+        is discrete and castable to String. A value of 1 is added to all events/non-events
+        (goods/bads) to smooth the computation.
+
+        Note: nulls will be encoded as well.
+
+        Parameters
+        ----------
+        cols
+            Any Polars expression that can be understood as columns. Columns of type != string/categorical
+            will not produce any expression.
+        target
+            The target column
+        default
+            If new value is encountered during transform, it will be mapped to default
+
+        Reference
+        ---------
+        https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
+        """
+        self._steps.append(
+            FitStep(
+                partial(
+                    t.iv_encode,
+                    target=target,
+                    default=default,
+                ),
+                cols,
+                self.exclude,
             )
         )
         return self

@@ -30,6 +30,25 @@ def test_target_encode():
     assert_frame_equal(df1, df2)
 
 
+def test_woe_encode():
+    from category_encoders import WOEEncoder
+
+    df = pds.random_data(size=2000, n_cols=0).select(
+        pds.random_int(0, 3).cast(pl.String).alias("str_col"),
+        pds.random_int(0, 2).alias("target"),
+    )
+    df1 = df.select(t.woe_encode(df, ["str_col"], target="target"))
+
+    X = df["str_col"].to_numpy()
+    y = df["target"].to_numpy()
+
+    enc = WOEEncoder()
+    df2 = pl.from_pandas(enc.fit_transform(X, y))
+    df2.columns = ["str_col"]
+
+    assert_frame_equal(df1, df2)
+
+
 def test_scale():
     from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
