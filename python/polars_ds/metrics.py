@@ -18,11 +18,20 @@ __all__ = [
     "query_mape",
     "query_smape",
     "query_msle",
+    "query_mad",
     "query_roc_auc",
     "query_binary_metrics",
     "query_multi_roc_auc",
     "query_cat_cross_entropy",
 ]
+
+
+def query_mad(x: StrOrExpr) -> pl.Expr:
+    """
+    Computes the Median Absolute Deviation. Shorthand for (x - x.median()).abs().median().
+    """
+    xx = str_to_expr(x)
+    return (xx - xx.median()).abs().median()
 
 
 def query_r2(actual: StrOrExpr, pred: StrOrExpr) -> pl.Expr:

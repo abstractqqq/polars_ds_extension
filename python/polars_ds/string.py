@@ -171,7 +171,7 @@ __all__ = [
 
 def filter_by_levenshtein(
     c: StrOrExpr,
-    other: Union[str, pl.Expr],
+    other: StrOrExpr,
     bound: int,
     parallel: bool = False,
 ) -> pl.Expr:
@@ -184,26 +184,21 @@ def filter_by_levenshtein(
     c
         Either the name of the column or a Polars expression
     other
-        If this is a string, then the entire column will be compared with this string. If this
-        is an expression, then an element-wise Levenshtein distance computation between this column
-        and the other (given by the expression) will be performed.
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
     bound
         Closed upper bound. If distance <= bound, return true and false otherwise.
     parallel
         Whether to run the comparisons in parallel. Note that this is not always faster, especially
         when used with other expressions or in group_by/over context.
     """
-    if isinstance(other, str):
-        other_ = pl.lit(other, pl.String)
-    else:
-        other_ = other
 
     return pl_plugin(
         lib=_lib,
         symbol="pl_levenshtein_filter",
         args=[
             str_to_expr(c),
-            other_,
+            str_to_expr(other),
             pl.lit(abs(bound), pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
@@ -228,26 +223,21 @@ def filter_by_hamming(
     c
         Either the name of the column or a Polars expression
     other
-        If this is a string, then the entire column will be compared with this string. If this
-        is an expression, then an element-wise hamming distance computation between this column
-        and the other (given by the expression) will be performed.
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
     bound
         Closed upper bound. If distance <= bound, return true and false otherwise.
     parallel
         Whether to run the comparisons in parallel. Note that this is not always faster, especially
         when used with other expressions or in group_by/over context.
     """
-    if isinstance(other, str):
-        other_ = pl.lit(other)
-    else:
-        other_ = other
 
     return pl_plugin(
         lib=_lib,
         symbol="pl_hamming_filter",
         args=[
             str_to_expr(c),
-            other_,
+            str_to_expr(other),
             pl.lit(bound, dtype=pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
@@ -256,7 +246,7 @@ def filter_by_hamming(
 
 
 def str_hamming(
-    c: StrOrExpr, other: Union[str, pl.Expr], pad: bool = False, parallel: bool = False
+    c: StrOrExpr, other: StrOrExpr, pad: bool = False, parallel: bool = False
 ) -> pl.Expr:
     """
     Computes the hamming distance between two strings. If they do not have the same length, null will
@@ -267,32 +257,27 @@ def str_hamming(
     c
         Either the name of the column or a Polars expression
     other
-        If this is a string, then the entire column will be compared with this string. If this
-        is an expression, then an element-wise hamming distance computation between this column
-        and the other (given by the expression) will be performed.
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
     pad
         Whether to pad the string when lengths are not equal.
     parallel
         Whether to run the comparisons in parallel. Note that this is not always faster, especially
         when used with other expressions or in group_by/over context.
     """
-    if isinstance(other, str):
-        other_ = pl.lit(other)
-    else:
-        other_ = other
 
     if pad:
         return pl_plugin(
             lib=_lib,
             symbol="pl_hamming_padded",
-            args=[str_to_expr(c), other_, pl.lit(parallel, pl.Boolean)],
+            args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
     else:
         return pl_plugin(
             lib=_lib,
             symbol="pl_hamming",
-            args=[str_to_expr(c), other_, pl.lit(parallel, pl.Boolean)],
+            args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
 
@@ -463,7 +448,7 @@ def str_tokenize(c: StrOrExpr, pattern: str = r"(?u)\b\w\w+\b", stem: bool = Fal
 
 def str_jaccard(
     c: StrOrExpr,
-    other: Union[str, pl.Expr],
+    other: StrOrExpr,
     substr_size: int = 2,
     parallel: bool = False,
 ) -> pl.Expr:
@@ -479,8 +464,8 @@ def str_jaccard(
     c
         The string column
     other
-        If this is a string, then the entire column will be compared with this string. If this
-        is an expression, then perform row wise jaccard similarity
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
     substr_size
         The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
         the set ('ap', 'pp', 'pl', 'le') before being compared.
@@ -488,17 +473,12 @@ def str_jaccard(
         Whether to run the comparisons in parallel. Note that this is not always faster, especially
         when used with other expressions or in group_by/over context.
     """
-    if isinstance(other, str):
-        other_ = pl.lit(other, dtype=pl.String)
-    else:
-        other_ = other
-
     return pl_plugin(
         lib=_lib,
         symbol="pl_str_jaccard",
         args=[
             str_to_expr(c),
-            other_,
+            str_to_expr(other),
             pl.lit(substr_size, pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
@@ -508,7 +488,7 @@ def str_jaccard(
 
 def str_overlap_coeff(
     c: StrOrExpr,
-    other: Union[str, pl.Expr],
+    other: StrOrExpr,
     substr_size: int = 2,
     parallel: bool = False,
 ) -> pl.Expr:
@@ -524,8 +504,8 @@ def str_overlap_coeff(
     c
         The string column
     other
-        If this is a string, then the entire column will be compared with this string. If this
-        is an expression, then perform row wise overlap_coefficient.
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
     substr_size
         The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
         the set ('ap', 'pp', 'pl', 'le') before being compared.
@@ -533,17 +513,12 @@ def str_overlap_coeff(
         Whether to run the comparisons in parallel. Note that this is not always faster, especially
         when used with other expressions or in group_by/over context.
     """
-    if isinstance(other, str):
-        other_ = pl.lit(other, pl.String)
-    else:
-        other_ = other
-
     return pl_plugin(
         lib=_lib,
         symbol="pl_overlap_coeff",
         args=[
             str_to_expr(c),
-            other_,
+            str_to_expr(other),
             pl.lit(substr_size, pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
@@ -553,7 +528,7 @@ def str_overlap_coeff(
 
 def str_sorensen_dice(
     c: StrOrExpr,
-    other: Union[str, pl.Expr],
+    other: StrOrExpr,
     substr_size: int = 2,
     parallel: bool = False,
 ) -> pl.Expr:
@@ -569,8 +544,8 @@ def str_sorensen_dice(
     c
         The string column
     other
-        If this is a string, then the entire column will be compared with this string. If this
-        is an expression, then perform row wise sorensen_dice similarity
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
     substr_size
         The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
         the set ('ap', 'pp', 'pl', 'le') before being compared.
@@ -578,17 +553,12 @@ def str_sorensen_dice(
         Whether to run the comparisons in parallel. Note that this is not always faster, especially
         when used with other expressions or in group_by/over context.
     """
-    if isinstance(other, str):
-        other_ = pl.lit(other, dtype=pl.String)
-    else:
-        other_ = other
-
     return pl_plugin(
         lib=_lib,
         symbol="pl_sorensen_dice",
         args=[
             str_to_expr(c),
-            other_,
+            str_to_expr(other),
             pl.lit(substr_size, pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
@@ -598,7 +568,7 @@ def str_sorensen_dice(
 
 def str_tversky_sim(
     c: StrOrExpr,
-    other: Union[str, pl.Expr],
+    other: StrOrExpr,
     alpha: float,
     beta: float,
     substr_size: int = 2,
@@ -619,8 +589,8 @@ def str_tversky_sim(
     c
         The string column
     other
-        If this is a string, then the entire column will be compared with this string. If this
-        is an expression, then perform row wise jaccard similarity
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
     alpha
         The first weighting factor. See reference
     beta
@@ -636,11 +606,6 @@ def str_tversky_sim(
     ---------
     https://yassineelkhal.medium.com/the-complete-guide-to-string-similarity-algorithms-1290ad07c6b7
     """
-    if isinstance(other, str):
-        other_ = pl.lit(other, dtype=pl.String)
-    else:
-        other_ = other
-
     if alpha < 0 or beta < 0:
         raise ValueError("Input `alpha` and `beta` must be >= 0.")
 
@@ -649,7 +614,7 @@ def str_tversky_sim(
         symbol="pl_tversky_sim",
         args=[
             str_to_expr(c),
-            other_,
+            str_to_expr(other),
             pl.lit(substr_size, pl.UInt32),
             pl.lit(alpha, pl.Float64),
             pl.lit(beta, pl.Float64),
@@ -661,7 +626,7 @@ def str_tversky_sim(
 
 def str_jw(
     c: StrOrExpr,
-    other: Union[str, pl.Expr],
+    other: StrOrExpr,
     weight: float = 0.1,
     parallel: bool = False,
 ) -> pl.Expr:
@@ -674,26 +639,20 @@ def str_jw(
     c
         The string column
     other
-        If this is a string, then the entire column will be compared with this string. If this
-        is an expression, then an element-wise Levenshtein distance computation between this column
-        and the other (given by the expression) will be performed.
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
     weight
         Weight for prefix. A typical value is 0.1.
     parallel
         Whether to run the comparisons in parallel. Note that this is not always faster, especially
         when used with other expressions or in group_by/over context.
     """
-    if isinstance(other, str):
-        other_ = pl.lit(other, pl.String)
-    else:
-        other_ = other
-
     return pl_plugin(
         lib=_lib,
         symbol="pl_jw",
         args=[
             str_to_expr(c),
-            other_,
+            str_to_expr(other),
             pl.lit(weight, pl.Float64),
             pl.lit(parallel, pl.Boolean),
         ],
@@ -701,7 +660,7 @@ def str_jw(
     )
 
 
-def str_jaro(c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
+def str_jaro(c: StrOrExpr, other: StrOrExpr, parallel: bool = False) -> pl.Expr:
     """
     Computes the Jaro similarity between this and the other str. Jaro distance = 1 - Jaro sim.
 
@@ -710,29 +669,23 @@ def str_jaro(c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False) -
     c
         The string column
     other
-        If this is a string, then the entire column will be compared with this string. If this
-        is an expression, then an element-wise Levenshtein distance computation between this column
-        and the other (given by the expression) will be performed.
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
     parallel
         Whether to run the comparisons in parallel. Note that this is not always faster, especially
         when used with other expressions or in group_by/over context.
     """
-    if isinstance(other, str):
-        other_ = pl.lit(other, dtype=pl.String)
-    else:
-        other_ = other
-
     return pl_plugin(
         lib=_lib,
         symbol="pl_jaro",
-        args=[str_to_expr(c), other_, pl.lit(parallel, pl.Boolean)],
+        args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
         is_elementwise=True,
     )
 
 
 def str_d_leven(
     c: StrOrExpr,
-    other: Union[str, pl.Expr],
+    other: StrOrExpr,
     parallel: bool = False,
     return_sim: bool = False,
 ) -> pl.Expr:
@@ -744,39 +697,33 @@ def str_d_leven(
     c
         The string column
     other
-        If this is a string, then the entire column will be compared with this string. If this
-        is an expression, then an element-wise Levenshtein distance computation between this column
-        and the other (given by the expression) will be performed.
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
     parallel
         Whether to run the comparisons in parallel. Note that this is not always faster, especially
         when used with other expressions or in group_by/over context.
     return_sim
         If true, return normalized Damerau-Levenshtein.
     """
-    if isinstance(other, str):
-        other_ = pl.lit(other, dtype=pl.String)
-    else:
-        other_ = other
-
     if return_sim:
         return pl_plugin(
             lib=_lib,
             symbol="pl_d_levenshtein_sim",
-            args=[str_to_expr(c), other_, pl.lit(parallel, pl.Boolean)],
+            args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
     else:
         return pl_plugin(
             lib=_lib,
             symbol="pl_d_levenshtein",
-            args=[str_to_expr(c), other_, pl.lit(parallel, pl.Boolean)],
+            args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
 
 
 def str_leven(
     c: StrOrExpr,
-    other: Union[str, pl.Expr],
+    other: StrOrExpr,
     parallel: bool = False,
     return_sim: bool = False,
 ) -> pl.Expr:
@@ -788,39 +735,33 @@ def str_leven(
     c
         The string column
     other
-        If this is a string, then the entire column will be compared with this string. If this
-        is an expression, then an element-wise Levenshtein distance computation between this column
-        and the other (given by the expression) will be performed.
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
     parallel
         Whether to run the comparisons in parallel. Note that this is not always faster, especially
         when used with other expressions or in group_by/over context.
     return_sim
         If true, return normalized Levenshtein.
     """
-    if isinstance(other, str):
-        other_ = pl.lit(other, dtype=pl.String)
-    else:
-        other_ = other
-
     if return_sim:
         return pl_plugin(
             lib=_lib,
             symbol="pl_levenshtein_sim",
-            args=[str_to_expr(c), other_, pl.lit(parallel, pl.Boolean)],
+            args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
     else:
         return pl_plugin(
             lib=_lib,
             symbol="pl_levenshtein",
-            args=[str_to_expr(c), other_, pl.lit(parallel, pl.Boolean)],
+            args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
 
 
 def str_osa(
     c: StrOrExpr,
-    other: Union[str, pl.Expr],
+    other: StrOrExpr,
     parallel: bool = False,
     return_sim: bool = False,
 ) -> pl.Expr:
@@ -832,37 +773,31 @@ def str_osa(
     c
         The string column
     other
-        If this is a string, then the entire column will be compared with this string. If this
-        is an expression, then an element-wise OSA distance computation between this column
-        and the other (given by the expression) will be performed.
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
     parallel
         Whether to run the comparisons in parallel. Note that this is not always faster, especially
         when used with other expressions or in group_by/over context.
     return_sim
         If true, return normalized OSA similarity.
     """
-    if isinstance(other, str):
-        other_ = pl.lit(other, dtype=pl.String)
-    else:
-        other_ = other
-
     if return_sim:
         return pl_plugin(
             lib=_lib,
             symbol="pl_osa_sim",
-            args=[str_to_expr(c), other_, pl.lit(parallel, pl.Boolean)],
+            args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
     else:
         return pl_plugin(
             lib=_lib,
             symbol="pl_osa",
-            args=[str_to_expr(c), other_, pl.lit(parallel, pl.Boolean)],
+            args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
 
 
-def str_fuzz(c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False) -> pl.Expr:
+def str_fuzz(c: StrOrExpr, other: StrOrExpr, parallel: bool = False) -> pl.Expr:
     """
     A string similarity based on Longest Common Subsequence.
 
@@ -871,22 +806,16 @@ def str_fuzz(c: StrOrExpr, other: Union[str, pl.Expr], parallel: bool = False) -
     c
         The string column
     other
-        If this is a string, then the entire column will be compared with this string. If this
-        is an expression, then perform element-wise fuzz computation between this column
-        and the other (given by the expression).
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
     parallel
         Whether to run the comparisons in parallel. Note that this is not always faster, especially
         when used with other expressions or in group_by/over context.
     """
-    if isinstance(other, str):
-        other_ = pl.lit(other, dtype=pl.String)
-    else:
-        other_ = other
-
     return pl_plugin(
         lib=_lib,
         symbol="pl_fuzz",
-        args=[str_to_expr(c), other_, pl.lit(parallel, pl.Boolean)],
+        args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
         is_elementwise=True,
     )
 
@@ -921,13 +850,13 @@ def similar_to_vocab(
         the threshold.
     """
     if metric == "lv":
-        sims = [str_leven(c, w, return_sim=True) for w in vocab]
+        sims = [str_leven(c, pl.lit(w, dtype=pl.String), return_sim=True) for w in vocab]
     elif metric == "dlv":
-        sims = [str_d_leven(c, w, return_sim=True) for w in vocab]
+        sims = [str_d_leven(c, pl.lit(w, dtype=pl.String), return_sim=True) for w in vocab]
     elif metric == "osa":
-        sims = [str_osa(c, w, return_sim=True) for w in vocab]
+        sims = [str_osa(c, pl.lit(w, dtype=pl.String), return_sim=True) for w in vocab]
     elif metric == "jw":
-        sims = [str_jw(c, w, return_sim=True) for w in vocab]
+        sims = [str_jw(c, pl.lit(w, dtype=pl.String), return_sim=True) for w in vocab]
     else:
         raise ValueError(f"Unknown metric: {metric}")
 
@@ -1020,7 +949,7 @@ def replace_non_ascii(c: StrOrExpr, value: str = "") -> pl.Expr:
     ----------
     c : StrOrExpr
         The column name or expression
-    value : str, optional
+    value : str
         The value to replace non-Ascii values with, by default ""
 
     Returns
@@ -1090,7 +1019,8 @@ def remove_diacritics(c: StrOrExpr) -> pl.Expr:
 
 
 def normalize_string(c: StrOrExpr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) -> pl.Expr:
-    """Normalize Unicode string using one of 'NFC', 'NFKC', 'NFD', or 'NFKD'
+    """
+    Normalize Unicode string using one of 'NFC', 'NFKC', 'NFD', or 'NFKD'
     normalization.
 
     See https://en.wikipedia.org/wiki/Unicode_equivalence for more information.
@@ -1098,6 +1028,7 @@ def normalize_string(c: StrOrExpr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) 
     Parameters
     ----------
     c : StrOrExpr
+        The string column
     form: Literal["NFC", "NFKC", "NFD", "NFKD"]
         The Unicode normalization form to use
 
@@ -1139,11 +1070,13 @@ def normalize_string(c: StrOrExpr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) 
 
 
 def map_words(c: StrOrExpr, mapping: dict[str, str]) -> pl.Expr:
-    """Replace words based on the specified mapping.
+    """
+    Replace words based on the specified mapping.
 
     Parameters
     ----------
     c : StrOrExpr
+        The string column
     mapping : dict[str, str]
         A dictionary of {word: replace_with}
 
@@ -1174,11 +1107,13 @@ def map_words(c: StrOrExpr, mapping: dict[str, str]) -> pl.Expr:
 
 
 def normalize_whitespace(c: StrOrExpr, only_spaces: bool = False) -> pl.Expr:
-    """Normalize whitespace to one, e.g. 'a   b' -> 'a b'.
+    """
+    Normalize whitespace to one, e.g. 'a   b' -> 'a b'.
 
     Parameters
     ----------
     c : StrOrExpr
+        The string column
     only_spaces: bool
         If True, only split on the space character ' ' instead of any whitespace
         character such as '\t' and '\n', by default False
