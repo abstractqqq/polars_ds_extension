@@ -236,7 +236,7 @@ def target_encode(
     df: PolarsFrame,
     cols: List[str],
     /,
-    target: StrOrExpr,
+    target: Union[StrOrExpr, pl.Series],
     min_samples_leaf: int = 20,
     smoothing: float = 10.0,
     default: Optional[float] = None,
@@ -290,7 +290,7 @@ def woe_encode(
     df: PolarsFrame,
     cols: List[str],
     /,
-    target: StrOrExpr,
+    target: Union[StrOrExpr, pl.Series],
     default: Optional[float] = None,
 ) -> ExprTransform:
     """
@@ -337,7 +337,7 @@ def iv_encode(
     df: PolarsFrame,
     cols: List[str],
     /,
-    target: StrOrExpr,
+    target: Union[StrOrExpr, pl.Series],
     default: Optional[float] = None,
 ) -> ExprTransform:
     """
