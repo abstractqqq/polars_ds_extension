@@ -23,6 +23,7 @@ SimpleScaleMethod: TypeAlias = Literal["min_max", "standard", "abs_max"]
 PolarsFrame: TypeAlias = Union[pl.DataFrame, pl.LazyFrame]
 StrOrExpr: TypeAlias = Union[str, pl.Expr]
 ExprTransform: TypeAlias = Union[pl.Expr, List[pl.Expr]]
+# Need ...
 FitTransformFunc: TypeAlias = Callable[[PolarsFrame, List[str]], ExprTransform]
 
 

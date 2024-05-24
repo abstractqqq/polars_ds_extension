@@ -477,8 +477,35 @@ class Blueprint:
             self._steps.append(WithColumnsStep(list(exprs)))
         return self
 
-    def append_fit_func(self, *args, **kwargs) -> Self:
-        return NotImplemented
+    # How to type this?
+    def append_fit_func(self, func, cols: IntoExprColumn, **kwargs) -> Self:
+        """
+        Adds a custom transform that requires a fit step in the blueprint.
+
+        Any custom function must satistfy the following function signature:
+        my_func(df:Union[pl.DataFrame, pl.LazyFrame], cols: List[str], ...) -> List[pl.Expr]
+        where ... means kwargs. The fit step "learns" the parameters needed to translate
+        the transform into concrete expressions.
+
+        Parameters
+        ----------
+        func
+            A callable with signature (pl.DataFrame, pl.LazyFrame], cols: List[str], ...) -> ExprTransform,
+        cols
+            The columns to be fed into the func. Note that in func's signature, a list of strings
+            should be expected. But here, cols can be any polars selector expression. The reason is that
+            during "fit", cols is turned into concrete column names.
+        **kwargs
+            Any other arguments to func must be passed as kwargs
+        """
+        self._steps.append(
+            FitStep(
+                partial(func, **kwargs),
+                cols,
+                self.exclude,
+            )
+        )
+        return self
 
     def materialize(self) -> Pipeline:
         """
