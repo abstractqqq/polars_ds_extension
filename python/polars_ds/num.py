@@ -792,10 +792,14 @@ def query_approx_entropy(
     else:
         r: pl.Expr = pl.lit(filtering_level, dtype=pl.Float64)
 
+    # FILL NULL -- REMOVE AFTER POLARS UPDATE
     rows = t.count() - m + 1
-    data = [r, t.slice(0, length=rows)]
+    data = [r, t.slice(0, length=rows).cast(pl.Float64).fill_null(float("nan"))]
     # See rust code for more comment on why I put m + 1 here.
-    data.extend(t.shift(-i).slice(0, length=rows).alias(f"{i}") for i in range(1, m + 1))
+    data.extend(
+        t.shift(-i).slice(0, length=rows).cast(pl.Float64).fill_null(float("nan"))
+        for i in range(1, m + 1)
+    )
     # More errors are handled in Rust
     return pl_plugin(
         lib=_lib,
@@ -843,10 +847,12 @@ def query_sample_entropy(
     t = str_to_expr(ts)
     r = ratio * t.std(ddof=0)
     rows = t.count() - m + 1
-    data = [r, t.slice(0, length=rows)]
+    # FILL NULL -- REMOVE AFTER POLARS UPDATE
+    data = [r, t.slice(0, length=rows).cast(pl.Float64).fill_null(float("nan"))]
     # See rust code for more comment on why I put m + 1 here.
     data.extend(
-        t.shift(-i).slice(0, length=rows).alias(f"{i}") for i in range(1, m + 1)
+        t.shift(-i).slice(0, length=rows).cast(pl.Float64).fill_null(float("nan"))
+        for i in range(1, m + 1)
     )  # More errors are handled in Rust
     return pl_plugin(
         lib=_lib,
