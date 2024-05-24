@@ -792,10 +792,14 @@ def query_approx_entropy(
     else:
         r: pl.Expr = pl.lit(filtering_level, dtype=pl.Float64)
 
+    # FILL NULL -- REMOVE AFTER POLARS UPDATE
     rows = t.count() - m + 1
-    data = [r, t.slice(0, length=rows)]
+    data = [r, t.slice(0, length=rows).cast(pl.Float64).fill_null(float("nan"))]
     # See rust code for more comment on why I put m + 1 here.
-    data.extend(t.shift(-i).slice(0, length=rows).alias(f"{i}") for i in range(1, m + 1))
+    data.extend(
+        t.shift(-i).slice(0, length=rows).cast(pl.Float64).fill_null(float("nan"))
+        for i in range(1, m + 1)
+    )
     # More errors are handled in Rust
     return pl_plugin(
         lib=_lib,
@@ -843,10 +847,12 @@ def query_sample_entropy(
     t = str_to_expr(ts)
     r = ratio * t.std(ddof=0)
     rows = t.count() - m + 1
-    data = [r, t.slice(0, length=rows)]
+    # FILL NULL -- REMOVE AFTER POLARS UPDATE
+    data = [r, t.slice(0, length=rows).cast(pl.Float64).fill_null(float("nan"))]
     # See rust code for more comment on why I put m + 1 here.
     data.extend(
-        t.shift(-i).slice(0, length=rows).alias(f"{i}") for i in range(1, m + 1)
+        t.shift(-i).slice(0, length=rows).cast(pl.Float64).fill_null(float("nan"))
+        for i in range(1, m + 1)
     )  # More errors are handled in Rust
     return pl_plugin(
         lib=_lib,
@@ -1400,7 +1406,7 @@ def query_psi_w_breakpoints(
     ).alias("psi_report")
 
 
-def query_woe(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10) -> pl.Expr:
+def query_woe(x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], n_bins: int = 10) -> pl.Expr:
     """
     Compute the Weight of Evidence for x with respect to target. This assumes x
     is continuous. A value of 1 is added to all events/non-events
@@ -1421,17 +1427,19 @@ def query_woe(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10) -> pl.Expr:
     ---------
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
+    if isinstance(target, (str, pl.Expr)):
+        t = str_to_expr(target)
+    else:
+        t = pl.Series(values=target)
     xx = str_to_expr(x)
     valid = xx.filter(xx.is_finite())
     brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
-    return pl_plugin(
-        lib=_lib, symbol="pl_woe_discrete", args=[brk, str_to_expr(target)], changes_length=True
-    )
+    return pl_plugin(lib=_lib, symbol="pl_woe_discrete", args=[brk, t], changes_length=True)
 
 
 def query_woe_discrete(
     x: StrOrExpr,
-    target: StrOrExpr,
+    target: Union[StrOrExpr, Iterable[int]],
 ) -> pl.Expr:
     """
     Compute the Weight of Evidence for x with respect to target. This assumes x
@@ -1449,15 +1457,21 @@ def query_woe_discrete(
     ---------
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
+    if isinstance(target, (str, pl.Expr)):
+        t = str_to_expr(target)
+    else:
+        t = pl.Series(values=target)
     return pl_plugin(
         lib=_lib,
         symbol="pl_woe_discrete",
-        args=[str_to_expr(x).cast(pl.String), str_to_expr(target)],
+        args=[str_to_expr(x).cast(pl.String), t],
         changes_length=True,
     )
 
 
-def query_iv(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10, return_sum: bool = True) -> pl.Expr:
+def query_iv(
+    x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], n_bins: int = 10, return_sum: bool = True
+) -> pl.Expr:
     """
     Compute Information Value for x with respect to target. This assumes the variable x
     is continuous. A value of 1 is added to all events/non-events
@@ -1481,14 +1495,20 @@ def query_iv(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10, return_sum: bool
     ---------
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
+    if isinstance(target, (str, pl.Expr)):
+        t = str_to_expr(target)
+    else:
+        t = pl.Series(values=target)
     xx = str_to_expr(x)
     valid = xx.filter(xx.is_finite())
     brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
-    out = pl_plugin(lib=_lib, symbol="pl_iv", args=[brk, str_to_expr(target)], changes_length=True)
+    out = pl_plugin(lib=_lib, symbol="pl_iv", args=[brk, t], changes_length=True)
     return out.struct.field("iv").sum() if return_sum else out
 
 
-def query_iv_discrete(x: StrOrExpr, target: StrOrExpr, return_sum: bool = True) -> pl.Expr:
+def query_iv_discrete(
+    x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], return_sum: bool = True
+) -> pl.Expr:
     """
     Compute the Information Value for x with respect to target. This assumes x
     is discrete and castable to String. A value of 1 is added to all events/non-events
@@ -1508,8 +1528,12 @@ def query_iv_discrete(x: StrOrExpr, target: StrOrExpr, return_sum: bool = True) 
     ---------
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
+    if isinstance(target, (str, pl.Expr)):
+        t = str_to_expr(target)
+    else:
+        t = pl.Series(values=target)
     out = pl_plugin(
-        lib=_lib, symbol="pl_iv", args=[str_to_expr(x).cast(pl.String), target], changes_length=True
+        lib=_lib, symbol="pl_iv", args=[str_to_expr(x).cast(pl.String), t], changes_length=True
     )
     return out.struct.field("iv").sum() if return_sum else out
 
@@ -1743,7 +1767,10 @@ def rfft(series: StrOrExpr, n: Optional[int] = None, return_full: bool = False) 
 
 
 def target_encode(
-    s: StrOrExpr, target: StrOrExpr, min_samples_leaf: int = 20, smoothing: float = 10.0
+    s: StrOrExpr,
+    target: Union[StrOrExpr, Iterable[int]],
+    min_samples_leaf: int = 20,
+    smoothing: float = 10.0,
 ) -> pl.Expr:
     """
     Compute information necessary to target encode a string column.
@@ -1765,7 +1792,10 @@ def target_encode(
     ---------
     https://contrib.scikit-learn.org/category_encoders/targetencoder.html
     """
-    t = str_to_expr(target)
+    if isinstance(target, (str, pl.Expr)):
+        t = str_to_expr(target)
+    else:
+        t = pl.Series(values=target)
     return pl_plugin(
         lib=_lib,
         symbol="pl_target_encode",

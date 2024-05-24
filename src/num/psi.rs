@@ -120,7 +120,7 @@ fn pl_psi_discrete_report(inputs: &[Series]) -> PolarsResult<Series> {
             df2.lazy(),
             [col("actual_cat")],
             [col("baseline_cat")],
-            JoinArgs::new(JoinType::Outer { coalesce: false }),
+            JoinArgs::new(JoinType::Outer),
         )
         .with_columns([
             col("baseline_cnt").fill_null(0),

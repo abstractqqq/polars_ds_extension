@@ -65,6 +65,7 @@ class Pipeline:
     """
 
     name: str
+    target: Optional[str]
     feature_names_in_: List[str]
     feature_names_out_: List[str]
     transforms: List[FittedStep]
@@ -130,7 +131,6 @@ class Blueprint:
         self,
         df: PolarsFrame,
         name: str = "test",
-        lowercase: bool = False,
         target: Optional[str] = None,
         exclude: Optional[
             List[str]
@@ -145,8 +145,6 @@ class Blueprint:
             Either a lazy or an eager Polars dataframe
         name
             Name of the blueprint.
-        lowercase
-            Whether lowercase all column names at the beginning
         target
             Optionally indicate the target column in the ML pipeline. This will automatically prevent any transformation
             from changing the target column. (To be implemented: this should also automatically fill any transformation
@@ -157,14 +155,10 @@ class Blueprint:
             If this is the case and target is not set nor excluded, then the transformation may be applied to the target
             as well, which is not desired in most cases. Therefore, it is highly recommended you initialize with target name.
         """
-        if lowercase:
-            self._df: pl.LazyFrame = df.lazy().select(
-                pl.col(c).alias(c.lower()) for c in df.columns
-            )
-        else:
-            self._df: pl.LazyFrame = df.lazy()
 
+        self._df: pl.LazyFrame = df.lazy()
         self.name: str = str(name)
+        self.target = target
         self.feature_names_in_: list[str] = list(df.columns)
         self._steps: List[Step] = []
         self.exclude: List[str] = [] if target is None else [target]
@@ -511,6 +505,7 @@ class Blueprint:
 
         return Pipeline(
             name=self.name,
+            target=self.target,
             feature_names_in_=list(self.feature_names_in_),
             feature_names_out_=list(df_lazy.columns),
             transforms=transforms,
