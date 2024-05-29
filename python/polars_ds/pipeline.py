@@ -282,9 +282,9 @@ class Blueprint:
         self._steps.append(SelectStep(cols))
         return self
 
-    def remove(self, cols: IntoExprColumn) -> Self:
+    def drop(self, cols: IntoExprColumn) -> Self:
         """
-        Removes the columns from the dataset.
+        Drops the columns from the dataset.
 
         Paramters
         ---------
@@ -516,7 +516,6 @@ class Blueprint:
         if "target" in inspect.signature(func).parameters:  # func has "target" as input
             if "target" not in kwargs:  # if target is not explicitly given
                 keywords["target"] = self._get_target()
-                print("Hit")
 
         self._steps.append(
             FitStep(
