@@ -1,7 +1,7 @@
 from __future__ import annotations
 import polars as pl
 import math
-from .type_alias import Alternative, str_to_expr, StrOrExpr, CorrMethod
+from .type_alias import Alternative, str_to_expr, StrOrExpr, CorrMethod, Noise
 from typing import Optional, Union
 from polars.utils.udfs import _get_shared_lib_location
 from ._utils import pl_plugin
@@ -17,6 +17,8 @@ __all__ = [
     "query_chi2",
     "query_first_digit_cnt",
     "perturb",
+    "jitter",
+    "add_noise",
     "normal_test",
     "random",
     "random_null",
@@ -578,13 +580,13 @@ def query_chi2(var1: StrOrExpr, var2: StrOrExpr) -> pl.Expr:
     )
 
 
-def perturb(var: StrOrExpr, epsilon: float, positive: bool = False):
+def perturb(x: StrOrExpr, epsilon: float, positive: bool = False):
     """
     Perturb the var by a small amount. This only applies to float columns.
 
     Parameters
     ----------
-    var
+    x
         Either the name of the column or a Polars expression
     epsilon
         The small amount to perturb.
@@ -607,9 +609,60 @@ def perturb(var: StrOrExpr, epsilon: float, positive: bool = False):
     return pl_plugin(
         lib=_lib,
         symbol="pl_perturb",
-        args=[str_to_expr(var), lo, hi],
+        args=[str_to_expr(x), lo, hi],
         is_elementwise=True,
     )
+
+
+def jitter(x: StrOrExpr, std: Union[float, pl.Expr] = 1.0) -> pl.Expr:
+    """
+    Adds a Gaussian noise of N(0, std) to the column.
+
+    Parameters
+    ----------
+    x
+        Either the name of the column or a Polars expression
+    std
+        The std of the Gaussian noise.
+    """
+    if isinstance(std, float):
+        if std < 0:
+            raise ValueError("Standard deviation must be positive.")
+        elif std == 0:
+            return str_to_expr(x)
+
+        s = pl.lit(std, dtype=pl.Float64)
+    else:
+        s = std.cast(pl.Float64)
+
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_jitter",
+        args=[str_to_expr(x), s],
+        is_elementwise=True,
+    )
+
+
+def add_noise(x: StrOrExpr, noise_type: Noise = "gaussian", **kwargs) -> pl.Expr:
+    """
+    Adds some noise to the column.
+
+    Parameters
+    ----------
+    x
+        Either the name of the column or a Polars expression
+    noise_type
+        Either "gaussian" or "uniform"
+    kwargs
+        If noise_type = "gaussian", this accepts kwargs to "jitter" and if "uniform", this
+        accepts kwargs to "perturb".
+    """
+    if noise_type == "gaussian":
+        return jitter(x, **kwargs)
+    elif noise_type == "uniform":
+        return perturb(x, **kwargs)
+    else:
+        raise ValueError(f"The noise_type {noise_type} is not currently supported.")
 
 
 def normal_test(var: StrOrExpr) -> pl.Expr:

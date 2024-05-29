@@ -122,8 +122,8 @@ fn pl_knn_ptwise(
     } else {
         None
     };
-    
-    let data = build_knn_matrix_data(&inputs[inputs_offset+1..])?;
+
+    let data = build_knn_matrix_data(&inputs[inputs_offset + 1..])?;
     let nrows = data.nrows();
     let dim = data.ncols();
     let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
@@ -303,8 +303,7 @@ fn pl_knn_ptwise_w_dist(
         None
     };
 
-    
-    let data = build_knn_matrix_data(&inputs[inputs_offset+1..])?;
+    let data = build_knn_matrix_data(&inputs[inputs_offset + 1..])?;
     let nrows = data.nrows();
     let dim = data.ncols();
     let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
