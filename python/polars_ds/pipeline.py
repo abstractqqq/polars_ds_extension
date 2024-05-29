@@ -172,6 +172,16 @@ class Blueprint:
         out += f"Features Expected: {self.feature_names_in_}\n"
         return out
 
+    def _get_target(self, target: Optional[StrOrExpr] = None) -> StrOrExpr:
+        if target is None:
+            if self.target is None:
+                raise ValueError(
+                    "Target is not given and blueprint is not initialized with a target."
+                )
+            return self.target
+        else:
+            return target
+
     def reset_df(self, df: PolarsFrame) -> Self:
         """
         Resets the underlying dataset to learn from. This will keep all the existing
@@ -206,12 +216,14 @@ class Blueprint:
         return self
 
     def linear_impute(
-        self, features: IntoExprColumn, target: StrOrExpr, add_bias: bool = False
+        self, features: IntoExprColumn, target: Optional[StrOrExpr] = None, add_bias: bool = False
     ) -> Self:
         """ """
         self._steps.append(
             FitStep(
-                partial(t.linear_impute, target=target, add_bias=add_bias), features, self.exclude
+                partial(t.linear_impute, target=self._get_target(target), add_bias=add_bias),
+                features,
+                self.exclude,
             )
         )
         return self
@@ -270,9 +282,9 @@ class Blueprint:
         self._steps.append(SelectStep(cols))
         return self
 
-    def remove(self, cols: IntoExprColumn) -> Self:
+    def drop(self, cols: IntoExprColumn) -> Self:
         """
-        Removes the columns from the dataset.
+        Drops the columns from the dataset.
 
         Paramters
         ---------
@@ -334,7 +346,7 @@ class Blueprint:
         self,
         cols: IntoExprColumn,
         /,
-        target: StrOrExpr,
+        target: Optional[StrOrExpr] = None,
         min_samples_leaf: int = 20,
         smoothing: float = 10.0,
         default: Optional[float] = None,
@@ -366,7 +378,7 @@ class Blueprint:
             FitStep(
                 partial(
                     t.target_encode,
-                    target=target,
+                    target=self._get_target(target),
                     min_samples_leaf=min_samples_leaf,
                     smoothing=smoothing,
                     default=default,
@@ -381,7 +393,7 @@ class Blueprint:
         self,
         cols: IntoExprColumn,
         /,
-        target: StrOrExpr,
+        target: Optional[StrOrExpr] = None,
         default: Optional[float] = None,
     ) -> Self:
         """
@@ -409,7 +421,7 @@ class Blueprint:
             FitStep(
                 partial(
                     t.woe_encode,
-                    target=target,
+                    target=self._get_target(target),
                     default=default,
                 ),
                 cols,
@@ -422,7 +434,7 @@ class Blueprint:
         self,
         cols: IntoExprColumn,
         /,
-        target: StrOrExpr,
+        target: Optional[StrOrExpr] = None,
         default: Optional[float] = None,
     ) -> Self:
         """
@@ -450,7 +462,7 @@ class Blueprint:
             FitStep(
                 partial(
                     t.iv_encode,
-                    target=target,
+                    target=self._get_target(target),
                     default=default,
                 ),
                 cols,
@@ -498,9 +510,16 @@ class Blueprint:
         **kwargs
             Any other arguments to func must be passed as kwargs
         """
+        import inspect
+
+        keywords = kwargs.copy()
+        if "target" in inspect.signature(func).parameters:  # func has "target" as input
+            if "target" not in kwargs:  # if target is not explicitly given
+                keywords["target"] = self._get_target()
+
         self._steps.append(
             FitStep(
-                partial(func, **kwargs),
+                partial(func, **keywords),
                 cols,
                 self.exclude,
             )
