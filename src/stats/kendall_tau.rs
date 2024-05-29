@@ -12,8 +12,7 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
         .filter(col("x").is_not_null().and(col("y").is_not_null()))
         .sort(["x", "y"], Default::default())
         .collect()?;
-    let df = binding
-        .align_chunks();
+    let df = binding.align_chunks();
 
     let n = df.height();
     if n <= 1 {

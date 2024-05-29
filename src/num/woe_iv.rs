@@ -19,7 +19,6 @@ fn iv_output(_: &[Field]) -> PolarsResult<Field> {
 /// Inputs[0] by default is the discrete bins / categories (cast to String at Python side)
 /// Inputs[1] by default is the target (0s and 1s)
 fn get_woe_frame(discrete_col: &Series, target: &Series) -> PolarsResult<LazyFrame> {
-
     let df = df!(
         "value" => discrete_col,
         "target" => target,

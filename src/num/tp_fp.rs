@@ -89,10 +89,8 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     let threshold = inputs[2].f64()?;
     let threshold = threshold.get(0).unwrap_or(0.5);
 
-    let mut binding = tp_fp_frame(predicted, actual, true)?
-        .collect()?;
-    let frame = binding
-        .align_chunks();
+    let mut binding = tp_fp_frame(predicted, actual, true)?.collect()?;
+    let frame = binding.align_chunks();
 
     let tpr = frame.drop_in_place("tpr").unwrap();
     let fpr = frame.drop_in_place("fpr").unwrap();

@@ -324,7 +324,8 @@ fn pl_jitter(inputs: &[Series]) -> PolarsResult<Series> {
             let std_ = std_ as f32;
             let mut rng = rand::thread_rng();
             let ca = reference.f32().unwrap();
-            let out:Float32Chunked = if std_ == 1.0 { // Avoid extra multiplication 
+            let out: Float32Chunked = if std_ == 1.0 {
+                // Avoid extra multiplication
                 ca.apply_values_generic(|x| x + rng.sample::<f32, _>(StandardNormal))
             } else {
                 ca.apply_values_generic(|x| x + std_ * rng.sample::<f32, _>(StandardNormal))
@@ -334,7 +335,7 @@ fn pl_jitter(inputs: &[Series]) -> PolarsResult<Series> {
         DataType::Float64 => {
             let mut rng = rand::thread_rng();
             let ca = reference.f64().unwrap();
-            let out:Float64Chunked = if std_ == 1.0 {
+            let out: Float64Chunked = if std_ == 1.0 {
                 ca.apply_values_generic(|x| x + rng.sample::<f64, _>(StandardNormal))
             } else {
                 ca.apply_values_generic(|x| x + std_ * rng.sample::<f64, _>(StandardNormal))
