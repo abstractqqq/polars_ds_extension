@@ -1,5 +1,4 @@
 /// OLS using Faer.
-use faer::solvers::SolverCore;
 use faer::{prelude::*, Side};
 use faer_ext::IntoFaer;
 // use faer_ext::IntoFaer;
