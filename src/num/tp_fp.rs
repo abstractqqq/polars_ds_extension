@@ -129,7 +129,7 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     // Precision & Recall & F
     let recall = y[index];
     let precision = precision[index];
-    let f: f64 = (precision * recall) / (precision + recall);
+    let f: f64 = 2.0 * (precision * recall) / (precision + recall);
     let recall: Series = Series::from_vec("recall", vec![recall]);
     let precision: Series = Series::from_vec("precision", vec![precision]);
     let f: Series = Series::from_vec("f", vec![f]);
