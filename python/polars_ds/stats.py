@@ -16,6 +16,8 @@ __all__ = [
     "query_f_test",
     "query_chi2",
     "query_first_digit_cnt",
+    "query_c3_stats",
+    "query_cid_ce",
     "perturb",
     "jitter",
     "add_noise",
@@ -578,6 +580,52 @@ def query_chi2(var1: StrOrExpr, var2: StrOrExpr) -> pl.Expr:
         args=[str_to_expr(var1), str_to_expr(var2)],
         returns_scalar=True,
     )
+
+
+def query_c3_stats(x: StrOrExpr, lag: int) -> pl.Expr:
+    """
+    Measure of non-linearity in the time series using c3 statistics.
+
+    Parameters
+    ----------
+    x : pl.Expr
+        Either the name of the column or a Polars expression
+    lag : int
+        The lag that should be used in the calculation of the feature.
+
+    Reference
+    ---------
+    https://arxiv.org/pdf/chao-dyn/9909043
+    """
+    two_lags = 2 * lag
+    xx = str_to_expr(x)
+    return ((xx.mul(xx.shift(lag)).mul(xx.shift(two_lags))).sum()).truediv(xx.len() - two_lags)
+
+
+def query_cid_ce(x: StrOrExpr, normalize: bool = False) -> pl.Expr:
+    """
+    Estimates the time series complexity.
+
+    Parameters
+    ----------
+    x : pl.Expr
+        Either the name of the column or a Polars expression
+    normalize : bool, optional
+        If True, z-normalizes the time-series before computing the feature.
+        Default is False.
+
+    Reference
+    ---------
+    https://www.cs.ucr.edu/~eamonn/Complexity-Invariant%20Distance%20Measure.pdf
+    """
+    xx = str_to_expr(x)
+    if normalize:
+        y = (xx - xx.mean()) / xx.std()
+    else:
+        y = xx
+
+    z = y - y.shift(-1)
+    return z.dot(z).sqrt()
 
 
 def perturb(x: StrOrExpr, epsilon: float, positive: bool = False):

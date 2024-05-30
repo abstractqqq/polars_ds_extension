@@ -69,6 +69,8 @@ class Pipeline:
     feature_names_in_: List[str]
     feature_names_out_: List[str]
     transforms: List[FittedStep]
+    ensure_features_in: bool = False
+    ensure_features_out: bool = True
 
     def __str__(self) -> str:
         return self.transforms.__str__()
@@ -103,6 +105,24 @@ class Pipeline:
 
         return plan
 
+    def ensure_features_io(self, ensure_in: bool = True, ensure_out: bool = True) -> Self:
+        """
+        Whether or not this pipeline should check the features coming in and out during transform.
+
+        Parameters
+        ----------
+        ensure_in
+            If true, the input df (during transform) must have the exact same features
+            as when this pipeline was fitted (blueprint.materialize()). Setting this false means the input may
+            have additional columns, and so this adds flexibility in the pipeline.
+        ensure_out
+            If true, only the output features during blueprint.materialize() will be kept at the end of the
+            pipeline.
+        """
+        self.ensure_features_in = ensure_in
+        self.ensure_features_out = ensure_out
+        return self
+
     def transform(self, df: PolarsFrame, return_lazy: bool = False) -> PolarsFrame:
         """
         Transforms the df using the learned expressions.
@@ -115,7 +135,17 @@ class Pipeline:
         return_lazy
             If true, return the lazy plan for the transformations
         """
+        if self.ensure_features_in:
+            extras = [c for c in df.columns if c not in self.feature_names_in_]
+            missing = [c for c in self.feature_names_in_ if c not in df.columns]
+            if len(extras) > 0 or len(missing):
+                raise ValueError(
+                    f"Input df doesn't have the features expected. Extra columns: {extras}. Missing columns: {missing}"
+                )
+
         plan = self._generate_lazy_plan(df)
+        if self.ensure_features_out:
+            plan = plan.select(self.feature_names_out_)
         return plan if return_lazy else plan.collect()  # Add config here if streaming is needed
 
 
@@ -132,9 +162,7 @@ class Blueprint:
         df: PolarsFrame,
         name: str = "test",
         target: Optional[str] = None,
-        exclude: Optional[
-            List[str]
-        ] = None,  # Exclude all these columns from any transformation that requires a fit
+        exclude: Optional[List[str]] = None,
     ):
         """
         Creates a blueprint object.
@@ -305,7 +333,7 @@ class Blueprint:
         """
         old = list(rename_dict.keys())
         self._steps.append(WithColumnsStep([pl.col(k).alias(v) for k, v in rename_dict.items()]))
-        return self.remove(old)
+        return self.drop(old)
 
     def lowercase(self) -> Self:
         """
@@ -340,7 +368,7 @@ class Blueprint:
                 self.exclude,
             )
         )
-        return self.remove(cols)
+        return self.drop(cols)
 
     def target_encode(
         self,
