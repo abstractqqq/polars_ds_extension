@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 import polars as pl
-from .type_alias import ROCAUCStrategy, str_to_expr, StrOrExpr
 from polars.utils.udfs import _get_shared_lib_location
+
 from ._utils import pl_plugin
+from .type_alias import ROCAUCStrategy, StrOrExpr, str_to_expr
 
 _lib = _get_shared_lib_location(__file__)
 
@@ -331,6 +333,87 @@ def query_gini(actual: StrOrExpr, pred: StrOrExpr) -> pl.Expr:
         An expression represeting the column with predicted probability.
     """
     return query_roc_auc(actual, pred) * 2.0 - 1.0
+
+
+def query_confusion_matrix(
+    actual: StrOrExpr,
+    pred: StrOrExpr,
+    threshold: float = 0.5,
+    all_metrics: bool = False,
+) -> pl.Expr:
+    """Computes the binary confusion matrix given the true labels (`actual`) and
+    the predicted labels (computed from `pred`, a column of predicted scores and
+    `threshold`). When a divide by zero is encountered, NaN is returned.
+
+    Parameters
+    ----------
+    actual : StrOrExpr
+        An expression representing the actual labels. Must be castable to boolean
+    pred : StrOrExpr
+        An expression representing the column with predicted probability
+    threshold : float, optional
+        The threshold used to compute the predicted labels, by default 0.5
+    all_metrics : bool, optional
+        If True, compute all 25 possible confusion matrix statistics instead of
+        just True Positive, False Positive, True Negative, False Negative,
+        by default False
+
+    Returns
+    -------
+    pl.Expr
+        A struct of confusion matrix metrics
+
+    Examples
+    --------
+    Limited to just the basic confusion matrix
+
+    >>> df = pl.DataFrame({"actual": [True, False, True], "pred": [0.4, 0.6, 0.9]})
+    >>> df.select(pds.query_confusion_matrix("actual", "pred").alias("metrics")).unnest(
+    ...    "metrics"
+    ... )
+    shape: (1, 4)
+    ┌─────┬─────┬─────┬─────┐
+    │ tn  ┆ fp  ┆ fn  ┆ tp  │
+    │ --- ┆ --- ┆ --- ┆ --- │
+    │ u32 ┆ u32 ┆ u32 ┆ u32 │
+    ╞═════╪═════╪═════╪═════╡
+    │ 0   ┆ 1   ┆ 1   ┆ 1   │
+    └─────┴─────┴─────┴─────┘
+
+    With `all_metrics` set to True
+
+    >>> df.select(
+    ...     pds.query_confusion_matrix("actual", "pred", all_metrics=True).alias("metrics")
+    ... ).unnest("metrics")
+    shape: (1, 25)
+    ┌─────┬─────┬─────┬─────┬───┬────────────┬─────┬─────┬─────┐
+    │ tn  ┆ fp  ┆ fn  ┆ tp  ┆ … ┆ markedness ┆ fdr ┆ npv ┆ dor │
+    │ --- ┆ --- ┆ --- ┆ --- ┆   ┆ ---        ┆ --- ┆ --- ┆ --- │
+    │ u32 ┆ u32 ┆ u32 ┆ u32 ┆   ┆ f64        ┆ f64 ┆ f64 ┆ f64 │
+    ╞═════╪═════╪═════╪═════╪═══╪════════════╪═════╪═════╪═════╡
+    │ 0   ┆ 1   ┆ 1   ┆ 1   ┆ … ┆ -0.5       ┆ 0.5 ┆ 0.0 ┆ NaN │
+    └─────┴─────┴─────┴─────┴───┴────────────┴─────┴─────┴─────┘
+    """
+    if all_metrics:
+        return pl_plugin(
+            lib=_lib,
+            symbol="pl_binary_confusion_matrix_full",
+            args=[
+                str_to_expr(actual).cast(pl.Boolean),
+                str_to_expr(pred).gt(threshold),
+            ],
+            returns_scalar=True,
+        )
+    else:
+        return pl_plugin(
+            lib=_lib,
+            symbol="pl_binary_confusion_matrix",
+            args=[
+                str_to_expr(actual).cast(pl.Boolean),
+                str_to_expr(pred).gt(threshold),
+            ],
+            returns_scalar=True,
+        )
 
 
 def query_binary_metrics(actual: StrOrExpr, pred: StrOrExpr, threshold: float = 0.5) -> pl.Expr:
