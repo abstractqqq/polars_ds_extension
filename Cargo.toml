@@ -1,6 +1,6 @@
 [package]
 name = "polars_ds"
-version = "0.4.3"
+version = "0.4.6"
 edition = "2021"
 
 [lib]
@@ -11,12 +11,12 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = {version = "*", features = ["abi3-py38", "extension-module"]}
-pyo3-polars = {version = "0.13", features = ["derive"]}
-polars = {version = "0.39", features = ["performant", "lazy", "parquet", "dtype-array", "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", "cum_agg", "nightly"]}
+pyo3-polars = {version = "0.14", features = ["derive"]}
+polars = {version = "0.40", features = ["performant", "lazy", "parquet", "dtype-array", "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", "cum_agg", "round_series", "nightly"]}
 num = "0.4.1"
-faer = {version = "0.18.2", features = ["nightly"]}
-faer-ext = {version = "0.1.0", features = ["ndarray"]}
-pulp = {version="0.18.9", features=["nightly"]} # One of Fear's dependency
+faer = {version = "0.19", features = ["nightly"]}
+faer-ext = {version = "0.2.0", features = ["ndarray"]}
+pulp = {version="0.18", features=["nightly"]} # One of Fear's dependency
 serde = {version = "*", features=["derive"]}
 ndarray = {version="0.15.6"}
 hashbrown = {version = "0.14.2", features=["nightly"]}

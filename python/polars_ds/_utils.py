@@ -1,12 +1,12 @@
 import polars as pl
-from typing import Any, Optional, List, Dict
+from typing import Any, Optional, List, Dict, Union
 
 
 def pl_plugin(
     *,
     lib: str,
     symbol: str,
-    args: List[pl.Expr],
+    args: List[Union[pl.Series, pl.Expr]],
     kwargs: Optional[Dict[str, Any]] = None,
     is_elementwise: bool = False,
     returns_scalar: bool = False,

@@ -7,12 +7,12 @@ use pyo3_polars::derive::polars_expr;
 #[polars_expr(output_type=Float64)]
 pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
     let name = inputs[0].name();
-    let mut df = df!("x" => &inputs[0], "y" => &inputs[1])?
+    let mut binding = df!("x" => &inputs[0], "y" => &inputs[1])?
         .lazy()
         .filter(col("x").is_not_null().and(col("y").is_not_null()))
         .sort(["x", "y"], Default::default())
-        .collect()?
-        .agg_chunks();
+        .collect()?;
+    let df = binding.align_chunks();
 
     let n = df.height();
     if n <= 1 {

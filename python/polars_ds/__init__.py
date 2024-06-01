@@ -1,21 +1,21 @@
 import polars as pl
 import logging
-from typing import Optional, Union
-from .type_alias import str_to_expr
+from typing import Optional
+from .type_alias import str_to_expr, StrOrExpr
 
 from polars_ds.num import *  # noqa: F403
 from polars_ds.graph import *  # noqa: F403
 from polars_ds.metrics import *  # noqa: F403
 from polars_ds.stats import *  # noqa: F403
 from polars_ds.complex import ComplexExt  # noqa: E402, F401
-from polars_ds.str2 import *  # noqa: F403
+from polars_ds.string import *  # noqa: F403
 
 logging.basicConfig(level=logging.INFO)
 
-__version__ = "0.4.3"
+__version__ = "0.4.6"
 
 
-def l_inf_horizontal(*v: Union[str, pl.Expr], normalize: bool = False) -> pl.Expr:
+def l_inf_horizontal(*v: StrOrExpr, normalize: bool = False) -> pl.Expr:
     """
     Horizontally L inf norm. Shorthand for pl.max_horizontal(pl.col(x).abs() for x in exprs).
 
@@ -33,7 +33,7 @@ def l_inf_horizontal(*v: Union[str, pl.Expr], normalize: bool = False) -> pl.Exp
         return pl.max_horizontal(str_to_expr(x).abs() for x in v)
 
 
-def l2_sq_horizontal(*v: Union[str, pl.Expr], normalize: bool = False) -> pl.Expr:
+def l2_sq_horizontal(*v: StrOrExpr, normalize: bool = False) -> pl.Expr:
     """
     Horizontally computes L2 norm squared. Shorthand for pl.sum_horizontal(pl.col(x).pow(2) for x in exprs).
 
@@ -51,7 +51,7 @@ def l2_sq_horizontal(*v: Union[str, pl.Expr], normalize: bool = False) -> pl.Exp
         return pl.sum_horizontal(str_to_expr(x).pow(2) for x in v)
 
 
-def l1_horizontal(*v: Union[str, pl.Expr], normalize: bool = False) -> pl.Expr:
+def l1_horizontal(*v: StrOrExpr, normalize: bool = False) -> pl.Expr:
     """
     Horizontally computes L1 norm. Shorthand for pl.sum_horizontal(pl.col(x).abs() for x in exprs).
 

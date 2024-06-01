@@ -10,7 +10,7 @@ The goal of the project is to **reduce dependencies**, **improve code organizati
 
 1. Well-known numerical transform/quantities. E.g. fft, conditional entropy, singular values, basic linear regression related quantities, population stability index, weight of evidence, column-wise/row-wise jaccard similarity etc.
 
-2. Statistics. Basic tests such as the t-test, f-test, KS statistics. Miscallaneous functions like weighted correlation, Xi-correlation. In-dataframe random column generations, etc. 
+2. Statistics. Basic tests such as the t-test, f-test, KS statistics. Miscallaneous functions like weighted correlation, Xi-correlation. In-dataframe random column generations, etc.
 
 3. Metrics. ML metrics for common model performance reporting. E.g ROC AUC for binary/multiclass classification, logloss, r2, MAPE, etc.
 
@@ -18,11 +18,11 @@ The goal of the project is to **reduce dependencies**, **improve code organizati
 
 5. String metrics such as Levenshtein distance, Damure Levenshtein distance, other string distances, snowball stemming (English only), string Jaccard similarity, etc.
 
-6. Diagnosis. This modules contains the DIA (Data Inspection Assitant) class, which can help you profile your data, visualize data in lower dimensions, detect functional dependencies, detect other common data quality issues like null rate or high correlation.
+6. Diagnosis. This modules contains the DIA (Data Inspection Assitant) class, which can help you profile your data, visualize data in lower dimensions, detect functional dependencies, detect other common data quality issues like null rate or high correlation. (Need plotly, great_tables, graphviz as optional dependencies.)
 
 7. Sample. Traditional dataset sampling. No time series sampling yet. This module provides functionalities such as stratified downsample, volume neutral random sampling, etc.
 
-8. Polars Native ML Pipeline. Planned but not started yet. The goal is to have a Polars native pipeline that can replace Scikit-learn's pipeline and provides all the benefits of Polars. All the basic transforms in Scikit-leran, categorical-encoders are planned. This can be super powerful together with Polars's expressions. (Basically, once you have expressions, you don't need to write custom transforms like col(A)/col(B), log transform, sqrt transform, linear/polynomial transforms, etc.)
+8. Polars Native ML Pipeline. See examples [here](./examples/pipeline.ipynb). The goal is to have a Polars native pipeline that can replace Scikit-learn's pipeline and provides all the benefits of Polars. All the basic transforms in Scikit-learn and categorical-encoders are planned. This can be super powerful together with Polars's expressions. (Basically, once you have expressions, you don't need to write custom transforms like col(A)/col(B), log transform, sqrt transform, linear/polynomial transforms, etc.) Polar's expressions also offer JSON serialization in higher versions so this can also be desirable for use in the cloud. (This part is under active development.)
 
 Some other areas that currently exist, but is de-prioritized:
 
@@ -32,7 +32,7 @@ Some other areas that currently exist, but is de-prioritized:
 
 # But why? Why not use Sklearn? SciPy? NumPy?
 
-The goal of the package is to **facilitate** data processes and analysis that go beyond standard SQL queries, and to **reduce** the number of dependencies in your project. It incorproates parts of SciPy, NumPy, Scikit-learn, and NLP (NLTK), etc., and treats them as Polars queries so that they can be run in parallel, in group_by contexts, all for almost no extra engineering effort. 
+The goal of the package is to **facilitate** data processes and analysis that go beyond standard SQL queries, and to **reduce** the number of dependencies in your project. It incorproates parts of SciPy, NumPy, Scikit-learn, and NLP (NLTK), etc., and treats them as Polars queries so that they can be run in parallel, in group_by contexts, all for almost no extra engineering effort.
 
 Let's see an example. Say we want to generate a model performance report. In our data, we have segments. We are not only interested in the ROC AUC of our model on the entire dataset, but we are also interested in the model's performance on different segments.
 
@@ -49,7 +49,7 @@ df = pl.DataFrame({
     , "y": range(-size, 0)
     , "actual": np.round(np.random.random(size=size)).astype(np.int32)
     , "predicted": np.random.random(size=size)
-    , "segments":["a"] * (size//2 + 100) + ["b"] * (size//2 - 100) 
+    , "segments":["a"] * (size//2 + 100) + ["b"] * (size//2 - 100)
 })
 print(df.head())
 
@@ -69,7 +69,7 @@ shape: (5, 8)
 
 Traditionally, using the Pandas + Sklearn stack, we would do:
 
-```
+```python
 import pandas as pd
 from sklearn.metrics import roc_auc_score
 
@@ -97,7 +97,7 @@ print(report)
 
 This is ok, but not great, because (1) we are running for loops in Python, which tends to be slow. (2) We are writing more Python code, which leaves more room for errors in bigger projects. (3) The code is not very intuitive for beginners. Using Polars + Polars ds, one can do the following:
 
-```
+```python
 df.lazy().group_by("segments").agg(
     pds.query_roc_auc("actual", "predicted").alias("roc_auc"),
     pds.query_log_loss("actual", "predicted").alias("log_loss"),
@@ -142,7 +142,7 @@ See this for Native Polars DataFrame Explorative tools: [notebook](./examples/di
 
 **Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars and will try to be as stable as possible for polars>=0.20.6. Exceptions will be made when Polars's update forces changes in the plugins.**
 
-This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. 
+This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed.
 
 The recommended usage will be for datasets of size 1k to 2-3mm rows, but actual performance will vary depending on dataset and hardware. Performance will only be a priority for datasets that fit in memory. It is a known fact that knn performance suffers greatly with a large k. Str-knn and Graph queries are only suitable for smaller data, of size ~1-5k for common computers.
 

@@ -281,6 +281,8 @@ fn pl_rand_uniform_w_ref(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResul
     }
 }
 
+// Perturb and Jitter respect float type. Unlike others which default to f64
+
 #[polars_expr(output_type_func=float_output)]
 fn pl_perturb(inputs: &[Series]) -> PolarsResult<Series> {
     let reference = &inputs[0];
@@ -303,6 +305,41 @@ fn pl_perturb(inputs: &[Series]) -> PolarsResult<Series> {
             let ca = reference.f64().unwrap();
             // Have to use _generic here to avoid the Copy trait
             let out: Float64Chunked = ca.apply_values_generic(|x| x + dist.sample(&mut rng));
+            Ok(out.into_series())
+        }
+        _ => Err(PolarsError::ComputeError(
+            "Input column must be floats.".into(),
+        )),
+    }
+}
+
+#[polars_expr(output_type_func=float_output)]
+fn pl_jitter(inputs: &[Series]) -> PolarsResult<Series> {
+    let reference = &inputs[0];
+    let std_ = inputs[1].f64()?;
+    let std_ = std_.get(0).unwrap();
+
+    match reference.dtype() {
+        DataType::Float32 => {
+            let std_ = std_ as f32;
+            let mut rng = rand::thread_rng();
+            let ca = reference.f32().unwrap();
+            let out: Float32Chunked = if std_ == 1.0 {
+                // Avoid extra multiplication
+                ca.apply_values_generic(|x| x + rng.sample::<f32, _>(StandardNormal))
+            } else {
+                ca.apply_values_generic(|x| x + std_ * rng.sample::<f32, _>(StandardNormal))
+            };
+            Ok(out.into_series())
+        }
+        DataType::Float64 => {
+            let mut rng = rand::thread_rng();
+            let ca = reference.f64().unwrap();
+            let out: Float64Chunked = if std_ == 1.0 {
+                ca.apply_values_generic(|x| x + rng.sample::<f64, _>(StandardNormal))
+            } else {
+                ca.apply_values_generic(|x| x + std_ * rng.sample::<f64, _>(StandardNormal))
+            };
             Ok(out.into_series())
         }
         _ => Err(PolarsError::ComputeError(

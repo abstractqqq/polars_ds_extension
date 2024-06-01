@@ -1,5 +1,4 @@
 /// OLS using Faer.
-use faer::solvers::SolverCore;
 use faer::{prelude::*, Side};
 use faer_ext::IntoFaer;
 // use faer_ext::IntoFaer;
@@ -156,9 +155,9 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
                 let mut r_builder: PrimitiveChunkedBuilder<Float64Type> =
                     PrimitiveChunkedBuilder::new("resid", mask.len());
                 let mut i: usize = 0;
-                for mm in mask.into_iter() {
+                for mm in mask.into_no_null_iter() {
                     // mask is always non-null, mm = true means is not null
-                    if mm.unwrap() {
+                    if mm {
                         p_builder.append_value(pred[i]);
                         r_builder.append_value(resid[i]);
                         i += 1;

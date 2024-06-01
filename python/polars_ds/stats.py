@@ -1,12 +1,48 @@
 from __future__ import annotations
 import polars as pl
 import math
-from .type_alias import Alternative, str_to_expr, StrOrExpr, CorrMethod
+from .type_alias import Alternative, str_to_expr, StrOrExpr, CorrMethod, Noise
 from typing import Optional, Union
 from polars.utils.udfs import _get_shared_lib_location
 from ._utils import pl_plugin
 
 _lib = _get_shared_lib_location(__file__)
+
+__all__ = [
+    "query_ttest_ind",
+    "query_ttest_1samp",
+    "query_ttest_ind_from_stats",
+    "query_ks_2samp",
+    "query_f_test",
+    "query_chi2",
+    "query_first_digit_cnt",
+    "query_c3_stats",
+    "query_cid_ce",
+    "perturb",
+    "jitter",
+    "add_noise",
+    "normal_test",
+    "random",
+    "random_null",
+    "random_int",
+    "random_str",
+    "random_binomial",
+    "random_exp",
+    "random_normal",
+    "hmean",
+    "gmean",
+    "weighted_gmean",
+    "weighted_mean",
+    "weighted_var",
+    "weighted_cov",
+    "weighted_corr",
+    "cosine_sim",
+    "weighted_cosine_sim",
+    "xi_corr",
+    "kendall_tau",
+    "corr",
+    "StatsExt",
+]
 
 
 @pl.api.register_expr_namespace("stats")
@@ -276,6 +312,29 @@ class StatsExt:
 # -------------------------------------------------------------------------------------------------------
 
 
+def query_first_digit_cnt(var: StrOrExpr) -> pl.Expr:
+    """
+    Finds the first digit count in the data. This is closely related to Benford's law,
+    which states that the the first digits (1-9) follow a certain distribution.
+
+    The output is a single element column of type list[u32]. The first value represents the count of 1s
+    that are the first digit, the second value represents the count of 2s that are the first digit, etc.
+
+    E.g. first digit of 12 is 1, of 0.0312 is 3. For integers, it is possible to have value = 0, and this
+    will not be counted as a first digit.
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Benford%27s_law
+    """
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_benford_law",
+        args=[str_to_expr(var)],
+        returns_scalar=True,
+    )
+
+
 def query_ttest_ind(
     var1: StrOrExpr,
     var2: StrOrExpr,
@@ -523,13 +582,59 @@ def query_chi2(var1: StrOrExpr, var2: StrOrExpr) -> pl.Expr:
     )
 
 
-def perturb(var: StrOrExpr, epsilon: float, positive: bool = False):
+def query_c3_stats(x: StrOrExpr, lag: int) -> pl.Expr:
+    """
+    Measure of non-linearity in the time series using c3 statistics.
+
+    Parameters
+    ----------
+    x : pl.Expr
+        Either the name of the column or a Polars expression
+    lag : int
+        The lag that should be used in the calculation of the feature.
+
+    Reference
+    ---------
+    https://arxiv.org/pdf/chao-dyn/9909043
+    """
+    two_lags = 2 * lag
+    xx = str_to_expr(x)
+    return ((xx.mul(xx.shift(lag)).mul(xx.shift(two_lags))).sum()).truediv(xx.len() - two_lags)
+
+
+def query_cid_ce(x: StrOrExpr, normalize: bool = False) -> pl.Expr:
+    """
+    Estimates the time series complexity.
+
+    Parameters
+    ----------
+    x : pl.Expr
+        Either the name of the column or a Polars expression
+    normalize : bool, optional
+        If True, z-normalizes the time-series before computing the feature.
+        Default is False.
+
+    Reference
+    ---------
+    https://www.cs.ucr.edu/~eamonn/Complexity-Invariant%20Distance%20Measure.pdf
+    """
+    xx = str_to_expr(x)
+    if normalize:
+        y = (xx - xx.mean()) / xx.std()
+    else:
+        y = xx
+
+    z = y - y.shift(-1)
+    return z.dot(z).sqrt()
+
+
+def perturb(x: StrOrExpr, epsilon: float, positive: bool = False):
     """
     Perturb the var by a small amount. This only applies to float columns.
 
     Parameters
     ----------
-    var
+    x
         Either the name of the column or a Polars expression
     epsilon
         The small amount to perturb.
@@ -552,9 +657,60 @@ def perturb(var: StrOrExpr, epsilon: float, positive: bool = False):
     return pl_plugin(
         lib=_lib,
         symbol="pl_perturb",
-        args=[str_to_expr(var), lo, hi],
+        args=[str_to_expr(x), lo, hi],
         is_elementwise=True,
     )
+
+
+def jitter(x: StrOrExpr, std: Union[float, pl.Expr] = 1.0) -> pl.Expr:
+    """
+    Adds a Gaussian noise of N(0, std) to the column.
+
+    Parameters
+    ----------
+    x
+        Either the name of the column or a Polars expression
+    std
+        The std of the Gaussian noise.
+    """
+    if isinstance(std, float):
+        if std < 0:
+            raise ValueError("Standard deviation must be positive.")
+        elif std == 0:
+            return str_to_expr(x)
+
+        s = pl.lit(std, dtype=pl.Float64)
+    else:
+        s = std.cast(pl.Float64)
+
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_jitter",
+        args=[str_to_expr(x), s],
+        is_elementwise=True,
+    )
+
+
+def add_noise(x: StrOrExpr, noise_type: Noise = "gaussian", **kwargs) -> pl.Expr:
+    """
+    Adds some noise to the column.
+
+    Parameters
+    ----------
+    x
+        Either the name of the column or a Polars expression
+    noise_type
+        Either "gaussian" or "uniform"
+    kwargs
+        If noise_type = "gaussian", this accepts kwargs to "jitter" and if "uniform", this
+        accepts kwargs to "perturb".
+    """
+    if noise_type == "gaussian":
+        return jitter(x, **kwargs)
+    elif noise_type == "uniform":
+        return perturb(x, **kwargs)
+    else:
+        raise ValueError(f"The noise_type {noise_type} is not currently supported.")
 
 
 def normal_test(var: StrOrExpr) -> pl.Expr:

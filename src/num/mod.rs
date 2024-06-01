@@ -2,6 +2,7 @@ use kdtree::distance::squared_euclidean;
 use num::Float;
 use polars::error::{PolarsError, PolarsResult};
 
+mod benford;
 mod cond_entropy;
 mod convolve;
 mod entrophies;
@@ -33,7 +34,7 @@ pub fn l_inf_dist<T: Float>(a: &[T], b: &[T]) -> T {
         .fold(T::zero(), |acc, (x, y)| acc.max((*x - *y).abs()))
 }
 
-/// L2 distance, with square root. Most of the times, this is not needed
+// L2 distance, with square root. Most of the times, this is not needed
 #[inline]
 pub fn l2_dist<T: Float>(a: &[T], b: &[T]) -> T {
     debug_assert_eq!(a.len(), b.len());

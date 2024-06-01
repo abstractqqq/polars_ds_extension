@@ -9,3 +9,5 @@ pandas
 pytest
 pytest-benchmark
 xicor
+category_encoders
+copent

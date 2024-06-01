@@ -38,7 +38,7 @@ fn pl_singular_values(inputs: &[Series]) -> PolarsResult<Series> {
     let mat = mat.view().into_faer();
 
     let dim = Ord::min(mat.nrows(), mat.ncols());
-    let mut s = Mat::<f64>::zeros(dim, 1);
+    let mut s = Col::zeros(dim);
     let parallelism = faer::Parallelism::Rayon(0); // use current num threads
     let params = Default::default();
     faer::linalg::svd::compute_svd(
@@ -64,7 +64,7 @@ fn pl_singular_values(inputs: &[Series]) -> PolarsResult<Series> {
     let mut list_builder: ListPrimitiveChunkedBuilder<Float64Type> =
         ListPrimitiveChunkedBuilder::new("singular_values", 1, dim, DataType::Float64);
 
-    list_builder.append_slice(s.col_as_slice(0));
+    list_builder.append_slice(s.as_slice());
     let out = list_builder.finish();
     Ok(out.into_series())
 }
@@ -78,7 +78,7 @@ fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
     let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
     let mat = mat.view().into_faer();
     let dim = Ord::min(mat.nrows(), mat.ncols());
-    let mut s = Mat::<f64>::zeros(dim, 1);
+    let mut s = Col::zeros(dim);
     let mut v = Mat::<f64>::zeros(dim, dim);
     let parallelism = faer::Parallelism::Rayon(0); // use current num threads
     let params = Default::default();
@@ -122,7 +122,7 @@ fn pl_pca(inputs: &[Series]) -> PolarsResult<Series> {
     let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
     let mat = mat.view().into_faer();
     let dim = Ord::min(mat.nrows(), mat.ncols());
-    let mut s = Mat::<f64>::zeros(dim, 1);
+    let mut s = Col::zeros(dim);
     let mut v = Mat::<f64>::zeros(dim, dim);
     let parallelism = faer::Parallelism::Rayon(0); // use current num threads
     let params = Default::default();
@@ -152,7 +152,7 @@ fn pl_pca(inputs: &[Series]) -> PolarsResult<Series> {
         ListPrimitiveChunkedBuilder::new("weight_vector", dim, dim, DataType::Float64);
 
     for i in 0..v.nrows() {
-        builder.append_value(s.read(i, 0));
+        builder.append_value(s.read(i));
         list_builder.append_slice(v.col_as_slice(i));
     }
 

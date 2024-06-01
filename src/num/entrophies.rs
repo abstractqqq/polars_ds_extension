@@ -1,6 +1,5 @@
 use super::l_inf_dist;
-use crate::num::knn::{build_standard_kdtree, query_nb_cnt, KdtreeKwargs};
-use crate::utils::rechunk_to_frame;
+use crate::num::knn::{build_knn_matrix_data, build_standard_kdtree, query_nb_cnt, KdtreeKwargs};
 use ndarray::s;
 use polars::prelude::*;
 use polars_core::POOL;
@@ -31,21 +30,19 @@ fn pl_approximate_entropy(
     let r = radius.get(0).unwrap();
     let dim = inputs[1..].len();
 
-    let data = rechunk_to_frame(&inputs[1..])?;
-    let n1 = data.height(); // This is equal to original length - m + 1
-    let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
-    // Here, dim equals to run_length + 1, or m + 1
-    // + 1 because I am intentionally generating one more, so that we do to_ndarray only once.
+    let data = build_knn_matrix_data(&inputs[1..])?;
+    let n1 = data.nrows(); // This is equal to original length - m + 1
+                           // Here, dim equals to run_length + 1, or m + 1
+                           // + 1 because I am intentionally generating one more, so that we do to_ndarray only once.
     if (n1 < dim) || (r <= 0.) || (!r.is_finite()) {
         return Ok(Series::from_vec(name, vec![f64::NAN]));
     }
-    let parallel = kwargs.parallel;
-    let can_parallel = parallel && !context.parallel();
+    let can_parallel = kwargs.parallel && !context.parallel();
     let leaf_size = kwargs.leaf_size;
 
     // Step 3, 4, 5 in wiki
     let data_1_view = data.slice(s![..n1, ..dim.abs_diff(1)]);
-    let tree = build_standard_kdtree(dim.abs_diff(1), leaf_size, &data_1_view);
+    let tree = build_standard_kdtree(dim.abs_diff(1), leaf_size, &data_1_view, None)?;
     let nb_in_radius = query_nb_cnt(&tree, data_1_view, &l_inf_dist, r, can_parallel);
     let phi_m: f64 = nb_in_radius
         .into_no_null_iter()
@@ -55,7 +52,7 @@ fn pl_approximate_entropy(
     // Step 3, 4, 5 for m + 1 in wiki
     let n2 = n1.abs_diff(1);
     let data_2_view = data.slice(s![..n2, ..]);
-    let tree = build_standard_kdtree(dim, leaf_size, &data_2_view);
+    let tree = build_standard_kdtree(dim, leaf_size, &data_2_view, None)?;
     let nb_in_radius = query_nb_cnt(&tree, data_2_view, &l_inf_dist, r, can_parallel);
     let phi_m1: f64 = nb_in_radius
         .into_no_null_iter()
@@ -81,11 +78,10 @@ fn pl_sample_entropy(
     }
     let r = radius.get(0).unwrap();
     let dim = inputs[1..].len();
-    let data = rechunk_to_frame(&inputs[1..])?;
-    let n1 = data.height(); // This is equal to original length - m + 1
-    let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
-    // Here, dim equals to run_length + 1, or m + 1
-    // + 1 because I am intentionally generating one more, so that we do to_ndarray only once.
+    let data = build_knn_matrix_data(&inputs[1..])?;
+    let n1 = data.nrows(); // This is equal to original length - m + 1
+                           // Here, dim equals to run_length + 1, or m + 1
+                           // + 1 because I am intentionally generating one more, so that we do to_ndarray only once.
     if (n1 < dim) || (r <= 0.) || (!r.is_finite()) {
         return Ok(Series::from_vec(name, vec![f64::NAN]));
     }
@@ -94,13 +90,13 @@ fn pl_sample_entropy(
     let leaf_size = kwargs.leaf_size;
 
     let data_1_view = data.slice(s![..n1, ..dim.abs_diff(1)]);
-    let tree = build_standard_kdtree(dim.abs_diff(1), leaf_size, &data_1_view);
+    let tree = build_standard_kdtree(dim.abs_diff(1), leaf_size, &data_1_view, None)?;
     let nb_in_radius = query_nb_cnt(&tree, data_1_view, &l_inf_dist, r, can_parallel);
     let b = (nb_in_radius.sum().unwrap_or(0) as f64) - (n1 as f64);
 
     let n2 = n1.abs_diff(1);
     let data_2_view = data.slice(s![..n2, ..]);
-    let tree = build_standard_kdtree(dim, leaf_size, &data_2_view);
+    let tree = build_standard_kdtree(dim, leaf_size, &data_2_view, None)?;
     let nb_in_radius = query_nb_cnt(&tree, data_2_view, &l_inf_dist, r, can_parallel);
     let a = (nb_in_radius.sum().unwrap_or(0) as f64) - (n2 as f64);
 
@@ -115,17 +111,18 @@ fn pl_knn_entropy(
     kwargs: KdtreeKwargs,
 ) -> PolarsResult<Series> {
     // Define inputs
-    let name = inputs[0].name();
-    let dim = inputs.len();
-    let data = rechunk_to_frame(inputs)?;
-    let nrows = data.height();
-    let parallel = kwargs.parallel;
-    let can_parallel = parallel && !context.parallel();
+    let can_parallel = kwargs.parallel && !context.parallel();
     let k = kwargs.k;
     let leaf_size = kwargs.leaf_size;
 
+    let name = inputs[0].name();
+    let dim = inputs.len();
+
+    let data = build_knn_matrix_data(inputs)?;
+    let nrows = data.nrows();
+
     if nrows <= k {
-        return Err(PolarsError::ComputeError("KNN: must have > k rows.".into()));
+        return Ok(Series::from_vec(name, vec![f64::NAN]));
     }
 
     // Get cd
@@ -137,21 +134,21 @@ fn pl_knn_entropy(
     let (dist_func, cd): (fn(&[f64], &[f64]) -> f64, f64) = if metric_str == "l2" {
         let half_d: f64 = d / 2.0;
         let cd = std::f64::consts::PI.powf(half_d) / (2f64.powf(d)) / (1.0 + half_d).gamma();
-        (super::l2_dist, cd)
+        (super::l2_dist, cd) // Need l2 with square root
     } else if metric_str == "inf" {
         (super::l_inf_dist, 1.0)
     } else {
-        return Err(PolarsError::ComputeError("Not implemented.".into()));
+        return Err(PolarsError::ComputeError(
+            "Distance metric not implemented.".into(),
+        ));
     };
 
     // G1
     let g1 = crate::stats_utils::gamma::digamma(n) - crate::stats_utils::gamma::digamma(k as f64);
 
     // KNN part
-    // Need to use C order because C order is row-contiguous
-    let data = data.to_ndarray::<Float64Type>(IndexOrder::C)?;
     let data_view = data.view();
-    let tree = build_standard_kdtree(dim, leaf_size, &data_view);
+    let tree = build_standard_kdtree(dim, leaf_size, &data_view, None)?;
 
     let logd = if can_parallel {
         let n_threads = POOL.current_num_threads();

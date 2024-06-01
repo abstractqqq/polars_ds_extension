@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "polars_ds"
 requires-python = ">=3.8"
-version = "0.4.3"
+version = "0.4.6"
 
 license = {file = "LICENSE.txt"}
 classifiers = [
@@ -20,6 +20,7 @@ authors = [
 ]
 dependencies = [
     "polars >= 0.20.6, !=0.20.12",
+    'typing-extensions; python_version <= "3.11"',
 ] 
 
 keywords = ["polars-extension", "scientific-computing", "data-science"]
@@ -28,8 +29,6 @@ keywords = ["polars-extension", "scientific-computing", "data-science"]
 plot = [
     "great-tables>=0.5",
     "graphviz>=0.20",
-    # Polars's plot backend for now, which in turn is backed by Bokeh
-    # Not the best in terms of dependency management. But keep it for now.
     "plotly>=5.0,<6" 
 ]
 
@@ -38,8 +37,6 @@ strip = true
 python-source = "python"
 features = ["pyo3/extension-module"]
 module-name = "polars_ds._polars_ds"
-
-# [project.optional-dependencies]
 
 [tool.ruff]
 line-length = 100

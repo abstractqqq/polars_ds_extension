@@ -91,9 +91,8 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     let threshold = inputs[2].f64()?;
     let threshold = threshold.get(0).unwrap_or(0.5);
 
-    let mut frame = tp_fp_frame(predicted, actual, true)?
-        .collect()?
-        .agg_chunks();
+    let mut binding = tp_fp_frame(predicted, actual, true)?.collect()?;
+    let frame = binding.align_chunks();
 
     let tpr = frame.drop_in_place("tpr").unwrap();
     let fpr = frame.drop_in_place("fpr").unwrap();
@@ -299,10 +298,10 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
     let actual = &inputs[0];
     let predicted = &inputs[1];
 
-    let mut frame = tp_fp_frame(predicted, actual, true)?
+    let mut binding = tp_fp_frame(predicted, actual, true)?
         .select([col("tpr"), col("fpr")])
-        .collect()?
-        .agg_chunks();
+        .collect()?;
+    let frame = binding.align_chunks();
 
     let tpr = frame.drop_in_place("tpr").unwrap();
     let fpr = frame.drop_in_place("fpr").unwrap();

@@ -8,215 +8,242 @@ from ._utils import pl_plugin
 
 _lib = _get_shared_lib_location(__file__)
 
+__all__ = [
+    "softmax",
+    "query_gcd",
+    "query_lcm",
+    "haversine",
+    "query_singular_values",
+    "query_pca",
+    "query_principal_components",
+    "query_knn_ptwise",
+    "query_knn_filter",
+    "query_knn_entropy",
+    "query_within_dist_from",
+    "query_radius_ptwise",
+    "query_nb_cnt",
+    "query_approx_entropy",
+    "query_sample_entropy",
+    "query_cond_entropy",
+    "query_copula_entropy",
+    "query_cond_indep",
+    "query_transfer_entropy",
+    "query_permute_entropy",
+    "query_lstsq",
+    "query_lstsq_report",
+    "query_lempel_ziv",
+    "query_jaccard_row",
+    "query_jaccard_col",
+    "query_psi",
+    "query_psi_w_breakpoints",
+    "query_psi_discrete",
+    "query_woe",
+    "query_woe_discrete",
+    "query_iv",
+    "query_iv_discrete",
+    "integrate_trapz",
+    "convolve",
+    "list_amax",
+    "gamma",
+    "expit",
+    "exp2",
+    "expit",
+    "logit",
+    "trunc",
+    "detrend",
+    "rfft",
+    "fract",
+]
 
-@pl.api.register_expr_namespace("num")
-class NumExt:
-    """
-    This class contains tools for dealing with well-known numerical operations and other metrics inside Polars DataFrame.
-    All the metrics/losses provided here is meant for use in cases like evaluating models outside training,
-    not for actual use in ML models.
 
-    Polars Namespace: num
+# @pl.api.register_expr_namespace("num")
+# class NumExt:
+#     """
+#     This class contains tools for dealing with well-known numerical operations and other metrics inside Polars DataFrame.
+#     All the metrics/losses provided here is meant for use in cases like evaluating models outside training,
+#     not for actual use in ML models.
 
-    Example: pl.col("a").num.range_over_mean()
-    """
+#     Polars Namespace: num
 
-    def __init__(self, expr: pl.Expr):
-        self._expr: pl.Expr = expr
+#     Example: pl.col("a").num.range_over_mean()
+#     """
 
-    def std_err(self, ddof: int = 1) -> pl.Expr:
-        """
-        Estimates the standard error for the mean of the expression.
-        """
-        return self._expr.std(ddof=ddof) / self._expr.count().sqrt()
+#     def __init__(self, expr: pl.Expr):
+#         self._expr: pl.Expr = expr
 
-    def std_over_range(self, ddof: int = 1) -> pl.Expr:
-        """
-        Computes the standard deviation over the range.
-        """
-        return self._expr.std(ddof=ddof) / (self._expr.max() - self._expr.min())
+#     def std_err(self, ddof: int = 1) -> pl.Expr:
+#         """
+#         Estimates the standard error for the mean of the expression.
+#         """
+#         return self._expr.std(ddof=ddof) / self._expr.count().sqrt()
 
-    def rms(self) -> pl.Expr:
-        """
-        Returns root mean square of the expression
-        """
-        return (self._expr.dot(self._expr) / self._expr.count()).sqrt()
+#     def std_over_range(self, ddof: int = 1) -> pl.Expr:
+#         """
+#         Computes the standard deviation over the range.
+#         """
+#         return self._expr.std(ddof=ddof) / (self._expr.max() - self._expr.min())
 
-    def cv(self, ddof: int = 1) -> pl.Expr:
-        """
-        Returns the coefficient of variation of the expression
-        """
-        return self._expr.std(ddof=ddof) / self._expr.mean()
+#     def rms(self) -> pl.Expr:
+#         """
+#         Returns root mean square of the expression
+#         """
+#         return (self._expr.dot(self._expr) / self._expr.count()).sqrt()
 
-    def yeo_johnson(self, lam: float) -> pl.Expr:
-        """
-        Performs the Yeo Johnson transform with parameters lambda.
+#     def cv(self, ddof: int = 1) -> pl.Expr:
+#         """
+#         Returns the coefficient of variation of the expression
+#         """
+#         return self._expr.std(ddof=ddof) / self._expr.mean()
 
-        Unfortunately, the package does not provide estimate for lambda as of now.
+#     def yeo_johnson(self, lam: float) -> pl.Expr:
+#         """
+#         Performs the Yeo Johnson transform with parameters lambda.
 
-        Parameters
-        ----------
-        lam
-            The lambda in Yeo Johnson transform
+#         Unfortunately, the package does not provide estimate for lambda as of now.
 
-        Reference
-        ---------
-        https://en.wikipedia.org/wiki/Power_transform
-        """
-        x = self._expr
+#         Parameters
+#         ----------
+#         lam
+#             The lambda in Yeo Johnson transform
 
-        if lam == 0:  # log(x + 1)
-            x_ge = x.log1p()
-        else:  # ((x + 1)**lmbda - 1) / lmbda
-            x_ge = ((1 + x).pow(lam) - 1) / lam
+#         Reference
+#         ---------
+#         https://en.wikipedia.org/wiki/Power_transform
+#         """
+#         x = self._expr
 
-        if lam == 2:  # -log(-x + 1)
-            x_lt = pl.lit(-1) * (-x).log1p()
-        else:  #  -((-x + 1)**(2 - lmbda) - 1) / (2 - lmbda)
-            t = 2 - lam
-            x_lt = -((1 - x).pow(t) - 1) / t
+#         if lam == 0:  # log(x + 1)
+#             x_ge = x.log1p()
+#         else:  # ((x + 1)**lmbda - 1) / lmbda
+#             x_ge = ((1 + x).pow(lam) - 1) / lam
 
-        return pl.when(x >= 0.0).then(x_ge).otherwise(x_lt)
+#         if lam == 2:  # -log(-x + 1)
+#             x_lt = pl.lit(-1) * (-x).log1p()
+#         else:  #  -((-x + 1)**(2 - lmbda) - 1) / (2 - lmbda)
+#             t = 2 - lam
+#             x_lt = -((1 - x).pow(t) - 1) / t
 
-    def box_cox(self, lam: float, lam2: float = 0.0) -> pl.Expr:
-        """
-        Performs the two-parameter Box Cox transform with parameters lambda. This
-        transform is only valid for values >= -lam2. Every other value will be mapped to None.
+#         return pl.when(x >= 0.0).then(x_ge).otherwise(x_lt)
 
-        Unfortunately, the package does not provide estimate for lambda as of now.
+#     def box_cox(self, lam: float, lam2: float = 0.0) -> pl.Expr:
+#         """
+#         Performs the two-parameter Box Cox transform with parameters lambda. This
+#         transform is only valid for values >= -lam2. Every other value will be mapped to None.
 
-        Parameters
-        ----------
-        lam
-            The first lambda in Box Cox transform
-        lam2
-            The second lambda in Box Cox transform
+#         Unfortunately, the package does not provide estimate for lambda as of now.
 
-        Reference
-        ---------
-        https://en.wikipedia.org/wiki/Power_transform
-        """
-        if lam2 == 0.0:
-            x = self._expr
-            cond = self._expr > 0
-        else:
-            x = self._expr + lam2
-            cond = self._expr > -lam2
+#         Parameters
+#         ----------
+#         lam
+#             The first lambda in Box Cox transform
+#         lam2
+#             The second lambda in Box Cox transform
 
-        if lam == 0.0:
-            return pl.when(cond).then(x.log()).otherwise(None)
-        else:
-            return pl.when(cond).then((x.pow(lam) - 1) / lam).otherwise(None)
+#         Reference
+#         ---------
+#         https://en.wikipedia.org/wiki/Power_transform
+#         """
+#         if lam2 == 0.0:
+#             x = self._expr
+#             cond = self._expr > 0
+#         else:
+#             x = self._expr + lam2
+#             cond = self._expr > -lam2
 
-    def max_abs(self) -> pl.Expr:
-        """
-        Returns the maximum of absolute values of self.
-        """
-        return pl.max_horizontal(self._expr.max().abs(), self._expr.min().abs())
+#         if lam == 0.0:
+#             return pl.when(cond).then(x.log()).otherwise(None)
+#         else:
+#             return pl.when(cond).then((x.pow(lam) - 1) / lam).otherwise(None)
 
-    def n_bins(self, n: int) -> pl.Expr:
-        """
-        Maps values in this series into n bins, with each bin having equal size. This ensures that
-        the bins' ranges are the same, unlike quantiles. This may have tiny numerical errors but
-        should be tolerable.
+#     def max_abs(self) -> pl.Expr:
+#         """
+#         Returns the maximum of absolute values of self.
+#         """
+#         return pl.max_horizontal(self._expr.max().abs(), self._expr.min().abs())
 
-        Parameters
-        ----------
-        n
-            Any positive integer
-        """
-        if n <= 0:
-            raise ValueError("Input `n` must be positive.")
+#     def n_bins(self, n: int) -> pl.Expr:
+#         """
+#         Maps values in this series into n bins, with each bin having equal size. This ensures that
+#         the bins' ranges are the same, unlike quantiles. This may have tiny numerical errors but
+#         should be tolerable.
 
-        x = self._expr
-        return (
-            (x - x.min()).floordiv(pl.lit(1e-12) + (x.max() - x.min()) / pl.lit(n)).cast(pl.UInt32)
-        )
+#         Parameters
+#         ----------
+#         n
+#             Any positive integer
+#         """
+#         if n <= 0:
+#             raise ValueError("Input `n` must be positive.")
 
-    def count_max(self) -> pl.Expr:
-        """
-        Count the number of occurrences of max.
-        """
-        return (self._expr == self._expr.max()).sum()
+#         x = self._expr
+#         return (
+#             (x - x.min()).floordiv(pl.lit(1e-12) + (x.max() - x.min()) / pl.lit(n)).cast(pl.UInt32)
+#         )
 
-    def count_min(self) -> pl.Expr:
-        """
-        Count the number of occurrences of min.
-        """
-        return (self._expr == self._expr.min()).sum()
+#     def count_max(self) -> pl.Expr:
+#         """
+#         Count the number of occurrences of max.
+#         """
+#         return (self._expr == self._expr.max()).sum()
 
-    def is_equidistant(self, tol: float = 1e-6) -> pl.Expr:
-        """
-        Checks if a column has equal distance between consecutive values.
+#     def count_min(self) -> pl.Expr:
+#         """
+#         Count the number of occurrences of min.
+#         """
+#         return (self._expr == self._expr.min()).sum()
 
-        Parameters
-        ----------
-        tol
-            Tolerance. If difference is all smaller (<=) than this, then true.
-        """
-        return (self._expr.diff(null_behavior="drop").abs() <= tol).all()
+#     def is_equidistant(self, tol: float = 1e-6) -> pl.Expr:
+#         """
+#         Checks if a column has equal distance between consecutive values.
 
-    def rel_entropy(self, other: pl.Expr) -> pl.Expr:
-        """
-        Computes relative entropy between self and other. (self = x, other = y).
+#         Parameters
+#         ----------
+#         tol
+#             Tolerance. If difference is all smaller (<=) than this, then true.
+#         """
+#         return (self._expr.diff(null_behavior="drop").abs() <= tol).all()
 
-        Parameters
-        ----------
-        other
-            A Polars expression
+#     def rel_entropy(self, other: pl.Expr) -> pl.Expr:
+#         """
+#         Computes relative entropy between self and other. (self = x, other = y).
 
-        Reference
-        ---------
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.rel_entr.html
-        """
-        return (
-            pl.when((self._expr > 0) & (other > 0))
-            .then(self._expr * (self._expr / other).log())
-            .when((self._expr == 0) & (other >= 0))
-            .then(pl.lit(0.0, dtype=pl.Float64))
-            .otherwise(pl.lit(float("inf"), dtype=pl.Float64))
-        )
+#         Parameters
+#         ----------
+#         other
+#             A Polars expression
 
-    def kl_div(self, other: pl.Expr) -> pl.Expr:
-        """
-        Computes Kullback-Leibler divergence between self and other. (self = x, other = y).
+#         Reference
+#         ---------
+#         https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.rel_entr.html
+#         """
+#         return (
+#             pl.when((self._expr > 0) & (other > 0))
+#             .then(self._expr * (self._expr / other).log())
+#             .when((self._expr == 0) & (other >= 0))
+#             .then(pl.lit(0.0, dtype=pl.Float64))
+#             .otherwise(pl.lit(float("inf"), dtype=pl.Float64))
+#         )
 
-        Parameters
-        ----------
-        other
-            A Polars expression
+#     def kl_div(self, other: pl.Expr) -> pl.Expr:
+#         """
+#         Computes Kullback-Leibler divergence between self and other. (self = x, other = y).
 
-        Reference
-        ---------
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.kl_div.html
-        """
-        return (
-            pl.when((self._expr > 0) & (other > 0))
-            .then(self._expr * (self._expr / other).log() - self._expr + other)
-            .when((self._expr == 0) & (other >= 0))
-            .then(other)
-            .otherwise(pl.lit(float("inf"), dtype=pl.Float64))
-        )
+#         Parameters
+#         ----------
+#         other
+#             A Polars expression
 
-    def target_encode(
-        self, target: pl.Expr, min_samples_leaf: int = 20, smoothing: float = 10.0
-    ) -> pl.Expr:
-        """
-        Compute information necessary to target encode a string column. Target must be binary
-        and be 0s and 1s.
-
-        Parameters
-        ----------
-        target
-            The target variable. Should be 0s and 1s.
-        """
-        return self._expr.register_plugin(
-            lib=_lib,
-            symbol="pl_target_encode",
-            args=[target, target.mean()],
-            kwargs={"min_samples_leaf": float(min_samples_leaf), "smoothing": smoothing},
-            changes_length=True,
-        )
+#         Reference
+#         ---------
+#         https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.kl_div.html
+#         """
+#         return (
+#             pl.when((self._expr > 0) & (other > 0))
+#             .then(self._expr * (self._expr / other).log() - self._expr + other)
+#             .when((self._expr == 0) & (other >= 0))
+#             .then(other)
+#             .otherwise(pl.lit(float("inf"), dtype=pl.Float64))
+#         )
 
 
 # ----------------------------------------------------------------------------------
@@ -419,11 +446,15 @@ def query_knn_ptwise(
     dist: Distance = "l2",
     parallel: bool = False,
     return_dist: bool = False,
+    eval_mask: Optional[StrOrExpr] = None,
+    data_mask: Optional[StrOrExpr] = None,
 ) -> pl.Expr:
     """
-    Takes the index column, and uses other columns to determine the k nearest neighbors
-    to every id in the index columns. By default, this will return self, and k more neighbors.
-    So the output size is actually k + 1. This will throw an error if any null value is found.
+    Takes the index column, and uses feature columns to determine the k nearest neighbors
+    to every id in the index columns. By default, this will return k + 1 neighbors, because in almost
+    all cases, the point is a neighbor to itself and this returns k actual neighbors. The only exception
+    is when data_mask excludes the point from being a neighbor, in which case, k + 1 distinct neighbors will
+    be returned.
 
     Note that the index column must be convertible to u32. If you do not have a u32 column,
     you can generate one using pl.int_range(..), which should be a step before this. The index column
@@ -450,20 +481,48 @@ def query_knn_ptwise(
         are running only this expression, and not in group_by context.
     return_dist
         If true, return a struct with indices and distances.
+    eval_mask
+        Either None or a boolean expression or the name of a boolean column. If not none, this will
+        only evaluate KNN for rows where this is true. This can speed up computation with K is large
+        and when only results on a subset are nedded.
+    data_mask
+        Either None or a boolean expression or the name of a boolean column. If none, all rows can be
+        neighbors. If not None, the pool of possible neighbors will be rows where this is true.
     """
     if k < 1:
         raise ValueError("Input `k` must be >= 1.")
 
-    idx = str_to_expr(index).cast(pl.UInt32)
+    idx = str_to_expr(index).cast(pl.UInt32).rechunk()
     metric = str(dist).lower()
     cols = [idx]
+    if eval_mask is None:
+        skip_eval = False
+    else:
+        skip_eval = True
+        cols.append(str_to_expr(eval_mask))
+
+    if data_mask is None:
+        skip_data = False
+    else:
+        skip_data = True
+        cols.append(str_to_expr(data_mask))
+
+    kwargs = {
+        "k": k,
+        "leaf_size": leaf_size,
+        "metric": metric,
+        "parallel": parallel,
+        "skip_eval": skip_eval,
+        "skip_data": skip_data,
+    }
+
     cols.extend(str_to_expr(x) for x in features)
     if return_dist:
         return pl_plugin(
             lib=_lib,
             symbol="pl_knn_ptwise_w_dist",
             args=cols,
-            kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
+            kwargs=kwargs,
             is_elementwise=True,
         )
     else:
@@ -471,7 +530,7 @@ def query_knn_ptwise(
             lib=_lib,
             symbol="pl_knn_ptwise",
             args=cols,
-            kwargs={"k": k, "leaf_size": leaf_size, "metric": metric, "parallel": parallel},
+            kwargs=kwargs,
             is_elementwise=True,
         )
 
@@ -506,6 +565,11 @@ def query_within_dist_from(
             pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
             <= r
         )
+    elif dist == "l2":
+        return (
+            pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(pt, oth))
+            <= r
+        )
     elif dist == "inf":
         return (
             pl.max_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
@@ -532,11 +596,8 @@ def query_within_dist_from(
         y_long = pl.lit(pt_as_list[1], dtype=pl.Float64)
         dist = haversine(oth[0], oth[1], y_lat, y_long)
         return dist <= r
-    else:  # defaults to l2, actually squared l2
-        return (
-            pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(pt, oth))
-            <= r
-        )
+    else:
+        raise ValueError(f"Unknown distance function: {dist}")
 
 
 def query_radius_ptwise(
@@ -547,7 +608,7 @@ def query_radius_ptwise(
     parallel: bool = False,
 ) -> pl.Expr:
     """
-    Takes the index column, and uses other columns to determine distance, and query all neighbors
+    Takes the index column, and uses features columns to determine distance, and query all neighbors
     within distance r from each id in the index column.
 
     Note that the index column must be convertible to u32. If you do not have a u32 ID column,
@@ -576,7 +637,7 @@ def query_radius_ptwise(
     elif isinstance(r, pl.Expr):
         raise ValueError("Input `r` must be a scalar now. Expression input is not implemented.")
 
-    idx = str_to_expr(index).cast(pl.UInt32)
+    idx = str_to_expr(index).cast(pl.UInt32).rechunk()
     metric = str(dist).lower()
     cols = [idx]
     cols.extend(str_to_expr(x) for x in features)
@@ -630,7 +691,14 @@ def query_nb_cnt(
         lib=_lib,
         symbol="pl_nb_cnt",
         args=[rad] + [str_to_expr(x) for x in features],
-        kwargs={"k": 0, "leaf_size": leaf_size, "metric": dist, "parallel": parallel},
+        kwargs={
+            "k": 0,
+            "leaf_size": leaf_size,
+            "metric": dist,
+            "parallel": parallel,
+            "skip_eval": False,
+            "skip_data": False,
+        },
         is_elementwise=True,
     )
 
@@ -668,7 +736,14 @@ def query_knn_filter(
         lib=_lib,
         symbol="pl_knn_filter",
         args=[p] + [str_to_expr(x) for x in features],
-        kwargs={"k": k, "leaf_size": 32, "metric": metric, "parallel": False},
+        kwargs={
+            "k": k,
+            "leaf_size": 32,
+            "metric": metric,
+            "parallel": False,
+            "skip_eval": False,
+            "skip_data": False,
+        },
         is_elementwise=True,
     )
 
@@ -717,16 +792,27 @@ def query_approx_entropy(
     else:
         r: pl.Expr = pl.lit(filtering_level, dtype=pl.Float64)
 
+    # FILL NULL -- REMOVE AFTER POLARS UPDATE
     rows = t.count() - m + 1
-    data = [r, t.slice(0, length=rows)]
+    data = [r, t.slice(0, length=rows).cast(pl.Float64).fill_null(float("nan"))]
     # See rust code for more comment on why I put m + 1 here.
-    data.extend(t.shift(-i).slice(0, length=rows).alias(f"{i}") for i in range(1, m + 1))
+    data.extend(
+        t.shift(-i).slice(0, length=rows).cast(pl.Float64).fill_null(float("nan"))
+        for i in range(1, m + 1)
+    )
     # More errors are handled in Rust
     return pl_plugin(
         lib=_lib,
         symbol="pl_approximate_entropy",
         args=data,
-        kwargs={"k": 0, "leaf_size": 32, "metric": "inf", "parallel": parallel},
+        kwargs={
+            "k": 0,
+            "leaf_size": 32,
+            "metric": "inf",
+            "parallel": parallel,
+            "skip_eval": False,
+            "skip_data": False,
+        },
         returns_scalar=True,
     )
 
@@ -761,16 +847,25 @@ def query_sample_entropy(
     t = str_to_expr(ts)
     r = ratio * t.std(ddof=0)
     rows = t.count() - m + 1
-    data = [r, t.slice(0, length=rows)]
+    # FILL NULL -- REMOVE AFTER POLARS UPDATE
+    data = [r, t.slice(0, length=rows).cast(pl.Float64).fill_null(float("nan"))]
     # See rust code for more comment on why I put m + 1 here.
     data.extend(
-        t.shift(-i).slice(0, length=rows).alias(f"{i}") for i in range(1, m + 1)
+        t.shift(-i).slice(0, length=rows).cast(pl.Float64).fill_null(float("nan"))
+        for i in range(1, m + 1)
     )  # More errors are handled in Rust
     return pl_plugin(
         lib=_lib,
         symbol="pl_sample_entropy",
         args=data,
-        kwargs={"k": 0, "leaf_size": 32, "metric": "inf", "parallel": parallel},
+        kwargs={
+            "k": 0,
+            "leaf_size": 32,
+            "metric": "inf",
+            "parallel": parallel,
+            "skip_eval": False,
+            "skip_data": False,
+        },
         returns_scalar=True,
     )
 
@@ -781,8 +876,10 @@ def query_cond_entropy(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
 
     Parameters
     ----------
-    other : str | pl.Expr
-        Either a str represeting a column name or a Polars expression
+    x
+        Either a string or a polars expression
+    y
+        Either a string or a polars expression
     """
     return pl_plugin(
         lib=_lib,
@@ -794,12 +891,14 @@ def query_cond_entropy(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
 
 def query_knn_entropy(
     *features: StrOrExpr,
-    k: int = 2,
+    k: int = 3,
     dist: Distance = "l2",
     parallel: bool = False,
 ) -> pl.Expr:
     """
-    Computes KNN entropy among all the rows
+    Computes KNN entropy among all the rows.
+
+    Note if rows <= k, NaN will be returned.
 
     Parameters
     ----------
@@ -807,7 +906,7 @@ def query_knn_entropy(
         Columns used as features
     k
         The number of nearest neighbor to consider. Usually 2 or 3.
-    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
+    dist : Literal[`l2`, `inf`]
         Note `l2` is actually squared `l2` for computational efficiency.
     parallel : bool
         Whether to run the distance query in parallel. This is recommended when you
@@ -817,19 +916,40 @@ def query_knn_entropy(
     ---------
     https://arxiv.org/pdf/1506.06501v1.pdf
     """
-    if k < 0:
+    if k <= 0:
         raise ValueError("Input `k` must be > 0.")
+    if dist not in ["l2", "inf"]:
+        raise ValueError("Invalid metric for KNN entropy.")
 
     return pl_plugin(
         lib=_lib,
         symbol="pl_knn_entropy",
         args=[str_to_expr(e) for e in features],
-        kwargs={"k": k, "leaf_size": 32, "metric": dist, "parallel": parallel},
-        is_elementwise=True,
+        kwargs={
+            "k": k,
+            "leaf_size": 32,
+            "metric": dist,
+            "parallel": parallel,
+            "skip_eval": False,
+            "skip_data": False,
+        },
+        returns_scalar=True,
     )
 
 
-def query_copula_entropy(*features: StrOrExpr, k: int = 2, parallel: bool = False) -> pl.Expr:
+# def query_mutual_info(*features: StrOrExpr, k: int = 3, parallel: bool = False) -> pl.Expr:
+#     """
+#     Estimates Copula Entropy via rank statistics.
+
+#     Reference
+#     ---------
+#     Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
+#     """
+#     ranks = [x.rank(method="max") / x.len() for x in (str_to_expr(f) for f in features)]
+#     return query_knn_entropy(*ranks, k=k, dist="l2", parallel=parallel)
+
+
+def query_copula_entropy(*features: StrOrExpr, k: int = 3, parallel: bool = False) -> pl.Expr:
     """
     Estimates Copula Entropy via rank statistics.
 
@@ -837,12 +957,12 @@ def query_copula_entropy(*features: StrOrExpr, k: int = 2, parallel: bool = Fals
     ---------
     Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
     """
-    ranks = [str_to_expr(x).rank() / pl.len() for x in features]
+    ranks = [x.rank() / x.len() for x in (str_to_expr(f) for f in features)]
     return -query_knn_entropy(*ranks, k=k, dist="l2", parallel=parallel)
 
 
 def query_cond_indep(
-    x: StrOrExpr, y: StrOrExpr, z: StrOrExpr, k: int = 2, parallel: bool = False
+    x: StrOrExpr, y: StrOrExpr, z: StrOrExpr, k: int = 3, parallel: bool = False
 ) -> pl.Expr:
     """
     Computes the conditional independance of `x`  and `y`, conditioned on `z`
@@ -862,7 +982,7 @@ def query_cond_indep(
 
 
 def query_transfer_entropy(
-    x: StrOrExpr, source: StrOrExpr, lag: int = 1, k: int = 2, parallel: bool = False
+    x: StrOrExpr, source: StrOrExpr, lag: int = 1, k: int = 3, parallel: bool = False
 ) -> pl.Expr:
     """
     Estimating transfer entropy from `source` to `x` with a lag
@@ -876,7 +996,7 @@ def query_transfer_entropy(
 
     xx = str_to_expr(x)
     x1 = xx.slice(0, pl.len() - lag)
-    x2 = xx.slice(lag, pl.len())
+    x2 = xx.slice(lag, None)
     s = str_to_expr(source).slice(0, pl.len() - lag)
     return query_cond_indep(x2, s, x1, k=k, parallel=parallel)
 
@@ -906,14 +1026,16 @@ def query_permute_entropy(
     ---------
     https://www.aptech.com/blog/permutation-entropy/
     """
-    t = str_to_expr(ts)
     if n_dims <= 1:
         raise ValueError("Input `n_dims` has to be > 1.")
+    if tau < 1:
+        raise ValueError("Input `tau` has to be >= 1.")
 
+    t = str_to_expr(ts)
     if tau == 1:  # Fast track the most common use case
         return (
             pl.concat_list(t, *(t.shift(-i) for i in range(1, n_dims)))
-            .head(t.count() - n_dims + 1)
+            .head(t.len() - n_dims + 1)
             .list.eval(pl.element().arg_sort())
             .value_counts()  # groupby and count, but returns a struct
             .struct.field("count")  # extract the field named "counts"
@@ -925,7 +1047,7 @@ def query_permute_entropy(
                 t.gather_every(tau),
                 *(t.shift(-i).gather_every(tau) for i in range(1, n_dims)),
             )
-            .slice(0, length=(t.count() // tau) + 1 - (n_dims // tau))
+            .slice(0, length=(t.len() // tau) + 1 - (n_dims // tau))
             .list.eval(pl.element().arg_sort())
             .value_counts()
             .struct.field("count")
@@ -1097,9 +1219,10 @@ def query_jaccard_col(first: StrOrExpr, second: StrOrExpr, count_null: bool = Fa
 
 
 def query_psi(
-    x: StrOrExpr,
-    ref: Union[pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
+    new: Union[pl.Expr, Iterable[float]],
+    baseline: Union[pl.Expr, Iterable[float]],
     n_bins: int = 10,
+    return_report: bool = False,
 ) -> pl.Expr:
     """
     Compute the Population Stability Index between x and the reference column (usually x's historical values).
@@ -1117,13 +1240,16 @@ def query_psi(
 
     Parameters
     ----------
-    x
-        The feature
-    ref
-        An expression, or any iterable that can be turned into a Polars series. Usually this should
-        be x's historical values
+    new
+        An expression or any iterable that can be turned into a Polars series that represents newly
+        arrived feature values
+    baseline
+        An expression or any iterable that can be turned into a Polars series. Usually this should
+        be the feature's historical values
     n_bins : int, > 1
         The number of quantile bins to use
+    return_report
+        Whether to return a PSI report or not.
 
     Reference
     ---------
@@ -1133,14 +1259,19 @@ def query_psi(
     if n_bins <= 1:
         raise ValueError("Input `n_bins` must be >= 2.")
 
-    xx = str_to_expr(x)
-    valid_x = xx.filter(xx.is_finite()).cast(pl.Float64)
-    if isinstance(ref, pl.Expr):
-        valid_ref = ref.filter(ref.is_finite()).cast(pl.Float64)
+    if isinstance(new, (str, pl.Expr)):
+        new_ = str_to_expr(new)
+        valid_new: Union[pl.Series, pl.Expr] = new_.filter(new_.is_finite()).cast(pl.Float64)
     else:
-        temp = pl.Series(values=ref, dtype=pl.Float64)
-        temp = temp.filter(temp.is_finite())
-        valid_ref = pl.lit(temp)
+        temp = pl.Series(values=new, dtype=pl.Float64)
+        valid_new: Union[pl.Series, pl.Expr] = temp.filter(temp.is_finite())
+
+    if isinstance(baseline, (str, pl.Expr)):
+        base = str_to_expr(baseline)
+        valid_ref: Union[pl.Series, pl.Expr] = base.filter(base.is_finite()).cast(pl.Float64)
+    else:
+        temp = pl.Series(values=baseline, dtype=pl.Float64)
+        valid_ref: Union[pl.Series, pl.Expr] = temp.filter(temp.is_finite())
 
     vc = (
         valid_ref.qcut(n_bins, left_closed=False, allow_duplicates=True, include_breaks=True)
@@ -1148,29 +1279,35 @@ def query_psi(
         .value_counts()
         .sort()
     )
+    # breakpoints learned from ref
     brk = vc.struct.field("brk")  # .cast(pl.Float64)
+    # counts of points in the buckets
     cnt_ref = vc.struct.field("count")  # .cast(pl.UInt32)
-
-    return pl_plugin(
+    psi_report = pl_plugin(
         lib=_lib,
-        symbol="pl_psi",
-        args=[valid_x.rechunk(), brk, cnt_ref],
-        returns_scalar=True,
-    )
+        symbol="pl_psi_report",
+        args=[valid_new, brk, cnt_ref],
+        changes_length=True,
+    ).alias("psi_report")
+    if return_report:
+        return psi_report
+
+    return psi_report.struct.field("psi_bin").sum()
 
 
 def query_psi_discrete(
-    x: StrOrExpr,
-    ref: Union[pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
+    new: Union[StrOrExpr, Iterable[str]],
+    baseline: Union[StrOrExpr, Iterable[str]],
+    return_report: bool = False,
 ) -> pl.Expr:
     """
-    Compute the Population Stability Index between self (actual) and the reference column. The reference
-    column will be used as bins which are the basis of comparison.
+    Compute the Population Stability Index between self (actual) and the reference column. The baseline
+    column will be used as categories which are the basis of comparison.
 
-    Note this assumes values in x and ref are discrete columns (str categories). This will treat each
-    value as a distinct category and null will be treated as a category by itself. If a category
-    exists in actual but not in ref, then 0 is imputed, and 0.0001 is used to avoid numerical issue.
-    This is recommended to use for str-str column PSI comparison.
+    Note this assumes values in new and ref baseline discrete columns (e.g. str categories). This will
+    treat each value as a distinct category and null will be treated as a category by itself. If a category
+    exists in new but not in baseline, the percentage will be imputed by 0.0001. If you do not wish to include
+    new distinct values in PSI calculation, you can still compute the PSI by generating the report and filtering.
 
     Also note that discrete columns must have the same type in order to be considered the same.
 
@@ -1178,37 +1315,98 @@ def query_psi_discrete(
     ----------
     x
         The feature
-    ref
+    baseline
         An expression, or any iterable that can be turned into a Polars series. Usually this should
         be x's historical values
+    return_report
+        Whether to return a PSI report or not.
 
     Reference
     ---------
     https://www.listendata.com/2015/05/population-stability-index.html
     """
-    if isinstance(ref, pl.Expr):
-        temp = ref.value_counts().struct.rename_fields(["ref", "count"])
-        ref_cnt = temp.struct.field("count")
-        ref_cats = temp.struct.field("ref")
+    if isinstance(new, (str, pl.Expr)):
+        new_ = str_to_expr(new)
+        temp = new_.value_counts().struct.rename_fields(["", "count"])
+        new_cnt: Union[pl.Series, pl.Expr] = temp.struct.field("count")
+        new_cat: Union[pl.Series, pl.Expr] = temp.struct.field("")
     else:
-        temp = pl.Series(values=ref, dtype=pl.Float64)
-        temp = temp.value_counts()  # This is a df in this case
-        ref_cnt = temp.drop_in_place("count")
-        ref_cats = temp[temp.columns[0]]
+        temp = pl.Series(values=new)
+        temp: pl.DataFrame = temp.value_counts()  # This is a df in this case
+        ref_cnt: Union[pl.Series, pl.Expr] = temp.drop_in_place("count")
+        ref_cat: Union[pl.Series, pl.Expr] = temp[temp.columns[0]]
 
-    vc = str_to_expr(x).value_counts().struct.rename_fields(["self", "count"])
-    data_cnt = vc.struct.field("count")
-    data_cats = vc.struct.field("self")
+    if isinstance(baseline, (str, pl.Expr)):
+        base = str_to_expr(baseline)
+        temp = base.value_counts().struct.rename_fields(["", "count"])
+        ref_cnt: Union[pl.Series, pl.Expr] = temp.struct.field("count")
+        ref_cat: Union[pl.Series, pl.Expr] = temp.struct.field("")
+    else:
+        temp = pl.Series(values=baseline)
+        temp: pl.DataFrame = temp.value_counts()  # This is a df in this case
+        ref_cnt: Union[pl.Series, pl.Expr] = temp.drop_in_place("count")
+        ref_cat: Union[pl.Series, pl.Expr] = temp[temp.columns[0]]
 
+    psi_report = pl_plugin(
+        lib=_lib,
+        symbol="pl_psi_discrete_report",
+        args=[new_cat, new_cnt, ref_cat, ref_cnt],
+        changes_length=True,
+    )
+    if return_report:
+        return psi_report
+
+    return psi_report.struct.field("psi_bin").sum()
+
+
+def query_psi_w_breakpoints(
+    new: Union[StrOrExpr, Iterable[float]],
+    baseline: Union[StrOrExpr, Iterable[float]],
+    breakpoints: List[float],  # noqa: F821
+) -> pl.Expr:
+    """
+    Creates a PSI report using the custom breakpoints.
+
+    Parameters
+    ----------
+    baseline
+        The data representing the baseline data. Any sequence of numerical values that
+        can be turned into a Polars'series, or an expression representing a column will work
+    actual
+        The data representing the actual, observed data. Any sequence of numerical values that
+        can be turned into a Polars'series, or an expression representing a column will work
+    breakpoints
+        The data that represents breakpoints. Input must be sorted, distinct, finite numeric values.
+        This function will not cleanse the breakpoints for the user. E.g. [0.1, 0.5, 0.9] will create
+        four bins: (-inf. 0.1], (0.1, 0.5], (0.5, 0.9] and (0.9, inf).
+    """
+    if isinstance(baseline, (str, pl.Expr)):
+        x: pl.Expr = str_to_expr(baseline)
+        x = x.filter(x.is_finite())
+    else:
+        temp = pl.Series(values=baseline)
+        x: pl.Expr = pl.lit(temp.filter(temp.is_finite()))
+
+    if isinstance(new, (str, pl.Expr)):
+        y: pl.Expr = str_to_expr(new)
+        y = y.filter(y.is_finite())
+    else:
+        temp = pl.Series(values=new)
+        y: pl.Expr = pl.lit(temp.filter(temp.is_finite()))
+
+    if len(breakpoints) == 0:
+        raise ValueError("Breakpoints is empty.")
+
+    bp = breakpoints + [float("inf")]
     return pl_plugin(
         lib=_lib,
-        symbol="pl_psi_discrete",
-        args=[data_cats, data_cnt, ref_cats, ref_cnt],
-        returns_scalar=True,
-    )
+        symbol="pl_psi_w_bps",
+        args=[x.rechunk(), y.rechunk(), pl.Series(values=bp)],
+        changes_length=True,
+    ).alias("psi_report")
 
 
-def query_woe(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10) -> pl.Expr:
+def query_woe(x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], n_bins: int = 10) -> pl.Expr:
     """
     Compute the Weight of Evidence for x with respect to target. This assumes x
     is continuous. A value of 1 is added to all events/non-events
@@ -1229,17 +1427,19 @@ def query_woe(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10) -> pl.Expr:
     ---------
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
+    if isinstance(target, (str, pl.Expr)):
+        t = str_to_expr(target)
+    else:
+        t = pl.Series(values=target)
     xx = str_to_expr(x)
-    valid = xx.filter(xx.is_finite()).cast(pl.Float64)
-    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True)
-    return pl_plugin(
-        lib=_lib, symbol="pl_woe_discrete", args=[brk, str_to_expr(target)], changes_length=True
-    )
+    valid = xx.filter(xx.is_finite())
+    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
+    return pl_plugin(lib=_lib, symbol="pl_woe_discrete", args=[brk, t], changes_length=True)
 
 
 def query_woe_discrete(
     x: StrOrExpr,
-    target: StrOrExpr,
+    target: Union[StrOrExpr, Iterable[int]],
 ) -> pl.Expr:
     """
     Compute the Weight of Evidence for x with respect to target. This assumes x
@@ -1257,15 +1457,21 @@ def query_woe_discrete(
     ---------
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
+    if isinstance(target, (str, pl.Expr)):
+        t = str_to_expr(target)
+    else:
+        t = pl.Series(values=target)
     return pl_plugin(
         lib=_lib,
         symbol="pl_woe_discrete",
-        args=[str_to_expr(x), str_to_expr(target)],
+        args=[str_to_expr(x).cast(pl.String), t],
         changes_length=True,
     )
 
 
-def query_iv(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10, return_sum: bool = True) -> pl.Expr:
+def query_iv(
+    x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], n_bins: int = 10, return_sum: bool = True
+) -> pl.Expr:
     """
     Compute Information Value for x with respect to target. This assumes the variable x
     is continuous. A value of 1 is added to all events/non-events
@@ -1276,7 +1482,7 @@ def query_iv(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10, return_sum: bool
     Parameters
     ----------
     x
-        The feature
+        The feature. Must be numeric.
     target
         The target column. Should be 0s and 1s.
     n_bins
@@ -1289,14 +1495,20 @@ def query_iv(x: StrOrExpr, target: StrOrExpr, n_bins: int = 10, return_sum: bool
     ---------
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
+    if isinstance(target, (str, pl.Expr)):
+        t = str_to_expr(target)
+    else:
+        t = pl.Series(values=target)
     xx = str_to_expr(x)
-    valid = xx.filter(xx.is_finite()).cast(pl.Float64)
-    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True)
-    out = pl_plugin(lib=_lib, symbol="pl_iv", args=[brk, str_to_expr(target)], changes_length=True)
+    valid = xx.filter(xx.is_finite())
+    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
+    out = pl_plugin(lib=_lib, symbol="pl_iv", args=[brk, t], changes_length=True)
     return out.struct.field("iv").sum() if return_sum else out
 
 
-def query_iv_discrete(x: StrOrExpr, target: StrOrExpr, return_sum: bool = True) -> pl.Expr:
+def query_iv_discrete(
+    x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], return_sum: bool = True
+) -> pl.Expr:
     """
     Compute the Information Value for x with respect to target. This assumes x
     is discrete and castable to String. A value of 1 is added to all events/non-events
@@ -1305,7 +1517,7 @@ def query_iv_discrete(x: StrOrExpr, target: StrOrExpr, return_sum: bool = True) 
     Parameters
     ----------
     x
-        The feature
+        The feature. The column must be castable to String
     target
         The target variable. Should be 0s and 1s.
     return_sum
@@ -1316,7 +1528,13 @@ def query_iv_discrete(x: StrOrExpr, target: StrOrExpr, return_sum: bool = True) 
     ---------
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
-    out = pl_plugin(lib=_lib, symbol="pl_iv", args=[str_to_expr(x), target], changes_length=True)
+    if isinstance(target, (str, pl.Expr)):
+        t = str_to_expr(target)
+    else:
+        t = pl.Series(values=target)
+    out = pl_plugin(
+        lib=_lib, symbol="pl_iv", args=[str_to_expr(x).cast(pl.String), t], changes_length=True
+    )
     return out.struct.field("iv").sum() if return_sum else out
 
 
@@ -1388,6 +1606,7 @@ def convolve(
     https://en.wikipedia.org/wiki/Convolution
     """
     xx = str_to_expr(x).fill_null(fill_value).cast(pl.Float64).rechunk()  # One cont slice
+    f: Union[pl.Expr, pl.Series]
     if isinstance(kernel, pl.Expr):
         f = kernel.filter(kernel.is_finite()).rechunk()  # One cont slice
     else:
@@ -1491,19 +1710,6 @@ def trunc(x: StrOrExpr) -> pl.Expr:
     )
 
 
-# def signum(x: StrOrExpr) -> pl.Expr:
-#     """
-#     Returns sign of the input values. Note: NaN is returned for NaN. This is faster
-#     and more accurate than doing pl.when(..).then().otherwise().
-#     """
-#     return pl_plugin(
-#         args=[str_to_expr(x)],
-#         lib=_lib,
-#         symbol="pl_signum",
-#         is_elementwise=True,
-#     )
-
-
 def sinc(x: StrOrExpr) -> pl.Expr:
     """
     Computes the sinc function normalized by pi.
@@ -1558,3 +1764,42 @@ def rfft(series: StrOrExpr, n: Optional[int] = None, return_full: bool = False) 
     nn = pl.lit(n, pl.UInt32)
     x: pl.Expr = str_to_expr(series).cast(pl.Float64)
     return pl_plugin(lib=_lib, symbol="pl_rfft", args=[x, nn, full], changes_length=True)
+
+
+def target_encode(
+    s: StrOrExpr,
+    target: Union[StrOrExpr, Iterable[int]],
+    min_samples_leaf: int = 20,
+    smoothing: float = 10.0,
+) -> pl.Expr:
+    """
+    Compute information necessary to target encode a string column.
+
+    Note: nulls will be encoded as well.
+
+    Parameters
+    ----------
+    s
+        The string column to encode
+    target
+        The target column. Should be 0s and 1s.
+    min_samples_leaf
+        A regularization factor
+    smoothing
+        Smoothing effect to balance categorical average vs prior
+
+    Reference
+    ---------
+    https://contrib.scikit-learn.org/category_encoders/targetencoder.html
+    """
+    if isinstance(target, (str, pl.Expr)):
+        t = str_to_expr(target)
+    else:
+        t = pl.Series(values=target)
+    return pl_plugin(
+        lib=_lib,
+        symbol="pl_target_encode",
+        args=[str_to_expr(s), t, t.mean()],
+        kwargs={"min_samples_leaf": float(min_samples_leaf), "smoothing": smoothing},
+        changes_length=True,
+    )
