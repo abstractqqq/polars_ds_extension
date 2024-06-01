@@ -52,7 +52,7 @@ def reference_confusion_matrix(y_true, y_pred):
     ).ravel()  # Setting labels will ensure that the matrix is zero-filled
 
     # Where possible, test against sklearn. Otherwise implement it by hand.
-    p = tn + fn_
+    p = tp + fn_
     n = fp + tn
     tpr = nandiv(tp, p)
     fnr = 1.0 - tpr
