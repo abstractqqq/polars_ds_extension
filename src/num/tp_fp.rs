@@ -4,6 +4,8 @@ use ndarray::ArrayView1;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
+const BINARY_CM_VALUES: [i32; 4] = [0, 1, 2, 3];
+
 fn combo_output(_: &[Field]) -> PolarsResult<Field> {
     let roc_auc = Field::new("roc_auc", DataType::Float64);
     let precision = Field::new("precision", DataType::Float64);
@@ -128,12 +130,165 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     // Precision & Recall & F
     let recall = y[index];
     let precision = precision[index];
-    let f: f64 = (precision * recall) / (precision + recall);
+    let f: f64 = 2.0 * (precision * recall) / (precision + recall);
     let recall: Series = Series::from_vec("recall", vec![recall]);
     let precision: Series = Series::from_vec("precision", vec![precision]);
     let f: Series = Series::from_vec("f", vec![f]);
 
     let out = StructChunked::new("metrics", &[precision, recall, f, ap, roc_auc])?;
+    Ok(out.into_series())
+}
+
+fn bcm(df: DataFrame) -> PolarsResult<DataFrame> {
+    // bincount trick as described here:
+    // https://stackoverflow.com/questions/59080843/faster-method-of-computing-confusion-matrix
+    // 0 is tn, 1 is fp, 2 is fn, 3 is tp
+    let df = df
+        .lazy()
+        .select([(lit(2) * col("y_true") + col("y_pred")).alias("y")])
+        .collect()?;
+
+    let value_counts = df["y"].value_counts(false, false)?;
+
+    // It's possible that there are no True Positive, True Negatives, etc.
+    // If our confusion matrix isn't complete, concat to the value counts dataframe
+    // the missing ones with the count set to 0
+    let value_counts = if value_counts.height() < 4 {
+        let seen: Vec<i32> = value_counts["y"]
+            .i32()?
+            .iter()
+            .map(|x| x.unwrap())
+            .collect();
+        let not_seen: Vec<i32> = BINARY_CM_VALUES
+            .into_iter()
+            .filter(|x| !seen.contains(x))
+            .collect();
+
+        let zeros = vec![0u32; not_seen.len()];
+
+        value_counts.vstack(&df!("y" => not_seen, "count" => zeros)?)?
+    } else {
+        value_counts
+    };
+
+    value_counts.sort(["y"], Default::default())
+}
+
+fn bcm_output(_: &[Field]) -> PolarsResult<Field> {
+    let tp = Field::new("tp", DataType::UInt32);
+    let fp = Field::new("fp", DataType::UInt32);
+    let tn = Field::new("tn", DataType::UInt32);
+    let fn_ = Field::new("fn", DataType::UInt32);
+
+    let fpr = Field::new("fpr", DataType::Float64);
+    let fnr = Field::new("fnr", DataType::Float64);
+    let tnr = Field::new("tnr", DataType::Float64);
+    let prevalence = Field::new("prevalence", DataType::Float64);
+    let prevalence_threshold = Field::new("prevalence_threshold", DataType::Float64);
+    let tpr = Field::new("tpr", DataType::Float64);
+    let informedness = Field::new("informedness", DataType::Float64);
+    let precision = Field::new("precision", DataType::Float64);
+    let false_omission_rate = Field::new("false_omission_rate", DataType::Float64);
+    let plr = Field::new("plr", DataType::Float64);
+    let nlr = Field::new("nlr", DataType::Float64);
+    let acc = Field::new("acc", DataType::Float64);
+    let balanced_accuracy = Field::new("balanced_accuracy", DataType::Float64);
+    let f1 = Field::new("f1", DataType::Float64);
+    let folkes_mallows_index = Field::new("folkes_mallows_index", DataType::Float64);
+    let mcc = Field::new("mcc", DataType::Float64);
+    let threat_score = Field::new("threat_score", DataType::Float64);
+    let markedness = Field::new("markedness", DataType::Float64);
+    let fdr = Field::new("fdr", DataType::Float64);
+    let npv = Field::new("npv", DataType::Float64);
+    let dor = Field::new("dor", DataType::Float64);
+
+    Ok(Field::new(
+        "",
+        DataType::Struct(vec![
+            tp,
+            fp,
+            tn,
+            fn_,
+            tpr,
+            fpr,
+            fnr,
+            tnr,
+            prevalence,
+            prevalence_threshold,
+            informedness,
+            precision,
+            false_omission_rate,
+            plr,
+            nlr,
+            acc,
+            balanced_accuracy,
+            f1,
+            folkes_mallows_index,
+            mcc,
+            threat_score,
+            markedness,
+            fdr,
+            npv,
+            dor,
+        ]),
+    ))
+}
+
+#[polars_expr(output_type_func=bcm_output)]
+fn pl_binary_confusion_matrix(inputs: &[Series]) -> PolarsResult<Series> {
+    // value_counts is a dataframe of length 4. We want to pivot it to 1, 4 so we can
+    // calculate the rest of the confusion matrix statistics from tp, fp, etc. Rust
+    // polars doesn't have pivot and I couldn't get the group_by method to work, so I
+    // will just create a new dataframe, which is slightly cursed but not too bad.
+    let counts: Vec<u32> = bcm(df!("y_true" => &inputs[0], "y_pred" => &inputs[1])?)?
+        .column("count")?
+        .u32()?
+        .to_vec_null_aware()
+        .unwrap_left();
+
+    let df =
+        df!("tn" => [counts[0]], "fp" => [counts[1]], "fn" => [counts[2]], "tp" => [counts[3]])?
+            .lazy()
+            .with_columns([
+                (col("tp") + col("fn")).alias("p"),
+                (col("fp") + col("tn")).alias("n"),
+            ])
+            .with_columns([
+                (col("tp") / col("p")).alias("tpr"),
+                (col("fp") / col("n")).alias("fpr"),
+                (col("tp") / (col("tp") + col("fp"))).alias("precision"),
+                (col("fn") / (col("fn") + col("tn"))).alias("false_omission_rate"),
+                (col("p") / (col("p") + col("n"))).alias("prevalence"),
+                (col("tp") / (col("tp") + col("fn") + col("fp"))).alias("threat_score"),
+            ])
+            .with_columns([
+                (lit(1) - col("tpr")).alias("fnr"),
+                (lit(1) - col("fpr")).alias("tnr"),
+                (lit(1) - col("false_omission_rate")).alias("npv"),
+                (lit(1) - col("precision")).alias("fdr"),
+            ])
+            .with_columns([
+                (col("tpr") / col("fpr")).alias("plr"),
+                (col("fnr") / col("tnr")).alias("nlr"),
+                (col("tpr") + col("tnr") - lit(1)).alias("informedness"),
+                (col("precision") - col("false_omission_rate")).alias("markedness"),
+                (((col("tpr") * col("fpr")).sqrt() - col("fpr")) / (col("tpr") - col("fpr")))
+                    .alias("prevalence_threshold"),
+                ((col("tpr") + col("tnr")) / lit(2)).alias("balanced_accuracy"),
+                ((lit(2) * col("precision") * col("tpr")) / (col("precision") + col("tpr")))
+                    .alias("f1"),
+                ((col("precision") * col("tpr")).sqrt()).alias("folkes_mallows_index"),
+                ((col("tpr") * col("tnr") * col("precision") * col("npv")).sqrt()
+                    - (col("fnr") * col("fpr") * col("false_omission_rate") * col("fdr")).sqrt())
+                .alias("mcc"),
+                ((col("tp") + col("tn")) / (col("p") + col("n"))).alias("acc"),
+            ])
+            .with_columns([(col("plr") / col("nlr")).alias("dor")])
+            .fill_null(f64::NAN)
+            .collect()?;
+
+    let out = df.into_struct("confusion_matrix");
+
     Ok(out.into_series())
 }
 
