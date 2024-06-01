@@ -367,7 +367,7 @@ def query_confusion_matrix(
     --------
     Limited to just the basic confusion matrix
 
-    >>> df = pl.DataFrame({"actual": [True, False, True], "pred": [0.4, 0.6, 0.9]})
+    >>> df = pl.DataFrame({"actual": [1, 0, 1], "pred": [0.4, 0.6, 0.9]})
     >>> df.select(pds.query_confusion_matrix("actual", "pred").alias("metrics")).unnest(
     ...    "metrics"
     ... )
@@ -394,25 +394,23 @@ def query_confusion_matrix(
     │ 0   ┆ 1   ┆ 1   ┆ 1   ┆ … ┆ -0.5       ┆ 0.5 ┆ 0.0 ┆ NaN │
     └─────┴─────┴─────┴─────┴───┴────────────┴─────┴─────┴─────┘
     """
+    res = pl_plugin(
+        lib=_lib,
+        symbol="pl_binary_confusion_matrix",
+        args=[
+            str_to_expr(actual).cast(pl.Boolean),
+            str_to_expr(pred).gt(threshold),
+        ],
+        returns_scalar=True,
+    )
     if all_metrics:
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_binary_confusion_matrix_full",
-            args=[
-                str_to_expr(actual).cast(pl.Boolean),
-                str_to_expr(pred).gt(threshold),
-            ],
-            returns_scalar=True,
-        )
+        return res
     else:
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_binary_confusion_matrix",
-            args=[
-                str_to_expr(actual).cast(pl.Boolean),
-                str_to_expr(pred).gt(threshold),
-            ],
-            returns_scalar=True,
+        return pl.struct(
+            res.struct.field("tn"),
+            res.struct.field("fp"),
+            res.struct.field("fn"),
+            res.struct.field("tp"),
         )
 
 
