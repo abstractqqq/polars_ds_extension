@@ -25,6 +25,7 @@ __all__ = [
     "query_binary_metrics",
     "query_multi_roc_auc",
     "query_cat_cross_entropy",
+    "query_confusion_matrix",
 ]
 
 
@@ -301,7 +302,8 @@ def query_confusion_matrix(
     threshold: float = 0.5,
     all_metrics: bool = False,
 ) -> pl.Expr:
-    """Computes the binary confusion matrix given the true labels (`actual`) and
+    """
+    Computes the binary confusion matrix given the true labels (`actual`) and
     the predicted labels (computed from `pred`, a column of predicted scores and
     `threshold`). When a divide by zero is encountered, NaN is returned.
 
@@ -354,13 +356,13 @@ def query_confusion_matrix(
     │ 0   ┆ 1   ┆ 1   ┆ 1   ┆ … ┆ -0.5       ┆ 0.5 ┆ 0.0 ┆ NaN │
     └─────┴─────┴─────┴─────┴───┴────────────┴─────┴─────┴─────┘
     """
+    # Cast to bool first to check the label is in correct format. Then back to u32.
+    act = str_to_expr(actual).cast(pl.Boolean).cast(pl.UInt32)
+    p = str_to_expr(pred).gt(threshold).cast(pl.UInt32)
     res = pl_plugin(
         lib=_lib,
         symbol="pl_binary_confusion_matrix",
-        args=[
-            str_to_expr(actual).cast(pl.Boolean),
-            str_to_expr(pred).gt(threshold),
-        ],
+        args=[(2 * act) + p],  # See Rust code for bincount trick
         returns_scalar=True,
     )
     if all_metrics:
