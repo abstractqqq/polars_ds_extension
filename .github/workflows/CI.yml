@@ -69,6 +69,7 @@ jobs:
           pytest tests/test_many.py
           pytest tests/test_string.py
           pytest tests/test_transforms.py
+          pytest tests/test_metrics.py
 
 
   build-wheels:
