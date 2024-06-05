@@ -1,6 +1,7 @@
 from __future__ import annotations
 import polars as pl
 import math
+from polars.type_aliases import RollingInterpolationMethod
 from .type_alias import Alternative, str_to_expr, StrOrExpr, CorrMethod, Noise
 from typing import Optional, Union
 from polars.utils.udfs import _get_shared_lib_location
@@ -626,6 +627,37 @@ def query_cid_ce(x: StrOrExpr, normalize: bool = False) -> pl.Expr:
 
     z = y - y.shift(-1)
     return z.dot(z).sqrt()
+
+
+def winsorize(
+    x: StrOrExpr,
+    lower: float = 0.05,
+    upper: float = 0.95,
+    method: RollingInterpolationMethod = "nearest",
+) -> pl.Expr:
+    """
+    Winsorize the data by clipping by some percentiles at the lower and upper ends.
+
+    Parameters
+    ----------
+    x
+        Either the name of the column or a Polars expression
+    lower
+        The lower percentile value to clip the data. E.g everything < x.quantile(lower)
+        will be mapped to x.quantile(lower)
+    upper
+        The upper percentile value to clip the data. E.g everything > x.quantile(upper)
+        will be mapped to x.quantile(upper)
+    method
+        Method for quantile estimate. One of "nearest", "higher", "lower", "midpoint", "linear".
+    """
+    if lower <= 0.0 or lower >= 1.0 or upper <= 0.0 or upper >= 1.0 or upper <= lower:
+        raise ValueError("Lower and upper must be with in (0, 1) and upper should be > lower")
+
+    xx = str_to_expr(x)
+    return xx.clip(
+        xx.quantile(lower, interpolation=method), xx.quantile(upper, interpolation=method)
+    )
 
 
 def perturb(x: StrOrExpr, epsilon: float, positive: bool = False):
