@@ -13,6 +13,7 @@ from .type_alias import (
     SimpleImputeMethod,
     SimpleScaleMethod,
     StrOrExpr,
+    RollingInterpolationMethod,
 )
 
 if sys.version_info >= (3, 11):
@@ -308,6 +309,38 @@ class Blueprint:
             Any Polars expression that can be understood as columns.
         """
         self._steps.append(SelectStep(cols))
+        return self
+
+    def winsorize(
+        self,
+        cols: IntoExprColumn,
+        lower: float = 0.05,
+        upper: float = 0.95,
+        method: RollingInterpolationMethod = "nearest",
+    ) -> Self:
+        """
+        Learns the lower and upper percentile from the columns, then clip each end at those values.
+        If you wish to clip by constant values, you may append expression like pl.col(c).clip(c1, c2),
+        where c1 and c2 are constants decided by the user.
+
+        Parameters
+        ----------
+        cols
+            Any Polars expression that can be understood as columns. Columns must be numerical.
+        lower
+            The lower quantile value
+        upper
+            The higher quantile value
+        method
+            Method to compute quantile. One of `nearest`, `higher`, `lower`, `midpoint`, `linear`.
+        """
+        self._steps.append(
+            FitStep(
+                partial(t.winsorize, lower=lower, upper=upper, method=method),
+                cols,
+                self.exclude,
+            )
+        )
         return self
 
     def drop(self, cols: IntoExprColumn) -> Self:

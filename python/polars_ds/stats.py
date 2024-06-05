@@ -1,8 +1,14 @@
 from __future__ import annotations
 import polars as pl
 import math
-from polars.type_aliases import RollingInterpolationMethod
-from .type_alias import Alternative, str_to_expr, StrOrExpr, CorrMethod, Noise
+from .type_alias import (
+    Alternative,
+    str_to_expr,
+    StrOrExpr,
+    CorrMethod,
+    Noise,
+    RollingInterpolationMethod,
+)
 from typing import Optional, Union
 from polars.utils.udfs import _get_shared_lib_location
 from ._utils import pl_plugin
@@ -636,7 +642,7 @@ def winsorize(
     method: RollingInterpolationMethod = "nearest",
 ) -> pl.Expr:
     """
-    Winsorize the data by clipping by some percentiles at the lower and upper ends.
+    Winsorize the data by clipping by percentiles at the lower and upper ends.
 
     Parameters
     ----------

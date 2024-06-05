@@ -6,8 +6,14 @@ preserves the learned values and optimizes the transform query, see pipeline.py.
 
 import polars as pl
 import polars.selectors as cs
-from polars.type_aliases import RollingInterpolationMethod
-from .type_alias import PolarsFrame, SimpleImputeMethod, SimpleScaleMethod, ExprTransform, StrOrExpr
+from .type_alias import (
+    PolarsFrame,
+    SimpleImputeMethod,
+    SimpleScaleMethod,
+    ExprTransform,
+    StrOrExpr,
+    RollingInterpolationMethod,
+)
 from . import num as pds_num
 from typing import List, Union, Optional
 
@@ -181,6 +187,45 @@ def robust_scale(
     )
     n = len(cols)
     return [(pl.col(c) - temp[i]) / (temp[n + i] - temp[i]) for i, c in enumerate(cols)]
+
+
+def winsorize(
+    df: PolarsFrame,
+    cols: List[str],
+    lower: float = 0.05,
+    upper: float = 0.95,
+    method: RollingInterpolationMethod = "nearest",
+) -> ExprTransform:
+    """
+    Learns the lower and upper percentile from the columns, then clip each end at those values.
+
+    Parameters
+    ----------
+    df
+        Either a lazy or an eager dataframe
+    cols
+        A list of strings representing column names
+    lower
+        The lower quantile value
+    upper
+        The higher quantile value
+    method
+        Method to compute quantile. One of `nearest`, `higher`, `lower`, `midpoint`, `linear`.
+    """
+    if lower >= 1.0 or lower <= 0.0 or upper >= 1.0 or upper <= 0.0 or lower >= upper:
+        raise ValueError("Lower and upper must be with in (0, 1) and upper should be > lower")
+
+    temp = (
+        df.lazy()
+        .select(
+            pl.col(cols).quantile(lower).name.prefix("l"),
+            pl.col(cols).quantile(upper).name.prefix("u"),
+        )
+        .collect()
+        .row(0)
+    )
+    n = len(cols)
+    return [pl.col(c).clip(temp[i], temp[n + i]) for i, c in enumerate(cols)]
 
 
 def one_hot_encode(

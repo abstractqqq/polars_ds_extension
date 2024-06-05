@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Literal, Union, List, Callable
+from polars.type_aliases import RollingInterpolationMethod  # noqa: F401
 import sys
 import polars as pl
 
