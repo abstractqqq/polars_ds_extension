@@ -4,6 +4,8 @@
 </h1>
 
 <p align="center">
+  <a href="https://discord.gg/VaYJrrwbNU">Discord</a>
+  |
   <a href="https://polars-ds-extension.readthedocs.io/en/latest/">Documentation</a>
   |
   <a href="https://github.com/abstractqqq/polars_ds_extension/blob/main/examples/basics.ipynb">User Guide</a>
