@@ -24,7 +24,7 @@ def pl_plugin(
             is_elementwise=is_elementwise,
             returns_scalar=returns_scalar,
             changes_length=changes_length,
-            cast_to_supertype=cast_to_supertype,
+            cast_to_supertypes=cast_to_supertype,
         )
 
     from polars.plugins import register_plugin_function
