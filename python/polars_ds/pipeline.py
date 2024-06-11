@@ -1,10 +1,11 @@
 import polars as pl
-from . import transforms as t
+import json
 import sys
+from . import transforms as t
 from functools import partial
 from dataclasses import dataclass
 from polars.type_aliases import IntoExprColumn
-from typing import List, Optional, Union, Dict
+from typing import List, Optional, Union, Dict, Any
 from .type_alias import (
     TypeAlias,
     PolarsFrame,
@@ -58,6 +59,26 @@ Step: TypeAlias = Union[FitStep, SelectStep, WithColumnsStep]
 FittedStep: TypeAlias = Union[SelectStep, WithColumnsStep]
 
 
+def _to_json_dict(step: FittedStep) -> Dict:
+    """
+    Turns a fitted step into a JSON dict.
+    """
+    exprs = []
+    if isinstance(step.exprs, pl.Expr):
+        exprs.append(step.exprs.meta.serialize())
+    elif isinstance(step.exprs, list):
+        for e in step.exprs:
+            if isinstance(e, pl.Expr):
+                exprs.append(e.meta.serialize())
+            else:
+                raise ValueError("Non-expression detected. This object is ill-defined.")
+
+    if isinstance(step, SelectStep):
+        return {"SelectStep": exprs}
+    else:
+        return {"WithColumnsStep": exprs}
+
+
 @dataclass
 class Pipeline:
     """
@@ -105,6 +126,96 @@ class Pipeline:
                 raise ValueError(f"Transform is not a valid FittedStep: {str(step)}")
 
         return plan
+
+    def to_dict(self) -> Dict:
+        """
+        Converts self to a dict, with all expressions turned into JSON strings.
+        """
+        return {
+            "name": str(self.name),
+            "target": self.target,
+            "feature_names_in_": list(self.feature_names_in_),
+            "feature_names_out_": list(self.feature_names_out_),
+            "transforms": [_to_json_dict(step) for step in self.transforms],
+            "ensure_features_in": self.ensure_features_in,
+            "ensure_features_out": self.ensure_features_out,
+        }
+
+    def to_json(self, path: Optional[str] = None, **kwargs) -> Optional[str]:
+        """
+        Turns self into a JSON string.
+
+        Parameters
+        ----------
+        path
+            If none, will return a json string. If given, this will be used as the path
+            to save the pipeline and None will be returned.
+        kwargs
+            Keyword arguments to Python's default json
+        """
+
+        # Maybe support other json package?
+        if path is None:
+            return json.dumps(self.to_dict(), **kwargs)
+        else:
+            with open(path, "w") as f:
+                json.dump(self.to_dict(), f)
+
+            return None
+
+    def from_dict(pipeline_dict: Dict[str, Any]) -> Self:
+        """
+        Recreates a pipeline from a dictionary created by the `to_dict` call.
+        """
+        from io import StringIO
+
+        transforms = pipeline_dict["transforms"]
+        transform_steps = []
+        step: Dict[str, List[str]]
+        for (
+            step
+        ) in transforms:  # each step is a dict like {'SelectStep': [jsonified str expressions..]}
+            if "SelectStep" in step:
+                json_exprs = step.pop("SelectStep")
+                actual_exprs = [pl.Expr.deserialize(StringIO(e)) for e in json_exprs]
+                transform_steps.append(SelectStep(actual_exprs))
+            elif "WithColumnsStep" in step:
+                json_exprs = step.pop("WithColumnsStep")
+                actual_exprs = [pl.Expr.deserialize(StringIO(e)) for e in json_exprs]
+                transform_steps.append(WithColumnsStep(actual_exprs))
+            else:
+                raise ValueError(f"Invalid step {step}")
+
+        name = pipeline_dict["name"]
+        target = pipeline_dict["target"]
+        feature_names_in_ = pipeline_dict["feature_names_in_"]
+        feature_names_out_ = pipeline_dict["feature_names_out_"]
+        ensure_features_in = pipeline_dict["ensure_features_in"]
+        ensure_features_out = pipeline_dict["ensure_features_out"]
+
+        return Pipeline(
+            name=name,
+            target=target,
+            feature_names_in_=feature_names_in_,
+            feature_names_out_=feature_names_out_,
+            transforms=transform_steps,
+            ensure_features_in=ensure_features_in,
+            ensure_features_out=ensure_features_out,
+        )
+
+    def from_json_str(json_str: str) -> Self:
+        """
+        Creates the Pipeline from the JSON string.
+        """
+        return Pipeline.from_dict(json.loads(json_str))
+
+    def from_json(path: str) -> Self:
+        """
+        Creates the Pipeline by loading a local JSON file at path
+        """
+        with open(path, "r") as f:
+            pipe_dict = json.load(f)
+        return Pipeline.from_dict(pipe_dict)
 
     def ensure_features_io(self, ensure_in: bool = True, ensure_out: bool = True) -> Self:
         """
