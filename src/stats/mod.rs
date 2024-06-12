@@ -1,5 +1,6 @@
 mod chi2;
 mod fstats;
+mod interpolation;
 mod kendall_tau;
 mod ks;
 mod normal_test;
