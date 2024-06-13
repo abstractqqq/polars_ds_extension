@@ -19,7 +19,7 @@ authors = [
     {name = "Tianren Qin", email = "tq9695@gmail.com"},
 ]
 dependencies = [
-    "polars >= 0.20.6, !=0.20.12",
+    "polars >= 0.20.6, !=0.20.12, <1.0",
     'typing-extensions; python_version <= "3.11"',
 ] 
 
