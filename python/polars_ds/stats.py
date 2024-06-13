@@ -16,6 +16,12 @@ from ._utils import pl_plugin
 _lib = _get_shared_lib_location(__file__)
 
 __all__ = [
+    "query_cv",
+    "query_std_over_median",
+    "query_std_over_range",
+    "query_std_over_quantiles",
+    "query_longest_streak_above",
+    "query_longest_streak_below",
     "query_ttest_ind",
     "query_ttest_1samp",
     "query_ttest_ind_from_stats",
@@ -317,6 +323,121 @@ class StatsExt:
 
 
 # -------------------------------------------------------------------------------------------------------
+
+
+def query_cv(x: StrOrExpr, ddof: int = 1) -> pl.Expr:
+    """
+    Returns the coefficient of variation for the variable. This is a shorthand for std / mean.
+
+    Parameters
+    ----------
+    x
+        The variable
+    ddof
+        The delta degree of frendom used in std computation
+    """
+    xx = str_to_expr(x)
+    return xx.std(ddof=ddof) / xx.mean()
+
+
+def query_std_over_median(x: StrOrExpr, ddof: int = 1) -> pl.Expr:
+    """
+    This is a shorthand for std / median.
+
+    Parameters
+    ----------
+    x
+        The variable
+    ddof
+        The delta degree of frendom used in std computation
+    """
+    xx = str_to_expr(x)
+    return xx.std(ddof=ddof) / xx.median()
+
+
+def query_std_over_range(x: StrOrExpr, ddof: int = 1) -> pl.Expr:
+    """
+    Standard deviation over the range of the variable. This is a shorthand for std / (max - min)
+
+    Parameters
+    ----------
+    x
+        The variable
+    ddof
+        The delta degree of frendom used in std computation
+    """
+    xx = str_to_expr(x)
+    return xx.std(ddof=ddof) / (xx.max() - xx.min())
+
+
+def query_std_over_quantiles(
+    x: StrOrExpr, ddof: int = 1, q1: float = 0.25, q2: float = 0.75
+) -> pl.Expr:
+    """
+    A more robust version of std over range, where range is replaced by quantiles q1 and q2.
+
+    Parameters
+    ----------
+    x
+        The variable
+    ddof
+        The delta degree of frendom used in std computation
+    q1
+        The lower quantile
+    q2
+        The higher quantile
+    """
+    if q1 >= 1.0 or q1 <= 0.0 or q2 >= 1.0 or q2 <= 0.0 or q1 >= q2:
+        raise ValueError("The quantiles q1, q2 must be within (0, 1) and q2 must be > q1.")
+
+    xx = str_to_expr(x)
+    return xx.std(ddof=ddof) / (xx.quantile(q2) - xx.quantile(q1))
+
+
+def query_longest_streak_above(x: StrOrExpr, value: Union[float, pl.Expr]) -> pl.Expr:
+    """
+    Finds the longest streak above (>=) a value.
+
+    Parameters
+    ----------
+    x
+        The variable
+    value
+        Either a float or a scalar polars expression. Output will be wrong is value is not a scalar.
+    """
+    s: pl.Expr = str_to_expr(x)
+    v: pl.Expr = pl.lit(value) if isinstance(value, float) else value
+    y = (s >= v).rle()
+    return (
+        y.filter(y.struct.field("values"))
+        .struct.field("lengths")
+        .max()
+        .fill_null(0)
+        .alias("longest_streak_above")
+    )
+
+
+def query_longest_streak_below(x: StrOrExpr, value: Union[float, pl.Expr]) -> pl.Expr:
+    """
+    Finds the longest streak below (<=) a value.
+
+    Parameters
+    ----------
+    x
+        The variable
+    value
+        Either a float or a scalar polars expression. Output will be wrong is value is not a scalar.
+    """
+    s: pl.Expr = str_to_expr(x)
+    v: pl.Expr = pl.lit(value) if isinstance(value, float) else value
+    y = (s <= v).rle()
+    return (
+        y.filter(y.struct.field("values"))
+        .struct.field("lengths")
+        .max()
+        .fill_null(0)
+        .alias("longest_streak_below")
+    )
 
 
 def query_first_digit_cnt(var: StrOrExpr) -> pl.Expr:
