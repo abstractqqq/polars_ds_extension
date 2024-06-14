@@ -3,10 +3,7 @@ import math
 import polars as pl
 from typing import Union, Optional, List, Iterable
 from .type_alias import DetrendMethod, Distance, ConvMode, ConvMethod, str_to_expr, StrOrExpr
-from polars.utils.udfs import _get_shared_lib_location
 from ._utils import pl_plugin
-
-_lib = _get_shared_lib_location(__file__)
 
 __all__ = [
     "softmax",
@@ -87,7 +84,6 @@ def query_gcd(x: StrOrExpr, y: Union[int, str, pl.Expr]) -> pl.Expr:
         yy = str_to_expr(y).cast(pl.Int32)
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_gcd",
         args=[str_to_expr(x).cast(pl.Int32), yy],
         is_elementwise=True,
@@ -111,7 +107,6 @@ def query_lcm(x: StrOrExpr, y: Union[int, str, pl.Expr]) -> pl.Expr:
         yy = str_to_expr(y).cast(pl.Int32)
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_lcm",
         args=[str_to_expr(x).cast(pl.Int32), yy],
         is_elementwise=True,
@@ -143,7 +138,6 @@ def haversine(
     ylat = pl.lit(y_lat) if isinstance(y_lat, float) else str_to_expr(y_lat)
     ylong = pl.lit(y_long) if isinstance(y_long, float) else str_to_expr(y_long)
     return pl_plugin(
-        lib=_lib,
         symbol="pl_haversine",
         args=[xlat, xlong, ylat, ylong],
         is_elementwise=True,
@@ -181,7 +175,7 @@ def query_singular_values(
     else:
         actual_inputs = feats
 
-    out = pl_plugin(lib=_lib, symbol="pl_singular_values", args=actual_inputs, returns_scalar=True)
+    out = pl_plugin(symbol="pl_singular_values", args=actual_inputs, returns_scalar=True)
     if as_explained_var:
         out = out.list.eval(pl.element().pow(2) / (pl.count() - 1))
     if as_ratio:
@@ -211,7 +205,7 @@ def query_pca(
     else:
         actual_inputs = feats
 
-    return pl_plugin(lib=_lib, symbol="pl_pca", args=actual_inputs, changes_length=True)
+    return pl_plugin(symbol="pl_pca", args=actual_inputs, changes_length=True)
 
 
 def query_principal_components(
@@ -240,9 +234,7 @@ def query_principal_components(
         actual_inputs = feats
 
     actual_inputs.insert(0, pl.lit(k, dtype=pl.UInt32).alias("principal_components"))
-    return pl_plugin(
-        lib=_lib, symbol="pl_principal_components", args=actual_inputs, changes_length=True
-    )
+    return pl_plugin(symbol="pl_principal_components", args=actual_inputs, changes_length=True)
 
 
 def query_knn_ptwise(
@@ -326,7 +318,6 @@ def query_knn_ptwise(
     cols.extend(str_to_expr(x) for x in features)
     if return_dist:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_knn_ptwise_w_dist",
             args=cols,
             kwargs=kwargs,
@@ -334,7 +325,6 @@ def query_knn_ptwise(
         )
     else:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_knn_ptwise",
             args=cols,
             kwargs=kwargs,
@@ -449,7 +439,6 @@ def query_radius_ptwise(
     cols = [idx]
     cols.extend(str_to_expr(x) for x in features)
     return pl_plugin(
-        lib=_lib,
         symbol="pl_query_radius_ptwise",
         args=cols,
         kwargs={"r": r, "leaf_size": 32, "metric": metric, "parallel": parallel},
@@ -495,7 +484,6 @@ def query_nb_cnt(
         rad = pl.lit(pl.Series(values=r, dtype=pl.Float64))
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_nb_cnt",
         args=[rad] + [str_to_expr(x) for x in features],
         kwargs={
@@ -540,9 +528,8 @@ def query_knn_filter(
     p = pt if isinstance(pt, pl.Series) else pl.Series(values=pt)
     metric = str(dist).lower()
     return pl_plugin(
-        lib=_lib,
         symbol="pl_knn_filter",
-        args=[p] + [str_to_expr(x) for x in features],
+        args=[pl.lit(p)] + [str_to_expr(x) for x in features],
         kwargs={
             "k": k,
             "leaf_size": 32,
@@ -609,7 +596,6 @@ def query_approx_entropy(
     )
     # More errors are handled in Rust
     return pl_plugin(
-        lib=_lib,
         symbol="pl_approximate_entropy",
         args=data,
         kwargs={
@@ -662,7 +648,6 @@ def query_sample_entropy(
         for i in range(1, m + 1)
     )  # More errors are handled in Rust
     return pl_plugin(
-        lib=_lib,
         symbol="pl_sample_entropy",
         args=data,
         kwargs={
@@ -689,7 +674,6 @@ def query_cond_entropy(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
         Either a string or a polars expression
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_conditional_entropy",
         args=[str_to_expr(x), str_to_expr(y)],
         returns_scalar=True,
@@ -729,7 +713,6 @@ def query_knn_entropy(
         raise ValueError("Invalid metric for KNN entropy.")
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_knn_entropy",
         args=[str_to_expr(e) for e in features],
         kwargs={
@@ -903,14 +886,12 @@ def query_lstsq(
     cols.extend(str_to_expr(z) for z in x)
     if return_pred:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_lstsq_pred",
             args=cols,
             kwargs={"bias": add_bias, "skip_null": skip_null},
         )
     else:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_lstsq",
             args=cols,
             kwargs={"bias": add_bias, "skip_null": skip_null},
@@ -951,7 +932,6 @@ def query_lstsq_report(
     cols = [t]
     cols.extend(str_to_expr(z) for z in x)
     return pl_plugin(
-        lib=_lib,
         symbol="pl_lstsq_report",
         args=cols,
         kwargs={"bias": add_bias, "skip_null": skip_null},
@@ -972,7 +952,6 @@ def query_lempel_ziv(b: StrOrExpr, as_ratio: bool = True) -> pl.Expr:
     """
     x = str_to_expr(b)
     out = pl_plugin(
-        lib=_lib,
         symbol="pl_lempel_ziv_complexity",
         args=[x],
         returns_scalar=True,
@@ -996,7 +975,6 @@ def query_jaccard_row(first: StrOrExpr, second: StrOrExpr) -> pl.Expr:
         A list column with a hashable inner type
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_list_jaccard",
         args=[str_to_expr(first), str_to_expr(second)],
         is_elementwise=True,
@@ -1018,7 +996,6 @@ def query_jaccard_col(first: StrOrExpr, second: StrOrExpr, count_null: bool = Fa
         Whether to count null as a distinct element.
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_jaccard",
         args=[str_to_expr(first), str_to_expr(second), pl.lit(count_null, dtype=pl.Boolean)],
         returns_scalar=True,
@@ -1091,7 +1068,6 @@ def query_psi(
     # counts of points in the buckets
     cnt_ref = vc.struct.field("count")  # .cast(pl.UInt32)
     psi_report = pl_plugin(
-        lib=_lib,
         symbol="pl_psi_report",
         args=[valid_new, brk, cnt_ref],
         changes_length=True,
@@ -1155,7 +1131,6 @@ def query_psi_discrete(
         ref_cat: Union[pl.Series, pl.Expr] = temp[temp.columns[0]]
 
     psi_report = pl_plugin(
-        lib=_lib,
         symbol="pl_psi_discrete_report",
         args=[new_cat, new_cnt, ref_cat, ref_cnt],
         changes_length=True,
@@ -1206,7 +1181,6 @@ def query_psi_w_breakpoints(
 
     bp = breakpoints + [float("inf")]
     return pl_plugin(
-        lib=_lib,
         symbol="pl_psi_w_bps",
         args=[x.rechunk(), y.rechunk(), pl.Series(values=bp)],
         changes_length=True,
@@ -1241,7 +1215,7 @@ def query_woe(x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], n_bins: int
     xx = str_to_expr(x)
     valid = xx.filter(xx.is_finite())
     brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
-    return pl_plugin(lib=_lib, symbol="pl_woe_discrete", args=[brk, t], changes_length=True)
+    return pl_plugin(symbol="pl_woe_discrete", args=[brk, t], changes_length=True)
 
 
 def query_woe_discrete(
@@ -1269,7 +1243,6 @@ def query_woe_discrete(
     else:
         t = pl.Series(values=target)
     return pl_plugin(
-        lib=_lib,
         symbol="pl_woe_discrete",
         args=[str_to_expr(x).cast(pl.String), t],
         changes_length=True,
@@ -1309,7 +1282,7 @@ def query_iv(
     xx = str_to_expr(x)
     valid = xx.filter(xx.is_finite())
     brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
-    out = pl_plugin(lib=_lib, symbol="pl_iv", args=[brk, t], changes_length=True)
+    out = pl_plugin(symbol="pl_iv", args=[brk, t], changes_length=True)
     return out.struct.field("iv").sum() if return_sum else out
 
 
@@ -1339,9 +1312,7 @@ def query_iv_discrete(
         t = str_to_expr(target)
     else:
         t = pl.Series(values=target)
-    out = pl_plugin(
-        lib=_lib, symbol="pl_iv", args=[str_to_expr(x).cast(pl.String), t], changes_length=True
-    )
+    out = pl_plugin(symbol="pl_iv", args=[str_to_expr(x).cast(pl.String), t], changes_length=True)
     return out.struct.field("iv").sum() if return_sum else out
 
 
@@ -1366,7 +1337,6 @@ def integrate_trapz(y: StrOrExpr, x: Union[float, pl.Expr]) -> pl.Expr:
         xx = x.cast(pl.Float64)
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_trapz",
         args=[yy, xx],
         returns_scalar=True,
@@ -1424,7 +1394,6 @@ def convolve(
         f = f.reverse()
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_convolve",
         args=[xx, f],
         kwargs={"mode": mode, "method": method, "parallel": parallel},
@@ -1450,7 +1419,6 @@ def gamma(x: StrOrExpr) -> pl.Expr:
     """
     return pl_plugin(
         args=[str_to_expr(x)],
-        lib=_lib,
         symbol="pl_gamma",
         is_elementwise=True,
     )
@@ -1462,7 +1430,6 @@ def expit(x: StrOrExpr) -> pl.Expr:
     """
     return pl_plugin(
         args=[str_to_expr(x)],
-        lib=_lib,
         symbol="pl_expit",
         is_elementwise=True,
     )
@@ -1475,7 +1442,6 @@ def logit(x: StrOrExpr) -> pl.Expr:
     """
     return pl_plugin(
         args=[str_to_expr(x)],
-        lib=_lib,
         symbol="pl_logit",
         is_elementwise=True,
     )
@@ -1487,7 +1453,6 @@ def exp2(x: StrOrExpr) -> pl.Expr:
     """
     return pl_plugin(
         args=[str_to_expr(x)],
-        lib=_lib,
         symbol="pl_exp2",
         is_elementwise=True,
     )
@@ -1499,7 +1464,6 @@ def fract(x: StrOrExpr) -> pl.Expr:
     """
     return pl_plugin(
         args=[str_to_expr(x)],
-        lib=_lib,
         symbol="pl_fract",
         is_elementwise=True,
     )
@@ -1511,7 +1475,6 @@ def trunc(x: StrOrExpr) -> pl.Expr:
     """
     return pl_plugin(
         args=[str_to_expr(x)],
-        lib=_lib,
         symbol="pl_trunc",
         is_elementwise=True,
     )
@@ -1570,7 +1533,7 @@ def rfft(series: StrOrExpr, n: Optional[int] = None, return_full: bool = False) 
     full = pl.lit(return_full, pl.Boolean)
     nn = pl.lit(n, pl.UInt32)
     x: pl.Expr = str_to_expr(series).cast(pl.Float64)
-    return pl_plugin(lib=_lib, symbol="pl_rfft", args=[x, nn, full], changes_length=True)
+    return pl_plugin(symbol="pl_rfft", args=[x, nn, full], changes_length=True)
 
 
 def target_encode(
@@ -1604,7 +1567,6 @@ def target_encode(
     else:
         t = pl.Series(values=target)
     return pl_plugin(
-        lib=_lib,
         symbol="pl_target_encode",
         args=[str_to_expr(s), t, t.mean()],
         kwargs={"min_samples_leaf": float(min_samples_leaf), "smoothing": smoothing},

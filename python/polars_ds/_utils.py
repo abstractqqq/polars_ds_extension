@@ -1,10 +1,31 @@
 import polars as pl
+import os
+import re
 from typing import Any, Optional, List, Dict, Union
+from pathlib import Path
+
+
+# Only need this
+_PLUGIN_PATH = Path(__file__).parent
+# For polars version < 0.20.16. This will be eventually removed
+_POLARS_LEGACY_SUPPORT = tuple(int(re.sub("[^0-9]", "", x)) for x in pl.__version__.split(".")) < (
+    0,
+    20,
+    16,
+)
+_PLUGIN_LIB_LEGACY = os.path.join(
+    os.path.dirname(__file__),
+    next(
+        filter(
+            lambda file: file.endswith((".so", ".dll", ".pyd")),
+            os.listdir(os.path.dirname(__file__)),
+        )
+    ),
+)
 
 
 def pl_plugin(
     *,
-    lib: str,
     symbol: str,
     args: List[Union[pl.Series, pl.Expr]],
     kwargs: Optional[Dict[str, Any]] = None,
@@ -13,11 +34,10 @@ def pl_plugin(
     changes_length: bool = False,
     cast_to_supertype: bool = False,
 ) -> pl.Expr:
-    # pl.__version__ should always be a valid version number, so split returns always 3 strs
-    if tuple(int(x) for x in pl.__version__.split(".")) < (0, 20, 16):
-        # This will eventually be deprecated?
+    if _POLARS_LEGACY_SUPPORT:
+        # This will eventually be deprecated, yes
         return args[0].register_plugin(
-            lib=lib,
+            lib=_PLUGIN_LIB_LEGACY,
             symbol=symbol,
             args=args[1:],
             kwargs=kwargs,
@@ -29,8 +49,9 @@ def pl_plugin(
 
     from polars.plugins import register_plugin_function
 
+    print(args)
     return register_plugin_function(
-        plugin_path=lib,
+        plugin_path=_PLUGIN_PATH,
         args=args,
         function_name=symbol,
         kwargs=kwargs,

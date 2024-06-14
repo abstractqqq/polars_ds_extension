@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import polars as pl
-from polars.utils.udfs import _get_shared_lib_location
 
 from ._utils import pl_plugin
 from .type_alias import ROCAUCStrategy, StrOrExpr, str_to_expr
 
-_lib = _get_shared_lib_location(__file__)
 
 __all__ = [
     "query_r2",
@@ -272,7 +270,6 @@ def query_roc_auc(
         An expression represeting the column with predicted probability.
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_roc_auc",
         args=[str_to_expr(actual).cast(pl.UInt32), str_to_expr(pred)],
         returns_scalar=True,
@@ -360,7 +357,6 @@ def query_confusion_matrix(
     act = str_to_expr(actual).cast(pl.Boolean).cast(pl.UInt32)
     p = str_to_expr(pred).gt(threshold).cast(pl.UInt32)
     res = pl_plugin(
-        lib=_lib,
         symbol="pl_binary_confusion_matrix",
         args=[(2 * act) + p],  # See Rust code for bincount trick
         returns_scalar=True,
@@ -399,7 +395,6 @@ def query_binary_metrics(actual: StrOrExpr, pred: StrOrExpr, threshold: float = 
         The threshold used to compute precision, recall and f (f score).
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_combo_b",
         args=[
             str_to_expr(actual).cast(pl.UInt32),
