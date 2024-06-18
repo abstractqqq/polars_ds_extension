@@ -398,10 +398,12 @@ def query_longest_streak_above(x: StrOrExpr, value: Union[float, pl.Expr]) -> pl
     """
     s: pl.Expr = str_to_expr(x)
     v: pl.Expr = pl.lit(value) if isinstance(value, float) else value
-    y = (s >= v).rle()
+    y = (
+        (s >= v).rle().struct.rename_fields(["len", "value"])
+    )  # rename fields can be removed when polars hit v1.0
     return (
-        y.filter(y.struct.field("values"))
-        .struct.field("lengths")
+        y.filter(y.struct.field("value"))
+        .struct.field("len")
         .max()
         .fill_null(0)
         .alias("longest_streak_above")
@@ -421,10 +423,10 @@ def query_longest_streak_below(x: StrOrExpr, value: Union[float, pl.Expr]) -> pl
     """
     s: pl.Expr = str_to_expr(x)
     v: pl.Expr = pl.lit(value) if isinstance(value, float) else value
-    y = (s <= v).rle()
+    y = (s <= v).rle().struct.rename_fields(["len", "value"])
     return (
-        y.filter(y.struct.field("values"))
-        .struct.field("lengths")
+        y.filter(y.struct.field("value"))
+        .struct.field("len")
         .max()
         .fill_null(0)
         .alias("longest_streak_below")

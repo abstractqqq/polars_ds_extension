@@ -65,12 +65,12 @@ fn series_to_mat_for_lstsq(
     let n_features = inputs.len().abs_diff(1);
     // Create null mask
     let mut has_null = inputs[0].has_validity();
-    let mut mask = inputs[0].is_null();
+    let mut mask = inputs[0].is_not_null();
     for s in inputs.iter() {
         has_null |= s.has_validity();
-        mask = mask | s.is_null();
+        mask = mask & s.is_not_null();
     }
-    mask = !mask; // Return a mask where true is kept (true means not null).
+    // Return a mask where true is kept (true means not null).
 
     if has_null && !skip_null {
         Err(PolarsError::ComputeError(
@@ -93,11 +93,9 @@ fn series_to_mat_for_lstsq(
             ))
         } else {
             // Error here
-            println!("{:?}", df.shape());
-            let mat = df
-                .align_chunks()
-                .to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
-            println!("B");
+            // println!("{:?}", df.shape());
+            let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
+            // println!("B");
             Ok((mat, mask))
         }
     }
@@ -151,7 +149,6 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let resid = y - &pred;
             let pred = pred.col_as_slice(0);
             let resid = resid.col_as_slice(0);
-            // println!("Lstsq: Coefficients in order (bias last if exists): {:?}", coeffs);
             // Need extra work when skip_null is true and there are nulls
             let (p, r) = if skip_null && mask.any() {
                 let mut p_builder: PrimitiveChunkedBuilder<Float64Type> =

@@ -7,6 +7,8 @@ from pathlib import Path
 
 # Only need this
 _PLUGIN_PATH = Path(__file__).parent
+
+# -----------------------------------------------------------------------------------
 # For polars version < 0.20.16. This will be eventually removed
 _POLARS_LEGACY_SUPPORT = tuple(int(re.sub("[^0-9]", "", x)) for x in pl.__version__.split(".")) < (
     0,
@@ -22,6 +24,7 @@ _PLUGIN_LIB_LEGACY = os.path.join(
         )
     ),
 )
+# -----------------------------------------------------------------------------------
 
 
 def pl_plugin(
@@ -49,7 +52,6 @@ def pl_plugin(
 
     from polars.plugins import register_plugin_function
 
-    print(args)
     return register_plugin_function(
         plugin_path=_PLUGIN_PATH,
         args=args,
