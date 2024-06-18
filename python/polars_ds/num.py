@@ -828,7 +828,7 @@ def query_permute_entropy(
             .head(t.len() - n_dims + 1)
             .list.eval(pl.element().arg_sort())
             .value_counts()  # groupby and count, but returns a struct
-            .struct.field("count")  # extract the field named "counts"
+            .struct.field("count")  # extract the field named "count"
             .entropy(base=base, normalize=True)
         )
     else:
@@ -1059,6 +1059,9 @@ def query_psi(
 
     vc = (
         valid_ref.qcut(n_bins, left_closed=False, allow_duplicates=True, include_breaks=True)
+        .struct.rename_fields(
+            ["brk", "category"]
+        )  # Use "breakpoints" in the future. Skip this rename. After polars v1
         .struct.field("brk")
         .value_counts()
         .sort()

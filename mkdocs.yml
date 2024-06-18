@@ -5,12 +5,13 @@ use_directory_urls: false
 
 nav:
 - Home: index.md
-- Complex Extension: complex.md
+- Diagnosis: dia.md
 - Numerical Extension: num.md
 - Stats Extension: stats.md
 - String Extension: str2.md
 - ML Metrics/Loss Extension: metrics.md
 - Graph Extension: graph.md
+- Complex Extension: complex.md
 - Additional Expressions: polars_ds.md
 
 theme:
