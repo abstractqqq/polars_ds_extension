@@ -67,7 +67,29 @@ class DIA:
         )
         self.other_types: List[str] = [c for c in self._frame.columns if c not in self.simple_types]
 
-    def numeric_profile(self, n_bins: int = 20, iqr_multiplier: float = 1.5) -> GT:
+    def special_values_report(self) -> pl.DataFrame:
+        """
+        Checks null, NaN, and non-finite values for float columns. Note that for integers, only null_count
+        can possibly be non-zero.
+        """
+        to_check = self.numerics
+        frames = [
+            self._frame.select(
+                pl.lit(c, dtype=pl.String).alias("column"),
+                pl.col(c).null_count().alias("null_count"),
+                (pl.col(c).null_count() / pl.len()).alias("null%"),
+                pl.col(c).is_nan().sum().alias("NaN_count"),
+                (pl.col(c).is_nan().sum() / pl.len()).alias("NaN%"),
+                pl.col(c).is_infinite().sum().alias("inf_count"),
+                (pl.col(c).is_infinite().sum() / pl.len()).alias("Inf%"),
+            )
+            for c in to_check
+        ]
+        return pl.concat(pl.collect_all(frames))
+
+    def numeric_profile(
+        self, n_bins: int = 20, iqr_multiplier: float = 1.5, histogram: bool = True, gt: bool = True
+    ) -> GT:
         """
         Creates a numerical profile with a histogram plot. Notice that the histograms may have
         completely different scales on the x-axis.
@@ -80,59 +102,104 @@ class DIA:
             Inter Quartile Ranger multiplier. Inter quantile range is the range between
             Q1 and Q3, and this multiplier will enlarge the range by a certain amount and
             use this to count outliers.
+        histogram
+            Whether to show a histogram or not
+        gt
+            Whether to show the table as a formatted Great Table or not
         """
         to_check = self.numerics
 
         cuts = [i / n_bins for i in range(n_bins)]
         cuts[0] -= 1e-5
         cuts[-1] += 1e-5
-        frames = []
-        for c in to_check:
-            temp = self._frame.select(
-                pl.lit(c).alias("column"),
-                pl.col(c).count().alias("non_null_cnt"),
-                (pl.col(c).null_count() / pl.len()).alias("null%"),
-                pl.col(c).mean().alias("mean"),
-                pl.col(c).std().alias("std"),
-                pl.col(c).min().cast(pl.Float64).alias("min"),
-                pl.col(c).quantile(0.25).cast(pl.Float64).alias("q1"),
-                pl.col(c).median().cast(pl.Float64).round(2).alias("median"),
-                pl.col(c).quantile(0.75).cast(pl.Float64).alias("q3"),
-                pl.col(c).max().cast(pl.Float64).alias("max"),
-                (pl.col(c).quantile(0.75) - pl.col(c).quantile(0.25)).cast(pl.Float64).alias("IQR"),
-                pl.any_horizontal(
-                    pl.col(c)
-                    < pl.col(c).quantile(0.25)
-                    - iqr_multiplier * (pl.col(c).quantile(0.75) - pl.col(c).quantile(0.25)),
-                    pl.col(c)
-                    > pl.col(c).quantile(0.75)
-                    + iqr_multiplier * (pl.col(c).quantile(0.75) - pl.col(c).quantile(0.25)),
-                )
-                .sum()
-                .alias("outlier_cnt"),
-                pl.struct(
-                    ((pl.col(c) - pl.col(c).min()) / (pl.col(c).max() - pl.col(c).min()))
-                    .filter(pl.col(c).is_finite())
-                    .cut(breaks=cuts, left_closed=True, include_breaks=True)
-                    .struct.field("brk")
-                    .value_counts()
-                    .sort()
-                    .struct.field("count")
-                    .implode()
-                ).alias("histogram"),
-            )
-            frames.append(temp)
 
+        if histogram:
+            columns_needed = [
+                [
+                    pl.lit(c, dtype=pl.String).alias("column"),
+                    pl.col(c).count().alias("non_null_cnt"),
+                    (pl.col(c).null_count() / pl.len()).alias("null%"),
+                    pl.col(c).mean().cast(pl.Float64).alias("mean"),
+                    pl.col(c).std().cast(pl.Float64).alias("std"),
+                    pl.col(c).min().cast(pl.Float64).cast(pl.Float64).alias("min"),
+                    pl.col(c).quantile(0.25).cast(pl.Float64).alias("q1"),
+                    pl.col(c).median().cast(pl.Float64).round(2).alias("median"),
+                    pl.col(c).quantile(0.75).cast(pl.Float64).alias("q3"),
+                    pl.col(c).max().cast(pl.Float64).alias("max"),
+                    (pl.col(c).quantile(0.75) - pl.col(c).quantile(0.25))
+                    .cast(pl.Float64)
+                    .alias("IQR"),
+                    pl.any_horizontal(
+                        pl.col(c)
+                        < pl.col(c).quantile(0.25)
+                        - iqr_multiplier * (pl.col(c).quantile(0.75) - pl.col(c).quantile(0.25)),
+                        pl.col(c)
+                        > pl.col(c).quantile(0.75)
+                        + iqr_multiplier * (pl.col(c).quantile(0.75) - pl.col(c).quantile(0.25)),
+                    )
+                    .sum()
+                    .alias("outlier_cnt"),
+                    pl.struct(
+                        ((pl.col(c) - pl.col(c).min()) / (pl.col(c).max() - pl.col(c).min()))
+                        .filter(pl.col(c).is_finite())
+                        .cut(breaks=cuts, left_closed=True, include_breaks=True)
+                        .struct.rename_fields(["brk", "category"])
+                        .struct.field("brk")
+                        .value_counts()
+                        .sort()
+                        .struct.field("count")
+                        .implode()
+                    ).alias("histogram"),
+                ]
+                for c in to_check
+            ]
+        else:
+            columns_needed = [
+                [
+                    pl.lit(c, dtype=pl.String).alias("column"),
+                    pl.col(c).count().alias("non_null_cnt"),
+                    (pl.col(c).null_count() / pl.len()).alias("null%"),
+                    pl.col(c).mean().cast(pl.Float64).alias("mean"),
+                    pl.col(c).std().cast(pl.Float64).alias("std"),
+                    pl.col(c).min().cast(pl.Float64).cast(pl.Float64).alias("min"),
+                    pl.col(c).quantile(0.25).cast(pl.Float64).alias("q1"),
+                    pl.col(c).median().cast(pl.Float64).round(2).alias("median"),
+                    pl.col(c).quantile(0.75).cast(pl.Float64).alias("q3"),
+                    pl.col(c).max().cast(pl.Float64).alias("max"),
+                    (pl.col(c).quantile(0.75) - pl.col(c).quantile(0.25))
+                    .cast(pl.Float64)
+                    .alias("IQR"),
+                    pl.any_horizontal(
+                        pl.col(c)
+                        < pl.col(c).quantile(0.25)
+                        - iqr_multiplier * (pl.col(c).quantile(0.75) - pl.col(c).quantile(0.25)),
+                        pl.col(c)
+                        > pl.col(c).quantile(0.75)
+                        + iqr_multiplier * (pl.col(c).quantile(0.75) - pl.col(c).quantile(0.25)),
+                    )
+                    .sum()
+                    .alias("outlier_cnt"),
+                ]
+                for c in to_check
+            ]
+
+        frames = [self._frame.select(*cols) for cols in columns_needed]
         df_final = pl.concat(pl.collect_all(frames))
-        return (
-            GT(df_final, rowname_col="column")
-            .tab_stubhead("column")
-            .fmt_percent(columns="null%")
-            .fmt_number(
-                columns=["mean", "std", "min", "q1", "median", "q3", "max", "IQR"], decimals=3
+
+        if gt:
+            gt_out = (
+                GT(df_final, rowname_col="column")
+                .tab_stubhead("column")
+                .fmt_percent(columns="null%")
+                .fmt_number(
+                    columns=["mean", "std", "min", "q1", "median", "q3", "max", "IQR"], decimals=3
+                )
             )
-            .fmt_nanoplot(columns="histogram", plot_type="bar")
-        )
+            if histogram:
+                return gt_out.fmt_nanoplot(columns="histogram", plot_type="bar")
+            return gt_out
+        else:
+            return df_final
 
     def plot_null_distribution(
         self,
