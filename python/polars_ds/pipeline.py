@@ -17,6 +17,8 @@ from .type_alias import (
     RollingInterpolationMethod,
 )
 
+from ._utils import _POLARS_LEGACY_SUPPORT
+
 if sys.version_info >= (3, 11):
     from typing import Self
 else:  # 3.10, 3.9, 3.8
@@ -131,6 +133,9 @@ class Pipeline:
         """
         Converts self to a dict, with all expressions turned into JSON strings.
         """
+        if _POLARS_LEGACY_SUPPORT:
+            raise ValueError("This functionality doesn't support polars < 0.20.16.")
+
         return {
             "name": str(self.name),
             "target": self.target,
@@ -153,6 +158,8 @@ class Pipeline:
         kwargs
             Keyword arguments to Python's default json
         """
+        if _POLARS_LEGACY_SUPPORT:
+            raise ValueError("This functionality doesn't support polars < 0.20.16.")
 
         # Maybe support other json package?
         if path is None:
@@ -167,6 +174,9 @@ class Pipeline:
         """
         Recreates a pipeline from a dictionary created by the `to_dict` call.
         """
+        if _POLARS_LEGACY_SUPPORT:
+            raise ValueError("This functionality doesn't support polars < 0.20.16.")
+
         from io import StringIO
 
         transforms = pipeline_dict["transforms"]
@@ -207,12 +217,16 @@ class Pipeline:
         """
         Creates the Pipeline from the JSON string.
         """
+        if _POLARS_LEGACY_SUPPORT:
+            raise ValueError("This functionality doesn't support polars < 0.20.16.")
         return Pipeline.from_dict(json.loads(json_str))
 
     def from_json(path: str) -> Self:
         """
         Creates the Pipeline by loading a local JSON file at path
         """
+        if _POLARS_LEGACY_SUPPORT:
+            raise ValueError("This functionality doesn't support polars < 0.20.16.")
         with open(path, "r") as f:
             pipe_dict = json.load(f)
         return Pipeline.from_dict(pipe_dict)

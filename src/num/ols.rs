@@ -65,35 +65,37 @@ fn series_to_mat_for_lstsq(
     let n_features = inputs.len().abs_diff(1);
     // Create null mask
     let mut has_null = inputs[0].has_validity();
-    let mut mask = inputs[0].is_null();
-    for s in inputs[1..].iter() {
+    let mut mask = inputs[0].is_not_null();
+    for s in inputs.iter() {
         has_null |= s.has_validity();
-        mask = mask | s.is_null();
+        mask = mask & s.is_not_null();
     }
-    mask = !mask; // Return a mask where true is kept (true means not null).
+    // Return a mask where true is kept (true means not null).
 
     if has_null && !skip_null {
         Err(PolarsError::ComputeError(
             "Lstsq: Data must not contain nulls when skip_null is False.".into(),
         ))
     } else {
-        let mut df_x = if add_bias {
+        let mut df = if add_bias {
             let mut series_vec = inputs.to_vec(); // cheap copy
             series_vec.push(Series::from_iter(std::iter::repeat(1f64).take(nrows)));
             rechunk_to_frame(&series_vec)
         } else {
-            rechunk_to_frame(&inputs)
+            rechunk_to_frame(inputs)
         }?;
-
         if has_null && skip_null {
-            df_x = df_x.filter(&mask)?;
+            df = df.filter(&mask)?;
         }
-        if df_x.height() < n_features {
+        if df.height() < n_features {
             Err(PolarsError::ComputeError(
                 "Lstsq: #Data < #features. No conclusive result.".into(),
             ))
         } else {
-            let mat = df_x.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
+            // Error here
+            // println!("{:?}", df.shape());
+            let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
+            // println!("B");
             Ok((mat, mask))
         }
     }
@@ -147,7 +149,6 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let resid = y - &pred;
             let pred = pred.col_as_slice(0);
             let resid = resid.col_as_slice(0);
-            // println!("Lstsq: Coefficients in order (bias last if exists): {:?}", coeffs);
             // Need extra work when skip_null is true and there are nulls
             let (p, r) = if skip_null && mask.any() {
                 let mut p_builder: PrimitiveChunkedBuilder<Float64Type> =

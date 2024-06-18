@@ -2,10 +2,9 @@ from __future__ import annotations
 import polars as pl
 from typing import Union, Optional
 from .type_alias import str_to_expr, StrOrExpr
-from polars.utils.udfs import _get_shared_lib_location
 from ._utils import pl_plugin
 
-_lib = _get_shared_lib_location(__file__)
+# !!! This module is FROZEN and should not be updated any more. !!!
 
 __all__ = [
     "query_shortest_path",
@@ -72,14 +71,12 @@ def query_shortest_path(
 
     if c is None:  # use const cost impl
         return pl_plugin(
-            lib=_lib,
             symbol="pl_shortest_path_const_cost",
             args=[nd, lk, to, par],
             changes_length=True,
         )
     else:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_shortest_path",
             args=[nd, lk, c, to, par],
             changes_length=True,
@@ -111,7 +108,6 @@ def query_node_reachable(node: StrOrExpr, link: StrOrExpr, target: int) -> pl.Ex
         raise ValueError("Value for `target` can only be non-negative integer.")
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_shortest_path_dijkstra",
         args=[nd, lk, pl.lit(target, pl.UInt32)],
         changes_length=True,
@@ -135,14 +131,12 @@ def query_node_deg(node: StrOrExpr, link: StrOrExpr, directed: bool = False) -> 
     lk = str_to_expr(link)
     if directed:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_graph_deg",
             args=[nd, lk],
             changes_length=True,
         )
     else:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_graph_in_out_deg",
             args=[nd, link],
             changes_length=True,

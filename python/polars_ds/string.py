@@ -1,14 +1,10 @@
 from __future__ import annotations
 
 from typing import List, Literal, Union
-
 import polars as pl
-from polars.utils.udfs import _get_shared_lib_location
-
 from ._utils import pl_plugin
 from .type_alias import StrOrExpr, str_to_expr
 
-_lib = _get_shared_lib_location(__file__)
 
 __all__ = [
     "filter_by_levenshtein",
@@ -194,7 +190,6 @@ def filter_by_levenshtein(
     """
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_levenshtein_filter",
         args=[
             str_to_expr(c),
@@ -233,7 +228,6 @@ def filter_by_hamming(
     """
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_hamming_filter",
         args=[
             str_to_expr(c),
@@ -268,14 +262,12 @@ def str_hamming(
 
     if pad:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_hamming_padded",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
     else:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_hamming",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
@@ -287,7 +279,6 @@ def is_stopword(c: StrOrExpr) -> pl.Expr:
     Checks whether the string is a stopword in English or not.
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_is_stopword",
         args=[str_to_expr(c)],
         is_elementwise=True,
@@ -297,7 +288,6 @@ def is_stopword(c: StrOrExpr) -> pl.Expr:
 def to_camel_case(c: StrOrExpr) -> pl.Expr:
     """Turns itself into camel case. E.g. helloWorld"""
     return pl_plugin(
-        lib=_lib,
         symbol="pl_to_camel",
         args=[str_to_expr(c)],
         is_elementwise=True,
@@ -307,7 +297,6 @@ def to_camel_case(c: StrOrExpr) -> pl.Expr:
 def to_snake_case(c: StrOrExpr) -> pl.Expr:
     """Turns itself into snake case. E.g. hello_world"""
     return pl_plugin(
-        lib=_lib,
         symbol="pl_to_snake",
         args=[str_to_expr(c)],
         is_elementwise=True,
@@ -317,7 +306,6 @@ def to_snake_case(c: StrOrExpr) -> pl.Expr:
 def to_pascal_case(c: StrOrExpr) -> pl.Expr:
     """Turns itself into Pascal case. E.g. HelloWorld"""
     return pl_plugin(
-        lib=_lib,
         symbol="pl_to_pascal",
         args=[str_to_expr(c)],
         is_elementwise=True,
@@ -327,7 +315,6 @@ def to_pascal_case(c: StrOrExpr) -> pl.Expr:
 def to_constant_case(c: StrOrExpr) -> pl.Expr:
     """Turns itself into constant case. E.g. Hello_World"""
     return pl_plugin(
-        lib=_lib,
         symbol="pl_to_constant",
         args=[str_to_expr(c)],
         is_elementwise=True,
@@ -376,7 +363,6 @@ def query_similar_words(
 
     if k == 1:  # k = 1, this is a fast path (no heap)
         return pl_plugin(
-            lib=_lib,
             symbol="pl_nearest_str",
             args=[str_to_expr(c), vb],
             kwargs={
@@ -389,7 +375,6 @@ def query_similar_words(
         )
     elif k > 1:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_knn_str",
             args=[str_to_expr(c), vb],
             kwargs={
@@ -418,7 +403,6 @@ def str_snowball(c: StrOrExpr, no_stopwords: bool = True) -> pl.Expr:
         stopwords may impact performance.
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_snowball_stem",
         args=[str_to_expr(c), pl.lit(no_stopwords, pl.Boolean)],
         is_elementwise=True,
@@ -474,7 +458,6 @@ def str_jaccard(
         when used with other expressions or in group_by/over context.
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_str_jaccard",
         args=[
             str_to_expr(c),
@@ -514,7 +497,6 @@ def str_overlap_coeff(
         when used with other expressions or in group_by/over context.
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_overlap_coeff",
         args=[
             str_to_expr(c),
@@ -554,7 +536,6 @@ def str_sorensen_dice(
         when used with other expressions or in group_by/over context.
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_sorensen_dice",
         args=[
             str_to_expr(c),
@@ -610,7 +591,6 @@ def str_tversky_sim(
         raise ValueError("Input `alpha` and `beta` must be >= 0.")
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_tversky_sim",
         args=[
             str_to_expr(c),
@@ -648,7 +628,6 @@ def str_jw(
         when used with other expressions or in group_by/over context.
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_jw",
         args=[
             str_to_expr(c),
@@ -676,7 +655,6 @@ def str_jaro(c: StrOrExpr, other: StrOrExpr, parallel: bool = False) -> pl.Expr:
         when used with other expressions or in group_by/over context.
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_jaro",
         args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
         is_elementwise=True,
@@ -707,14 +685,12 @@ def str_d_leven(
     """
     if return_sim:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_d_levenshtein_sim",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
     else:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_d_levenshtein",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
@@ -745,14 +721,12 @@ def str_leven(
     """
     if return_sim:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_levenshtein_sim",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
     else:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_levenshtein",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
@@ -783,14 +757,12 @@ def str_osa(
     """
     if return_sim:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_osa_sim",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
         )
     else:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_osa",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
             is_elementwise=True,
@@ -813,7 +785,6 @@ def str_fuzz(c: StrOrExpr, other: StrOrExpr, parallel: bool = False) -> pl.Expr:
         when used with other expressions or in group_by/over context.
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_fuzz",
         args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
         is_elementwise=True,
@@ -975,7 +946,6 @@ def replace_non_ascii(c: StrOrExpr, value: str = "") -> pl.Expr:
 
     if value == "":
         return pl_plugin(
-            lib=_lib,
             symbol="remove_non_ascii",
             args=[expr],
             is_elementwise=True,
@@ -1011,7 +981,6 @@ def remove_diacritics(c: StrOrExpr) -> pl.Expr:
     └───────┘
     """
     return pl_plugin(
-        lib=_lib,
         symbol="remove_diacritics",
         args=[str_to_expr(c)],
         is_elementwise=True,
@@ -1061,7 +1030,6 @@ def normalize_string(c: StrOrExpr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) 
         )
 
     return pl_plugin(
-        lib=_lib,
         symbol="normalize_string",
         args=[str_to_expr(c)],
         kwargs={"form": form},
@@ -1098,7 +1066,6 @@ def map_words(c: StrOrExpr, mapping: dict[str, str]) -> pl.Expr:
     └─────────────┘
     """
     return pl_plugin(
-        lib=_lib,
         symbol="map_words",
         args=[str_to_expr(c)],
         kwargs={"mapping": mapping},
@@ -1140,7 +1107,6 @@ def normalize_whitespace(c: StrOrExpr, only_spaces: bool = False) -> pl.Expr:
         return expr.str.replace_all(" +", " ")
 
     return pl_plugin(
-        lib=_lib,
         symbol="normalize_whitespace",
         args=[expr],
         is_elementwise=True,

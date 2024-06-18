@@ -10,10 +10,7 @@ from .type_alias import (
     RollingInterpolationMethod,
 )
 from typing import Optional, Union
-from polars.utils.udfs import _get_shared_lib_location
 from ._utils import pl_plugin
-
-_lib = _get_shared_lib_location(__file__)
 
 __all__ = [
     "query_cv",
@@ -116,7 +113,6 @@ class StatsExt:
                 raise ValueError("Input `high` must be expression or int.")
 
         return pl_plugin(
-            lib=_lib,
             symbol="pl_rand_int_w_ref",
             args=[self._expr, lo, hi],
             kwargs={"seed": seed, "respect_null": respect_null},
@@ -162,7 +158,6 @@ class StatsExt:
             hi = self._expr.max().cast(pl.Float64)
 
         return pl_plugin(
-            lib=_lib,
             symbol="pl_rand_uniform_w_ref",
             args=[self._expr, lo, hi],
             kwargs={"seed": seed, "respect_null": respect_null},
@@ -191,7 +186,6 @@ class StatsExt:
         nn = pl.lit(n, dtype=pl.UInt32)
         pp = pl.lit(p, dtype=pl.Float64)
         return pl_plugin(
-            lib=_lib,
             symbol="pl_rand_binomial_w_ref",
             args=[self._expr, nn, pp],
             kwargs={"seed": seed, "respect_null": respect_null},
@@ -227,7 +221,6 @@ class StatsExt:
             la = 1.0 / self._expr.mean()
 
         return pl_plugin(
-            lib=_lib,
             symbol="pl_rand_exp_w_ref",
             args=[self._expr, la],
             kwargs={"seed": seed, "respect_null": respect_null},
@@ -273,7 +266,6 @@ class StatsExt:
             st = self._expr.std()
 
         return pl_plugin(
-            lib=_lib,
             symbol="pl_rand_normal_w_ref",
             args=[self._expr, me, st],
             kwargs={"seed": seed, "respect_null": respect_null},
@@ -314,7 +306,6 @@ class StatsExt:
         max_s = pl.lit(max_size, dtype=pl.UInt32)
 
         return pl_plugin(
-            lib=_lib,
             symbol="pl_rand_str_w_ref",
             args=[self._expr, min_s, max_s],
             kwargs={"seed": seed, "respect_null": respect_null},
@@ -407,10 +398,12 @@ def query_longest_streak_above(x: StrOrExpr, value: Union[float, pl.Expr]) -> pl
     """
     s: pl.Expr = str_to_expr(x)
     v: pl.Expr = pl.lit(value) if isinstance(value, float) else value
-    y = (s >= v).rle()
+    y = (
+        (s >= v).rle().struct.rename_fields(["len", "value"])
+    )  # rename fields can be removed when polars hit v1.0
     return (
-        y.filter(y.struct.field("values"))
-        .struct.field("lengths")
+        y.filter(y.struct.field("value"))
+        .struct.field("len")
         .max()
         .fill_null(0)
         .alias("longest_streak_above")
@@ -430,10 +423,10 @@ def query_longest_streak_below(x: StrOrExpr, value: Union[float, pl.Expr]) -> pl
     """
     s: pl.Expr = str_to_expr(x)
     v: pl.Expr = pl.lit(value) if isinstance(value, float) else value
-    y = (s <= v).rle()
+    y = (s <= v).rle().struct.rename_fields(["len", "value"])
     return (
-        y.filter(y.struct.field("values"))
-        .struct.field("lengths")
+        y.filter(y.struct.field("value"))
+        .struct.field("len")
         .max()
         .fill_null(0)
         .alias("longest_streak_below")
@@ -456,7 +449,6 @@ def query_first_digit_cnt(var: StrOrExpr) -> pl.Expr:
     https://en.wikipedia.org/wiki/Benford%27s_law
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_benford_law",
         args=[str_to_expr(var)],
         returns_scalar=True,
@@ -501,7 +493,6 @@ def query_ttest_ind(
         v2 = y2.var()
         cnt = y1.count().cast(pl.UInt64)
         return pl_plugin(
-            lib=_lib,
             symbol="pl_ttest_2samp",
             args=[m1, m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
             returns_scalar=True,
@@ -516,7 +507,6 @@ def query_ttest_ind(
         n1 = s1.len().cast(pl.UInt64)
         n2 = s2.len().cast(pl.UInt64)
         return pl_plugin(
-            lib=_lib,
             symbol="pl_welch_t",
             args=[m1, m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
             returns_scalar=True,
@@ -547,7 +537,6 @@ def query_ttest_1samp(
     cnt = s1.len().cast(pl.UInt64)
     alt = pl.lit(alternative, dtype=pl.String)
     return pl_plugin(
-        lib=_lib,
         symbol="pl_ttest_1samp",
         args=[sm, pm, var, cnt, alt],
         returns_scalar=True,
@@ -591,7 +580,6 @@ def query_ttest_ind_from_stats(
         v2 = pl.lit(var, pl.Float64)
         cnt = y.count().cast(pl.UInt64)
         return pl_plugin(
-            lib=_lib,
             symbol="pl_ttest_2samp",
             args=[m1, m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
             returns_scalar=True,
@@ -605,7 +593,6 @@ def query_ttest_ind_from_stats(
         n1 = s1.len().cast(pl.UInt64)
         n2 = pl.lit(cnt, pl.UInt64)
         return pl_plugin(
-            lib=_lib,
             symbol="pl_welch_t",
             args=[m1, m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
             returns_scalar=True,
@@ -650,7 +637,6 @@ def query_ks_2samp(
         z1 = z.filter(y1 == 1).sort()
         z2 = z.filter(y1 == 0).sort()
         return pl_plugin(
-            lib=_lib,
             symbol="pl_ks_2samp",
             args=[z1, z2, pl.lit(alpha, pl.Float64)],
             returns_scalar=True,
@@ -659,7 +645,6 @@ def query_ks_2samp(
         z1 = y1.filter(y1.is_finite()).sort()
         z2 = y2.filter(y2.is_finite()).sort()
         return pl_plugin(
-            lib=_lib,
             symbol="pl_ks_2samp",
             args=[z1, z2, pl.lit(alpha, pl.Float64)],
             returns_scalar=True,
@@ -682,9 +667,9 @@ def query_f_test(*variables: StrOrExpr, group: StrOrExpr) -> pl.Expr:
     if len(vars_) <= 1:
         raise ValueError("No input feature column to run F-test on.")
     elif len(vars_) == 2:
-        return pl_plugin(lib=_lib, symbol="pl_f_test", args=vars_, returns_scalar=True)
+        return pl_plugin(symbol="pl_f_test", args=vars_, returns_scalar=True)
     else:
-        return pl_plugin(lib=_lib, symbol="pl_f_test", args=vars_, changes_length=True)
+        return pl_plugin(symbol="pl_f_test", args=vars_, changes_length=True)
 
 
 def query_chi2(var1: StrOrExpr, var2: StrOrExpr) -> pl.Expr:
@@ -703,7 +688,6 @@ def query_chi2(var1: StrOrExpr, var2: StrOrExpr) -> pl.Expr:
         Either the name of the column or a Polars expression
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_chi2",
         args=[str_to_expr(var1), str_to_expr(var2)],
         returns_scalar=True,
@@ -814,7 +798,6 @@ def perturb(x: StrOrExpr, epsilon: float, positive: bool = False):
         hi = pl.lit(half, dtype=pl.Float64)
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_perturb",
         args=[str_to_expr(x), lo, hi],
         is_elementwise=True,
@@ -843,7 +826,6 @@ def jitter(x: StrOrExpr, std: Union[float, pl.Expr] = 1.0) -> pl.Expr:
         s = std.cast(pl.Float64)
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_jitter",
         args=[str_to_expr(x), s],
         is_elementwise=True,
@@ -896,7 +878,6 @@ def normal_test(var: StrOrExpr) -> pl.Expr:
     # Pearson Kurtosis, see here: https://en.wikipedia.org/wiki/D%27Agostino%27s_K-squared_test
     kur = valid.kurtosis(fisher=False)
     return pl_plugin(
-        lib=_lib,
         symbol="pl_normal_test",
         args=[skew, kur, valid.count().cast(pl.UInt32)],
         returns_scalar=True,
@@ -923,7 +904,6 @@ def random(
     lo = pl.lit(lower, pl.Float64) if isinstance(lower, float) else lower
     up = pl.lit(upper, pl.Float64) if isinstance(upper, float) else upper
     return pl_plugin(
-        lib=_lib,
         symbol="pl_random",
         args=[pl.len(), lo, up, pl.lit(seed, pl.UInt64)],
         is_elementwise=True,
@@ -974,7 +954,6 @@ def random_int(
     lo = pl.lit(lower, pl.Int32) if isinstance(lower, int) else lower.cast(pl.Int32)
     hi = pl.lit(upper, pl.Int32) if isinstance(upper, int) else upper.cast(pl.Int32)
     return pl_plugin(
-        lib=_lib,
         symbol="pl_rand_int",
         args=[
             pl.len().cast(pl.UInt32),
@@ -1004,7 +983,6 @@ def random_str(min_size: int, max_size: int) -> pl.Expr:
         mi, ma = max_size, min_size
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_rand_str",
         args=[
             pl.len().cast(pl.UInt32),
@@ -1033,7 +1011,6 @@ def random_binomial(n: int, p: int, seed: Optional[int] = None) -> pl.Expr:
         raise ValueError("Input `n` must be > 1.")
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_rand_binomial",
         args=[
             pl.len().cast(pl.UInt32),
@@ -1057,7 +1034,6 @@ def random_exp(lambda_: float, seed: Optional[int] = None) -> pl.Expr:
         The random seed. None means no seed.
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_rand_exp",
         args=[pl.len().cast(pl.UInt32), pl.lit(lambda_, pl.Float64), pl.lit(seed, pl.UInt64)],
         is_elementwise=True,
@@ -1082,7 +1058,6 @@ def random_normal(
     m = pl.lit(mean, pl.Float64) if isinstance(mean, float) else mean
     s = pl.lit(std, pl.Float64) if isinstance(std, float) else std
     return pl_plugin(
-        lib=_lib,
         symbol="pl_rand_normal",
         args=[pl.len().cast(pl.UInt32), m, s, pl.lit(seed, pl.UInt64)],
         is_elementwise=True,
@@ -1300,7 +1275,6 @@ def kendall_tau(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
     """
     xx, yy = str_to_expr(x).fill_nan(None), str_to_expr(y).fill_nan(None)
     return pl_plugin(
-        lib=_lib,
         symbol="pl_kendall_tau",
         args=[xx.rank(method="min"), yy.rank(method="min")],
         returns_scalar=True,
@@ -1339,14 +1313,12 @@ def xi_corr(
     ]
     if return_p:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_xi_corr_w_p",
             args=args,
             returns_scalar=True,
         )
     else:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_xi_corr",
             args=args,
             returns_scalar=True,
