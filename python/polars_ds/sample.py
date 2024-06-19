@@ -47,9 +47,7 @@ def volume_neutral(
     seed: Optional[int] = None,
 ) -> pl.DataFrame:
     """
-    Say we have a reference column, which is discrete. Let's say it has three distinct values, A,
-    B, and C, with a, b, c being the value counts. It will randomly select min(a, b, c, target_volume)
-    rows from each category, thus the name volume neutral.
+    Select volume neutral many population from each segment in `by`, with optional control categories.
 
     Parameters
     ----------
@@ -62,7 +60,7 @@ def volume_neutral(
         Additional level(s). If not none, the volume neutral selection will happen at the
         sublevel of the control column(s). See example.
     target_volume
-        If none, it will select min(a, b, c) rows, this means that one group is always fully selected.
+        If none, it will select min(a, b, c) rows.
     seed
         A random seed
     """

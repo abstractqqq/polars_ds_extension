@@ -6,6 +6,8 @@ use_directory_urls: false
 nav:
 - Home: index.md
 - Diagnosis: dia.md
+- Pipeline: pipeline.md
+- Sample: sample.md
 - Numerical Extension: num.md
 - Stats Extension: stats.md
 - String Extension: str2.md
