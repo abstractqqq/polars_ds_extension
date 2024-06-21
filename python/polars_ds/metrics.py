@@ -260,7 +260,8 @@ def query_roc_auc(
     Computes ROC AUC using self as actual and pred as predictions.
 
     Self must be binary and castable to type UInt32. If self is not all 0s and 1s or not binary,
-    the result will not make sense, or some error may occur.
+    the result will not make sense, or some error may occur. If no positive class exist in data,
+    NaN will be returned.
 
     Parameters
     ----------
@@ -281,7 +282,8 @@ def query_gini(actual: StrOrExpr, pred: StrOrExpr) -> pl.Expr:
     Computes the Gini coefficient. This is 2 * AUC - 1.
 
     Self must be binary and castable to type UInt32. If self is not all 0s and 1s or not binary,
-    the result will not make sense, or some error may occur.
+    the result will not make sense, or some error may occur. If no positive class exist in data,
+    NaN will be returned.
 
     Parameters
     ----------
@@ -379,7 +381,8 @@ def query_binary_metrics(actual: StrOrExpr, pred: StrOrExpr, threshold: float = 
     having the names as given here.
 
     Self must be binary and castable to type UInt32. If self is not all 0s and 1s,
-    the result will not make sense, or some error may occur.
+    the result will not make sense, or some error may occur. If there is no positive class in data,
+    NaN or other numerical error may occur.
 
     Average precision is computed using Sum (R_n - R_n-1)*P_n-1, which is not the textbook definition,
     but is consistent with Scikit-learn. For more information, see
