@@ -261,6 +261,35 @@ def test_f_test(df):
 
 
 @pytest.mark.parametrize(
+    "df",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "x1": np.random.normal(size=1_000),
+                    "x2": np.random.normal(size=1_000),
+                }
+            )
+        ),
+    ],
+)
+def test_mann_whitney_u(df):
+    from scipy.stats import mannwhitneyu
+
+    res = df.select(pds.query_mann_whitney_u("x1", "x2"))
+    res = res.item(0, 0)  # A dictionary
+    res_statistic = res["statistic"]
+    # pvalue = res["pvalue"]
+
+    answer = mannwhitneyu(df["x1"].to_numpy(), df["x2"].to_numpy())
+    # scikit_s = scikit_res[0][0]
+    # scikit_p = scikit_res[1][0]
+
+    assert np.isclose(res_statistic, answer.statistic)
+    # assert np.isclose(pvalue, scikit_p)
+
+
+@pytest.mark.parametrize(
     "df, res",
     [
         (

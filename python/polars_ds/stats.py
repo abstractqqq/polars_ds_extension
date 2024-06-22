@@ -24,6 +24,7 @@ __all__ = [
     "query_ttest_ind_from_stats",
     "query_ks_2samp",
     "query_f_test",
+    "query_mann_whitney_u",
     "query_chi2",
     "query_first_digit_cnt",
     "query_c3_stats",
@@ -738,6 +739,36 @@ def query_cid_ce(x: StrOrExpr, normalize: bool = False) -> pl.Expr:
 
     z = y - y.shift(-1)
     return z.dot(z).sqrt()
+
+
+def query_mann_whitney_u(var1: StrOrExpr, var2: StrOrExpr) -> pl.Expr:
+    """
+    Computes the Mann-Whitney U statistic and the p-value. Note: this function will sanitize data (drop
+    all non-finite values) before computing the statistic. This implementation follows method 2 in reference.
+
+    WIP. PVALUE NOT DONE YET.
+
+    Parameters
+    ----------
+    var1 : pl.Expr
+        Either the name of the column or a Polars expression
+    var2 : pl.Expr
+        Either the name of the column or a Polars expression
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Mann%E2%80%93Whitney_U_test
+    """
+    x = str_to_expr(var1)
+    y = str_to_expr(var2)
+    xx = x.filter(x.is_finite())
+    yy = y.filter(y.is_finite())
+    n1 = xx.len()
+    n2 = yy.len()
+
+    u1 = (xx.append(yy)).rank().slice(0, length=n1).sum() - (n1 * (n1 + 1)) / 2
+    statistic = pl.min_horizontal(u1, (n1 * n2) - u1).alias("statistic")
+    return pl.struct(statistic)
 
 
 def winsorize(
