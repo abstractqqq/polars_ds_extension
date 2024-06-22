@@ -14,7 +14,12 @@ fn combo_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new("", DataType::Struct(v)))
 }
 
-fn tp_fp_frame(predicted: &Series, actual: &Series, positive_count:u32, as_ratio: bool) -> PolarsResult<LazyFrame> {
+fn tp_fp_frame(
+    predicted: &Series,
+    actual: &Series,
+    positive_count: u32,
+    as_ratio: bool,
+) -> PolarsResult<LazyFrame> {
     // Checking for data quality issues
     if (actual.len() != predicted.len())
         || actual.is_empty()
@@ -84,7 +89,7 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
 
     let positive_count = actual.sum::<u32>().unwrap_or(0);
     if positive_count == 0 {
-        return Ok(Series::from_iter([f64::NAN]))
+        return Ok(Series::from_iter([f64::NAN]));
     }
 
     let mut binding = tp_fp_frame(predicted, actual, positive_count, true)?.collect()?;
@@ -147,7 +152,6 @@ fn binary_confusion_matrix(combined_series: &UInt32Chunked) -> [u32; 4] {
     output
 }
 
-
 #[polars_expr(output_type=Float64)]
 fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
     // actual, when passed in, is always u32 (done in Python extension side)
@@ -156,7 +160,7 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
 
     let positive_count = actual.sum::<u32>().unwrap_or(0);
     if positive_count == 0 {
-        return Ok(Series::from_iter([f64::NAN]))
+        return Ok(Series::from_iter([f64::NAN]));
     }
 
     let mut binding = tp_fp_frame(predicted, actual, positive_count, true)?
@@ -178,7 +182,6 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
 
     Ok(Series::from_iter([out]))
 }
-
 
 // bcm = binary confusion matrix
 fn bcm_output(_: &[Field]) -> PolarsResult<Field> {

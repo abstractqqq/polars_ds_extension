@@ -1,5 +1,5 @@
-use super::simple_stats_output;
 /// KS statistics.
+use super::simple_stats_output;
 use crate::stats::StatsResult;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
