@@ -121,6 +121,27 @@ def test_confusion_matrix(y_true, y_score):
     pytest.approx(res) == ref
 
 
+def test_roc_auc():
+    from sklearn.metrics import roc_auc_score
+
+    df = pds.random_data(size=2000, n_cols=0).select(
+        pds.random(0.0, 1.0).alias("predictions"),
+        pds.random(0.0, 1.0).round().cast(pl.Int32).alias("target"),
+        pl.lit(0).alias("zero_target"),
+    )
+
+    roc_auc = df.select(pds.query_roc_auc("target", "predictions")).item(0, 0)
+
+    answer = roc_auc_score(df["target"].to_numpy(), df["predictions"].to_numpy())
+
+    assert np.isclose(roc_auc, answer)
+
+    # When all classes are 0, roc_auc returns NaN
+    nan_roc = df.select(pds.query_roc_auc("zero_target", "predictions")).item(0, 0)
+
+    assert np.isnan(nan_roc)
+
+
 def test_multiclass_roc_auc():
     from sklearn.metrics import roc_auc_score
 

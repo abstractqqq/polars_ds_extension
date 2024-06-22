@@ -14,7 +14,7 @@ fn combo_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new("", DataType::Struct(v)))
 }
 
-fn tp_fp_frame(predicted: &Series, actual: &Series, as_ratio: bool) -> PolarsResult<LazyFrame> {
+fn tp_fp_frame(predicted: &Series, actual: &Series, positive_count:u32, as_ratio: bool) -> PolarsResult<LazyFrame> {
     // Checking for data quality issues
     if (actual.len() != predicted.len())
         || actual.is_empty()
@@ -25,13 +25,6 @@ fn tp_fp_frame(predicted: &Series, actual: &Series, as_ratio: bool) -> PolarsRes
         return Err(PolarsError::ComputeError(
             "ROC AUC: Input columns must be the same length, non-empty, numeric, and shouldn't contain nulls."
             .into(),
-        ));
-    }
-
-    let positive_counts = actual.sum::<u32>().unwrap_or(0);
-    if positive_counts == 0 {
-        return Err(PolarsError::ComputeError(
-            "No positives in actual, or actual cannot be turned into integers.".into(),
         ));
     }
 
@@ -52,8 +45,8 @@ fn tp_fp_frame(predicted: &Series, actual: &Series, as_ratio: bool) -> PolarsRes
         .sort(["threshold"], Default::default())
         .with_columns([
             (lit(n) - col("cnt").cum_sum(false) + col("cnt")).alias("predicted_positive"),
-            (lit(positive_counts) - col("pos_cnt_at_threshold").cum_sum(false))
-                .shift_and_fill(1, positive_counts)
+            (lit(positive_count) - col("pos_cnt_at_threshold").cum_sum(false))
+                .shift_and_fill(1, positive_count)
                 .alias("tp"),
         ])
         .select([
@@ -89,7 +82,12 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     let threshold = inputs[2].f64()?;
     let threshold = threshold.get(0).unwrap_or(0.5);
 
-    let mut binding = tp_fp_frame(predicted, actual, true)?.collect()?;
+    let positive_count = actual.sum::<u32>().unwrap_or(0);
+    if positive_count == 0 {
+        return Ok(Series::from_iter([f64::NAN]))
+    }
+
+    let mut binding = tp_fp_frame(predicted, actual, positive_count, true)?.collect()?;
     let frame = binding.align_chunks();
 
     let tpr = frame.drop_in_place("tpr").unwrap();
@@ -148,6 +146,39 @@ fn binary_confusion_matrix(combined_series: &UInt32Chunked) -> [u32; 4] {
     }
     output
 }
+
+
+#[polars_expr(output_type=Float64)]
+fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
+    // actual, when passed in, is always u32 (done in Python extension side)
+    let actual = &inputs[0];
+    let predicted = &inputs[1];
+
+    let positive_count = actual.sum::<u32>().unwrap_or(0);
+    if positive_count == 0 {
+        return Ok(Series::from_iter([f64::NAN]))
+    }
+
+    let mut binding = tp_fp_frame(predicted, actual, positive_count, true)?
+        .select([col("tpr"), col("fpr")])
+        .collect()?;
+    let frame = binding.align_chunks();
+
+    let tpr = frame.drop_in_place("tpr").unwrap();
+    let fpr = frame.drop_in_place("fpr").unwrap();
+
+    // Should be contiguous. No need to rechunk
+    let y = tpr.f64().unwrap();
+    let x = fpr.f64().unwrap();
+
+    let y: ArrayView1<f64> = y.to_ndarray()?;
+    let x: ArrayView1<f64> = x.to_ndarray()?;
+
+    let out: f64 = -super::trapz::trapz(y, x);
+
+    Ok(Series::from_iter([out]))
+}
+
 
 // bcm = binary confusion matrix
 fn bcm_output(_: &[Field]) -> PolarsResult<Field> {
@@ -272,30 +303,4 @@ fn pl_binary_confusion_matrix(inputs: &[Series]) -> PolarsResult<Series> {
 
     let out = result.into_struct("confusion_matrix");
     Ok(out.into_series())
-}
-
-#[polars_expr(output_type=Float64)]
-fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
-    // actual, when passed in, is always u32 (done in Python extension side)
-    let actual = &inputs[0];
-    let predicted = &inputs[1];
-
-    let mut binding = tp_fp_frame(predicted, actual, true)?
-        .select([col("tpr"), col("fpr")])
-        .collect()?;
-    let frame = binding.align_chunks();
-
-    let tpr = frame.drop_in_place("tpr").unwrap();
-    let fpr = frame.drop_in_place("fpr").unwrap();
-
-    // Should be contiguous. No need to rechunk
-    let y = tpr.f64().unwrap();
-    let x = fpr.f64().unwrap();
-
-    let y: ArrayView1<f64> = y.to_ndarray()?;
-    let x: ArrayView1<f64> = x.to_ndarray()?;
-
-    let out: f64 = -super::trapz::trapz(y, x);
-
-    Ok(Series::from_iter([out]))
 }
