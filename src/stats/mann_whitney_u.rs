@@ -1,22 +1,21 @@
-use super::simple_stats_output;
-use super::Alternative;
 /// Mann-Whitney U Statistics
+use super::{simple_stats_output, Alternative};
 use crate::stats_utils::{is_zero, normal};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
-fn mann_whitney_tie_helper(ranks: &Float64Chunked) -> f64 {
+fn mann_whitney_tie_sum(ranks: &Float64Chunked) -> f64 {
     // NaN won't exist in ranks.
-    let mut rle_buffer = [f64::NAN, 0f64];
+    let mut rank_number = f64::NAN;
+    let mut rank_cnt: f64 = 0f64;
     let mut accumulant = 0f64;
     for v in ranks.into_no_null_iter() {
-        if v == rle_buffer[0] {
-            rle_buffer[1] += 1.;
+        if v == rank_number {
+            rank_cnt += 1.;
         } else {
-            let t = rle_buffer[1];
-            accumulant += t * (t + 1.0) * (t - 1.0);
-            rle_buffer[0] = v;
-            rle_buffer[1] = 0f64;
+            accumulant += rank_cnt * (rank_cnt + 1.0) * (rank_cnt - 1.0);
+            rank_number = v;
+            rank_cnt = 1.0;
         }
     }
     accumulant
@@ -38,7 +37,7 @@ fn pl_mann_whitney_u(inputs: &[Series]) -> PolarsResult<Series> {
     // Custom RLE
     let sorted_ranks = inputs[3].f64().unwrap();
     let n = sorted_ranks.len() as f64;
-    let tie_term_sum = mann_whitney_tie_helper(sorted_ranks);
+    let tie_term_sum = mann_whitney_tie_sum(sorted_ranks);
     let std_ = ((mean / 6.0) * ((n + 1.0) - tie_term_sum / (n * (n - 1.0)))).sqrt();
 
     let alt = inputs[4].str()?;
