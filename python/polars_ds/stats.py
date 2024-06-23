@@ -24,6 +24,7 @@ __all__ = [
     "query_ttest_ind_from_stats",
     "query_ks_2samp",
     "query_f_test",
+    "query_mann_whitney_u",
     "query_chi2",
     "query_first_digit_cnt",
     "query_c3_stats",
@@ -610,11 +611,12 @@ def query_ks_2samp(
     sanitize data (only non-null finite values are used) before doing the computation. If
     is_binary is true, it will compare the statistics by comparing var2(var1=0) and var2(var1=1).
 
-    Note, this returns a stastics and a threshold value. The threshold value is not the p-value, but
+    Note, this returns a stastics and a threshold value. The threshold is not the p-value, but
     rather it is used in the following way: if the statistic is > the threshold value, then the null
-    hypothesis should be rejected. This is suitable only for large sameple sizes. See the reference.
+    hypothesis should be rejected. This is suitable only for large sameple sizes. See more details
+    in the reference.
 
-    If either var1 or var2 has less than 30 values, a ks stats of INFINITY will be returned.
+    If either var1 or var2 has less than 20 values, a ks stats of INFINITY will be returned.
 
     Parameters
     ----------
@@ -738,6 +740,57 @@ def query_cid_ce(x: StrOrExpr, normalize: bool = False) -> pl.Expr:
 
     z = y - y.shift(-1)
     return z.dot(z).sqrt()
+
+
+def query_mann_whitney_u(
+    var1: StrOrExpr,
+    var2: StrOrExpr,
+    alternative: Alternative = "two-sided",
+) -> pl.Expr:
+    """
+    Computes the Mann-Whitney U statistic and the p-value. Note: this function will sanitize data (drop
+    all non-finite values) before computing the statistic. This implementation follows method 2 in reference.
+    This always applies tie correction, which may slow down computation by a little.
+
+    WIP. PVALUE NOT DONE YET.
+
+    Parameters
+    ----------
+    var1 : pl.Expr
+        Either the name of the column or a Polars expression
+    var2 : pl.Expr
+        Either the name of the column or a Polars expression
+    alternative: str
+        The alternative for the test. `two-sided`, `greater` or `less`
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Mann%E2%80%93Whitney_U_test
+    """
+    x = str_to_expr(var1)
+    y = str_to_expr(var2)
+    xx = x.filter(x.is_finite())
+    yy = y.filter(y.is_finite())
+    n1 = xx.len().cast(pl.Float64)
+    n2 = yy.len().cast(pl.Float64)
+
+    ranks = (xx.append(yy)).rank()
+
+    u1 = ranks.slice(0, length=n1).sum() - (n1 * (n1 + 1)) / 2
+    u2 = (n1 * n2) - u1
+    # # This step is very slow
+    # tie_term = ranks.sort().rle().struct.field("lengths").cast(pl.Float64)
+    mean = (n1 * n2) / 2
+    # std_ties = (
+    #     ((n1 * n2) / 12) * (
+    #         (n + 1) - (tie_term.dot((tie_term + 1) * (tie_term - 1))) / (n * (n - 1))
+    #     )
+    # ).sqrt()
+
+    return pl_plugin(
+        symbol="pl_mann_whitney_u",
+        args=[u1, u2, mean, ranks.sort(), pl.lit(alternative, dtype=pl.String)],
+    )
 
 
 def winsorize(
