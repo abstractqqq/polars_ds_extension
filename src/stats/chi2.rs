@@ -15,7 +15,7 @@ fn pl_chi2(inputs: &[Series]) -> PolarsResult<Series> {
     // Get the cartesian product
     let df1 = df!(s1_name => u1)?.lazy();
     let df2 = df!(s2_name => u2)?.lazy();
-    let cross = df1.cross_join(df2);
+    let cross = df1.cross_join(df2, None);
 
     // Create a "fake" contigency table
     let s1 = inputs[0].clone();

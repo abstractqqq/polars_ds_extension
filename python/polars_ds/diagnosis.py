@@ -325,7 +325,9 @@ class DIA:
 
         corrs = [
             self._frame.select(
-                pl.lit(x).alias("column"), *(corr(x, y).alias(y) for y in self.numerics)
+                # This calls corr from .stats
+                pl.lit(x).alias("column"),
+                *(corr(x, y).alias(y) for y in self.numerics),
             )
             for x in to_check
         ]
@@ -373,7 +375,7 @@ class DIA:
                         (
                             pl.col(c).list.eval((pl.element() >= 0.0).all()).list.first()
                         )  # every number must be positive
-                        & (pl.col(c).list.sum() == 1.0)  # class prob must sum to 1
+                        & ((pl.col(c).list.sum() - 1.0).abs() < 1e-6)  # class prob must sum to 1
                         & (
                             pl.col(c).list.len().min() == pl.col(c).list.len().max()
                         )  # class prob column must have the same length
