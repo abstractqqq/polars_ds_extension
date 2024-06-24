@@ -1,8 +1,7 @@
+use crate::utils::rechunk_to_frame;
 /// OLS using Faer.
 use faer::{prelude::*, Side};
 use faer_ext::IntoFaer;
-// use faer_ext::IntoFaer;
-use crate::utils::rechunk_to_frame;
 use itertools::Itertools;
 use ndarray::{s, Array2};
 use polars::prelude::*;
@@ -92,10 +91,7 @@ fn series_to_mat_for_lstsq(
                 "Lstsq: #Data < #features. No conclusive result.".into(),
             ))
         } else {
-            // Error here
-            // println!("{:?}", df.shape());
             let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
-            // println!("B");
             Ok((mat, mask))
         }
     }

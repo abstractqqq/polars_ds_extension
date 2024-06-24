@@ -49,12 +49,12 @@ pub fn first_field_output(fields: &[Field]) -> PolarsResult<Field> {
     Ok(fields[0].clone())
 }
 
-pub fn list_u64_output(_: &[Field]) -> PolarsResult<Field> {
-    Ok(Field::new(
-        "nodes",
-        DataType::List(Box::new(DataType::UInt64)),
-    ))
-}
+// pub fn list_u64_output(_: &[Field]) -> PolarsResult<Field> {
+//     Ok(Field::new(
+//         "nodes",
+//         DataType::List(Box::new(DataType::UInt64)),
+//     ))
+// }
 
 pub fn list_u32_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(

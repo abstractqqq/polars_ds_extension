@@ -67,7 +67,7 @@ fn pl_list_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
     if s1.inner_dtype().is_integer() {
         let out = _list_jaccard(s1, s2);
         Ok(out.into_series())
-    } else if s1.inner_dtype() == DataType::String {
+    } else if s1.inner_dtype() == &DataType::String {
         Ok(s1
             .into_iter()
             .zip(s2.into_iter())
