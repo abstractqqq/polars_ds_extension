@@ -5,10 +5,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 from typing import Union, List, Optional, Iterable
 from functools import lru_cache
-from .num import query_cond_entropy, query_principal_components, query_lstsq_report
 from itertools import combinations
+from .num import query_cond_entropy, query_principal_components, query_lstsq_report
 from .type_alias import CorrMethod
 from .stats import corr
+from ._utils import _IS_POLARS_V1
 from .sample import sample
 import graphviz
 from great_tables import GT, nanoplot_options
@@ -35,14 +36,27 @@ class DIA:
         self.strs: List[str] = df.select(cs.string()).columns
         self.bools: List[str] = df.select(cs.boolean()).columns
         self.cats: List[str] = df.select(cs.categorical()).columns
+
+        # POLARS V1
+        if _IS_POLARS_V1:
+            schema_dict = df.collect_schema()
+            columns = schema_dict.names()
+        else:
+            schema_dict = df.schema
+            columns = list(schema_dict.keys())
+
         self.list_floats: List[str] = [
             c
-            for c, t in df.schema.items()
+            for c, t in schema_dict.items()
             if (t.is_(pl.List(pl.Float32)) or (t.is_(pl.List(pl.Float64))))
         ]
+        self.list_bool: List[str] = [
+            c for c, t in schema_dict.items() if t.is_(pl.List(pl.Boolean))
+        ]
+        self.list_str: List[str] = [c for c, t in schema_dict.items() if t.is_(pl.List(pl.String))]
         self.list_ints: List[str] = [
             c
-            for c, t in df.schema.items()
+            for c, t in schema_dict.items()
             if t.is_(pl.List(pl.UInt8))
             or t.is_(pl.List(pl.UInt16))
             or t.is_(pl.List(pl.UInt32))
@@ -52,8 +66,6 @@ class DIA:
             or t.is_(pl.List(pl.Int32))
             or t.is_(pl.List(pl.Int64))
         ]
-        self.list_bool: List[str] = [c for c, t in df.schema.items() if t.is_(pl.List(pl.Boolean))]
-        self.list_str: List[str] = [c for c, t in df.schema.items() if t.is_(pl.List(pl.String))]
 
         self.simple_types: List[str] = (
             self.numerics
@@ -65,7 +77,7 @@ class DIA:
             + self.list_bool
             + self.list_str
         )
-        self.other_types: List[str] = [c for c in self._frame.columns if c not in self.simple_types]
+        self.other_types: List[str] = [c for c in columns if c not in self.simple_types]
 
     def special_values_report(self) -> pl.DataFrame:
         """
@@ -307,6 +319,7 @@ class DIA:
     ) -> pl.DataFrame:
         """
         Returns a dataframe containing correlation information between the subset and all numeric columns.
+        Only numerical columns will be checked.
 
         Parameters
         ----------
@@ -315,14 +328,8 @@ class DIA:
         method
             One of ["pearson", "spearman", "xi", "kendall"]
         """
-        temp = self._frame.select(subset).columns
-        to_check = [c for c in temp if c in self.numerics]
-        if len(to_check) != len(temp):
-            removed = list(set(temp).difference(to_check))
-            logger.info(
-                f"The following columns are not numeric or not in the dataframe, skipped: \n{removed}"
-            )
 
+        to_check = self._frame.select(subset).select(cs.numeric()).columns
         corrs = [
             self._frame.select(
                 # This calls corr from .stats
@@ -725,7 +732,11 @@ class DIA:
             temp = self._frame.filter(condition).select(x, target)
             condition_str = "\nCondition: " + str(condition)
 
-        x_name, y_name = temp.columns
+        if _IS_POLARS_V1:
+            x_name, y_name = temp.collect_schema().names()
+        else:
+            x_name, y_name = temp.columns
+
         coeffs = (
             temp.select(
                 query_lstsq_report(x_name, target=y_name, add_bias=add_bias).alias("report")
@@ -804,11 +815,14 @@ class DIA:
             feat = df.columns[0]
             seg_name = ""
         else:
-            feat, by_col_name = frame.select(feature, by).columns
+            if _IS_POLARS_V1:
+                feat, by_col_name = frame.select(feature, by).collect_schema().names()
+            else:
+                feat, by_col_name = frame.select(feature, by).columns
+
             by_output = pl.col(by_col_name).alias("by")
-            if (
-                include_null
-            ):  # if data column already has a string value called __null__ it will be wrong
+            if include_null:
+                # if data column already has a string value called __null__ it will be wrong
                 by_output = by_output.cast(pl.String).fill_null("__null__")
 
             # The first select deals with the case when by is an expression
@@ -852,7 +866,11 @@ class DIA:
         kwargs
             Anything else that will be passed to plotly's scatter function
         """
-        feats = self._frame.select(features).columns
+        if _IS_POLARS_V1:
+            feats = self._frame.select(features).collect_schema().names()
+        else:
+            feats = self._frame.select(features).columns
+
         if len(feats) < 2:
             raise ValueError("You must pass >= 2 features.")
         if dim < 2 or dim > 3:

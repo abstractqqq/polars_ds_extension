@@ -17,7 +17,7 @@ from .type_alias import (
     RollingInterpolationMethod,
 )
 
-from ._utils import _POLARS_LEGACY_SUPPORT
+from ._utils import _POLARS_LEGACY_SUPPORT, _IS_POLARS_V1
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -53,7 +53,16 @@ class FitStep:
     # to specify input columns, which adds flexibility.
     # We still need real column names so that the functions in transforms.py will work.
     def fit(self, df: PolarsFrame) -> ExprTransform:
-        real_cols: List[str] = [x for x in df.select(self.cols).columns if x not in self.exclude]
+        if _IS_POLARS_V1:
+            real_cols: List[str] = [
+                x
+                for x in df.lazy().select(self.cols).collect_schema().names()
+                if x not in self.exclude
+            ]
+        else:
+            real_cols: List[str] = [
+                x for x in df.select(self.cols).columns if x not in self.exclude
+            ]
         return self.func(df, real_cols)
 
 
@@ -262,8 +271,13 @@ class Pipeline:
             If true, return the lazy plan for the transformations
         """
         if self.ensure_features_in:
-            extras = [c for c in df.columns if c not in self.feature_names_in_]
-            missing = [c for c in self.feature_names_in_ if c not in df.columns]
+            if _IS_POLARS_V1:
+                columns = df.lazy().collect_schema().names()
+                extras = [c for c in columns if c not in self.feature_names_in_]
+                missing = [c for c in self.feature_names_in_ if c not in columns]
+            else:
+                extras = [c for c in df.columns if c not in self.feature_names_in_]
+                missing = [c for c in self.feature_names_in_ if c not in df.columns]
             if len(extras) > 0 or len(missing):
                 raise ValueError(
                     f"Input df doesn't have the features expected. Extra columns: {extras}. Missing columns: {missing}"
@@ -313,7 +327,9 @@ class Blueprint:
         self._df: pl.LazyFrame = df.lazy()
         self.name: str = str(name)
         self.target = target
-        self.feature_names_in_: list[str] = list(df.columns)
+        self.feature_names_in_: list[str] = (
+            self._df.collect_schema().names() if _IS_POLARS_V1 else list(df.columns)
+        )
         self._steps: List[Step] = []
         self.exclude: List[str] = [] if target is None else [target]
         if exclude is not None:  # dedup in case user accidentally puts the same column name twice
@@ -350,7 +366,9 @@ class Blueprint:
 
         self._df = df.lazy()
         self.name = str(self.name)
-        self.feature_names_in_ = list(self._df.columns)
+        self.feature_names_in_ = (
+            self._df.collect_schema().names() if _IS_POLARS_V1 else list(df.columns)
+        )
         self._steps = [deepcopy(s) for s in self._steps]
         return self
 
@@ -497,7 +515,12 @@ class Blueprint:
         """
         Lowercases all column names.
         """
-        self._steps.append(SelectStep([pl.col(c).alias(c.lower()) for c in self._df.columns]))
+        if _IS_POLARS_V1:
+            self._steps.append(
+                SelectStep([pl.col(c).alias(c.lower()) for c in self._df.collect_schema().names()])
+            )
+        else:
+            self._steps.append(SelectStep([pl.col(c).alias(c.lower()) for c in self._df.columns]))
         return self
 
     def one_hot_encode(
@@ -739,7 +762,9 @@ class Blueprint:
             name=self.name,
             target=self.target,
             feature_names_in_=list(self.feature_names_in_),
-            feature_names_out_=list(df_lazy.columns),
+            feature_names_out_=df_lazy.collect_schema().names()
+            if _IS_POLARS_V1
+            else list(df_lazy.columns),
             transforms=transforms,
         )
 

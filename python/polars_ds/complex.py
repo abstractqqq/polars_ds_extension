@@ -3,6 +3,8 @@ import polars as pl
 from typing import Union
 import math
 
+# Frozen for now. It's more or less feature complete for basic complex number manipulations
+
 
 @pl.api.register_expr_namespace("c")
 class ComplexExt:

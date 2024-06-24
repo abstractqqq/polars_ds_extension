@@ -8,6 +8,9 @@ from pathlib import Path
 # Only need this
 _PLUGIN_PATH = Path(__file__).parent
 
+# FLAG FOR v1 polars
+_IS_POLARS_V1 = pl.__version__.startswith("1")
+
 # -----------------------------------------------------------------------------------
 # For polars version < 0.20.16. This will be eventually removed
 _POLARS_LEGACY_SUPPORT = tuple(int(re.sub("[^0-9]", "", x)) for x in pl.__version__.split(".")) < (

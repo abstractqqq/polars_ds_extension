@@ -1,10 +1,11 @@
+# !!! This module is FROZEN and should not be updated any more. !!!
+
 from __future__ import annotations
 import polars as pl
 from typing import Union, Optional
 from .type_alias import str_to_expr, StrOrExpr
 from ._utils import pl_plugin
 
-# !!! This module is FROZEN and should not be updated any more. !!!
 
 __all__ = [
     "query_shortest_path",
