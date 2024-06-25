@@ -1,9 +1,5 @@
 use polars::{
-    datatypes::{DataType, Field},
-    error::PolarsResult,
-    frame::DataFrame,
-    lazy::dsl::FieldsMapper,
-    series::Series,
+    datatypes::{DataType, Field}, error::PolarsResult, frame::DataFrame, lazy::dsl::FieldsMapper, series::Series
 };
 
 // -------------------------------------------------------------------------------
@@ -13,11 +9,13 @@ use polars::{
 // Rechunk series, rename then by the order, and return a PolarsResult<DataFrame>
 #[inline(always)]
 pub fn rechunk_to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
+
     let series = inputs
         .into_iter()
         .enumerate()
         .map(|(i, s)| s.rechunk().with_name(&i.to_string()))
         .collect::<Vec<_>>();
+
     DataFrame::new(series)
 }
 
