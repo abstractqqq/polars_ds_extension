@@ -314,23 +314,21 @@ def target_encode(
     ---------
     https://contrib.scikit-learn.org/category_encoders/targetencoder.html
     """
+    temp = df.lazy()
     if _IS_POLARS_V1:
         valid_cols = (
-            df.lazy().select(cols).select((cs.string() | cs.categorical())).collect_schema().names()
+            temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
         )
-    else:
-        valid_cols = df.lazy().select(cols).select((cs.string() | cs.categorical()))
 
-    temp = (
-        df.lazy()
-        .select(
-            pds_num.target_encode(
-                c, target, min_samples_leaf=min_samples_leaf, smoothing=smoothing
-            ).implode()
-            for c in valid_cols
-        )
-        .collect()
-    )  # add collect config..
+    else:
+        valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
+
+    temp = temp.select(
+        pds_num.target_encode(
+            c, target, min_samples_leaf=min_samples_leaf, smoothing=smoothing
+        ).implode()
+        for c in valid_cols
+    ).collect()  # add collect config..
     # POLARS_V1
     if _IS_POLARS_V1:
         exprs = [
@@ -380,18 +378,17 @@ def woe_encode(
     ---------
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
+    temp = df.lazy()
     if _IS_POLARS_V1:
         valid_cols = (
-            df.lazy().select(cols).select((cs.string() | cs.categorical())).collect_schema().names()
+            temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
         )
     else:
-        valid_cols = df.lazy().select(cols).select((cs.string() | cs.categorical()))
+        valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
 
-    temp = (
-        df.lazy()
-        .select(pds_num.query_woe_discrete(c, target).implode() for c in valid_cols)
-        .collect()
-    )  # add collect config..
+    temp = temp.select(
+        pds_num.query_woe_discrete(c, target).implode() for c in valid_cols
+    ).collect()  # add collect config..
     # POLARS_V1
     if _IS_POLARS_V1:
         exprs = [
@@ -442,14 +439,16 @@ def iv_encode(
     ---------
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
-    valid_cols = df.lazy().select(cols).select((cs.string() | cs.categorical())).columns
-    temp = (
-        df.lazy()
-        .select(
-            pds_num.query_iv_discrete(c, target, return_sum=False).implode() for c in valid_cols
+    temp = df.lazy()
+    if _IS_POLARS_V1:
+        valid_cols = (
+            temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
         )
-        .collect()
-    )  # add collect config..
+    else:
+        valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
+    temp = temp.select(
+        pds_num.query_iv_discrete(c, target, return_sum=False).implode() for c in valid_cols
+    ).collect()  # add collect config..
     # POLARS_V1
     if _IS_POLARS_V1:
         exprs = [

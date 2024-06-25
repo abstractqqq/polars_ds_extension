@@ -66,11 +66,7 @@ jobs:
           pip install pytest
           pip install .
           pip install -r tests/requirements-test.txt
-          pytest tests/test_many.py
-          pytest tests/test_string.py
-          pytest tests/test_transforms.py
-          pytest tests/test_metrics.py
-
+          pytest tests/test_*
 
   build-wheels:
     runs-on: ${{ matrix.os }}
