@@ -15,6 +15,7 @@ from .type_alias import (
     RollingInterpolationMethod,
 )
 from . import num as pds_num
+from ._utils import _IS_POLARS_V1
 from typing import List, Union, Optional
 
 
@@ -62,7 +63,10 @@ def linear_impute(
     add_bias
         Whether to add a bias term to the linear regression
     """
-    target_name = df.select(target).columns[0]
+    if _IS_POLARS_V1:
+        target_name = df.lazy().select(target).collect_schema().names()[0]
+    else:
+        target_name = df.select(target).columns[0]
     temp = (
         df.lazy()
         .select(pds_num.query_lstsq(*features, target=target, add_bias=add_bias, skip_null=True))
@@ -310,24 +314,38 @@ def target_encode(
     ---------
     https://contrib.scikit-learn.org/category_encoders/targetencoder.html
     """
-    valid_cols = df.lazy().select(cols).select((cs.string() | cs.categorical())).columns
-    temp = (
-        df.lazy()
-        .select(
-            pds_num.target_encode(
-                c, target, min_samples_leaf=min_samples_leaf, smoothing=smoothing
-            ).implode()
-            for c in valid_cols
+    temp = df.lazy()
+    if _IS_POLARS_V1:
+        valid_cols = (
+            temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
         )
-        .collect()
-    )  # add collect config..
-    exprs = [
-        # c[0] will be a series of struct because of the implode above.
-        pl.col(c.name).replace(
-            old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default
-        )
-        for c in temp.get_columns()
-    ]
+
+    else:
+        valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
+
+    temp = temp.select(
+        pds_num.target_encode(
+            c, target, min_samples_leaf=min_samples_leaf, smoothing=smoothing
+        ).implode()
+        for c in valid_cols
+    ).collect()  # add collect config..
+    # POLARS_V1
+    if _IS_POLARS_V1:
+        exprs = [
+            # c[0] will be a series of struct because of the implode above.
+            pl.col(c.name).replace_strict(
+                old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default
+            )
+            for c in temp.get_columns()
+        ]
+    else:
+        exprs = [
+            # c[0] will be a series of struct because of the implode above.
+            pl.col(c.name).replace(
+                old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default
+            )
+            for c in temp.get_columns()
+        ]
     return exprs
 
 
@@ -360,20 +378,34 @@ def woe_encode(
     ---------
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
-    valid_cols = df.lazy().select(cols).select((cs.string() | cs.categorical())).columns
-    temp = (
-        df.lazy()
-        .select(pds_num.query_woe_discrete(c, target).implode() for c in valid_cols)
-        .collect()
-    )  # add collect config..
-
-    exprs = [
-        # c[0] will be a series of struct because of the implode above. # .fill_nan(default)
-        pl.col(c.name).replace(
-            old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default
+    temp = df.lazy()
+    if _IS_POLARS_V1:
+        valid_cols = (
+            temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
         )
-        for c in temp.get_columns()
-    ]
+    else:
+        valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
+
+    temp = temp.select(
+        pds_num.query_woe_discrete(c, target).implode() for c in valid_cols
+    ).collect()  # add collect config..
+    # POLARS_V1
+    if _IS_POLARS_V1:
+        exprs = [
+            # c[0] will be a series of struct because of the implode above.
+            pl.col(c.name).replace(
+                old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default
+            )
+            for c in temp.get_columns()
+        ]
+    else:
+        exprs = [
+            # c[0] will be a series of struct because of the implode above.
+            pl.col(c.name).replace(
+                old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default
+            )
+            for c in temp.get_columns()
+        ]
 
     return exprs
 
@@ -407,19 +439,31 @@ def iv_encode(
     ---------
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
-    valid_cols = df.lazy().select(cols).select((cs.string() | cs.categorical())).columns
-    temp = (
-        df.lazy()
-        .select(
-            pds_num.query_iv_discrete(c, target, return_sum=False).implode() for c in valid_cols
+    temp = df.lazy()
+    if _IS_POLARS_V1:
+        valid_cols = (
+            temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
         )
-        .collect()
-    )  # add collect config..
-    exprs = [
-        # c[0] will be a series of struct because of the implode above. # .fill_nan(default)
-        pl.col(c.name).replace(
-            old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default
-        )
-        for c in temp.get_columns()
-    ]
+    else:
+        valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
+    temp = temp.select(
+        pds_num.query_iv_discrete(c, target, return_sum=False).implode() for c in valid_cols
+    ).collect()  # add collect config..
+    # POLARS_V1
+    if _IS_POLARS_V1:
+        exprs = [
+            # c[0] will be a series of struct because of the implode above.
+            pl.col(c.name).replace_strict(
+                old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default
+            )
+            for c in temp.get_columns()
+        ]
+    else:
+        exprs = [
+            # c[0] will be a series of struct because of the implode above.
+            pl.col(c.name).replace(
+                old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default
+            )
+            for c in temp.get_columns()
+        ]
     return exprs
