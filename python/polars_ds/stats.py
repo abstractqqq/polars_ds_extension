@@ -19,6 +19,7 @@ __all__ = [
     "query_std_over_quantiles",
     "query_longest_streak",
     "query_avg_streak",
+    "query_streak",
     "query_ttest_ind",
     "query_ttest_1samp",
     "query_ttest_ind_from_stats",
@@ -390,7 +391,7 @@ def query_longest_streak(where: StrOrExpr) -> pl.Expr:
     """
     Finds the longest streak length where the condition `where` is true.
 
-    Note: the query is still valid when `where` doesn't represent boolean column / boolean expressions.
+    Note: the query is still runnable when `where` doesn't represent boolean column / boolean expressions.
     However, if that is the case the answer will not be easily interpretable.
 
     Parameters
@@ -419,9 +420,10 @@ def query_longest_streak(where: StrOrExpr) -> pl.Expr:
 
 def query_avg_streak(where: StrOrExpr) -> pl.Expr:
     """
-    Finds the average streak length where the condition `where` is true.
+    Finds the average streak length where the condition `where` is true. The average is taken on
+    the true set.
 
-    Note: the query is still valid when `where` doesn't represent boolean column / boolean expressions.
+    Note: the query is still runnable when `where` doesn't represent boolean column / boolean expressions.
     However, if that is the case the answer will not be easily interpretable.
 
     Parameters
@@ -446,6 +448,31 @@ def query_avg_streak(where: StrOrExpr) -> pl.Expr:
         .fill_null(0)
         .alias("avg_streak")
     )
+
+
+def query_streak(where: StrOrExpr) -> pl.Expr:
+    """
+    Finds the streak length where the condition `where` is true. This returns a full column of streak lengths.
+
+    Note: the query is still runnable when `where` doesn't represent boolean column / boolean expressions.
+    However, if that is the case the answer will not be easily interpretable.
+
+    Parameters
+    ----------
+    where
+        If where is string, the string must represent the name of a string column. If where is
+        an expression, the expression must evaluate to some boolean expression.
+    """
+
+    if isinstance(where, str):
+        condition = pl.col(where)
+    else:
+        condition = where
+
+    y = condition.rle().struct.rename_fields(
+        ["len", "value"]
+    )  # POLARS V1 rename fields can be removed when polars hit v1.0
+    return y.struct.field("len").alias("streak_len")
 
 
 def query_first_digit_cnt(var: StrOrExpr) -> pl.Expr:
