@@ -119,10 +119,10 @@ def test_kendall_tau():
         ([1, 2, 3, 4, 5, None], 6, 0),
     ],
 )
-def test_longest_streak_above(a, value, res):
+def test_longest_streak(a, value, res):
     # >=
     df = pl.DataFrame({"a": a})
-    longest = df.select(pds.query_longest_streak_above("a", value)).item(0, 0)
+    longest = df.select(pds.query_longest_streak(pl.col("a") >= value)).item(0, 0)
     assert longest == res
 
 
@@ -130,17 +130,13 @@ def test_longest_streak_above(a, value, res):
     "a, value, res",
     [
         ([1, 2, 3, 4, 5, None], 2, 2),
-        (
-            [1, 2, 3, 4, 5, None],
-            6,
-            5,  # None doesn't count
-        ),
+        ([1, 2, 3, 4, 5, None], 6, 5),  # None doesn't count
     ],
 )
-def test_longest_streak_below(a, value, res):
+def test_longest_streak_2(a, value, res):
     # <=
     df = pl.DataFrame({"a": a})
-    longest = df.select(pds.query_longest_streak_below("a", value)).item(0, 0)
+    longest = df.select(pds.query_longest_streak(pl.col("a") <= value)).item(0, 0)
     assert longest == res
 
 
