@@ -17,8 +17,8 @@ __all__ = [
     "query_std_over_median",
     "query_std_over_range",
     "query_std_over_quantiles",
-    "query_longest_streak_above",
-    "query_longest_streak_below",
+    "query_longest_streak",
+    "query_avg_streak",
     "query_ttest_ind",
     "query_ttest_1samp",
     "query_ttest_ind_from_stats",
@@ -386,51 +386,65 @@ def query_std_over_quantiles(
     return xx.std(ddof=ddof) / (xx.quantile(q2) - xx.quantile(q1))
 
 
-def query_longest_streak_above(x: StrOrExpr, value: Union[float, pl.Expr]) -> pl.Expr:
+def query_longest_streak(where: StrOrExpr) -> pl.Expr:
     """
-    Finds the longest streak above (>=) a value.
+    Finds the longest streak length where the condition `where` is true.
+
+    Note: the query is still valid when `where` doesn't represent boolean column / boolean expressions.
+    However, if that is the case the answer will not be easily interpretable.
 
     Parameters
     ----------
-    x
-        The variable
-    value
-        Either a float or a scalar polars expression. Output will be wrong is value is not a scalar.
+    where
+        If where is string, the string must represent the name of a string column. If where is
+        an expression, the expression must evaluate to some boolean expression.
     """
-    s: pl.Expr = str_to_expr(x)
-    v: pl.Expr = pl.lit(value) if isinstance(value, float) else value
-    y = (
-        (s >= v).rle().struct.rename_fields(["len", "value"])
-    )  # rename fields can be removed when polars hit v1.0
+
+    if isinstance(where, str):
+        condition = pl.col(where)
+    else:
+        condition = where
+
+    y = condition.rle().struct.rename_fields(
+        ["len", "value"]
+    )  # POLARS V1 rename fields can be removed when polars hit v1.0
     return (
         y.filter(y.struct.field("value"))
         .struct.field("len")
         .max()
         .fill_null(0)
-        .alias("longest_streak_above")
+        .alias("longest_streak")
     )
 
 
-def query_longest_streak_below(x: StrOrExpr, value: Union[float, pl.Expr]) -> pl.Expr:
+def query_avg_streak(where: StrOrExpr) -> pl.Expr:
     """
-    Finds the longest streak below (<=) a value.
+    Finds the average streak length where the condition `where` is true.
+
+    Note: the query is still valid when `where` doesn't represent boolean column / boolean expressions.
+    However, if that is the case the answer will not be easily interpretable.
 
     Parameters
     ----------
-    x
-        The variable
-    value
-        Either a float or a scalar polars expression. Output will be wrong is value is not a scalar.
+    where
+        If where is string, the string must represent the name of a string column. If where is
+        an expression, the expression must evaluate to some boolean expression.
     """
-    s: pl.Expr = str_to_expr(x)
-    v: pl.Expr = pl.lit(value) if isinstance(value, float) else value
-    y = (s <= v).rle().struct.rename_fields(["len", "value"])
+
+    if isinstance(where, str):
+        condition = pl.col(where)
+    else:
+        condition = where
+
+    y = condition.rle().struct.rename_fields(
+        ["len", "value"]
+    )  # POLARS V1 rename fields can be removed when polars hit v1.0
     return (
         y.filter(y.struct.field("value"))
         .struct.field("len")
-        .max()
+        .mean()
         .fill_null(0)
-        .alias("longest_streak_below")
+        .alias("avg_streak")
     )
 
 
