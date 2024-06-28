@@ -94,7 +94,23 @@ def test_xi_corr():
     ans_statistic = xi_obj.correlation
     test_statistic = df.select(pds.xi_corr("x", "y")).item(0, 0)
 
-    assert np.isclose(ans_statistic, test_statistic, rtol=1e-4)
+    assert np.isclose(ans_statistic, test_statistic, rtol=1e-5)
+
+
+def test_bicor():
+    df = pds.random_data(size=2_000, n_cols=0).select(
+        pds.random(0.0, 1.0).alias("x"),
+        pds.random(0.0, 1.0).alias("y"),
+    )
+
+    from astropy.stats import biweight_midcorrelation
+
+    x = df["x"].to_numpy()
+    y = df["y"].to_numpy()
+    answer = biweight_midcorrelation(x, y)
+    test_result = df.select(pds.bicor("x", "y")).item(0, 0)
+
+    assert np.isclose(answer, test_result)
 
 
 def test_kendall_tau():
