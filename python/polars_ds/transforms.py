@@ -46,16 +46,51 @@ def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean"
         raise ValueError(f"Unknown input method: {method}")
 
 
+def impute_nan(
+    df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean"
+) -> ExprTransform:
+    """
+    Impute NaN values in the given columns. NaN is not the same as null in Polars. In most Polars dataframes,
+    NaN should occur only because of numerical problems, such as log(-1). This transformation
+    also only applies to float columns and non-float columns will be ignored despite being passed in cols.
+
+    This transform will collect if input is lazy.
+
+    Parameters
+    ----------
+    df
+        Either a lazy or an eager dataframe
+    cols
+        A list of strings representing column names
+    method
+        One of `mean` or `median`. `mode` will result in error.
+    """
+    if method == "mean":
+        temp = df.lazy().select(cols).select(cs.float().mean()).collect()
+        return [pl.col(c).fill_nan(m) for c, m in zip(temp.columns, temp.row(0))]
+    elif method == "median":
+        temp = df.lazy().select(cols).select(cs.float().median()).collect()
+        return [pl.col(c).fill_nan(m) for c, m in zip(temp.columns, temp.row(0))]
+    else:
+        raise ValueError(f"Unknown input method: {method}")
+
+
 def linear_impute(
     df: PolarsFrame, features: List[str], target: Union[str, pl.Expr], add_bias: bool = False
 ) -> ExprTransform:
     """
-    Imputes the target by training a simple linear regression using the other features.
+    Imputes the target column by training a simple linear regression using the other features. This will
+    cast the target column to f64.
 
     Note: The linear regression will skip nulls whenever there is a null in the features or in the target.
+    Additionally, if NaN or Inf exists in data, the linear regression result may be invalid or an error
+    will be thrown. It is recommended to use this only after imputing and dealing with NaN and Infs for
+    all feature columns first.
 
     Parameters
     ----------
+    df
+        Either a lazy or an eager dataframe
     features
         A list of strings representing column names that will be used as features in the linear regression
     target
@@ -80,7 +115,7 @@ def linear_impute(
     return [
         pl.when(pl.col(target_name).is_null())
         .then(pl.sum_horizontal(linear_eq))
-        .otherwise(pl.col(target_name))
+        .otherwise(pl.col(target_name).cast(pl.Float64))
         .alias(target_name)
     ]
 

@@ -374,7 +374,8 @@ class Blueprint:
 
     def impute(self, cols: IntoExprColumn, method: SimpleImputeMethod = "mean") -> Self:
         """
-        Impute null values in the given columns.
+        Imputes null values in the given columns. Note: this doesn't fill NaN. If filling for NaN is needed,
+        please manually
 
         Parameters
         ----------
@@ -387,10 +388,45 @@ class Blueprint:
         self._steps.append(FitStep(partial(t.impute, method=method), cols, self.exclude))
         return self
 
+    def impute_nan(self, cols: IntoExprColumn, method: SimpleImputeMethod = "mean") -> Self:
+        """
+        Impute NaN values in the given columns. NaN is not the same as null in Polars. In most Polars dataframes,
+        NaN should occur only because of numerical problems, such as log(-1). This transformation
+        also only applies to float columns and non-float columns will be ignored despite being passed in cols.
+
+        This transform will collect if input is lazy.
+
+        Parameters
+        ----------
+        cols
+            Any Polars expression that can be understood as columns.
+        method
+            One of `mean` or `median`. `mode` will result in error.
+        """
+        self._steps.append(FitStep(partial(t.impute_nan, method=method), cols, self.exclude))
+        return self
+
     def linear_impute(
         self, features: IntoExprColumn, target: Optional[StrOrExpr] = None, add_bias: bool = False
     ) -> Self:
-        """ """
+        """
+        Imputes the target column by training a simple linear regression using the other features. This will
+        cast the target column to f64.
+
+        Note: The linear regression will skip nulls whenever there is a null in the features or in the target.
+        Additionally, if NaN or Inf exists in data, the linear regression result may be invalid or an error
+        will be thrown. It is recommended to use this only after imputing and dealing with NaN and Infs for
+        all feature columns first.
+
+        Parameters
+        ----------
+        features
+            Any Polars expression that can be understood as numerical columns which will be used as features
+        target
+            The target column
+        add_bias
+            Whether to add a bias term to the linear regression
+        """
         self._steps.append(
             FitStep(
                 partial(t.linear_impute, target=self._get_target(target), add_bias=add_bias),
