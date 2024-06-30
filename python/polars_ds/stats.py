@@ -52,6 +52,7 @@ __all__ = [
     "weighted_cosine_sim",
     "xi_corr",
     "kendall_tau",
+    "bicor",
     "corr",
     "StatsExt",
 ]
@@ -1375,6 +1376,44 @@ def kendall_tau(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
     )
 
 
+def bicor(x: StrOrExpr, y: StrOrExpr, c: float = 9.0) -> pl.Expr:
+    """
+    Computes the Biweight Midcorrelation between x and y. This is commonly referred to as bicor.
+
+    Performance hint: this expression benefits from .lazy() a lot.
+
+    Parameters
+    ----------
+    x
+        The first variable
+    y
+        The second variable
+    c
+        Biweight tuning constant which is typically 9
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Biweight_midcorrelation
+    """
+    a, b = str_to_expr(x), str_to_expr(y)
+    med_a = a.median()
+    med_b = b.median()
+
+    diff_a = a - med_a
+    diff_b = b - med_b
+
+    ua = diff_a / (c * diff_a.abs().median())
+    ub = diff_b / (c * diff_b.abs().median())
+
+    w_a = (1 - ua.pow(2)).pow(2) * ((1 - ua.abs()) > 0).cast(pl.Float64)
+    w_b = (1 - ub.pow(2)).pow(2) * ((1 - ub.abs()) > 0).cast(pl.Float64)
+
+    aa = diff_a * w_a
+    bb = diff_b * w_b
+
+    return aa.dot(bb) / (aa.dot(aa) * (bb.dot(bb))).sqrt()
+
+
 def xi_corr(
     x: StrOrExpr, y: StrOrExpr, seed: Optional[int] = None, return_p: bool = False
 ) -> pl.Expr:
@@ -1431,7 +1470,7 @@ def corr(x: StrOrExpr, y: StrOrExpr, method: CorrMethod = "pearson") -> pl.Expr:
     y
         The second variable
     method
-        One of ["pearson", "spearman", "xi", "kendall"]
+        One of ["pearson", "spearman", "xi", "kendall", "bicor"]
     """
     if method in ["pearson", "spearman"]:
         return pl.corr(x, y, method=method)
@@ -1439,5 +1478,7 @@ def corr(x: StrOrExpr, y: StrOrExpr, method: CorrMethod = "pearson") -> pl.Expr:
         return xi_corr(x, y)
     elif method == "kendall":
         return kendall_tau(x, y)
+    elif method == "bicor":
+        return bicor(x, y)
     else:
         raise ValueError(f"Unknown correlation method: {method}.")

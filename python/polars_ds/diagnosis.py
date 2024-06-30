@@ -326,7 +326,7 @@ class DIA:
         subset
             Anything that can be put into a Polars .select statement.
         method
-            One of ["pearson", "spearman", "xi", "kendall"]
+            One of ["pearson", "spearman", "xi", "kendall", "bicor"]
         """
 
         to_check = self._frame.select(subset).select(cs.numeric()).columns
@@ -352,7 +352,7 @@ class DIA:
         subset
             Anything that can be put into a Polars .select statement.
         method
-            One of ["pearson", "spearman", "xi", "kendall"]
+            One of ["pearson", "spearman", "xi", "kendall", "bicor"]
         """
         corr_values = self.corr(subset, method)
         cols = [c for c in corr_values.columns if c != "column"]
