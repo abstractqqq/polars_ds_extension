@@ -19,6 +19,7 @@ __all__ = [
     "query_within_dist_from",
     "query_radius_ptwise",
     "query_nb_cnt",
+    "query_nb_cnt2",
     "query_approx_entropy",
     "query_sample_entropy",
     "query_cond_entropy",
@@ -498,6 +499,28 @@ def query_nb_cnt(
     )
 
 
+def query_nb_cnt2(
+    r: float,  # noqa: F821
+    *features: StrOrExpr,
+    leaf_size: int = 32,
+    dist: Distance = "l2",
+    parallel: bool = False,
+) -> pl.Expr:
+    return pl_plugin(
+        symbol="pl_nb_cnt2",
+        args=[pl.lit(r, dtype=pl.Float64)] + [str_to_expr(x) for x in features],
+        kwargs={
+            "k": 0,
+            "leaf_size": leaf_size,
+            "metric": dist,
+            "parallel": parallel,
+            "skip_eval": False,
+            "skip_data": False,
+        },
+        is_elementwise=True,
+    )
+
+
 def query_knn_filter(
     *features: StrOrExpr,
     pt: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
@@ -589,7 +612,9 @@ def query_approx_entropy(
     rows = t.count() - m + 1
     data = [r, t.slice(0, length=rows).cast(pl.Float64)]
     # See rust code for more comment on why I put m + 1 here.
-    data.extend(t.shift(-i).slice(0, length=rows).cast(pl.Float64) for i in range(1, m + 1))
+    data.extend(
+        t.shift(-i).slice(0, length=rows).cast(pl.Float64).alias(str(i)) for i in range(1, m + 1)
+    )
     # More errors are handled in Rust
     return pl_plugin(
         symbol="pl_approximate_entropy",
@@ -603,6 +628,7 @@ def query_approx_entropy(
             "skip_data": False,
         },
         returns_scalar=True,
+        pass_name_to_apply=True,
     )
 
 
@@ -615,7 +641,7 @@ def query_sample_entropy(
 
     If NaN/some error is returned/thrown, it is likely that:
     (1) Too little data, e.g. m + 1 > length
-    (2) ratio or (ratio * std) is too close to 0 or std is null/NaN.
+    (2) ratio or (ratio * std) is too close to or below 0 or std is null/NaN.
 
     Parameters
     ----------
@@ -637,10 +663,10 @@ def query_sample_entropy(
     r = ratio * t.std(ddof=0)
     rows = t.count() - m + 1
 
-    data = [r, t.slice(0, length=rows).cast(pl.Float64)]
+    data = [r, t.slice(0, length=rows).cast(pl.Float64).alias("")]
     # See rust code for more comment on why I put m + 1 here.
     data.extend(
-        t.shift(-i).slice(0, length=rows).cast(pl.Float64) for i in range(1, m + 1)
+        t.shift(-i).slice(0, length=rows).cast(pl.Float64).alias(str(i)) for i in range(1, m + 1)
     )  # More errors are handled in Rust
     return pl_plugin(
         symbol="pl_sample_entropy",
@@ -654,6 +680,7 @@ def query_sample_entropy(
             "skip_data": False,
         },
         returns_scalar=True,
+        pass_name_to_apply=True,
     )
 
 
@@ -672,6 +699,7 @@ def query_cond_entropy(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
         symbol="pl_conditional_entropy",
         args=[str_to_expr(x), str_to_expr(y)],
         returns_scalar=True,
+        pass_name_to_apply=True,
     )
 
 
@@ -709,7 +737,7 @@ def query_knn_entropy(
 
     return pl_plugin(
         symbol="pl_knn_entropy",
-        args=[str_to_expr(e) for e in features],
+        args=[str_to_expr(e).alias(str(i)) for i, e in enumerate(features)],
         kwargs={
             "k": k,
             "leaf_size": 32,
@@ -719,6 +747,7 @@ def query_knn_entropy(
             "skip_data": False,
         },
         returns_scalar=True,
+        pass_name_to_apply=True,
     )
 
 
@@ -884,6 +913,7 @@ def query_lstsq(
             symbol="pl_lstsq_pred",
             args=cols,
             kwargs={"bias": add_bias, "skip_null": skip_null},
+            pass_name_to_apply=True,
         )
     else:
         return pl_plugin(
@@ -891,6 +921,7 @@ def query_lstsq(
             args=cols,
             kwargs={"bias": add_bias, "skip_null": skip_null},
             returns_scalar=True,
+            pass_name_to_apply=True,
         )
 
 
@@ -931,6 +962,7 @@ def query_lstsq_report(
         args=cols,
         kwargs={"bias": add_bias, "skip_null": skip_null},
         changes_length=True,
+        pass_name_to_apply=True,
     )
 
 

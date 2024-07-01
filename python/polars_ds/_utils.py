@@ -39,6 +39,7 @@ def pl_plugin(
     returns_scalar: bool = False,
     changes_length: bool = False,
     cast_to_supertype: bool = False,
+    pass_name_to_apply: bool = False,
 ) -> pl.Expr:
     if _POLARS_LEGACY_SUPPORT:
         # This will eventually be deprecated, yes
@@ -51,6 +52,7 @@ def pl_plugin(
             returns_scalar=returns_scalar,
             changes_length=changes_length,
             cast_to_supertypes=cast_to_supertype,
+            pass_name_to_apply=pass_name_to_apply,
         )
 
     from polars.plugins import register_plugin_function
@@ -64,4 +66,5 @@ def pl_plugin(
         returns_scalar=returns_scalar,
         changes_length=changes_length,
         cast_to_supertype=cast_to_supertype,
+        pass_name_to_apply=pass_name_to_apply,
     )

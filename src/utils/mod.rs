@@ -1,5 +1,11 @@
+use ndarray::Array2;
 use polars::{
-    datatypes::{DataType, Field}, error::PolarsResult, frame::DataFrame, lazy::dsl::FieldsMapper, series::Series
+    datatypes::{DataType, Field, Float64Type},
+    error::PolarsResult,
+    frame::DataFrame,
+    lazy::dsl::FieldsMapper,
+    prelude::IndexOrder,
+    series::Series,
 };
 
 // -------------------------------------------------------------------------------
@@ -9,14 +15,15 @@ use polars::{
 // Rechunk series, rename then by the order, and return a PolarsResult<DataFrame>
 #[inline(always)]
 pub fn rechunk_to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
+    let mut df = DataFrame::new(inputs.to_vec())?;
+    df = df.align_chunks().clone(); // ref count, cheap clone
+    Ok(df)
+}
 
-    let series = inputs
-        .into_iter()
-        .enumerate()
-        .map(|(i, s)| s.rechunk().with_name(&i.to_string()))
-        .collect::<Vec<_>>();
-
-    DataFrame::new(series)
+#[inline(always)]
+pub fn series_to_ndarray(inputs: &[Series], order: IndexOrder) -> PolarsResult<Array2<f64>> {
+    let df = DataFrame::new(inputs.to_vec())?;
+    df.to_ndarray::<Float64Type>(order)
 }
 
 // Shared splitting method

@@ -274,6 +274,7 @@ def query_roc_auc(
         symbol="pl_roc_auc",
         args=[str_to_expr(actual).cast(pl.UInt32), str_to_expr(pred)],
         returns_scalar=True,
+        pass_name_to_apply=True,
     )
 
 
