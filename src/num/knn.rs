@@ -516,14 +516,14 @@ fn pl_knn_filter(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
 // }
 
 #[inline]
-pub fn query_nb_cnt<'a, Kdt, A: Copy>(
+pub fn query_nb_cnt<'a, Kdt>(
     tree: Kdt,
-    data: ArrayView2<f64>,
+    data: ArrayView2<'a, f64>,
     r: f64,
     can_parallel: bool,
 ) -> UInt32Chunked
 where
-    Kdt: KDTQ<'a, f64, A> + std::marker::Sync,
+    Kdt: KDTQ<'a, f64, ()> + std::marker::Sync,
 {
     // as_slice.unwrap() is safe because when we create the matrices, we specified C order.
     let nrows = data.nrows();
@@ -544,12 +544,12 @@ where
         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
         UInt32Chunked::from_chunk_iter("cnt", chunks.into_iter().flatten())
     } else {
-        let mut builder: PrimitiveChunkedBuilder<UInt32Type> =
-            PrimitiveChunkedBuilder::new("cnt", nrows);
-        for row in data.rows() {
-            builder.append_option(tree.within_count(row.to_slice().unwrap(), r));
-        }
-        builder.finish()
+        UInt32Chunked::from_iter_options(
+            "cnt",
+            data.rows()
+                .into_iter()
+                .map(|row| tree.within_count(row.to_slice().unwrap(), r)),
+        )
     }
 }
 
