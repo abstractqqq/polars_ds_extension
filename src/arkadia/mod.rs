@@ -134,8 +134,7 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
         } else {
             // Always allocate some.
             let mut neighbors = Vec::with_capacity(32);
-            let mut pending = Vec::with_capacity(32);
-            pending.push((T::min_value(), self));
+            let mut pending = vec![(T::min_value(), self)];
             while !pending.is_empty() {
                 self.within_one_step(&mut pending, &mut neighbors, point, T::zero(), radius);
             }
@@ -154,8 +153,7 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
         } else {
             // Always allocate some.
             let mut cnt = 0u32;
-            let mut pending = Vec::with_capacity(32);
-            pending.push((T::min_value(), self));
+            let mut pending = vec![(T::min_value(), self)];
             while !pending.is_empty() {
                 cnt += self.within_count_one_step(&mut pending, point, T::zero(), radius);
             }

@@ -121,15 +121,13 @@ fn pl_sample_entropy(
 }
 
 /// Comptues the logd part of the KNN entropy
-fn _knn_entropy_helper<'a, Kdt, A>(
-    tree: Kdt,
+fn _knn_entropy_helper<'a>(
+    tree: LpKdtree<'a, f64, ()>,
     data: ArrayView2<f64>,
     k: usize,
     can_parallel: bool,
 ) -> f64
-where
-    A: Copy,
-    Kdt: KDTQ<'a, f64, A> + std::marker::Sync,
+
 {
     if can_parallel {
         let splits = split_offsets(data.nrows(), POOL.current_num_threads());
@@ -190,8 +188,8 @@ fn pl_knn_entropy(
     let (cd, log_d) = if metric_str == "l2" {
         let half_d: f64 = d / 2.0;
         let cd = std::f64::consts::PI.powf(half_d) / (2f64.powf(d)) / (1.0 + half_d).gamma();
-        let mut leaves = matrix_to_empty_leaves_w_norm(&data_view);
-        let tree = Kdtree::from_leaves(&mut leaves, SplitMethod::default())
+        let mut leaves = matrix_to_empty_leaves(&data_view);
+        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::default(), LP::L2)
             .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
         (cd, _knn_entropy_helper(tree, data_view, k, can_parallel))

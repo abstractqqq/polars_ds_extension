@@ -37,20 +37,20 @@ impl<'a, T: Float, A> From<(A, ArrayView1<'a, T>)> for Leaf<'a, T, A> {
 pub trait KdLeaf<'a, T: Float> {
     fn dim(&self) -> usize;
 
-    fn is_not_finite(&self) -> bool;
+    fn value_at(&self, idx: usize) -> T;
 
     fn vec(&self) -> &'a [T];
 
     fn norm(&self) -> T;
 }
 
-impl<'a, T: Float, A: Copy> KdLeaf<'a, T> for LeafWithNorm<'a, T, A> {
+impl<'a, T: Float, A> KdLeaf<'a, T> for LeafWithNorm<'a, T, A> {
     fn dim(&self) -> usize {
         self.row_vec.len()
     }
 
-    fn is_not_finite(&self) -> bool {
-        self.row_vec.iter().any(|x| !x.is_finite())
+    fn value_at(&self, idx: usize) -> T {
+        self.row_vec[idx]
     }
 
     fn vec(&self) -> &'a [T] {
@@ -62,13 +62,13 @@ impl<'a, T: Float, A: Copy> KdLeaf<'a, T> for LeafWithNorm<'a, T, A> {
     }
 }
 
-impl<'a, T: Float, A: Copy> KdLeaf<'a, T> for Leaf<'a, T, A> {
+impl<'a, T: Float, A> KdLeaf<'a, T> for Leaf<'a, T, A> {
     fn dim(&self) -> usize {
         self.row_vec.len()
     }
 
-    fn is_not_finite(&self) -> bool {
-        self.row_vec.iter().any(|x| !x.is_finite())
+    fn value_at(&self, idx: usize) -> T {
+        self.row_vec[idx]
     }
 
     fn vec(&self) -> &'a [T] {

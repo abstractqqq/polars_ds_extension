@@ -609,7 +609,7 @@ def query_approx_entropy(
     else:
         r: pl.Expr = pl.lit(filtering_level, dtype=pl.Float64)
 
-    rows = t.count() - m + 1
+    rows = t.len() - m + 1
     data = [r, t.slice(0, length=rows).cast(pl.Float64)]
     # See rust code for more comment on why I put m + 1 here.
     data.extend(
@@ -661,12 +661,12 @@ def query_sample_entropy(
     """
     t = str_to_expr(ts)
     r = ratio * t.std(ddof=0)
-    rows = t.count() - m + 1
+    rows = t.len() - m + 1
 
-    data = [r, t.slice(0, length=rows).cast(pl.Float64).alias("")]
+    data = [r, t.slice(0, length=rows)]
     # See rust code for more comment on why I put m + 1 here.
     data.extend(
-        t.shift(-i).slice(0, length=rows).cast(pl.Float64).alias(str(i)) for i in range(1, m + 1)
+        t.shift(-i).slice(0, length=rows).alias(str(i)) for i in range(1, m + 1)
     )  # More errors are handled in Rust
     return pl_plugin(
         symbol="pl_sample_entropy",

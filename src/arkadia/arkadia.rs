@@ -13,7 +13,7 @@ pub fn squared_l2<T: Float + 'static>(a: &[T], b: &[T], a_norm: T, b_norm: T) ->
     a_norm + b_norm - dot - dot
 }
 
-pub struct Kdtree<'a, T: Float + 'static, A: Copy> {
+pub struct Kdtree<'a, T: Float + 'static, A> {
     dim: usize,
     // Nodes
     left: Option<Box<Kdtree<'a, T, A>>>,
@@ -37,7 +37,7 @@ impl<'a, T: Float + 'static, A: Copy> Kdtree<'a, T, A> {
         if data.is_empty() {
             return Err("Empty data.".into());
         }
-        let dim = data.last().unwrap().dim();
+        let dim = data[0].dim();
         Ok(Self::from_leaves_unchecked(
             data,
             dim,
@@ -88,57 +88,71 @@ impl<'a, T: Float + 'static, A: Copy> Kdtree<'a, T, A> {
             let (split_axis_value, split_idx) = match how {
                 SplitMethod::MIDPOINT => {
                     let midpoint = min_bounds[axis]
-                        + (max_bounds[axis] - min_bounds[axis]) / T::from(2.0).unwrap();
+                        + (max_bounds[axis] - min_bounds[axis]) / (T::one() + T::one());
                     data.sort_unstable_by(|l1, l2| {
-                        (l1.row_vec[axis] >= midpoint).cmp(&(l2.row_vec[axis] >= midpoint))
+                        (l1.value_at(axis) >= midpoint).cmp(&(l2.value_at(axis) >= midpoint))
                     }); // False <<< True. Now split by the first True location
-                    let split_idx = data.partition_point(|elem| elem.row_vec[axis] < midpoint); // first index of True. If it doesn't exist, all points goes into left
+                    let split_idx = data.partition_point(|elem| elem.value_at(axis) < midpoint); // first index of True. If it doesn't exist, all points goes into left
                     (midpoint, split_idx)
                 }
                 SplitMethod::MEAN => {
                     let mut sum = T::zero();
                     for row in data.iter() {
-                        sum = sum + row.row_vec[axis];
+                        sum = sum + row.value_at(axis);
                     }
                     let mean = sum / T::from(n).unwrap();
                     data.sort_unstable_by(|l1, l2| {
-                        (l1.row_vec[axis] >= mean).cmp(&(l2.row_vec[axis] >= mean))
+                        (l1.value_at(axis) >= mean).cmp(&(l2.value_at(axis) >= mean))
                     }); // False <<< True. Now split by the first True location
-                    let split_idx = data.partition_point(|elem| elem.row_vec[axis] < mean); // first index of True. If it doesn't exist, all points goes into left
+                    let split_idx = data.partition_point(|elem| elem.value_at(axis) < mean); // first index of True. If it doesn't exist, all points goes into left
                     (mean, split_idx)
                 }
                 SplitMethod::MEDIAN => {
                     data.sort_unstable_by(|l1, l2| {
-                        l1.row_vec[axis].partial_cmp(&l2.row_vec[axis]).unwrap()
+                        l1.value_at(axis).partial_cmp(&l2.value_at(axis)).unwrap()
                     }); // False <<< True. Now split by the first True location
                     let half = n >> 1;
-                    let split_value = data[half].row_vec[axis];
+                    let split_value = data[half].value_at(axis);
                     (split_value, half)
                 }
             };
 
             let (left, right) = data.split_at_mut(split_idx);
-            Kdtree {
-                dim: dim,
-                left: Some(Box::new(Self::from_leaves_unchecked(
-                    left,
-                    dim,
-                    capacity,
-                    depth + 1,
-                    how.clone(),
-                ))),
-                right: Some(Box::new(Self::from_leaves_unchecked(
-                    right,
-                    dim,
-                    capacity,
-                    depth + 1,
-                    how,
-                ))),
-                split_axis: Some(axis),
-                split_axis_value: Some(split_axis_value),
-                min_bounds: min_bounds,
-                max_bounds: max_bounds,
-                data: None,
+            if left.is_empty() {
+                // See comment in arkadia_lp.rs
+                Kdtree {
+                    dim: dim,
+                    left: None,
+                    right: None,
+                    split_axis: None,
+                    split_axis_value: None,
+                    min_bounds: min_bounds,
+                    max_bounds: max_bounds,
+                    data: Some(right),
+                }
+            } else {
+                Kdtree {
+                    dim: dim,
+                    left: Some(Box::new(Self::from_leaves_unchecked(
+                        left,
+                        dim,
+                        capacity,
+                        depth + 1,
+                        how.clone(),
+                    ))),
+                    right: Some(Box::new(Self::from_leaves_unchecked(
+                        right,
+                        dim,
+                        capacity,
+                        depth + 1,
+                        how,
+                    ))),
+                    split_axis: Some(axis),
+                    split_axis_value: Some(split_axis_value),
+                    min_bounds: min_bounds,
+                    max_bounds: max_bounds,
+                    data: None,
+                }
             }
         }
     }
@@ -262,7 +276,7 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for Kdtree<'a, T, A> {
                 next.min_bounds.as_ref(),
                 next.max_bounds.as_ref(),
                 point,
-            ); // (the next Tree, min dist from the box to point)
+            ); // (min dist from the box to point, the next Tree)
             if dist_to_box + epsilon < current_max {
                 pending.push((dist_to_box, next));
             }
@@ -299,7 +313,7 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for Kdtree<'a, T, A> {
                     next.min_bounds.as_ref(),
                     next.max_bounds.as_ref(),
                     point,
-                ); // (the next Tree, min dist from the box to point)
+                ); // (min dist from the box to point, the next Tree)
                 if dist_to_box <= radius {
                     pending.push((dist_to_box, next));
                 }

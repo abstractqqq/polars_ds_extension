@@ -5,6 +5,9 @@ use num::Float;
 #[derive(Clone)]
 pub enum LP {
     L1,
+    // The L2 here is square rooted. 
+    // For squared euclidean distance with faster distance function (1-e12 error), use arkadia.rs 
+    L2, 
     LINF,
 }
 
@@ -28,6 +31,12 @@ impl LP {
                 .zip(a2.iter().copied())
                 .fold(T::zero(), |acc, (x, y)| acc + ((x - y).abs())),
 
+            LP::L2 => a1
+                .iter()
+                .copied()
+                .zip(a2.iter().copied())
+                .fold(T::zero(), |acc, (x, y)| acc + ((x - y).powi(2))).sqrt(),
+
             LP::LINF => a1
                 .iter()
                 .copied()
@@ -37,7 +46,7 @@ impl LP {
     }
 }
 
-pub struct LpKdtree<'a, T: Float + 'static, A: Copy> {
+pub struct LpKdtree<'a, T: Float + 'static, A> {
     dim: usize,
     // Nodes
     left: Option<Box<LpKdtree<'a, T, A>>>,
@@ -64,7 +73,7 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
         if data.is_empty() {
             return Err("Empty data.".into());
         }
-        let dim = data.last().unwrap().dim();
+        let dim = data[0].dim();
         Ok(Self::from_leaves_unchecked(
             data,
             dim,
@@ -118,60 +127,88 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
             let (split_axis_value, split_idx) = match how {
                 SplitMethod::MIDPOINT => {
                     let midpoint = min_bounds[axis]
-                        + (max_bounds[axis] - min_bounds[axis]) / T::from(2.0).unwrap();
+                        + (max_bounds[axis] - min_bounds[axis]) / (T::one() + T::one());
                     data.sort_unstable_by(|l1, l2| {
-                        (l1.row_vec[axis] >= midpoint).cmp(&(l2.row_vec[axis] >= midpoint))
+                        (l1.value_at(axis) >= midpoint).cmp(&(l2.value_at(axis) >= midpoint))
                     }); // False <<< True. Now split by the first True location
-                    let split_idx = data.partition_point(|elem| elem.row_vec[axis] < midpoint); // first index of True. If it doesn't exist, all points goes into left
+                    let split_idx = data.partition_point(|elem| elem.value_at(axis) < midpoint); // first index of True. If it doesn't exist, all points goes into left
                     (midpoint, split_idx)
                 }
                 SplitMethod::MEAN => {
                     let mut sum = T::zero();
                     for row in data.iter() {
-                        sum = sum + row.row_vec[axis];
+                        sum = sum + row.value_at(axis);
                     }
                     let mean = sum / T::from(n).unwrap();
                     data.sort_unstable_by(|l1, l2| {
-                        (l1.row_vec[axis] >= mean).cmp(&(l2.row_vec[axis] >= mean))
+                        (l1.value_at(axis) >= mean).cmp(&(l2.value_at(axis) >= mean))
                     }); // False <<< True. Now split by the first True location
-                    let split_idx = data.partition_point(|elem| elem.row_vec[axis] < mean); // first index of True. If it doesn't exist, all points goes into left
+                    let split_idx = data.partition_point(|elem| elem.value_at(axis) < mean); // first index of True. If it doesn't exist, all points goes into left
                     (mean, split_idx)
                 }
                 SplitMethod::MEDIAN => {
                     data.sort_unstable_by(|l1, l2| {
-                        l1.row_vec[axis].partial_cmp(&l2.row_vec[axis]).unwrap()
+                        l1.value_at(axis).partial_cmp(&l2.value_at(axis)).unwrap()
                     }); // False <<< True. Now split by the first True location
                     let half = n >> 1;
-                    let split_value = data[half].row_vec[axis];
+                    let split_value = data[half].value_at(axis);
                     (split_value, half)
                 }
             };
 
             let (left, right) = data.split_at_mut(split_idx);
-            LpKdtree {
-                dim: dim,
-                left: Some(Box::new(Self::from_leaves_unchecked(
-                    left,
-                    dim,
-                    capacity,
-                    depth + 1,
-                    how.clone(),
-                    lp.clone(),
-                ))),
-                right: Some(Box::new(Self::from_leaves_unchecked(
-                    right,
-                    dim,
-                    capacity,
-                    depth + 1,
-                    how,
-                    lp.clone(),
-                ))),
-                split_axis: Some(axis),
-                split_axis_value: Some(split_axis_value),
-                min_bounds: min_bounds,
-                max_bounds: max_bounds,
-                data: None,
-                lp: lp,
+
+            if left.is_empty() {
+                // Left is size 0, right is all, is a very rare case, which happens when all the values at this
+                // dimension are the same. In this case we proceed by (maybe) breaking the capacity rule and create
+                // a leaf tree.
+                // There are two cases that may ensue:
+                // 1. We let the recursion keep going with left being an empty tree. In the next dimension, right
+                // will split into 2 and everything works.
+                // 2. In the next dimension, right also has exactly the same problem. And all remaining dimensions have
+                // the same problem. Stack overflow. Game over.
+                // Although 2 is rare, we can't predict which situation may arise. We opt for a safer approach by always
+                // creating a leaf tree to end the recursion. We know 2 happens when the remaining leaves are identical in
+                // each dimension.
+                // So the solution makes sense. We also note that 2 may happen in perfectly periodic data generated
+                // with sin/cos functions, which is common in time series, which is also how this error came to be known...
+                LpKdtree {
+                    dim: dim,
+                    left: None,
+                    right: None,
+                    split_axis: None,
+                    split_axis_value: None,
+                    min_bounds: min_bounds,
+                    max_bounds: max_bounds,
+                    data: Some(right),
+                    lp: lp,
+                }
+            } else {
+                LpKdtree {
+                    dim: dim,
+                    left: Some(Box::new(Self::from_leaves_unchecked(
+                        left,
+                        dim,
+                        capacity,
+                        depth + 1,
+                        how.clone(),
+                        lp.clone(),
+                    ))),
+                    right: Some(Box::new(Self::from_leaves_unchecked(
+                        right,
+                        dim,
+                        capacity,
+                        depth + 1,
+                        how,
+                        lp.clone(),
+                    ))),
+                    split_axis: Some(axis),
+                    split_axis_value: Some(split_axis_value),
+                    min_bounds: min_bounds,
+                    max_bounds: max_bounds,
+                    data: None,
+                    lp: lp,
+                }
             }
         }
     }
@@ -192,7 +229,20 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
                         dist = dist + (point[i] - min_bounds[i]).abs();
                     }
                 }
+                dist
             }
+
+            LP::L2 => {
+                for i in 0..point.len() {
+                    if point[i] > max_bounds[i] {
+                        dist = dist + (point[i] - max_bounds[i]).powi(2);
+                    } else if point[i] < min_bounds[i] {
+                        dist = dist + (point[i] - min_bounds[i]).powi(2);
+                    }
+                }
+                dist.sqrt()
+            }
+
             LP::LINF => {
                 for i in 0..point.len() {
                     if point[i] > max_bounds[i] {
@@ -201,9 +251,9 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
                         dist = dist.max((point[i] - min_bounds[i]).abs());
                     }
                 }
+                dist
             }
         }
-        dist
     }
 
     #[inline(always)]
@@ -324,7 +374,7 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for LpKdtree<'a, T, A> {
                 next
             };
             let dist_to_box =
-                self.closest_dist_to_box(next.min_bounds.as_ref(), next.max_bounds.as_ref(), point); // (the next Tree, min dist from the box to point)
+                self.closest_dist_to_box(next.min_bounds.as_ref(), next.max_bounds.as_ref(), point); // (min dist from the box to point, the next Tree)
             if dist_to_box <= radius {
                 pending.push((dist_to_box, next));
             }
@@ -357,18 +407,19 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for LpKdtree<'a, T, A> {
                     current = current.right.as_ref().unwrap().as_ref();
                     next
                 };
+
                 let dist_to_box = self.closest_dist_to_box(
                     next.min_bounds.as_ref(),
                     next.max_bounds.as_ref(),
                     point,
-                ); // (the next Tree, min dist from the box to point)
+                ); // (min dist from the box to point, the next Tree)
                 if dist_to_box <= radius {
                     pending.push((dist_to_box, next));
                 }
             }
             // Return the count in current
             current.data.unwrap().iter().fold(0u32, |acc, element| {
-                let y = element.row_vec;
+                let y = element.vec();
                 let dist = self.lp.dist(y, point);
                 acc + (dist <= radius) as u32
             })
