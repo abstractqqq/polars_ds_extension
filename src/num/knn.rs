@@ -472,48 +472,6 @@ fn pl_knn_filter(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
     Ok(BooleanChunked::from_slice("", &out).into_series())
 }
 
-/// Neighbor count query
-// #[inline]
-// pub fn query_nb_cnt<F>(
-//     tree: &KdTree<f64, usize, &[f64]>,
-//     data: ArrayView2<f64>,
-//     dist_func: &F,
-//     r: f64,
-//     can_parallel: bool,
-// ) -> UInt32Chunked
-// where
-//     F: Fn(&[f64], &[f64]) -> f64 + std::marker::Sync,
-// {
-//     let nrows = data.shape()[0];
-//     let dim = data.shape()[1];
-//     if can_parallel {
-//         let n_threads = POOL.current_num_threads();
-//         let splits = split_offsets(nrows, n_threads);
-//         let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-//             let piece = data.slice(s![offset..offset + len, 0..dim]);
-//             let out = piece.axis_iter(Axis(0)).map(|p| {
-//                 let sl = p.to_slice().unwrap();
-//                 tree.within_count(sl, r, &dist_func)
-//                     .map_or(None, |u| Some(u as u32))
-//             });
-//             let ca = UInt32Chunked::from_iter_options("", out);
-//             ca.downcast_iter().cloned().collect::<Vec<_>>()
-//         });
-//         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-//         UInt32Chunked::from_chunk_iter("cnt", chunks.into_iter().flatten())
-//     } else {
-//         let mut builder: PrimitiveChunkedBuilder<UInt32Type> =
-//             PrimitiveChunkedBuilder::new("", nrows);
-//         data.axis_iter(Axis(0)).for_each(|pt| {
-//             let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
-//             builder.append_option({
-//                 tree.within_count(s, r, &dist_func)
-//                     .map_or(None, |u| Some(u as u32))
-//             });
-//         });
-//         builder.finish()
-//     }
-// }
 
 #[inline]
 pub fn query_nb_cnt<'a, Kdt>(
@@ -553,85 +511,53 @@ where
     }
 }
 
-// /// For every point in this dataframe, find the number of neighbors within radius r
-// /// The point itself is always considered as a neighbor to itself.
-// #[polars_expr(output_type=UInt32)]
-// fn pl_nb_cnt(
-//     inputs: &[Series],
-//     context: CallerContext,
-//     kwargs: KdtreeKwargs,
-// ) -> PolarsResult<Series> {
-//     // Set up params
-//     let can_parallel = kwargs.parallel && !context.parallel();
-//     let leaf_size = kwargs.leaf_size;
-//     // Set up radius
-//     let radius = inputs[0].f64()?;
+#[inline]
+pub fn query_nb_cnt_many_radius<'a, Kdt>(
+    tree: Kdt,
+    data: ArrayView2<'a, f64>,
+    radius: Float64Chunked,
+    can_parallel: bool,
+) -> UInt32Chunked
+where
+    Kdt: KDTQ<'a, f64, ()> + std::marker::Sync,
+{
+    // as_slice.unwrap() is safe because when we create the matrices, we specified C order.
+    if can_parallel {
+        let radius = radius.to_vec();
+        let nrows = data.nrows();
+        let n_threads = POOL.current_num_threads();
+        let splits = split_offsets(nrows, n_threads);
+        let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+            let mut builder: PrimitiveChunkedBuilder<UInt32Type> =
+                PrimitiveChunkedBuilder::new("", nrows);
+            let piece = data.slice(s![offset..offset + len, ..]);
+            let rad = &radius[offset..offset + len];
+            for (row, r) in piece.rows().into_iter().zip(rad.iter()) {
+                match r {
+                    Some(r) => builder.append_option(tree.within_count(row.as_slice().unwrap(), *r)),
+                    None => builder.append_null(),
+                }
+            }
+            let ca = builder.finish();
+            ca.downcast_iter().cloned().collect::<Vec<_>>()
+        });
+        let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
+        UInt32Chunked::from_chunk_iter("cnt", chunks.into_iter().flatten())
+    } else {
+        UInt32Chunked::from_iter_options(
+            "cnt", 
+            data.rows().into_iter()
+            .zip(radius.into_iter())
+            .map(|(row, r)| {
+                match r {
+                    Some(r) => tree.within_count(row.as_slice().unwrap(), r),
+                    None => None,
+                }
+            })
+        )
+    }
+}
 
-//     let data = series_to_ndarray(&inputs[1..], IndexOrder::C)?;
-//     let nrows = data.nrows();
-//     let dim = inputs[1..].len();
-//     let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
-
-//     // Building the tree
-//     // let binding = data.view();
-//     let binding = data.view();
-//     let tree = build_standard_kdtree(dim, leaf_size, &binding, None)?;
-
-//     if radius.len() == 1 {
-//         let r = radius.get(0).unwrap();
-//         let ca = query_nb_cnt(&tree, data.view(), &dist_func, r, can_parallel);
-//         Ok(ca.with_name("cnt").into_series())
-//     } else if radius.len() == nrows {
-//         let ca = if can_parallel {
-//             let nrows = data.shape()[0];
-//             let dim = data.shape()[1];
-//             let n_threads = POOL.current_num_threads();
-//             let splits = split_offsets(nrows, n_threads);
-//             let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-
-//                 let piece = data.slice(s![offset..offset + len, 0..dim]);
-//                 let rad = radius.slice(offset as i64, len);
-//                 let out = piece
-//                     .axis_iter(Axis(0))
-//                     .zip(rad.into_iter())
-//                     .map(|(p, op_r)| {
-//                         let r = op_r?;
-//                         let sl = p.to_slice().unwrap();
-//                         tree.within_count(sl, r, &dist_func)
-//                             .map_or(None, |u| Some(u as u32))
-//                     });
-//                 let ca = UInt32Chunked::from_iter_options("", out);
-//                 ca.downcast_iter().cloned().collect::<Vec<_>>()
-//             });
-
-//             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-//             UInt32Chunked::from_chunk_iter("cnt", chunks.into_iter().flatten())
-//         } else {
-//             let mut builder: PrimitiveChunkedBuilder<UInt32Type> =
-//                 PrimitiveChunkedBuilder::new("", nrows);
-//             radius
-//                 .into_iter()
-//                 .zip(data.axis_iter(Axis(0)))
-//                 .for_each(|(rad, pt)| {
-//                     builder.append_option({
-//                         if let Some(r) = rad {
-//                             let s = pt.to_slice().unwrap(); // C order makes sure rows are contiguous
-//                             tree.within_count(s, r, &dist_func)
-//                                 .map_or(None, |u| Some(u as u32))
-//                         } else {
-//                             None
-//                         }
-//                     })
-//                 });
-//             builder.finish()
-//         };
-//         Ok(ca.with_name("cnt").into_series())
-//     } else {
-//         Err(PolarsError::ShapeMismatch(
-//             "Inputs must have the same length or one of them must be a scalar.".into(),
-//         ))
-//     }
-// }
 
 /// For every point in this dataframe, find the number of neighbors within radius r
 /// The point itself is always considered as a neighbor to itself.
@@ -649,7 +575,6 @@ fn pl_nb_cnt(
 
     let data = series_to_ndarray(&inputs[1..], IndexOrder::C)?;
     let nrows = data.nrows();
-    // let dim = inputs[1..].len();
 
     let binding = data.view();
     let mut leaves = matrix_to_empty_leaves_w_norm(&binding);
@@ -675,9 +600,7 @@ fn pl_nb_cnt(
                 let rad = &radius[offset..offset + len];
                 for (row, r) in piece.rows().into_iter().zip(rad.iter()) {
                     match r {
-                        Some(r) => {
-                            builder.append_option(tree.within_count(row.as_slice().unwrap(), *r))
-                        }
+                        Some(r) => builder.append_option(tree.within_count(row.as_slice().unwrap(), *r)),
                         None => builder.append_null(),
                     }
                 }
@@ -687,16 +610,17 @@ fn pl_nb_cnt(
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             UInt32Chunked::from_chunk_iter("cnt", chunks.into_iter().flatten())
         } else {
-            let mut builder: PrimitiveChunkedBuilder<UInt32Type> =
-                PrimitiveChunkedBuilder::new("cnt", nrows);
-
-            for (row, r) in data.rows().into_iter().zip(radius.into_iter()) {
-                match r {
-                    Some(r) => builder.append_option(tree.within_count(row.as_slice().unwrap(), r)),
-                    None => builder.append_null(),
-                }
-            }
-            builder.finish()
+            UInt32Chunked::from_iter_options(
+                "cnt", 
+                data.rows().into_iter()
+                .zip(radius.into_iter())
+                .map(|(row, r)| {
+                    match r {
+                        Some(r) => tree.within_count(row.as_slice().unwrap(), r),
+                        None => None,
+                    }
+                })
+            )
         };
         Ok(ca.into_series())
     } else {

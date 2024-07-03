@@ -109,7 +109,7 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
         lp: LP,
     ) -> Self {
         let n = data.len();
-        let (min_bounds, max_bounds) = Self::find_bounds(data, depth, dim);
+        let (min_bounds, max_bounds) = Self::find_bounds(data, dim);
         if n <= capacity {
             LpKdtree {
                 dim: dim,

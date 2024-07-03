@@ -162,20 +162,18 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
     }
 
     // Helper function that finds the bounding box for each (sub)kdtree
-    fn find_bounds(data: &[impl KdLeaf<'a, T>], depth: usize, dim: usize) -> (Vec<T>, Vec<T>) {
+    fn find_bounds(data: &[impl KdLeaf<'a, T>], dim: usize) -> (Vec<T>, Vec<T>) {
         let mut min_bounds = vec![T::max_value(); dim];
         let mut max_bounds = vec![T::min_value(); dim];
-        if depth == 0 {
-            (min_bounds, max_bounds)
-        } else {
-            for elem in data.iter() {
-                for i in 0..dim {
-                    min_bounds[i] = min_bounds[i].min(elem.vec()[i]);
-                    max_bounds[i] = max_bounds[i].max(elem.vec()[i]);
-                }
+
+        for elem in data.iter() {
+            for i in 0..dim {
+                min_bounds[i] = min_bounds[i].min(elem.vec()[i]);
+                max_bounds[i] = max_bounds[i].max(elem.vec()[i]);
             }
-            (min_bounds, max_bounds)
         }
+        (min_bounds, max_bounds)
+        
     }
 }
 
