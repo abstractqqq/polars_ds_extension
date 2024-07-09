@@ -37,7 +37,7 @@ The goal of the project is to **reduce dependencies**, **improve code organizati
 
 Some other areas that currently exist, but is de-prioritized:
 
-1. Complex number related queries.
+1. ~~Complex number related queries.~~ (Will be removed in v0.5)
 
 2. Graph related queries. (The various representations of "Graphs" in tabular dataframe makes it hard to have consistent backend handling of such data.)
 
