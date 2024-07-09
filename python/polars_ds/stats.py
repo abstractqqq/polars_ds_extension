@@ -818,17 +818,10 @@ def query_mann_whitney_u(
 
     ranks = (xx.append(yy)).rank()
 
-    u1 = ranks.slice(0, length=n1).sum() - (n1 * (n1 + 1)) / 2
+    u1 = ranks.slice(0, length=xx.len()).sum() - (n1 * (n1 + 1)) / 2
     u2 = (n1 * n2) - u1
-    # # This step is very slow
-    # tie_term = ranks.sort().rle().struct.field("lengths").cast(pl.Float64)
-    mean = (n1 * n2) / 2
-    # std_ties = (
-    #     ((n1 * n2) / 12) * (
-    #         (n + 1) - (tie_term.dot((tie_term + 1) * (tie_term - 1))) / (n * (n - 1))
-    #     )
-    # ).sqrt()
 
+    mean = (n1 * n2) / 2
     return pl_plugin(
         symbol="pl_mann_whitney_u",
         args=[u1, u2, mean, ranks.sort(), pl.lit(alternative, dtype=pl.String)],

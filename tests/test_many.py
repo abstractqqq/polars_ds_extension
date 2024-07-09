@@ -305,7 +305,7 @@ def test_mann_whitney_u(df):
             [11, 5, 1, 1, 1, 1, 1, 1, 1],
         ),
         (
-            pl.DataFrame({"a": [1, 2, 3, 4, float("nan"), float("inf"), None]}),
+            pl.DataFrame({"a": [1.0, 2.0, 3.0, 4.0, float("nan"), float("inf"), None]}),
             [1, 1, 1, 1, 0, 0, 0, 0, 0],  # NaN, Inf, None are ignored
         ),
     ],
@@ -497,7 +497,11 @@ def test_lstsq():
 # Hard to write generic tests because ncols can vary in X
 def test_lstsq_skip_null():
     df = pl.DataFrame(
-        {"y": [None, 9.5, 10.5, 11.5, 12.5], "a": [1, 9, 10, 11, 12], "b": [1, 0.5, 0.5, 0.5, 0.5]}
+        {
+            "y": [None, 9.5, 10.5, 11.5, 12.5],
+            "a": [1, 9, 10, 11, 12],
+            "b": [1.0, 0.5, 0.5, 0.5, 0.5],
+        }
     )
     res = pl.DataFrame(
         {
