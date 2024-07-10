@@ -64,6 +64,15 @@ pub fn matrix_to_leaves<'a, T: Float + 'static, A: Copy>(
         .collect::<Vec<_>>()
 }
 
+pub fn matrix_to_leaves_w_row_num<'a, T: Float + 'static>(
+    matrix: &'a ArrayView2<'a, T>,
+) -> Vec<Leaf<'a, T, usize>> {
+    matrix.rows()
+    .into_iter()
+    .enumerate()
+    .map(|pair| pair.into()).collect::<Vec<_>>()
+}
+
 pub fn matrix_to_empty_leaves<'a, T: Float + 'static>(
     matrix: &'a ArrayView2<'a, T>,
 ) -> Vec<Leaf<'a, T, ()>> {

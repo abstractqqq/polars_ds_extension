@@ -980,9 +980,28 @@ def test_knn_ptwise_skip():
 @pytest.mark.parametrize(
     "df, x, dist, k, res",
     [
-        (  # Only the first row is the nearest neighbor to [0.5, 0.5, 0.5]
+        (  # Only the second is the nearest neighbor (l2 sense) to [0.5, 0.5, 0.5]
             pl.DataFrame(
-                {"id": [1, 2], "val1": [0.1, 0.2], "val2": [0.1, 0.3], "val3": [0.1, 0.4]}
+                {
+                    "id": [1, 2, 3],
+                    "val1": [0.1, 0.2, 5.0],
+                    "val2": [0.1, 0.3, 10.0],
+                    "val3": [0.1, 0.4, 11.0],
+                }
+            ),
+            [0.5, 0.5, 0.5],
+            "l2",
+            1,
+            pl.DataFrame({"id": [2]}),
+        ),
+        (  # If cosine dist, the first would be the nearest
+            pl.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "val1": [0.1, 0.2, 5.0],
+                    "val2": [0.1, 0.3, 10.0],
+                    "val3": [0.1, 0.4, 11.0],
+                }
             ),
             [0.5, 0.5, 0.5],
             "cosine",

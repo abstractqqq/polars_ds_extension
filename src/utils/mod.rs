@@ -1,7 +1,7 @@
 use ndarray::Array2;
 use polars::{
-    datatypes::{DataType, Field, Float64Type},
-    error::PolarsResult,
+    datatypes::{DataType, Field, Float32Type, Float64Type},
+    error::{PolarsError, PolarsResult},
     frame::DataFrame,
     lazy::dsl::FieldsMapper,
     prelude::IndexOrder,
@@ -26,6 +26,13 @@ pub fn series_to_ndarray(inputs: &[Series], order: IndexOrder) -> PolarsResult<A
     df.to_ndarray::<Float64Type>(order)
 }
 
+#[inline(always)]
+pub fn series_to_ndarray_f32(inputs: &[Series], order: IndexOrder) -> PolarsResult<Array2<f32>> {
+    let df = DataFrame::new(inputs.to_vec())?;
+    df.to_ndarray::<Float32Type>(order)
+}
+
+
 // Shared splitting method
 pub fn split_offsets(len: usize, n: usize) -> Vec<(usize, usize)> {
     if n == 1 {
@@ -45,6 +52,31 @@ pub fn split_offsets(len: usize, n: usize) -> Vec<(usize, usize)> {
             .collect()
     }
 }
+
+pub fn get_common_float_dtype(inputs: &[Series]) -> DataType {
+
+    inputs.into_iter().fold(
+        DataType::Null, 
+        |_, s| 
+    {
+        match s.dtype() {
+            DataType::UInt8 
+            | DataType::UInt16
+            | DataType::UInt32 
+            | DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Float32 => DataType::Float32,
+
+            DataType::Float64
+            | DataType::UInt64
+            | DataType::Int64 => DataType::Float64,
+
+            _ => DataType::Null
+        }
+    })
+
+} 
 
 // -------------------------------------------------------------------------------
 // Common Output Types

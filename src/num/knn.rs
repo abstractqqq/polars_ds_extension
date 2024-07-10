@@ -3,19 +3,17 @@
 use super::which_distance;
 use crate::{
     arkadia::{
-        arkadia_lp::LpKdtree, matrix_to_leaves, matrix_to_leaves_w_norm,
-        utils::matrix_to_empty_leaves_w_norm, SplitMethod, KDTQ,
+        arkadia_any::{LpKdtree, DIST}, matrix_to_empty_leaves, matrix_to_leaves_w_row_num, matrix_to_leaves_w_norm, utils::matrix_to_empty_leaves_w_norm, SplitMethod, KDTQ
     },
-    utils::{list_u32_output, rechunk_to_frame, series_to_ndarray, split_offsets},
+    utils::{list_u32_output, rechunk_to_frame, series_to_ndarray, series_to_ndarray_f32, split_offsets},
 };
+use crate::utils::get_common_float_dtype;
 use itertools::Itertools;
 use kdtree::KdTree;
 use ndarray::{s, ArrayView2, Axis};
-use num::Float;
 use polars::prelude::*;
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
-    error::ComputeError,
     export::polars_core::{
         utils::rayon::prelude::{IntoParallelIterator, ParallelIterator},
         POOL,
@@ -435,40 +433,65 @@ fn pl_knn_ptwise_w_dist(
 fn pl_knn_filter(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
     // Set up params
     let k = kwargs.k;
-    let leaf_size = kwargs.leaf_size;
-    // Check len
-    let data = build_knn_matrix_data(&inputs[1..])?;
-    let nrows = data.nrows();
-    let pt = inputs[0].f64()?;
-    let p = pt.cont_slice()?;
-    let dim = inputs[1..].len();
-    let dist_func = which_distance(kwargs.metric.as_str(), dim)?;
-    if pt.len() != dim {
-        return Err(PolarsError::ComputeError(
-            "KNN: input point must have the same dim as the number of columns in `others`.".into(),
-        ));
-    }
-    // Set up the point to query
+    let nrows = inputs[1].len();
 
-    // Building the tree
-    // let binding = data.view();
-    let binding = data.view();
-    let tree = build_standard_kdtree(dim, leaf_size, &binding, None)?;
+    let neighbors = match get_common_float_dtype(inputs) {
 
-    // Building the output
+        DataType::Float32 => {
+            let pt = inputs[0].f32().unwrap();
+            let p = pt.cont_slice()?;
+            let data = series_to_ndarray_f32(&inputs[1..], IndexOrder::C)?;
+
+            let binding = data.view();
+            let mut leaves = matrix_to_leaves_w_row_num(&binding);
+
+            let kdt = match kwargs.metric.as_ref() {
+                "l1" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::L1),
+                "l2" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::SQL2),
+                "linf" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::LINF),
+                "cosine" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::ANY(super::cosine_dist::<f32>)),
+                _ => Err("Unknown distance metric.".into())
+            }.map_err(|err| PolarsError::ComputeError(err.into()))?;
+
+            kdt.knn(k, p, 0.).map(
+                |v| 
+                v.into_iter().map(|nb| nb.to_item()).collect::<Vec<usize>>()
+            )
+        },
+        DataType::Float64 => {
+            let pt = inputs[0].f64().unwrap();
+            let p = pt.cont_slice()?;
+            let data = series_to_ndarray(&inputs[1..], IndexOrder::C)?;
+
+            let binding = data.view();
+            let mut leaves = matrix_to_leaves_w_row_num(&binding);
+
+            let kdt = match kwargs.metric.as_ref() {
+                "l1" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::L1),
+                "l2" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::SQL2),
+                "linf" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::LINF),
+                "cosine" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::ANY(super::cosine_dist::<f64>)),
+                _ => Err("Unknown distance metric.".into())
+            }.map_err(|err| PolarsError::ComputeError(err.into()))?;
+
+            kdt.knn(k, p, 0.).map(
+                |v| 
+                v.into_iter().map(|nb| nb.to_item()).collect::<Vec<usize>>()
+            )
+        },
+
+        _ => return Err(PolarsError::ComputeError(
+            "Non-numeric or decimal types are not allowed.".into(),
+        ))
+    };
+
     let mut out: Vec<bool> = vec![false; nrows];
-    match tree.nearest(p, k, &dist_func) {
-        Ok(v) => {
-            for (_, i) in v.into_iter() {
-                out[*i] = true;
-            }
-        }
-        Err(e) => {
-            return Err(PolarsError::ComputeError(
-                ("KNN: ".to_owned() + e.to_string().as_str()).into(),
-            ));
+    if let Some(v) = neighbors {
+        for i in v.into_iter() {
+            out[i] = true;
         }
     }
+
     Ok(BooleanChunked::from_slice("", &out).into_series())
 }
 
@@ -507,53 +530,6 @@ where
             data.rows()
                 .into_iter()
                 .map(|row| tree.within_count(row.to_slice().unwrap(), r)),
-        )
-    }
-}
-
-#[inline]
-pub fn query_nb_cnt_many_radius<'a, Kdt>(
-    tree: Kdt,
-    data: ArrayView2<'a, f64>,
-    radius: Float64Chunked,
-    can_parallel: bool,
-) -> UInt32Chunked
-where
-    Kdt: KDTQ<'a, f64, ()> + std::marker::Sync,
-{
-    // as_slice.unwrap() is safe because when we create the matrices, we specified C order.
-    if can_parallel {
-        let radius = radius.to_vec();
-        let nrows = data.nrows();
-        let n_threads = POOL.current_num_threads();
-        let splits = split_offsets(nrows, n_threads);
-        let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-            let mut builder: PrimitiveChunkedBuilder<UInt32Type> =
-                PrimitiveChunkedBuilder::new("", nrows);
-            let piece = data.slice(s![offset..offset + len, ..]);
-            let rad = &radius[offset..offset + len];
-            for (row, r) in piece.rows().into_iter().zip(rad.iter()) {
-                match r {
-                    Some(r) => builder.append_option(tree.within_count(row.as_slice().unwrap(), *r)),
-                    None => builder.append_null(),
-                }
-            }
-            let ca = builder.finish();
-            ca.downcast_iter().cloned().collect::<Vec<_>>()
-        });
-        let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-        UInt32Chunked::from_chunk_iter("cnt", chunks.into_iter().flatten())
-    } else {
-        UInt32Chunked::from_iter_options(
-            "cnt", 
-            data.rows().into_iter()
-            .zip(radius.into_iter())
-            .map(|(row, r)| {
-                match r {
-                    Some(r) => tree.within_count(row.as_slice().unwrap(), r),
-                    None => None,
-                }
-            })
         )
     }
 }

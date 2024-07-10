@@ -5,6 +5,8 @@ use crate::arkadia::{
 use ndarray::ArrayView1;
 use num::Float;
 
+// We can also include cosine distance here because the norm trick works too
+
 #[inline(always)]
 pub fn squared_l2<T: Float + 'static>(a: &[T], b: &[T], a_norm: T, b_norm: T) -> T {
     let aa = ArrayView1::from(a);
@@ -89,9 +91,7 @@ impl<'a, T: Float + 'static, A: Copy> Kdtree<'a, T, A> {
                 SplitMethod::MIDPOINT => {
                     let midpoint = min_bounds[axis]
                         + (max_bounds[axis] - min_bounds[axis]) / (T::one() + T::one());
-                    data.sort_unstable_by(|l1, l2| {
-                        (l1.value_at(axis) >= midpoint).cmp(&(l2.value_at(axis) >= midpoint))
-                    }); // False <<< True. Now split by the first True location
+                    data.sort_unstable_by_key(|leaf| leaf.value_at(axis) >= midpoint);
                     let split_idx = data.partition_point(|elem| elem.value_at(axis) < midpoint); // first index of True. If it doesn't exist, all points goes into left
                     (midpoint, split_idx)
                 }
@@ -101,9 +101,7 @@ impl<'a, T: Float + 'static, A: Copy> Kdtree<'a, T, A> {
                         sum = sum + row.value_at(axis);
                     }
                     let mean = sum / T::from(n).unwrap();
-                    data.sort_unstable_by(|l1, l2| {
-                        (l1.value_at(axis) >= mean).cmp(&(l2.value_at(axis) >= mean))
-                    }); // False <<< True. Now split by the first True location
+                    data.sort_unstable_by_key(|leaf| leaf.value_at(axis) >= mean);
                     let split_idx = data.partition_point(|elem| elem.value_at(axis) < mean); // first index of True. If it doesn't exist, all points goes into left
                     (mean, split_idx)
                 }

@@ -2,46 +2,48 @@
 use crate::arkadia::{leaf::KdLeaf, suggest_capacity, Leaf, SplitMethod, KDTQ, NB};
 use num::Float;
 
+// Although this implements L2 and SQL2 distances, the fastest way is still to use arkadia.rs if multiple queries
+// are needed. This is because norm-caching benefits reduces a lot of computation when running lots of queries on the same tree
+
 #[derive(Clone)]
-pub enum LP {
+pub enum DIST<T: Float + 'static> {
     L1,
-    // The L2 here is square rooted. 
-    // For squared euclidean distance with faster distance function (1-e12 error), use arkadia.rs 
-    L2, 
+    L2,
+    SQL2, // Squared LP, but without using cached norms. Good for one-time queries
     LINF,
+    ANY(fn(&[T], &[T]) -> T)
 }
 
-impl From<f32> for LP {
-    fn from(p: f32) -> Self {
-        match p {
-            1.0 => Self::L1,
-            f32::INFINITY => Self::LINF,
-            _ => Self::LINF,
-        }
-    }
-}
-
-impl LP {
+impl <T: Float + 'static> DIST<T> {
     #[inline(always)]
-    fn dist<T: Float>(&self, a1: &[T], a2: &[T]) -> T {
+    fn dist(&self, a1: &[T], a2: &[T]) -> T {
         match self {
-            LP::L1 => a1
+            DIST::L1 => a1
                 .iter()
                 .copied()
                 .zip(a2.iter().copied())
                 .fold(T::zero(), |acc, (x, y)| acc + ((x - y).abs())),
 
-            LP::L2 => a1
+            DIST::L2 => a1
                 .iter()
                 .copied()
                 .zip(a2.iter().copied())
                 .fold(T::zero(), |acc, (x, y)| acc + ((x - y).powi(2))).sqrt(),
 
-            LP::LINF => a1
+            DIST::SQL2 => a1
+                .iter()
+                .copied()
+                .zip(a2.iter().copied())
+                .fold(T::zero(), |acc, (x, y)| acc + ((x - y).powi(2))),
+
+            DIST::LINF => a1
                 .iter()
                 .copied()
                 .zip(a2.iter().copied())
                 .fold(T::zero(), |acc, (x, y)| acc.max((x - y).abs())),
+            
+            DIST::ANY(func) => func(a1, a2),
+
         }
     }
 }
@@ -59,7 +61,7 @@ pub struct LpKdtree<'a, T: Float + 'static, A> {
     // Data
     data: Option<&'a [Leaf<'a, T, A>]>, // Not none when this is a leaf
     //
-    lp: LP,
+    lp: DIST<T>,
 }
 
 impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
@@ -68,7 +70,7 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
     pub fn from_leaves(
         data: &'a mut [Leaf<'a, T, A>],
         how: SplitMethod,
-        lp: LP,
+        lp: DIST<T>,
     ) -> Result<Self, String> {
         if data.is_empty() {
             return Err("Empty data.".into());
@@ -88,7 +90,7 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
         data: &'a mut [Leaf<'a, T, A>],
         capacity: usize,
         how: SplitMethod,
-        lp: LP,
+        lp: DIST<T>,
     ) -> Result<Self, String> {
         if data.is_empty() {
             return Err("Empty data.".into());
@@ -106,7 +108,7 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
         capacity: usize,
         depth: usize,
         how: SplitMethod,
-        lp: LP,
+        lp: DIST<T>,
     ) -> Self {
         let n = data.len();
         let (min_bounds, max_bounds) = Self::find_bounds(data, dim);
@@ -128,9 +130,10 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
                 SplitMethod::MIDPOINT => {
                     let midpoint = min_bounds[axis]
                         + (max_bounds[axis] - min_bounds[axis]) / (T::one() + T::one());
-                    data.sort_unstable_by(|l1, l2| {
-                        (l1.value_at(axis) >= midpoint).cmp(&(l2.value_at(axis) >= midpoint))
-                    }); // False <<< True. Now split by the first True location
+
+                    // Partition point basically uses the same value as the key function. Maybe I can cache some stuff?
+                    // True will go right, false go left
+                    data.sort_unstable_by_key(|leaf| leaf.value_at(axis) >= midpoint);
                     let split_idx = data.partition_point(|elem| elem.value_at(axis) < midpoint); // first index of True. If it doesn't exist, all points goes into left
                     (midpoint, split_idx)
                 }
@@ -140,16 +143,14 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
                         sum = sum + row.value_at(axis);
                     }
                     let mean = sum / T::from(n).unwrap();
-                    data.sort_unstable_by(|l1, l2| {
-                        (l1.value_at(axis) >= mean).cmp(&(l2.value_at(axis) >= mean))
-                    }); // False <<< True. Now split by the first True location
+                    data.sort_unstable_by_key(|leaf| leaf.value_at(axis) >= mean);
                     let split_idx = data.partition_point(|elem| elem.value_at(axis) < mean); // first index of True. If it doesn't exist, all points goes into left
                     (mean, split_idx)
                 }
                 SplitMethod::MEDIAN => {
                     data.sort_unstable_by(|l1, l2| {
                         l1.value_at(axis).partial_cmp(&l2.value_at(axis)).unwrap()
-                    }); // False <<< True. Now split by the first True location
+                    });
                     let half = n >> 1;
                     let split_value = data[half].value_at(axis);
                     (split_value, half)
@@ -221,7 +222,7 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
     fn closest_dist_to_box(&self, min_bounds: &[T], max_bounds: &[T], point: &[T]) -> T {
         let mut dist = T::zero();
         match self.lp {
-            LP::L1 => {
+            DIST::L1 => {
                 for i in 0..point.len() {
                     if point[i] > max_bounds[i] {
                         dist = dist + (point[i] - max_bounds[i]).abs();
@@ -232,7 +233,7 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
                 dist
             }
 
-            LP::L2 => {
+            DIST::L2 => {
                 for i in 0..point.len() {
                     if point[i] > max_bounds[i] {
                         dist = dist + (point[i] - max_bounds[i]).powi(2);
@@ -243,7 +244,18 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
                 dist.sqrt()
             }
 
-            LP::LINF => {
+            DIST::SQL2 => {
+                for i in 0..point.len() {
+                    if point[i] > max_bounds[i] {
+                        dist = dist + (point[i] - max_bounds[i]).powi(2);
+                    } else if point[i] < min_bounds[i] {
+                        dist = dist + (point[i] - min_bounds[i]).powi(2);
+                    }
+                }
+                dist
+            },
+
+            DIST::LINF => {
                 for i in 0..point.len() {
                     if point[i] > max_bounds[i] {
                         dist = dist.max((point[i] - max_bounds[i]).abs());
@@ -253,6 +265,18 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
                 }
                 dist
             }
+
+            DIST::ANY(func) => {
+                let mut new_point = point.to_vec();
+                for i in 0..point.len() {
+                    if point[i] > max_bounds[i] {
+                        new_point[i] = max_bounds[i];
+                    } else if point[i] < min_bounds[i] {
+                        new_point[i] = min_bounds[i];
+                    }
+                }
+                func(point, &new_point)
+            },
         }
     }
 
@@ -431,7 +455,7 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for LpKdtree<'a, T, A> {
 mod tests {
     use super::super::matrix_to_leaves;
     use super::*;
-    use ndarray::{arr1, Array1, Array2, ArrayView1, ArrayView2};
+    use ndarray::{arr1, Array2, ArrayView1, ArrayView2};
 
     fn l1_dist_slice(a1: &[f64], a2: &[f64]) -> f64 {
         a1.iter()
@@ -488,7 +512,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves(&binding, &values);
 
-        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, LP::LINF).unwrap();
+        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::LINF).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
@@ -524,7 +548,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves(&binding, &values);
 
-        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MEAN, LP::LINF).unwrap();
+        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MEAN, DIST::LINF).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
@@ -560,7 +584,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves(&binding, &values);
 
-        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MEDIAN, LP::LINF).unwrap();
+        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MEDIAN, DIST::LINF).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
@@ -596,7 +620,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves(&binding, &values);
 
-        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, LP::L1).unwrap();
+        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::L1).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
@@ -632,7 +656,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves(&binding, &values);
 
-        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MEAN, LP::L1).unwrap();
+        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MEAN, DIST::L1).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
@@ -668,7 +692,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves(&binding, &values);
 
-        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MEDIAN, LP::L1).unwrap();
+        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MEDIAN, DIST::L1).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 

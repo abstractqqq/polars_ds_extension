@@ -524,11 +524,11 @@ def query_nb_cnt2(
 def query_knn_filter(
     *features: StrOrExpr,
     pt: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
-    k: int = 5,
+    k: int,
     dist: Distance = "l2",
 ) -> pl.Expr:
     """
-    Returns an expression that filters to the k-nearest neighbors to the given point.
+    Returns a boolean filter that is only true for the k neraest neighbors to this point.
 
     Note that this internally builds a kd-tree for fast querying and deallocates it once we
     are done. If you need to repeatedly run the same query on the same data, then it is not
@@ -542,7 +542,7 @@ def query_knn_filter(
         The point. It must be of the same length as the number of columns in `others`.
     k : int, > 0
         Number of neighbors to query
-    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
+    dist : Literal[`l1`, `l2`, `inf`, `cosine`]
         Note `l2` is actually squared `l2` for computational efficiency.
     """
     if k <= 0:

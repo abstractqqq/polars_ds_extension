@@ -13,7 +13,7 @@
 /// E.g.
 /// within_count returns a u32 as opposed to usize because that can help me skip a type conversion when used with Polars.
 pub mod arkadia;
-pub mod arkadia_lp;
+pub mod arkadia_any;
 pub mod leaf;
 pub mod neighbor;
 pub mod utils;
@@ -22,7 +22,7 @@ pub use leaf::{KdLeaf, Leaf, LeafWithNorm};
 pub use neighbor::NB;
 pub use utils::{
     matrix_to_empty_leaves, matrix_to_empty_leaves_w_norm, matrix_to_leaves,
-    matrix_to_leaves_w_norm, suggest_capacity, SplitMethod,
+    matrix_to_leaves_w_norm, matrix_to_leaves_w_row_num, suggest_capacity, SplitMethod,
 };
 
 // ---------------------------------------------------------------------------------------------------------
@@ -168,8 +168,8 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
 
         for elem in data.iter() {
             for i in 0..dim {
-                min_bounds[i] = min_bounds[i].min(elem.vec()[i]);
-                max_bounds[i] = max_bounds[i].max(elem.vec()[i]);
+                min_bounds[i] = min_bounds[i].min(elem.value_at(i));
+                max_bounds[i] = max_bounds[i].max(elem.value_at(i));
             }
         }
         (min_bounds, max_bounds)

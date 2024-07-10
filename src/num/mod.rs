@@ -1,5 +1,6 @@
 use kdtree::distance::squared_euclidean;
 use num::Float;
+use ndarray::ArrayView1;
 use polars::error::{PolarsError, PolarsResult};
 
 mod benford;
@@ -53,16 +54,16 @@ pub fn l1_dist<T: Float>(a: &[T], b: &[T]) -> T {
 }
 
 #[inline]
-pub fn cosine_dist<T: Float>(a: &[T], b: &[T]) -> T {
+pub fn cosine_dist<T: Float + 'static>(a: &[T], b: &[T]) -> T {
     debug_assert_eq!(a.len(), b.len());
 
-    let a_norm = a.iter().fold(T::zero(), |acc, x| acc + *x * *x);
-    let b_norm = b.iter().fold(T::zero(), |acc, x| acc + *x * *x);
-    let out = a
-        .iter()
-        .zip(b.iter())
-        .fold(T::zero(), |acc, (x, y)| acc + *x * *y);
-    T::one() - out / (a_norm * b_norm).sqrt()
+    let a = ArrayView1::from(a);
+    let b = ArrayView1::from(b);
+
+    let a_norm = a.dot(&a);
+    let b_norm = b.dot(&b);
+    T::one() - (a.dot(&b)) / (a_norm * b_norm).sqrt()
+    
 }
 
 #[inline]
