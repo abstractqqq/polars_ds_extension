@@ -1019,6 +1019,31 @@ def test_knn_filter(df, x, dist, k, res):
 
 
 @pytest.mark.parametrize(
+    "df, dist, res",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "val1": [0.1, 0.2, 5.0],
+                    "val2": [0.1, 0.3, 10.0],
+                    "val3": [0.1, 0.4, 11.0],
+                }
+            ),
+            "l2",
+            pl.DataFrame({"id": [[1, 2], [2, 1], [3]]}),
+        ),
+    ],
+)
+def test_radius_ptwise(df, dist, res):
+    test = df.select(
+        pds.query_radius_ptwise("val1", "val2", "val3", dist="l2", r=0.3, index="id").alias("id")
+    ).explode("id")  # compare after explode
+    res = res.explode("id").select(pl.col("id").cast(pl.UInt32))
+    assert_frame_equal(test, res)
+
+
+@pytest.mark.parametrize(
     "df, r, dist, res",
     [
         (
@@ -1026,6 +1051,18 @@ def test_knn_filter(df, x, dist, k, res):
             4,
             "l2",
             pl.DataFrame({"nb_cnt": [2, 3, 3, 3, 2]}),  # A point is always its own neighbor
+        ),
+        (
+            pl.DataFrame(
+                {
+                    "x": [0.1, 0.2, 0.5, 0.9, 2.1],
+                    "y": [0.1, 0.3, 0.6, 1.1, 3.3],
+                    "z": [0.1, 0.4, 0.8, 1.2, 4.1],
+                }
+            ),
+            1.0,
+            "l1",
+            pl.DataFrame({"nb_cnt": [2, 3, 2, 1, 1]}),
         ),
     ],
 )

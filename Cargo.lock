@@ -1013,15 +1013,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kdtree"
-version = "0.7.0"
-source = "git+https://github.com/mrhooray/kdtree-rs.git#4f3755e1070544f6c2b3946c83195955b924a94a"
-dependencies = [
- "num-traits",
- "thiserror",
-]
-
-[[package]]
 name = "libc"
 version = "0.2.153"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2012,7 +2003,6 @@ dependencies = [
  "inflections",
  "itertools",
  "jemallocator",
- "kdtree",
  "mimalloc",
  "ndarray",
  "num",

@@ -19,7 +19,6 @@ __all__ = [
     "query_within_dist_from",
     "query_radius_ptwise",
     "query_nb_cnt",
-    "query_nb_cnt2",
     "query_approx_entropy",
     "query_sample_entropy",
     "query_cond_entropy",
@@ -403,11 +402,13 @@ def query_radius_ptwise(
     index: StrOrExpr,
     r: float,
     dist: Distance = "l2",
+    sort: bool = True,
     parallel: bool = False,
 ) -> pl.Expr:
     """
-    Takes the index column, and uses features columns to determine distance, and query all neighbors
-    within distance r from each id in the index column.
+    Takes the index column, and uses features columns to determine distance, and finds all neighbors
+    within distance r from each id in the index column. If you only care about neighbor count, you
+    should use query_nb_cnt, which supports expression for radius.
 
     Note that the index column must be convertible to u32. If you do not have a u32 ID column,
     you can generate one using pl.int_range(..), which should be a step before this.
@@ -424,8 +425,11 @@ def query_radius_ptwise(
         The column used as index, must be castable to u32
     r : float
         The radius. Must be a scalar value now.
-    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
+    dist : Literal[`l1`, `l2`, `inf`, `cosine`]
         Note `l2` is actually squared `l2` for computational efficiency.
+    sort
+        Whether the neighbors returned should be sorted by the distance. Setting this to False can
+        improve performance by 10-20%.
     parallel : bool
         Whether to run the k-nearest neighbor query in parallel. This is recommended when you
         are running only this expression, and not in group_by context.
@@ -442,7 +446,7 @@ def query_radius_ptwise(
     return pl_plugin(
         symbol="pl_query_radius_ptwise",
         args=cols,
-        kwargs={"r": r, "leaf_size": 32, "metric": metric, "parallel": parallel},
+        kwargs={"r": r, "leaf_size": 32, "metric": metric, "parallel": parallel, "sort": sort},
         is_elementwise=True,
     )
 
@@ -450,7 +454,6 @@ def query_radius_ptwise(
 def query_nb_cnt(
     r: Union[float, str, pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
     *features: StrOrExpr,
-    leaf_size: int = 32,
     dist: Distance = "l2",
     parallel: bool = False,
 ) -> pl.Expr:
@@ -467,8 +470,6 @@ def query_nb_cnt(
         it must be the name of a column
     *features : str | pl.Expr
         Other columns used as features
-    leaf_size : int, > 0
-        Leaf size for the kd-tree. Tuning this might improve performance.
     dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
         Note `l2` is actually squared `l2` for computational efficiency.
     parallel : bool
@@ -489,29 +490,7 @@ def query_nb_cnt(
         args=[rad] + [str_to_expr(x) for x in features],
         kwargs={
             "k": 0,
-            "leaf_size": leaf_size,
-            "metric": dist,
-            "parallel": parallel,
-            "skip_eval": False,
-            "skip_data": False,
-        },
-        is_elementwise=True,
-    )
-
-
-def query_nb_cnt2(
-    r: float,  # noqa: F821
-    *features: StrOrExpr,
-    leaf_size: int = 32,
-    dist: Distance = "l2",
-    parallel: bool = False,
-) -> pl.Expr:
-    return pl_plugin(
-        symbol="pl_nb_cnt2",
-        args=[pl.lit(r, dtype=pl.Float64)] + [str_to_expr(x) for x in features],
-        kwargs={
-            "k": 0,
-            "leaf_size": leaf_size,
+            "leaf_size": 32,  # useless now
             "metric": dist,
             "parallel": parallel,
             "skip_eval": False,

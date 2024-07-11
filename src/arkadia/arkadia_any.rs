@@ -5,7 +5,7 @@ use num::Float;
 // Although this implements L2 and SQL2 distances, the fastest way is still to use arkadia.rs if multiple queries
 // are needed. This is because norm-caching benefits reduces a lot of computation when running lots of queries on the same tree
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum DIST<T: Float + 'static> {
     L1,
     L2,
