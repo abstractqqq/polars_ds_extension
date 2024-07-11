@@ -9,12 +9,12 @@ mod str2;
 mod utils;
 use pyo3::{pymodule, types::PyModule, Bound, PyResult, Python};
 
-#[cfg(target_os = "linux")]
-use jemallocator::Jemalloc;
+// #[cfg(target_os = "linux")]
+// use jemallocator::Jemalloc;
 
-#[global_allocator]
-#[cfg(target_os = "linux")]
-static ALLOC: Jemalloc = Jemalloc;
+// #[global_allocator]
+// #[cfg(target_os = "linux")]
+// static ALLOC: Jemalloc = Jemalloc;
 
 #[pymodule]
 #[pyo3(name = "_polars_ds")]
