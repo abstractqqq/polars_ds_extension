@@ -1,6 +1,6 @@
 use kdtree::distance::squared_euclidean;
-use num::Float;
 use ndarray::ArrayView1;
+use num::Float;
 use polars::error::{PolarsError, PolarsResult};
 
 mod benford;
@@ -63,7 +63,6 @@ pub fn cosine_dist<T: Float + 'static>(a: &[T], b: &[T]) -> T {
     let a_norm = a.dot(&a);
     let b_norm = b.dot(&b);
     T::one() - (a.dot(&b)) / (a_norm * b_norm).sqrt()
-    
 }
 
 #[inline]

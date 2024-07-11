@@ -1,13 +1,18 @@
 /// Performs KNN related search queries, classification and regression, and
 /// other features/entropies that require KNN to be efficiently computed.
 use super::which_distance;
+use crate::utils::get_common_float_dtype;
 use crate::{
     arkadia::{
-        arkadia_any::{LpKdtree, DIST}, matrix_to_empty_leaves, matrix_to_leaves_w_row_num, matrix_to_leaves_w_norm, utils::matrix_to_empty_leaves_w_norm, SplitMethod, KDTQ
+        arkadia_any::{LpKdtree, DIST},
+        matrix_to_empty_leaves, matrix_to_leaves_w_norm, matrix_to_leaves_w_row_num,
+        utils::matrix_to_empty_leaves_w_norm,
+        SplitMethod, KDTQ,
     },
-    utils::{list_u32_output, rechunk_to_frame, series_to_ndarray, series_to_ndarray_f32, split_offsets},
+    utils::{
+        list_u32_output, rechunk_to_frame, series_to_ndarray, series_to_ndarray_f32, split_offsets,
+    },
 };
-use crate::utils::get_common_float_dtype;
 use itertools::Itertools;
 use kdtree::KdTree;
 use ndarray::{s, ArrayView2, Axis};
@@ -436,7 +441,6 @@ fn pl_knn_filter(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
     let nrows = inputs[1].len();
 
     let neighbors = match get_common_float_dtype(inputs) {
-
         DataType::Float32 => {
             let pt = inputs[0].f32().unwrap();
             let p = pt.cont_slice()?;
@@ -449,15 +453,18 @@ fn pl_knn_filter(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
                 "l1" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::L1),
                 "l2" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::SQL2),
                 "linf" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::LINF),
-                "cosine" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::ANY(super::cosine_dist::<f32>)),
-                _ => Err("Unknown distance metric.".into())
-            }.map_err(|err| PolarsError::ComputeError(err.into()))?;
+                "cosine" => LpKdtree::from_leaves(
+                    &mut leaves,
+                    SplitMethod::MIDPOINT,
+                    DIST::ANY(super::cosine_dist::<f32>),
+                ),
+                _ => Err("Unknown distance metric.".into()),
+            }
+            .map_err(|err| PolarsError::ComputeError(err.into()))?;
 
-            kdt.knn(k, p, 0.).map(
-                |v| 
-                v.into_iter().map(|nb| nb.to_item()).collect::<Vec<usize>>()
-            )
-        },
+            kdt.knn(k, p, 0.)
+                .map(|v| v.into_iter().map(|nb| nb.to_item()).collect::<Vec<usize>>())
+        }
         DataType::Float64 => {
             let pt = inputs[0].f64().unwrap();
             let p = pt.cont_slice()?;
@@ -470,19 +477,24 @@ fn pl_knn_filter(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
                 "l1" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::L1),
                 "l2" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::SQL2),
                 "linf" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::LINF),
-                "cosine" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::ANY(super::cosine_dist::<f64>)),
-                _ => Err("Unknown distance metric.".into())
-            }.map_err(|err| PolarsError::ComputeError(err.into()))?;
+                "cosine" => LpKdtree::from_leaves(
+                    &mut leaves,
+                    SplitMethod::MIDPOINT,
+                    DIST::ANY(super::cosine_dist::<f64>),
+                ),
+                _ => Err("Unknown distance metric.".into()),
+            }
+            .map_err(|err| PolarsError::ComputeError(err.into()))?;
 
-            kdt.knn(k, p, 0.).map(
-                |v| 
-                v.into_iter().map(|nb| nb.to_item()).collect::<Vec<usize>>()
-            )
-        },
+            kdt.knn(k, p, 0.)
+                .map(|v| v.into_iter().map(|nb| nb.to_item()).collect::<Vec<usize>>())
+        }
 
-        _ => return Err(PolarsError::ComputeError(
-            "Non-numeric or decimal types are not allowed.".into(),
-        ))
+        _ => {
+            return Err(PolarsError::ComputeError(
+                "Non-numeric or decimal types are not allowed.".into(),
+            ))
+        }
     };
 
     let mut out: Vec<bool> = vec![false; nrows];
@@ -494,7 +506,6 @@ fn pl_knn_filter(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
 
     Ok(BooleanChunked::from_slice("", &out).into_series())
 }
-
 
 #[inline]
 pub fn query_nb_cnt<'a, Kdt>(
@@ -533,7 +544,6 @@ where
         )
     }
 }
-
 
 /// For every point in this dataframe, find the number of neighbors within radius r
 /// The point itself is always considered as a neighbor to itself.
@@ -576,7 +586,9 @@ fn pl_nb_cnt(
                 let rad = &radius[offset..offset + len];
                 for (row, r) in piece.rows().into_iter().zip(rad.iter()) {
                     match r {
-                        Some(r) => builder.append_option(tree.within_count(row.as_slice().unwrap(), *r)),
+                        Some(r) => {
+                            builder.append_option(tree.within_count(row.as_slice().unwrap(), *r))
+                        }
                         None => builder.append_null(),
                     }
                 }
@@ -587,15 +599,14 @@ fn pl_nb_cnt(
             UInt32Chunked::from_chunk_iter("cnt", chunks.into_iter().flatten())
         } else {
             UInt32Chunked::from_iter_options(
-                "cnt", 
-                data.rows().into_iter()
-                .zip(radius.into_iter())
-                .map(|(row, r)| {
-                    match r {
+                "cnt",
+                data.rows()
+                    .into_iter()
+                    .zip(radius.into_iter())
+                    .map(|(row, r)| match r {
                         Some(r) => tree.within_count(row.as_slice().unwrap(), r),
                         None => None,
-                    }
-                })
+                    }),
             )
         };
         Ok(ca.into_series())

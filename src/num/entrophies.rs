@@ -126,9 +126,7 @@ fn _knn_entropy_helper<'a>(
     data: ArrayView2<f64>,
     k: usize,
     can_parallel: bool,
-) -> f64
-
-{
+) -> f64 {
     if can_parallel {
         let splits = split_offsets(data.nrows(), POOL.current_num_threads());
         let partial_sums = splits.into_par_iter().map(|(offset, len)| {

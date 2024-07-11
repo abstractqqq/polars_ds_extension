@@ -11,10 +11,10 @@ pub enum DIST<T: Float + 'static> {
     L2,
     SQL2, // Squared LP, but without using cached norms. Good for one-time queries
     LINF,
-    ANY(fn(&[T], &[T]) -> T)
+    ANY(fn(&[T], &[T]) -> T),
 }
 
-impl <T: Float + 'static> DIST<T> {
+impl<T: Float + 'static> DIST<T> {
     #[inline(always)]
     fn dist(&self, a1: &[T], a2: &[T]) -> T {
         match self {
@@ -28,7 +28,8 @@ impl <T: Float + 'static> DIST<T> {
                 .iter()
                 .copied()
                 .zip(a2.iter().copied())
-                .fold(T::zero(), |acc, (x, y)| acc + ((x - y).powi(2))).sqrt(),
+                .fold(T::zero(), |acc, (x, y)| acc + ((x - y).powi(2)))
+                .sqrt(),
 
             DIST::SQL2 => a1
                 .iter()
@@ -41,9 +42,8 @@ impl <T: Float + 'static> DIST<T> {
                 .copied()
                 .zip(a2.iter().copied())
                 .fold(T::zero(), |acc, (x, y)| acc.max((x - y).abs())),
-            
-            DIST::ANY(func) => func(a1, a2),
 
+            DIST::ANY(func) => func(a1, a2),
         }
     }
 }
@@ -253,7 +253,7 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
                     }
                 }
                 dist
-            },
+            }
 
             DIST::LINF => {
                 for i in 0..point.len() {
@@ -276,7 +276,7 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
                     }
                 }
                 func(point, &new_point)
-            },
+            }
         }
     }
 

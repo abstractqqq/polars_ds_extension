@@ -173,7 +173,6 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
             }
         }
         (min_bounds, max_bounds)
-        
     }
 }
 

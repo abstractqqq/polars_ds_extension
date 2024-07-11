@@ -32,7 +32,6 @@ pub fn series_to_ndarray_f32(inputs: &[Series], order: IndexOrder) -> PolarsResu
     df.to_ndarray::<Float32Type>(order)
 }
 
-
 // Shared splitting method
 pub fn split_offsets(len: usize, n: usize) -> Vec<(usize, usize)> {
     if n == 1 {
@@ -54,29 +53,22 @@ pub fn split_offsets(len: usize, n: usize) -> Vec<(usize, usize)> {
 }
 
 pub fn get_common_float_dtype(inputs: &[Series]) -> DataType {
-
-    inputs.into_iter().fold(
-        DataType::Null, 
-        |_, s| 
-    {
-        match s.dtype() {
-            DataType::UInt8 
+    inputs
+        .into_iter()
+        .fold(DataType::Null, |_, s| match s.dtype() {
+            DataType::UInt8
             | DataType::UInt16
-            | DataType::UInt32 
+            | DataType::UInt32
             | DataType::Int8
             | DataType::Int16
             | DataType::Int32
             | DataType::Float32 => DataType::Float32,
 
-            DataType::Float64
-            | DataType::UInt64
-            | DataType::Int64 => DataType::Float64,
+            DataType::Float64 | DataType::UInt64 | DataType::Int64 => DataType::Float64,
 
-            _ => DataType::Null
-        }
-    })
-
-} 
+            _ => DataType::Null,
+        })
+}
 
 // -------------------------------------------------------------------------------
 // Common Output Types
