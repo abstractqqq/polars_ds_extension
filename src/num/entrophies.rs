@@ -200,7 +200,7 @@ fn pl_knn_entropy(
         (cd, _knn_entropy_helper(tree, data_view, k, can_parallel))
     } else {
         return Err(PolarsError::ComputeError(
-            "Distance metric not implemented.".into(),
+            "KNN Entropy for distance metric is  not implemented.".into(),
         ));
     };
 

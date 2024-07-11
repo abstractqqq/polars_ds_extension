@@ -386,8 +386,7 @@ fn pl_knn_ptwise_w_dist(
             }
         }
         Err(e) => Err(e),
-    }
-    .map_err(|err| PolarsError::ComputeError(err.into()))?;
+    }.map_err(|err| PolarsError::ComputeError(err.into()))?;
 
     let out = StructChunked::new("knn_dist", &[ca_nb.into_series(), ca_dist.into_series()])?;
     Ok(out.into_series())
@@ -474,8 +473,7 @@ fn pl_query_radius_ptwise(
             }
         }
         Err(e) => Err(e),
-    }
-    .map_err(|err| PolarsError::ComputeError(err.into()))?;
+    }.map_err(|err| PolarsError::ComputeError(err.into()))?;
     Ok(ca.into_series())
 }
 
@@ -496,9 +494,7 @@ fn pl_knn_filter(inputs: &[Series], kwargs: KDTKwargs) -> PolarsResult<Series> {
     let mut leaves = matrix_to_leaves_w_row_num(&binding);
 
     let kdt = match dist_from_str(kwargs.metric.as_ref()) {
-        Ok(d) => {
-            AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
-        },
+        Ok(d) => AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d),
         Err(e) => Err(e)
     }.map_err(|err| PolarsError::ComputeError(err.into()))?;
 
@@ -632,10 +628,9 @@ fn pl_nb_cnt(
                     AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
                         .map(|tree| query_nb_cnt(tree, data.view(), r, can_parallel))
                 }
-            }
+            },
             Err(e) => Err(e),
-        }
-        .map_err(|err| PolarsError::ComputeError(err.into()))?;
+        }.map_err(|err| PolarsError::ComputeError(err.into()))?;
         Ok(ca.with_name("cnt").into_series())
     } else if radius.len() == nrows {
         let ca = match dist_from_str::<f64>(kwargs.metric.as_str()) {
@@ -650,10 +645,9 @@ fn pl_nb_cnt(
                     AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
                         .map(|tree| query_nb_cnt_w_radius(tree, data.view(), radius, can_parallel))
                 }
-            }
+            },
             Err(e) => Err(e),
-        }
-        .map_err(|err| PolarsError::ComputeError(err.into()))?;
+        }.map_err(|err| PolarsError::ComputeError(err.into()))?;
         Ok(ca.with_name("cnt").into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
