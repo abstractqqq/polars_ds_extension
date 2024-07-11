@@ -15,11 +15,11 @@ pub fn squared_l2<T: Float + 'static>(a: &[T], b: &[T], a_norm: T, b_norm: T) ->
     a_norm + b_norm - dot - dot
 }
 
-pub struct Kdtree<'a, T: Float + 'static, A> {
+pub struct KDT<'a, T: Float + 'static, A> {
     dim: usize,
     // Nodes
-    left: Option<Box<Kdtree<'a, T, A>>>,
-    right: Option<Box<Kdtree<'a, T, A>>>,
+    left: Option<Box<KDT<'a, T, A>>>,
+    right: Option<Box<KDT<'a, T, A>>>,
     // Is a leaf node if this has values
     split_axis: Option<usize>,
     split_axis_value: Option<T>,
@@ -29,7 +29,7 @@ pub struct Kdtree<'a, T: Float + 'static, A> {
     data: Option<&'a [LeafWithNorm<'a, T, A>]>, // Not none when this is a leaf
 }
 
-impl<'a, T: Float + 'static, A: Copy> Kdtree<'a, T, A> {
+impl<'a, T: Float + 'static, A: Copy> KDT<'a, T, A> {
     // Add method to create the tree by adding leaf elements one by one
 
     pub fn from_leaves(
@@ -75,7 +75,7 @@ impl<'a, T: Float + 'static, A: Copy> Kdtree<'a, T, A> {
         let n = data.len();
         let (min_bounds, max_bounds) = Self::find_bounds(data, dim);
         if n <= capacity {
-            Kdtree {
+            KDT {
                 dim: dim,
                 left: None,
                 right: None,
@@ -118,7 +118,7 @@ impl<'a, T: Float + 'static, A: Copy> Kdtree<'a, T, A> {
             let (left, right) = data.split_at_mut(split_idx);
             if left.is_empty() {
                 // See comment in arkadia_lp.rs
-                Kdtree {
+                KDT {
                     dim: dim,
                     left: None,
                     right: None,
@@ -129,7 +129,7 @@ impl<'a, T: Float + 'static, A: Copy> Kdtree<'a, T, A> {
                     data: Some(right),
                 }
             } else {
-                Kdtree {
+                KDT {
                     dim: dim,
                     left: Some(Box::new(Self::from_leaves_unchecked(
                         left,
@@ -232,7 +232,7 @@ impl<'a, T: Float + 'static, A: Copy> Kdtree<'a, T, A> {
     }
 }
 
-impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for Kdtree<'a, T, A> {
+impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for KDT<'a, T, A> {
     fn dim(&self) -> usize {
         self.dim
     }
@@ -240,7 +240,7 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for Kdtree<'a, T, A> {
     #[inline(always)]
     fn knn_one_step(
         &self,
-        pending: &mut Vec<(T, &Kdtree<'a, T, A>)>,
+        pending: &mut Vec<(T, &KDT<'a, T, A>)>,
         top_k: &mut Vec<NB<T, A>>,
         k: usize,
         point: &[T],
@@ -285,7 +285,7 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for Kdtree<'a, T, A> {
     #[inline(always)]
     fn within_count_one_step(
         &self,
-        pending: &mut Vec<(T, &Kdtree<'a, T, A>)>,
+        pending: &mut Vec<(T, &KDT<'a, T, A>)>,
         point: &[T],
         point_norm_cache: T,
         radius: T,
@@ -328,7 +328,7 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for Kdtree<'a, T, A> {
     #[inline(always)]
     fn within_one_step(
         &self,
-        pending: &mut Vec<(T, &Kdtree<'a, T, A>)>,
+        pending: &mut Vec<(T, &KDT<'a, T, A>)>,
         neighbors: &mut Vec<NB<T, A>>,
         point: &[T],
         point_norm_cache: T,
@@ -509,7 +509,7 @@ mod tests {
         let binding = mat.view();
         let mut leaf_elements = matrix_to_leaves_w_norm(&binding, &values);
 
-        let tree = Kdtree::from_leaves(&mut leaf_elements, SplitMethod::MIDPOINT).unwrap();
+        let tree = KDT::from_leaves(&mut leaf_elements, SplitMethod::MIDPOINT).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
@@ -552,7 +552,7 @@ mod tests {
         let binding = mat.view();
         let mut leaf_elements = matrix_to_leaves_w_norm(&binding, &values);
 
-        let tree = Kdtree::from_leaves(&mut leaf_elements, SplitMethod::MIDPOINT).unwrap();
+        let tree = KDT::from_leaves(&mut leaf_elements, SplitMethod::MIDPOINT).unwrap();
 
         let output = tree.knn_bounded(k, point.as_slice().unwrap(), bound);
 
@@ -595,7 +595,7 @@ mod tests {
         let binding = mat.view();
         let mut leaf_elements = matrix_to_leaves_w_norm(&binding, &values);
 
-        let tree = Kdtree::from_leaves(&mut leaf_elements, SplitMethod::MIDPOINT).unwrap();
+        let tree = KDT::from_leaves(&mut leaf_elements, SplitMethod::MIDPOINT).unwrap();
 
         let output = tree.within(point.as_slice().unwrap(), bound, true);
 
@@ -636,7 +636,7 @@ mod tests {
         let binding = mat.view();
         let mut leaf_elements = matrix_to_leaves_w_norm(&binding, &values);
 
-        let tree = Kdtree::from_leaves(&mut leaf_elements, SplitMethod::MIDPOINT).unwrap();
+        let tree = KDT::from_leaves(&mut leaf_elements, SplitMethod::MIDPOINT).unwrap();
 
         let output = tree.within_count(point.as_slice().unwrap(), bound);
 
@@ -666,7 +666,7 @@ mod tests {
         let binding = mat.view();
         let mut leaf_elements = matrix_to_leaves_w_norm(&binding, &values);
 
-        let tree = Kdtree::from_leaves(&mut leaf_elements, SplitMethod::MEAN).unwrap();
+        let tree = KDT::from_leaves(&mut leaf_elements, SplitMethod::MEAN).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
@@ -702,7 +702,7 @@ mod tests {
         let binding = mat.view();
         let mut leaf_elements = matrix_to_leaves_w_norm(&binding, &values);
 
-        let tree = Kdtree::from_leaves(&mut leaf_elements, SplitMethod::MEDIAN).unwrap();
+        let tree = KDT::from_leaves(&mut leaf_elements, SplitMethod::MEDIAN).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 

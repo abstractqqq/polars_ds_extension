@@ -1,9 +1,9 @@
 use crate::arkadia::{
-    arkadia::Kdtree,
-    arkadia_any::{LpKdtree, DIST},
+    arkadia::KDT,
+    arkadia_any::{AnyKDT, DIST},
     matrix_to_empty_leaves, matrix_to_empty_leaves_w_norm, SplitMethod, KDTQ,
 };
-use crate::num::knn::{query_nb_cnt, KdtreeKwargs};
+use crate::num::knn::{query_nb_cnt, KDTKwargs};
 use crate::utils::{series_to_ndarray, split_offsets};
 use ndarray::{s, ArrayView2};
 use polars::prelude::*;
@@ -20,7 +20,7 @@ use pyo3_polars::export::polars_core::utils::rayon::iter::{
 fn pl_approximate_entropy(
     inputs: &[Series],
     context: CallerContext,
-    kwargs: KdtreeKwargs,
+    kwargs: KDTKwargs,
 ) -> PolarsResult<Series> {
     // inputs[0] is radius, the rest are the shifted columns
     // Set up radius. r is a scalar and set up at Python side.
@@ -45,7 +45,7 @@ fn pl_approximate_entropy(
     // Step 3, 4, 5 in wiki
     let data_1_view = data.slice(s![..n1, ..dim.abs_diff(1)]);
     let mut leaves = matrix_to_empty_leaves(&data_1_view);
-    let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::default(), DIST::LINF)
+    let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::default(), DIST::LINF)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
     let nb_in_radius = query_nb_cnt(tree, data_1_view, r, can_parallel);
@@ -58,7 +58,7 @@ fn pl_approximate_entropy(
     let n2 = n1.abs_diff(1);
     let data_2_view = data.slice(s![..n2, ..]);
     let mut leaves2 = matrix_to_empty_leaves(&data_2_view);
-    let tree = LpKdtree::from_leaves(&mut leaves2, SplitMethod::default(), DIST::LINF)
+    let tree = AnyKDT::from_leaves(&mut leaves2, SplitMethod::default(), DIST::LINF)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
     let nb_in_radius = query_nb_cnt(tree, data_2_view, r, can_parallel);
@@ -75,7 +75,7 @@ fn pl_approximate_entropy(
 fn pl_sample_entropy(
     inputs: &[Series],
     context: CallerContext,
-    kwargs: KdtreeKwargs,
+    kwargs: KDTKwargs,
 ) -> PolarsResult<Series> {
     // inputs[0] is radius, the rest are the shifted columns
     // Set up radius. r is a scalar and set up at Python side.
@@ -96,7 +96,7 @@ fn pl_sample_entropy(
 
     let data_1_view = data.slice(s![..n1, ..dim.abs_diff(1)]);
     let mut leaves = matrix_to_empty_leaves(&data_1_view);
-    let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::default(), DIST::LINF)
+    let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::default(), DIST::LINF)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
     let nb_in_radius = query_nb_cnt(tree, data_1_view, r, can_parallel);
@@ -108,7 +108,7 @@ fn pl_sample_entropy(
     let n2 = n1.abs_diff(1);
     let data_2_view = data.slice(s![..n2, ..]);
     let mut leaves2 = matrix_to_empty_leaves(&data_2_view);
-    let tree = LpKdtree::from_leaves(&mut leaves2, SplitMethod::default(), DIST::LINF)
+    let tree = AnyKDT::from_leaves(&mut leaves2, SplitMethod::default(), DIST::LINF)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
     let nb_in_radius = query_nb_cnt(tree, data_2_view, r, can_parallel);
@@ -122,7 +122,7 @@ fn pl_sample_entropy(
 
 /// Comptues the logd part of the KNN entropy
 fn _knn_entropy_helper<'a>(
-    tree: LpKdtree<'a, f64, ()>,
+    tree: AnyKDT<'a, f64, ()>,
     data: ArrayView2<f64>,
     k: usize,
     can_parallel: bool,
@@ -157,7 +157,7 @@ fn _knn_entropy_helper<'a>(
 fn pl_knn_entropy(
     inputs: &[Series],
     context: CallerContext,
-    kwargs: KdtreeKwargs,
+    kwargs: KDTKwargs,
 ) -> PolarsResult<Series> {
     // Define inputs
     let can_parallel = kwargs.parallel && !context.parallel();
@@ -187,14 +187,14 @@ fn pl_knn_entropy(
         let half_d: f64 = d / 2.0;
         let cd = std::f64::consts::PI.powf(half_d) / (2f64.powf(d)) / (1.0 + half_d).gamma();
         let mut leaves = matrix_to_empty_leaves(&data_view);
-        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::default(), DIST::L2)
+        let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::default(), DIST::L2)
             .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
         (cd, _knn_entropy_helper(tree, data_view, k, can_parallel))
     } else if metric_str == "inf" {
         let cd = 1.0;
         let mut leaves = matrix_to_empty_leaves(&data_view);
-        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::default(), DIST::LINF)
+        let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::default(), DIST::LINF)
             .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
         (cd, _knn_entropy_helper(tree, data_view, k, can_parallel))

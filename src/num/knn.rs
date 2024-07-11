@@ -2,14 +2,12 @@
 /// other features/entropies that require KNN to be efficiently computed.
 // use super::which_distance;
 // use kdtree::KdTree;
-use crate::utils::get_common_float_dtype;
+// use crate::utils::get_common_float_dtype;
 use crate::{
     arkadia::{
-        arkadia::Kdtree,
-        arkadia_any::{LpKdtree, DIST},
+        KDT, AnyKDT, DIST,
         matrix_to_empty_leaves, matrix_to_leaves, matrix_to_leaves_w_norm,
-        matrix_to_leaves_w_row_num,
-        utils::matrix_to_empty_leaves_w_norm,
+        matrix_to_leaves_w_row_num, matrix_to_empty_leaves_w_norm,
         Leaf, LeafWithNorm, SplitMethod, KDTQ,
     },
     utils::{
@@ -37,7 +35,7 @@ pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 #[derive(Deserialize, Debug)]
-pub(crate) struct KdtreeKwargs {
+pub(crate) struct KDTKwargs {
     pub(crate) k: usize,
     pub(crate) leaf_size: usize,
     pub(crate) metric: String,
@@ -47,7 +45,7 @@ pub(crate) struct KdtreeKwargs {
 }
 
 #[derive(Deserialize, Debug)]
-pub(crate) struct KdtreeRadiusKwargs {
+pub(crate) struct KDTRadiusKwargs {
     pub(crate) r: f64,
     pub(crate) leaf_size: usize,
     pub(crate) metric: String,
@@ -91,6 +89,7 @@ pub fn dist_from_str<T: Float + 'static>(dist_str: &str) -> Result<DIST<T>, Stri
     match dist_str {
         "l1" => Ok(DIST::L1),
         "l2" => Ok(DIST::L2),
+        "sql2" => Ok(DIST::SQL2),
         "linf" => Ok(DIST::LINF),
         "cosine" => Ok(DIST::ANY(super::cosine_dist)),
         _ => Err("Unknown distance metric.".into()),
@@ -164,7 +163,7 @@ where
 fn pl_knn_ptwise(
     inputs: &[Series],
     context: CallerContext,
-    kwargs: KdtreeKwargs,
+    kwargs: KDTKwargs,
 ) -> PolarsResult<Series> {
     // Set up params
     let k = kwargs.k;
@@ -203,7 +202,7 @@ fn pl_knn_ptwise(
                 } else {
                     matrix_to_leaves_w_norm(&binding, id)
                 };
-                Kdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
+                KDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
                     .map(|tree| knn_ptwise(tree, eval_mask, binding, k, can_parallel, 0.))
             } else {
                 let mut leaves = if skip_data {
@@ -212,7 +211,7 @@ fn pl_knn_ptwise(
                 } else {
                     matrix_to_leaves(&binding, id)
                 };
-                LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
+                AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
                     .map(|tree| knn_ptwise(tree, eval_mask, binding, k, can_parallel, 0.))
             }
         }
@@ -334,7 +333,7 @@ where
 fn pl_knn_ptwise_w_dist(
     inputs: &[Series],
     context: CallerContext,
-    kwargs: KdtreeKwargs,
+    kwargs: KDTKwargs,
 ) -> PolarsResult<Series> {
     // Set up params
     let k = kwargs.k;
@@ -373,7 +372,7 @@ fn pl_knn_ptwise_w_dist(
                 } else {
                     matrix_to_leaves_w_norm(&binding, id)
                 };
-                Kdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
+                KDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
                     .map(|tree| knn_ptwise_w_dist(tree, eval_mask, binding, k, can_parallel, 0.))
             } else {
                 let mut leaves = if skip_data {
@@ -382,7 +381,7 @@ fn pl_knn_ptwise_w_dist(
                 } else {
                     matrix_to_leaves(&binding, id)
                 };
-                LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
+                AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
                     .map(|tree| knn_ptwise_w_dist(tree, eval_mask, binding, k, can_parallel, 0.))
             }
         }
@@ -447,7 +446,7 @@ where
 fn pl_query_radius_ptwise(
     inputs: &[Series],
     context: CallerContext,
-    kwargs: KdtreeRadiusKwargs,
+    kwargs: KDTRadiusKwargs,
 ) -> PolarsResult<Series> {
     // Set up params
     let can_parallel = kwargs.parallel && !context.parallel();
@@ -466,11 +465,11 @@ fn pl_query_radius_ptwise(
             if d == DIST::L2 {
                 // This kdtree will be faster because norms are cached
                 let mut leaves = matrix_to_leaves_w_norm(&binding, id);
-                Kdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
+                KDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
                     .map(|tree| query_radius_ptwise(tree, binding, radius, can_parallel, sort))
             } else {
                 let mut leaves = matrix_to_leaves(&binding, id);
-                LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
+                AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
                     .map(|tree| query_radius_ptwise(tree, binding, radius, can_parallel, sort))
             }
         }
@@ -484,75 +483,34 @@ fn pl_query_radius_ptwise(
 /// Note, only k points will be returned as true, because here the point is considered an "outside" point,
 /// not a point in the data.
 #[polars_expr(output_type=Boolean)]
-fn pl_knn_filter(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series> {
+fn pl_knn_filter(inputs: &[Series], kwargs: KDTKwargs) -> PolarsResult<Series> {
     // Set up params
     let k = kwargs.k;
     let nrows = inputs[1].len();
 
-    let neighbors = match get_common_float_dtype(inputs) {
-        DataType::Float32 => {
-            let pt = inputs[0].f32().unwrap();
-            let p = pt.cont_slice()?;
-            let data = series_to_ndarray_f32(&inputs[1..], IndexOrder::C)?;
+    let pt = inputs[0].f64().unwrap();
+    let p = pt.cont_slice()?;
+    let data = series_to_ndarray(&inputs[1..], IndexOrder::C)?;
 
-            let binding = data.view();
-            let mut leaves = matrix_to_leaves_w_row_num(&binding);
+    let binding = data.view();
+    let mut leaves = matrix_to_leaves_w_row_num(&binding);
 
-            let kdt = match kwargs.metric.as_ref() {
-                "l1" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::L1),
-                "l2" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::SQL2),
-                "linf" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::LINF),
-                "cosine" => LpKdtree::from_leaves(
-                    &mut leaves,
-                    SplitMethod::MIDPOINT,
-                    DIST::ANY(super::cosine_dist::<f32>),
-                ),
-                _ => Err("Unknown distance metric.".into()),
-            }
-            .map_err(|err| PolarsError::ComputeError(err.into()))?;
+    let kdt = match dist_from_str(kwargs.metric.as_ref()) {
+        Ok(d) => {
+            AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
+        },
+        Err(e) => Err(e)
+    }.map_err(|err| PolarsError::ComputeError(err.into()))?;
 
-            kdt.knn(k, p, 0.)
-                .map(|v| v.into_iter().map(|nb| nb.to_item()).collect::<Vec<usize>>())
-        }
-        DataType::Float64 => {
-            let pt = inputs[0].f64().unwrap();
-            let p = pt.cont_slice()?;
-            let data = series_to_ndarray(&inputs[1..], IndexOrder::C)?;
-
-            let binding = data.view();
-            let mut leaves = matrix_to_leaves_w_row_num(&binding);
-
-            let kdt = match kwargs.metric.as_ref() {
-                "l1" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::L1),
-                "l2" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::SQL2),
-                "linf" => LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::LINF),
-                "cosine" => LpKdtree::from_leaves(
-                    &mut leaves,
-                    SplitMethod::MIDPOINT,
-                    DIST::ANY(super::cosine_dist::<f64>),
-                ),
-                _ => Err("Unknown distance metric.".into()),
-            }
-            .map_err(|err| PolarsError::ComputeError(err.into()))?;
-
-            kdt.knn(k, p, 0.)
-                .map(|v| v.into_iter().map(|nb| nb.to_item()).collect::<Vec<usize>>())
-        }
-
-        _ => {
-            return Err(PolarsError::ComputeError(
-                "Non-numeric or decimal types are not allowed.".into(),
-            ))
-        }
-    };
-
+    let neighbors = kdt.knn(k, p, 0.)
+        .map(|v| v.into_iter().map(|nb| nb.to_item()).collect::<Vec<usize>>());
+    
     let mut out: Vec<bool> = vec![false; nrows];
     if let Some(v) = neighbors {
         for i in v.into_iter() {
             out[i] = true;
         }
     }
-
     Ok(BooleanChunked::from_slice("", &out).into_series())
 }
 
@@ -647,7 +605,7 @@ where
 fn pl_nb_cnt(
     inputs: &[Series],
     context: CallerContext,
-    kwargs: KdtreeKwargs,
+    kwargs: KDTKwargs,
 ) -> PolarsResult<Series> {
     // Set up params
     // let leaf_size = kwargs.leaf_size;
@@ -667,11 +625,11 @@ fn pl_nb_cnt(
                 if d == DIST::L2 {
                     // This kdtree will be faster because norms are cached
                     let mut leaves = matrix_to_empty_leaves_w_norm(&binding);
-                    Kdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
+                    KDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
                         .map(|tree| query_nb_cnt(tree, data.view(), r, can_parallel))
                 } else {
                     let mut leaves = matrix_to_empty_leaves(&binding);
-                    LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
+                    AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
                         .map(|tree| query_nb_cnt(tree, data.view(), r, can_parallel))
                 }
             }
@@ -685,11 +643,11 @@ fn pl_nb_cnt(
                 if d == DIST::L2 {
                     // This kdtree will be faster because norms are cached
                     let mut leaves = matrix_to_empty_leaves_w_norm(&binding);
-                    Kdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
+                    KDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
                         .map(|tree| query_nb_cnt_w_radius(tree, data.view(), radius, can_parallel))
                 } else {
                     let mut leaves = matrix_to_empty_leaves(&binding);
-                    LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
+                    AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
                         .map(|tree| query_nb_cnt_w_radius(tree, data.view(), radius, can_parallel))
                 }
             }

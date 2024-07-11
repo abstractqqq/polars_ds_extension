@@ -528,14 +528,14 @@ def query_knn_filter(
         raise ValueError("Input `k` should be strictly positive.")
 
     p = pt if isinstance(pt, pl.Series) else pl.Series(values=pt)
-    metric = str(dist).lower()
+    metric = str(dist).lower()  # replace l2 by sql2 to make things slightly faster
     return pl_plugin(
         symbol="pl_knn_filter",
         args=[pl.lit(p)] + [str_to_expr(x) for x in features],
         kwargs={
             "k": k,
             "leaf_size": 32,
-            "metric": metric,
+            "metric": "sql2" if metric == "l2" else metric,
             "parallel": False,
             "skip_eval": False,
             "skip_data": False,

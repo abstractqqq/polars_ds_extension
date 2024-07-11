@@ -48,11 +48,11 @@ impl<T: Float + 'static> DIST<T> {
     }
 }
 
-pub struct LpKdtree<'a, T: Float + 'static, A> {
+pub struct AnyKDT<'a, T: Float + 'static, A> {
     dim: usize,
     // Nodes
-    left: Option<Box<LpKdtree<'a, T, A>>>,
-    right: Option<Box<LpKdtree<'a, T, A>>>,
+    left: Option<Box<AnyKDT<'a, T, A>>>,
+    right: Option<Box<AnyKDT<'a, T, A>>>,
     // Is a leaf node if this has values
     split_axis: Option<usize>,
     split_axis_value: Option<T>,
@@ -64,7 +64,7 @@ pub struct LpKdtree<'a, T: Float + 'static, A> {
     lp: DIST<T>,
 }
 
-impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
+impl<'a, T: Float + 'static, A: Copy> AnyKDT<'a, T, A> {
     // Add method to create the tree by adding leaf elements one by one
 
     pub fn from_leaves(
@@ -113,7 +113,7 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
         let n = data.len();
         let (min_bounds, max_bounds) = Self::find_bounds(data, dim);
         if n <= capacity {
-            LpKdtree {
+            AnyKDT {
                 dim: dim,
                 left: None,
                 right: None,
@@ -173,7 +173,7 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
                 // each dimension.
                 // So the solution makes sense. We also note that 2 may happen in perfectly periodic data generated
                 // with sin/cos functions, which is common in time series, which is also how this error came to be known...
-                LpKdtree {
+                AnyKDT {
                     dim: dim,
                     left: None,
                     right: None,
@@ -185,7 +185,7 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
                     lp: lp,
                 }
             } else {
-                LpKdtree {
+                AnyKDT {
                     dim: dim,
                     left: Some(Box::new(Self::from_leaves_unchecked(
                         left,
@@ -323,7 +323,7 @@ impl<'a, T: Float + 'static, A: Copy> LpKdtree<'a, T, A> {
     }
 }
 
-impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for LpKdtree<'a, T, A> {
+impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for AnyKDT<'a, T, A> {
     fn dim(&self) -> usize {
         self.dim
     }
@@ -331,7 +331,7 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for LpKdtree<'a, T, A> {
     #[inline(always)]
     fn knn_one_step(
         &self,
-        pending: &mut Vec<(T, &LpKdtree<'a, T, A>)>,
+        pending: &mut Vec<(T, &AnyKDT<'a, T, A>)>,
         top_k: &mut Vec<NB<T, A>>,
         k: usize,
         point: &[T],
@@ -374,7 +374,7 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for LpKdtree<'a, T, A> {
     #[inline(always)]
     fn within_one_step(
         &self,
-        pending: &mut Vec<(T, &LpKdtree<'a, T, A>)>,
+        pending: &mut Vec<(T, &AnyKDT<'a, T, A>)>,
         neighbors: &mut Vec<NB<T, A>>,
         point: &[T],
         _: T,
@@ -409,7 +409,7 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for LpKdtree<'a, T, A> {
     #[inline(always)]
     fn within_count_one_step(
         &self,
-        pending: &mut Vec<(T, &LpKdtree<'a, T, A>)>,
+        pending: &mut Vec<(T, &AnyKDT<'a, T, A>)>,
         point: &[T],
         _: T,
         radius: T,
@@ -512,7 +512,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves(&binding, &values);
 
-        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::LINF).unwrap();
+        let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::LINF).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
@@ -548,7 +548,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves(&binding, &values);
 
-        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MEAN, DIST::LINF).unwrap();
+        let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::MEAN, DIST::LINF).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
@@ -584,7 +584,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves(&binding, &values);
 
-        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MEDIAN, DIST::LINF).unwrap();
+        let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::MEDIAN, DIST::LINF).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
@@ -620,7 +620,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves(&binding, &values);
 
-        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::L1).unwrap();
+        let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::L1).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
@@ -656,7 +656,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves(&binding, &values);
 
-        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MEAN, DIST::L1).unwrap();
+        let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::MEAN, DIST::L1).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
@@ -692,7 +692,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves(&binding, &values);
 
-        let tree = LpKdtree::from_leaves(&mut leaves, SplitMethod::MEDIAN, DIST::L1).unwrap();
+        let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::MEDIAN, DIST::L1).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
