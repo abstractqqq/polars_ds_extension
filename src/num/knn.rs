@@ -464,7 +464,7 @@ fn pl_knn_filter(inputs: &[Series], kwargs: KdtreeKwargs) -> PolarsResult<Series
 
             kdt.knn(k, p, 0.)
                 .map(|v| v.into_iter().map(|nb| nb.to_item()).collect::<Vec<usize>>())
-        }
+        },
         DataType::Float64 => {
             let pt = inputs[0].f64().unwrap();
             let p = pt.cont_slice()?;
