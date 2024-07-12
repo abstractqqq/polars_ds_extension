@@ -90,7 +90,7 @@ pub fn dist_from_str<T: Float + 'static>(dist_str: &str) -> Result<DIST<T>, Stri
         "l1" => Ok(DIST::L1),
         "l2" => Ok(DIST::L2),
         "sql2" => Ok(DIST::SQL2),
-        "linf" => Ok(DIST::LINF),
+        "linf"|"inf" => Ok(DIST::LINF),
         "cosine" => Ok(DIST::ANY(super::cosine_dist)),
         _ => Err("Unknown distance metric.".into()),
     }

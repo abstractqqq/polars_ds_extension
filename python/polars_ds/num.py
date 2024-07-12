@@ -531,7 +531,7 @@ def query_knn_filter(
     metric = str(dist).lower()  # replace l2 by sql2 to make things slightly faster
     return pl_plugin(
         symbol="pl_knn_filter",
-        args=[pl.lit(p)] + [str_to_expr(x) for x in features],
+        args=[pl.lit(p.cast(pl.Float64))] + [str_to_expr(x) for x in features],
         kwargs={
             "k": k,
             "leaf_size": 32,
@@ -789,7 +789,7 @@ def query_transfer_entropy(
 
     xx = str_to_expr(x)
     x1 = xx.slice(0, pl.len() - lag)
-    x2 = xx.slice(lag, None)
+    x2 = xx.slice(lag, pl.len() - lag)  # (equivalent to slice(lag, None), but will break in v1.0)
     s = str_to_expr(source).slice(0, pl.len() - lag)
     return query_cond_indep(x2, s, x1, k=k, parallel=parallel)
 
