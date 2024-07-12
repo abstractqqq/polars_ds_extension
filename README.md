@@ -125,11 +125,37 @@ shape: (2, 3)
 └──────────┴──────────┴──────────┘
 ```
 
-Notice a few things: (1) Computing ROC AUC on different segments is equivalent to an aggregation on segments! It is a concept everyone who knows SQL (aka everybody who works with data) will be familiar with! (2) There is no Python code. The extension is written in pure Rust and all complexities are hidden away from the end user. (3) Because Polars provides parallel execution for free, we can compute ROC AUC and log loss simultaneously on each segment! (In Pandas, one can do something like this in aggregations but is soooo much harder to write and way more confusing to reason about.)
+Notice a few things: (1) Computing ROC AUC on different segments is equivalent to an aggregation on segments! It is a concept everyone who knows SQL (aka everybody who works with data) will be familiar with! (2) There is no Python code. The extension is written in pure Rust and all complexities are hidden away from the end user. (3) Because Polars provides parallel execution for free, we can compute ROC AUC and log loss simultaneously on each segment!
 
 The end result is simpler, more intuitive code that is also easier to reason about, and faster execution time. Because of Polars's extension (plugin) system, we are now blessed with both:
 
 **Performance and elegance - something that is quite rare in the Python world.**
+
+## But Pandas can do it too...?
+
+Experienced Pandas users will notice that one can do somthing similar in Pandas
+
+```python
+from sklearn.metrics import roc_auc_score, log_loss
+import pandas as pd
+
+(
+    df_pd
+    .groupby("segments")
+    .apply(
+        lambda df2: pd.Series({
+            "roc_auc" : roc_auc_score(df2["actual"], df2["predicted"]),
+            "logloss" : log_loss(df2["actual"], df2["predicted"])
+        })
+    )
+)
+```
+
+I would argue that the code above has two problems: (1) aesthetically ugly and verbose, which leads to higher chance of mistakes, and (2) terrible performance on large data.
+
+What does `apply` mean? What we want to do is **some aggregation over a group**, a very natural SQL concept. The extra lingo is not only hard to remember but also confusing. In addition to `apply`, Pandas also provides `agg`, `assign`, `transform`, which are all different, and which make the API harder for beginners for no good reason. 
+
+The use of lambda function also introduces additional symbols like `:` and braces, which often leads to errors like unbalanced braces. Lastly, using lambda or any custom Python function will blocks the possibility of executing the code in parallel, because the thread needs to acquire the GIL before it can do the work.
 
 ## Getting Started
 

@@ -1,5 +1,11 @@
+use ndarray::Array2;
 use polars::{
-    datatypes::{DataType, Field}, error::PolarsResult, frame::DataFrame, lazy::dsl::FieldsMapper, series::Series
+    datatypes::{DataType, Field, Float32Type, Float64Type},
+    error::{PolarsError, PolarsResult},
+    frame::DataFrame,
+    lazy::dsl::FieldsMapper,
+    prelude::IndexOrder,
+    series::Series,
 };
 
 // -------------------------------------------------------------------------------
@@ -9,14 +15,21 @@ use polars::{
 // Rechunk series, rename then by the order, and return a PolarsResult<DataFrame>
 #[inline(always)]
 pub fn rechunk_to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
+    let mut df = DataFrame::new(inputs.to_vec())?;
+    df = df.align_chunks().clone(); // ref count, cheap clone
+    Ok(df)
+}
 
-    let series = inputs
-        .into_iter()
-        .enumerate()
-        .map(|(i, s)| s.rechunk().with_name(&i.to_string()))
-        .collect::<Vec<_>>();
+#[inline(always)]
+pub fn series_to_ndarray(inputs: &[Series], order: IndexOrder) -> PolarsResult<Array2<f64>> {
+    let df = DataFrame::new(inputs.to_vec())?;
+    df.to_ndarray::<Float64Type>(order)
+}
 
-    DataFrame::new(series)
+#[inline(always)]
+pub fn series_to_ndarray_f32(inputs: &[Series], order: IndexOrder) -> PolarsResult<Array2<f32>> {
+    let df = DataFrame::new(inputs.to_vec())?;
+    df.to_ndarray::<Float32Type>(order)
 }
 
 // Shared splitting method
@@ -38,6 +51,24 @@ pub fn split_offsets(len: usize, n: usize) -> Vec<(usize, usize)> {
             .collect()
     }
 }
+
+// pub fn get_common_float_dtype(inputs: &[Series]) -> DataType {
+//     inputs
+//         .into_iter()
+//         .fold(DataType::Null, |_, s| match s.dtype() {
+//             DataType::UInt8
+//             | DataType::UInt16
+//             | DataType::UInt32
+//             | DataType::Int8
+//             | DataType::Int16
+//             | DataType::Int32
+//             | DataType::Float32 => DataType::Float32,
+
+//             DataType::Float64 | DataType::UInt64 | DataType::Int64 => DataType::Float64,
+
+//             _ => DataType::Null,
+//         })
+// }
 
 // -------------------------------------------------------------------------------
 // Common Output Types

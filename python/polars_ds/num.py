@@ -14,9 +14,9 @@ __all__ = [
     "query_pca",
     "query_principal_components",
     "query_knn_ptwise",
-    "query_knn_filter",
     "query_knn_entropy",
-    "query_within_dist_from",
+    "within_dist_from",
+    "is_knn_from",
     "query_radius_ptwise",
     "query_nb_cnt",
     "query_approx_entropy",
@@ -332,7 +332,7 @@ def query_knn_ptwise(
         )
 
 
-def query_within_dist_from(
+def within_dist_from(
     *features: StrOrExpr,
     pt: Iterable[float],
     r: Union[float, pl.Expr],
@@ -397,16 +397,79 @@ def query_within_dist_from(
         raise ValueError(f"Unknown distance function: {dist}")
 
 
+def is_knn_from(
+    *features: StrOrExpr,
+    pt: Iterable[float],
+    k: int,
+    dist: Distance = "l2",
+) -> pl.Expr:
+    """
+    Returns a boolean column that returns points that are k nearest neighbors from the point.
+
+    Parameters
+    ----------
+    *features : str | pl.Expr
+        Other columns used as features
+    pt : Iterable[float]
+        The point, at which we filter using the radius.
+    k : int
+        k nearest neighbor
+    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
+        Note `l2` is actually squared `l2` for computational efficiency.
+    """
+    # For a single point, it is faster to just do it in native polars
+    oth = [str_to_expr(x) for x in features]
+    if len(pt) != len(oth):
+        raise ValueError("Dimension does not match.")
+
+    if dist == "l1":
+        dist = pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
+        return dist <= dist.bottom_k(k=k).max()
+    elif dist == "l2":
+        dist = pl.sum_horizontal(
+            (e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(pt, oth)
+        )
+        return dist <= dist.bottom_k(k=k).max()
+    elif dist == "inf":
+        dist = pl.max_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
+        return dist <= dist.bottom_k(k=k).max()
+    elif dist == "cosine":
+        x_list = list(pt)
+        x_norm = sum(z * z for z in x_list)
+        oth_norm = pl.sum_horizontal(e * e for e in oth)
+        dist = (
+            1.0
+            - pl.sum_horizontal(xi * e for xi, e in zip(x_list, oth)) / (x_norm * oth_norm).sqrt()
+        )
+        return dist <= dist.bottom_k(k=k).max()
+    elif dist in ("h", "haversine"):
+        pt_as_list = list(pt)
+        if (len(pt_as_list) != 2) or (len(oth) < 2):
+            raise ValueError(
+                "For Haversine distance, input x must have dimension 2 and 2 other columns"
+                " must be provided as lat and long."
+            )
+
+        y_lat = pl.lit(pt_as_list[0], dtype=pl.Float64)
+        y_long = pl.lit(pt_as_list[1], dtype=pl.Float64)
+        dist = haversine(oth[0], oth[1], y_lat, y_long)
+        return dist <= dist.bottom_k(k=k).max()
+    else:
+        raise ValueError(f"Unknown distance function: {dist}")
+
+
 def query_radius_ptwise(
     *features: StrOrExpr,
     index: StrOrExpr,
     r: float,
     dist: Distance = "l2",
+    sort: bool = True,
     parallel: bool = False,
 ) -> pl.Expr:
     """
-    Takes the index column, and uses features columns to determine distance, and query all neighbors
-    within distance r from each id in the index column.
+    Takes the index column, and uses features columns to determine distance, and finds all neighbors
+    within distance r from each id in the index column. If you only care about neighbor count, you
+    should use query_nb_cnt, which supports expression for radius.
 
     Note that the index column must be convertible to u32. If you do not have a u32 ID column,
     you can generate one using pl.int_range(..), which should be a step before this.
@@ -423,8 +486,11 @@ def query_radius_ptwise(
         The column used as index, must be castable to u32
     r : float
         The radius. Must be a scalar value now.
-    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
+    dist : Literal[`l1`, `l2`, `inf`, `cosine`]
         Note `l2` is actually squared `l2` for computational efficiency.
+    sort
+        Whether the neighbors returned should be sorted by the distance. Setting this to False can
+        improve performance by 10-20%.
     parallel : bool
         Whether to run the k-nearest neighbor query in parallel. This is recommended when you
         are running only this expression, and not in group_by context.
@@ -441,7 +507,7 @@ def query_radius_ptwise(
     return pl_plugin(
         symbol="pl_query_radius_ptwise",
         args=cols,
-        kwargs={"r": r, "leaf_size": 32, "metric": metric, "parallel": parallel},
+        kwargs={"r": r, "leaf_size": 32, "metric": metric, "parallel": parallel, "sort": sort},
         is_elementwise=True,
     )
 
@@ -449,7 +515,6 @@ def query_radius_ptwise(
 def query_nb_cnt(
     r: Union[float, str, pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
     *features: StrOrExpr,
-    leaf_size: int = 32,
     dist: Distance = "l2",
     parallel: bool = False,
 ) -> pl.Expr:
@@ -466,8 +531,6 @@ def query_nb_cnt(
         it must be the name of a column
     *features : str | pl.Expr
         Other columns used as features
-    leaf_size : int, > 0
-        Leaf size for the kd-tree. Tuning this might improve performance.
     dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
         Note `l2` is actually squared `l2` for computational efficiency.
     parallel : bool
@@ -488,53 +551,9 @@ def query_nb_cnt(
         args=[rad] + [str_to_expr(x) for x in features],
         kwargs={
             "k": 0,
-            "leaf_size": leaf_size,
+            "leaf_size": 32,  # useless now
             "metric": dist,
             "parallel": parallel,
-            "skip_eval": False,
-            "skip_data": False,
-        },
-        is_elementwise=True,
-    )
-
-
-def query_knn_filter(
-    *features: StrOrExpr,
-    pt: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
-    k: int = 5,
-    dist: Distance = "l2",
-) -> pl.Expr:
-    """
-    Returns an expression that filters to the k-nearest neighbors to the given point.
-
-    Note that this internally builds a kd-tree for fast querying and deallocates it once we
-    are done. If you need to repeatedly run the same query on the same data, then it is not
-    ideal to use this. A specialized external kd-tree structure would be better in that case.
-
-    Parameters
-    ----------
-    *features : str | pl.Expr
-        Columns used as features
-    pt : Iterable[float]
-        The point. It must be of the same length as the number of columns in `others`.
-    k : int, > 0
-        Number of neighbors to query
-    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
-        Note `l2` is actually squared `l2` for computational efficiency.
-    """
-    if k <= 0:
-        raise ValueError("Input `k` should be strictly positive.")
-
-    p = pt if isinstance(pt, pl.Series) else pl.Series(values=pt)
-    metric = str(dist).lower()
-    return pl_plugin(
-        symbol="pl_knn_filter",
-        args=[pl.lit(p)] + [str_to_expr(x) for x in features],
-        kwargs={
-            "k": k,
-            "leaf_size": 32,
-            "metric": metric,
-            "parallel": False,
             "skip_eval": False,
             "skip_data": False,
         },
@@ -586,10 +605,12 @@ def query_approx_entropy(
     else:
         r: pl.Expr = pl.lit(filtering_level, dtype=pl.Float64)
 
-    rows = t.count() - m + 1
+    rows = t.len() - m + 1
     data = [r, t.slice(0, length=rows).cast(pl.Float64)]
     # See rust code for more comment on why I put m + 1 here.
-    data.extend(t.shift(-i).slice(0, length=rows).cast(pl.Float64) for i in range(1, m + 1))
+    data.extend(
+        t.shift(-i).slice(0, length=rows).cast(pl.Float64).alias(str(i)) for i in range(1, m + 1)
+    )
     # More errors are handled in Rust
     return pl_plugin(
         symbol="pl_approximate_entropy",
@@ -603,6 +624,7 @@ def query_approx_entropy(
             "skip_data": False,
         },
         returns_scalar=True,
+        pass_name_to_apply=True,
     )
 
 
@@ -615,7 +637,7 @@ def query_sample_entropy(
 
     If NaN/some error is returned/thrown, it is likely that:
     (1) Too little data, e.g. m + 1 > length
-    (2) ratio or (ratio * std) is too close to 0 or std is null/NaN.
+    (2) ratio or (ratio * std) is too close to or below 0 or std is null/NaN.
 
     Parameters
     ----------
@@ -635,12 +657,12 @@ def query_sample_entropy(
     """
     t = str_to_expr(ts)
     r = ratio * t.std(ddof=0)
-    rows = t.count() - m + 1
+    rows = t.len() - m + 1
 
-    data = [r, t.slice(0, length=rows).cast(pl.Float64)]
+    data = [r, t.slice(0, length=rows)]
     # See rust code for more comment on why I put m + 1 here.
     data.extend(
-        t.shift(-i).slice(0, length=rows).cast(pl.Float64) for i in range(1, m + 1)
+        t.shift(-i).slice(0, length=rows).alias(str(i)) for i in range(1, m + 1)
     )  # More errors are handled in Rust
     return pl_plugin(
         symbol="pl_sample_entropy",
@@ -654,6 +676,7 @@ def query_sample_entropy(
             "skip_data": False,
         },
         returns_scalar=True,
+        pass_name_to_apply=True,
     )
 
 
@@ -672,6 +695,7 @@ def query_cond_entropy(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
         symbol="pl_conditional_entropy",
         args=[str_to_expr(x), str_to_expr(y)],
         returns_scalar=True,
+        pass_name_to_apply=True,
     )
 
 
@@ -709,7 +733,7 @@ def query_knn_entropy(
 
     return pl_plugin(
         symbol="pl_knn_entropy",
-        args=[str_to_expr(e) for e in features],
+        args=[str_to_expr(e).alias(str(i)) for i, e in enumerate(features)],
         kwargs={
             "k": k,
             "leaf_size": 32,
@@ -719,6 +743,7 @@ def query_knn_entropy(
             "skip_data": False,
         },
         returns_scalar=True,
+        pass_name_to_apply=True,
     )
 
 
@@ -781,7 +806,7 @@ def query_transfer_entropy(
 
     xx = str_to_expr(x)
     x1 = xx.slice(0, pl.len() - lag)
-    x2 = xx.slice(lag, None)
+    x2 = xx.slice(lag, pl.len() - lag)  # (equivalent to slice(lag, None), but will break in v1.0)
     s = str_to_expr(source).slice(0, pl.len() - lag)
     return query_cond_indep(x2, s, x1, k=k, parallel=parallel)
 
@@ -884,6 +909,7 @@ def query_lstsq(
             symbol="pl_lstsq_pred",
             args=cols,
             kwargs={"bias": add_bias, "skip_null": skip_null},
+            pass_name_to_apply=True,
         )
     else:
         return pl_plugin(
@@ -891,6 +917,7 @@ def query_lstsq(
             args=cols,
             kwargs={"bias": add_bias, "skip_null": skip_null},
             returns_scalar=True,
+            pass_name_to_apply=True,
         )
 
 
@@ -931,6 +958,7 @@ def query_lstsq_report(
         args=cols,
         kwargs={"bias": add_bias, "skip_null": skip_null},
         changes_length=True,
+        pass_name_to_apply=True,
     )
 
 

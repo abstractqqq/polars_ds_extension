@@ -68,34 +68,34 @@ def l1_horizontal(*v: StrOrExpr, normalize: bool = False) -> pl.Expr:
         return pl.sum_horizontal(str_to_expr(x).abs() for x in v)
 
 
-def eval_series(*series: pl.Series, expr_name: str, **kwargs) -> pl.DataFrame:
+def eval_series(*series: pl.Series, expr: str, **kwargs) -> pl.DataFrame:
     """
     Evaluates a Polars DS expression on a series.
 
     Note: currently this doesn't support all Polars DS expressions. E.g. It may not work
     for least square related expressions. It doesn't work for 2D NumPy matrices either, and you
     have to pass column by column if you are using NumPy as input. This is also not tested for
-    lower versions of Polars.
+    lower versions of Polars and also not on every expression.
 
     Parameters
     ----------
     series
         A sequence of series or NumPy arrays
-    expr_name
+    expr
         The name of the Polars DS expression
     kwargs
         Keyword arguments
     """
 
-    if expr_name.startswith("_") or expr_name.endswith("_"):
+    if expr.startswith("_") or expr.endswith("_"):
         raise ValueError("Special underscored functions are not allowed here.")
 
     inputs = list(pl.lit(pl.Series(name=str(i), values=s)) for i, s in enumerate(series))
     if len(inputs) == 0:
         raise ValueError("This currently doesn't support expressions without a positonal argument.")
 
-    func = globals()[expr_name]
-    return pl.select(func(*inputs, **kwargs).alias(expr_name.replace("query_", "")))
+    func = globals()[expr]
+    return pl.select(func(*inputs, **kwargs).alias(expr.replace("query_", "")))
 
 
 def random_data(

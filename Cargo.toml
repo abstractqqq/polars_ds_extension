@@ -12,7 +12,7 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = {version = "*", features = ["abi3-py38", "extension-module"]}
 pyo3-polars = {version = "0.15", features = ["derive"]}
-polars = {version = "0.41.1", features = ["performant", "lazy", "parquet", "dtype-array", "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", "cum_agg", "round_series", "nightly"]}
+polars = {version = "0.41.3", features = ["performant", "lazy", "parquet", "dtype-array", "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", "cum_agg", "round_series", "nightly"]}
 num = "0.4.1"
 faer = {version = "0.19", features = ["nightly"]}
 faer-ext = {version = "0.2.0", features = ["ndarray"]}
@@ -26,19 +26,11 @@ rand_distr = "0.4.3"
 realfft = "3.3.0"
 rapidfuzz = "0.5.0"
 inflections = "1.1.1"
-kdtree = {git = "https://github.com/mrhooray/kdtree-rs.git"}
 petgraph = "0.6.4"
 ordered-float = "4.2.0"
 approx = "*"
 ahash = ">=0.8.5"
 unicode-normalization = "0.1.23"
-
-[target.'cfg(any(not(target_os = "linux"), use_mimalloc))'.dependencies]
-mimalloc = { version = "0.1", default-features = false }
- 
-[target.'cfg(target_os = "linux")'.dependencies]
-jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }
-
 
 [profile.release]
 codegen-units = 1

@@ -904,7 +904,19 @@ def extract_numbers(
 
     # Find all numbers
     expr = expr.str.extract_all(r"(\d*\.?\d+)")
-    if dtype in pl.NUMERIC_DTYPES:
+
+    if dtype in [
+        pl.UInt8,
+        pl.UInt16,
+        pl.UInt32,
+        pl.UInt64,
+        pl.Int8,
+        pl.Int16,
+        pl.Int32,
+        pl.Int64,
+        pl.Float32,
+        pl.Float64,
+    ]:
         expr = expr.list.eval(pl.element().cast(dtype))
     elif dtype == pl.String:  # As a list of strings
         if join_by != "":

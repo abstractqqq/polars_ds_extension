@@ -305,7 +305,7 @@ def test_mann_whitney_u(df):
             [11, 5, 1, 1, 1, 1, 1, 1, 1],
         ),
         (
-            pl.DataFrame({"a": [1, 2, 3, 4, float("nan"), float("inf"), None]}),
+            pl.DataFrame({"a": [1.0, 2.0, 3.0, 4.0, float("nan"), float("inf"), None]}),
             [1, 1, 1, 1, 0, 0, 0, 0, 0],  # NaN, Inf, None are ignored
         ),
     ],
@@ -497,7 +497,11 @@ def test_lstsq():
 # Hard to write generic tests because ncols can vary in X
 def test_lstsq_skip_null():
     df = pl.DataFrame(
-        {"y": [None, 9.5, 10.5, 11.5, 12.5], "a": [1, 9, 10, 11, 12], "b": [1, 0.5, 0.5, 0.5, 0.5]}
+        {
+            "y": [None, 9.5, 10.5, 11.5, 12.5],
+            "a": [1, 9, 10, 11, 12],
+            "b": [1.0, 0.5, 0.5, 0.5, 0.5],
+        }
     )
     res = pl.DataFrame(
         {
@@ -976,9 +980,28 @@ def test_knn_ptwise_skip():
 @pytest.mark.parametrize(
     "df, x, dist, k, res",
     [
-        (  # Only the first row is the nearest neighbor to [0.5, 0.5, 0.5]
+        (  # Only the second is the nearest neighbor (l2 sense) to [0.5, 0.5, 0.5]
             pl.DataFrame(
-                {"id": [1, 2], "val1": [0.1, 0.2], "val2": [0.1, 0.3], "val3": [0.1, 0.4]}
+                {
+                    "id": [1, 2, 3],
+                    "val1": [0.1, 0.2, 5.0],
+                    "val2": [0.1, 0.3, 10.0],
+                    "val3": [0.1, 0.4, 11.0],
+                }
+            ),
+            [0.5, 0.5, 0.5],
+            "l2",
+            1,
+            pl.DataFrame({"id": [2]}),
+        ),
+        (  # If cosine dist, the first would be the nearest
+            pl.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "val1": [0.1, 0.2, 5.0],
+                    "val2": [0.1, 0.3, 10.0],
+                    "val3": [0.1, 0.4, 11.0],
+                }
             ),
             [0.5, 0.5, 0.5],
             "cosine",
@@ -987,11 +1010,36 @@ def test_knn_ptwise_skip():
         ),
     ],
 )
-def test_knn_filter(df, x, dist, k, res):
+def test_is_knn_from(df, x, dist, k, res):
     test = df.filter(
-        pds.query_knn_filter(pl.col("val1"), pl.col("val2"), pl.col("val3"), pt=x, dist=dist, k=k)
+        pds.is_knn_from(pl.col("val1"), pl.col("val2"), pl.col("val3"), pt=x, dist=dist, k=k)
     ).select(pl.col("id"))
 
+    assert_frame_equal(test, res)
+
+
+@pytest.mark.parametrize(
+    "df, dist, res",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "val1": [0.1, 0.2, 5.0],
+                    "val2": [0.1, 0.3, 10.0],
+                    "val3": [0.1, 0.4, 11.0],
+                }
+            ),
+            "l2",
+            pl.DataFrame({"id": [[1, 2], [2, 1], [3]]}),
+        ),
+    ],
+)
+def test_radius_ptwise(df, dist, res):
+    test = df.select(
+        pds.query_radius_ptwise("val1", "val2", "val3", dist="l2", r=0.3, index="id").alias("id")
+    ).explode("id")  # compare after explode
+    res = res.explode("id").select(pl.col("id").cast(pl.UInt32))
     assert_frame_equal(test, res)
 
 
@@ -1003,6 +1051,18 @@ def test_knn_filter(df, x, dist, k, res):
             4,
             "l2",
             pl.DataFrame({"nb_cnt": [2, 3, 3, 3, 2]}),  # A point is always its own neighbor
+        ),
+        (
+            pl.DataFrame(
+                {
+                    "x": [0.1, 0.2, 0.5, 0.9, 2.1],
+                    "y": [0.1, 0.3, 0.6, 1.1, 3.3],
+                    "z": [0.1, 0.4, 0.8, 1.2, 4.1],
+                }
+            ),
+            1.0,
+            "l1",
+            pl.DataFrame({"nb_cnt": [2, 3, 2, 1, 1]}),
         ),
     ],
 )

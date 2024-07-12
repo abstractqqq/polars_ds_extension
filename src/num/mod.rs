@@ -1,4 +1,4 @@
-use kdtree::distance::squared_euclidean;
+use ndarray::ArrayView1;
 use num::Float;
 use polars::error::{PolarsError, PolarsResult};
 
@@ -21,48 +21,18 @@ mod tp_fp;
 mod trapz;
 mod woe_iv;
 
-// Collection of distances, most will be used as function pointers in kd tree related queries,
-// which may be bad for perf.
-
-// Are these fast? Try with PULP?
+// Collection of other distances
 
 #[inline]
-pub fn l_inf_dist<T: Float>(a: &[T], b: &[T]) -> T {
-    debug_assert_eq!(a.len(), b.len());
-    a.iter()
-        .zip(b.iter())
-        .fold(T::zero(), |acc, (x, y)| acc.max((*x - *y).abs()))
-}
-
-// L2 distance, with square root. Most of the times, this is not needed
-#[inline]
-pub fn l2_dist<T: Float>(a: &[T], b: &[T]) -> T {
-    debug_assert_eq!(a.len(), b.len());
-    a.iter()
-        .zip(b.iter())
-        .fold(T::zero(), |acc, (x, y)| acc + (*x - *y) * (*x - *y))
-        .sqrt()
-}
-
-#[inline]
-pub fn l1_dist<T: Float>(a: &[T], b: &[T]) -> T {
-    debug_assert_eq!(a.len(), b.len());
-    a.iter()
-        .zip(b.iter())
-        .fold(T::zero(), |acc, (x, y)| acc + (*x - *y).abs())
-}
-
-#[inline]
-pub fn cosine_dist<T: Float>(a: &[T], b: &[T]) -> T {
+pub fn cosine_dist<T: Float + 'static>(a: &[T], b: &[T]) -> T {
     debug_assert_eq!(a.len(), b.len());
 
-    let a_norm = a.iter().fold(T::zero(), |acc, x| acc + *x * *x);
-    let b_norm = b.iter().fold(T::zero(), |acc, x| acc + *x * *x);
-    let out = a
-        .iter()
-        .zip(b.iter())
-        .fold(T::zero(), |acc, (x, y)| acc + *x * *y);
-    T::one() - out / (a_norm * b_norm).sqrt()
+    let a = ArrayView1::from(a);
+    let b = ArrayView1::from(b);
+
+    let a_norm = a.dot(&a);
+    let b_norm = b.dot(&b);
+    T::one() - (a.dot(&b)) / (a_norm * b_norm).sqrt()
 }
 
 #[inline]
@@ -85,28 +55,4 @@ fn haversine_elementwise<T: Float>(start_lat: T, start_long: T, end_lat: T, end_
 #[inline]
 pub fn haversine<T: Float>(start: &[T], end: &[T]) -> T {
     haversine_elementwise(start[0], start[1], end[0], end[1])
-}
-
-#[inline(always)]
-pub fn which_distance(metric: &str, dim: usize) -> PolarsResult<fn(&[f64], &[f64]) -> f64> {
-    match metric {
-        "l1" => Ok(l1_dist),
-        "l2" => Ok(squared_euclidean),
-        "inf" => Ok(l_inf_dist),
-        "h" | "haversine" => {
-            if dim == 2 {
-                Ok(haversine)
-            } else {
-                Err(
-                    PolarsError::ComputeError(
-                        "Haversine distance must take 2 columns as features, one for lat and one for long.".into()
-                    )
-                )
-            }
-        }
-        "cosine" => Ok(cosine_dist),
-        _ => Err(PolarsError::ComputeError(
-            "Distance string not recognized. Valid values are: l1, l2, inf, h, cosine.".into(),
-        )),
-    }
 }

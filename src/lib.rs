@@ -1,5 +1,6 @@
 #![feature(float_gamma)]
 
+mod arkadia;
 mod graph;
 mod num;
 mod stats;
@@ -7,13 +8,6 @@ mod stats_utils;
 mod str2;
 mod utils;
 use pyo3::{pymodule, types::PyModule, Bound, PyResult, Python};
-
-#[cfg(target_os = "linux")]
-use jemallocator::Jemalloc;
-
-#[global_allocator]
-#[cfg(target_os = "linux")]
-static ALLOC: Jemalloc = Jemalloc;
 
 #[pymodule]
 #[pyo3(name = "_polars_ds")]

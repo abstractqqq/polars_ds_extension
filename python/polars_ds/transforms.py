@@ -428,7 +428,7 @@ def woe_encode(
     if _IS_POLARS_V1:
         exprs = [
             # c[0] will be a series of struct because of the implode above.
-            pl.col(c.name).replace(
+            pl.col(c.name).replace_strict(
                 old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default
             )
             for c in temp.get_columns()
