@@ -14,9 +14,9 @@ __all__ = [
     "query_pca",
     "query_principal_components",
     "query_knn_ptwise",
-    "query_knn_filter",
     "query_knn_entropy",
-    "query_within_dist_from",
+    "within_dist_from",
+    "is_knn_from",
     "query_radius_ptwise",
     "query_nb_cnt",
     "query_approx_entropy",
@@ -332,7 +332,7 @@ def query_knn_ptwise(
         )
 
 
-def query_within_dist_from(
+def within_dist_from(
     *features: StrOrExpr,
     pt: Iterable[float],
     r: Union[float, pl.Expr],
@@ -393,6 +393,77 @@ def query_within_dist_from(
         y_long = pl.lit(pt_as_list[1], dtype=pl.Float64)
         dist = haversine(oth[0], oth[1], y_lat, y_long)
         return dist <= r
+    else:
+        raise ValueError(f"Unknown distance function: {dist}")
+
+
+def is_knn_from(
+    *features: StrOrExpr,
+    pt: Iterable[float],
+    k: int,
+    dist: Distance = "l2",
+) -> pl.Expr:
+    """
+    Returns a boolean column that returns points that are k nearest neighbors from the point.
+
+    Parameters
+    ----------
+    *features : str | pl.Expr
+        Other columns used as features
+    pt : Iterable[float]
+        The point, at which we filter using the radius.
+    k : int
+        k nearest neighbor
+    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
+        Note `l2` is actually squared `l2` for computational efficiency.
+    """
+    # For a single point, it is faster to just do it in native polars
+    oth = [str_to_expr(x) for x in features]
+    if len(pt) != len(oth):
+        raise ValueError("Dimension does not match.")
+
+    if dist == "l1":
+        return (
+            pl.sum_horizontal(
+                (e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth)
+            ).rank(method="min")
+            <= k
+        )
+    elif dist == "l2":
+        return (
+            pl.sum_horizontal(
+                (e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(pt, oth)
+            ).rank(method="min")
+            <= k
+        )
+    elif dist == "inf":
+        return (
+            pl.max_horizontal(
+                (e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth)
+            ).rank(method="min")
+            <= k
+        )
+    elif dist == "cosine":
+        x_list = list(pt)
+        x_norm = sum(z * z for z in x_list)
+        oth_norm = pl.sum_horizontal(e * e for e in oth)
+        dist = (
+            1.0
+            - pl.sum_horizontal(xi * e for xi, e in zip(x_list, oth)) / (x_norm * oth_norm).sqrt()
+        )
+        return dist.rank(method="min") <= k
+    elif dist in ("h", "haversine"):
+        pt_as_list = list(pt)
+        if (len(pt_as_list) != 2) or (len(oth) < 2):
+            raise ValueError(
+                "For Haversine distance, input x must have dimension 2 and 2 other columns"
+                " must be provided as lat and long."
+            )
+
+        y_lat = pl.lit(pt_as_list[0], dtype=pl.Float64)
+        y_long = pl.lit(pt_as_list[1], dtype=pl.Float64)
+        dist = haversine(oth[0], oth[1], y_lat, y_long)
+        return dist.rank(method="min") <= k
     else:
         raise ValueError(f"Unknown distance function: {dist}")
 
@@ -493,50 +564,6 @@ def query_nb_cnt(
             "leaf_size": 32,  # useless now
             "metric": dist,
             "parallel": parallel,
-            "skip_eval": False,
-            "skip_data": False,
-        },
-        is_elementwise=True,
-    )
-
-
-def query_knn_filter(
-    *features: StrOrExpr,
-    pt: Union[List[float], "np.ndarray", pl.Series],  # noqa: F821
-    k: int,
-    dist: Distance = "l2",
-) -> pl.Expr:
-    """
-    Returns a boolean filter that is only true for the k neraest neighbors to this point.
-
-    Note that this internally builds a kd-tree for fast querying and deallocates it once we
-    are done. If you need to repeatedly run the same query on the same data, then it is not
-    ideal to use this. A specialized external kd-tree structure would be better in that case.
-
-    Parameters
-    ----------
-    *features : str | pl.Expr
-        Columns used as features
-    pt : Iterable[float]
-        The point. It must be of the same length as the number of columns in `others`.
-    k : int, > 0
-        Number of neighbors to query
-    dist : Literal[`l1`, `l2`, `inf`, `cosine`]
-        Note `l2` is actually squared `l2` for computational efficiency.
-    """
-    if k <= 0:
-        raise ValueError("Input `k` should be strictly positive.")
-
-    p = pt if isinstance(pt, pl.Series) else pl.Series(values=pt)
-    metric = str(dist).lower()  # replace l2 by sql2 to make things slightly faster
-    return pl_plugin(
-        symbol="pl_knn_filter",
-        args=[pl.lit(p.cast(pl.Float64))] + [str_to_expr(x) for x in features],
-        kwargs={
-            "k": k,
-            "leaf_size": 32,
-            "metric": "sql2" if metric == "l2" else metric,
-            "parallel": False,
             "skip_eval": False,
             "skip_data": False,
         },

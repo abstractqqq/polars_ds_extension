@@ -1010,9 +1010,9 @@ def test_knn_ptwise_skip():
         ),
     ],
 )
-def test_knn_filter(df, x, dist, k, res):
+def test_is_knn_from(df, x, dist, k, res):
     test = df.filter(
-        pds.query_knn_filter(pl.col("val1"), pl.col("val2"), pl.col("val3"), pt=x, dist=dist, k=k)
+        pds.is_knn_from(pl.col("val1"), pl.col("val2"), pl.col("val3"), pt=x, dist=dist, k=k)
     ).select(pl.col("id"))
 
     assert_frame_equal(test, res)

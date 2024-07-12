@@ -477,38 +477,6 @@ fn pl_query_radius_ptwise(
     Ok(ca.into_series())
 }
 
-/// Find all rows that are the k-nearest neighbors to the point given.
-/// Note, only k points will be returned as true, because here the point is considered an "outside" point,
-/// not a point in the data.
-#[polars_expr(output_type=Boolean)]
-fn pl_knn_filter(inputs: &[Series], kwargs: KDTKwargs) -> PolarsResult<Series> {
-    // Set up params
-    let k = kwargs.k;
-    let nrows = inputs[1].len();
-
-    let pt = inputs[0].f64().unwrap();
-    let p = pt.cont_slice()?;
-    let data = series_to_ndarray(&inputs[1..], IndexOrder::C)?;
-
-    let binding = data.view();
-    let mut leaves = matrix_to_leaves_w_row_num(&binding);
-
-    let kdt = match dist_from_str(kwargs.metric.as_ref()) {
-        Ok(d) => AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d),
-        Err(e) => Err(e)
-    }.map_err(|err| PolarsError::ComputeError(err.into()))?;
-
-    let neighbors = kdt.knn(k, p, 0.)
-        .map(|v| v.into_iter().map(|nb| nb.to_item()).collect::<Vec<usize>>());
-    
-    let mut out: Vec<bool> = vec![false; nrows];
-    if let Some(v) = neighbors {
-        for i in v.into_iter() {
-            out[i] = true;
-        }
-    }
-    Ok(BooleanChunked::from_slice("", &out).into_series())
-}
 
 #[inline]
 pub fn query_nb_cnt<'a, Kdt>(
