@@ -423,26 +423,16 @@ def is_knn_from(
         raise ValueError("Dimension does not match.")
 
     if dist == "l1":
-        return (
-            pl.sum_horizontal(
-                (e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth)
-            ).rank(method="min")
-            <= k
-        )
+        dist = pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
+        return dist <= dist.bottom_k(k=k).max()
     elif dist == "l2":
-        return (
-            pl.sum_horizontal(
-                (e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(pt, oth)
-            ).rank(method="min")
-            <= k
+        dist = pl.sum_horizontal(
+            (e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(pt, oth)
         )
+        return dist <= dist.bottom_k(k=k).max()
     elif dist == "inf":
-        return (
-            pl.max_horizontal(
-                (e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth)
-            ).rank(method="min")
-            <= k
-        )
+        dist = pl.max_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
+        return dist <= dist.bottom_k(k=k).max()
     elif dist == "cosine":
         x_list = list(pt)
         x_norm = sum(z * z for z in x_list)
@@ -451,7 +441,7 @@ def is_knn_from(
             1.0
             - pl.sum_horizontal(xi * e for xi, e in zip(x_list, oth)) / (x_norm * oth_norm).sqrt()
         )
-        return dist.rank(method="min") <= k
+        return dist <= dist.bottom_k(k=k).max()
     elif dist in ("h", "haversine"):
         pt_as_list = list(pt)
         if (len(pt_as_list) != 2) or (len(oth) < 2):
@@ -463,7 +453,7 @@ def is_knn_from(
         y_lat = pl.lit(pt_as_list[0], dtype=pl.Float64)
         y_long = pl.lit(pt_as_list[1], dtype=pl.Float64)
         dist = haversine(oth[0], oth[1], y_lat, y_long)
-        return dist.rank(method="min") <= k
+        return dist <= dist.bottom_k(k=k).max()
     else:
         raise ValueError(f"Unknown distance function: {dist}")
 
