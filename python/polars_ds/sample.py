@@ -1,6 +1,7 @@
 import polars as pl
 import random
 import math
+from .type_alias import PolarsFrame
 from typing import Union, Optional, List, Tuple
 from itertools import combinations, islice
 
@@ -20,9 +21,7 @@ def _sampler_expr(value: Union[float, int], seed: Optional[int] = None) -> pl.Ex
         raise ValueError("Sample value must be either int or float.")
 
 
-def sample(
-    df: Union[pl.DataFrame, pl.LazyFrame], value: Union[float, int], seed: Optional[int] = None
-) -> pl.DataFrame:
+def sample(df: PolarsFrame, value: Union[float, int], seed: Optional[int] = None) -> pl.DataFrame:
     """
     Samples the dataframe.
 
@@ -40,7 +39,7 @@ def sample(
 
 
 def volume_neutral(
-    df: Union[pl.DataFrame, pl.LazyFrame],
+    df: PolarsFrame,
     by: pl.Expr,
     control: Optional[Union[pl.Expr, List[pl.Expr]]] = None,
     target_volume: Optional[int] = None,
@@ -88,8 +87,8 @@ def volume_neutral(
 
 
 def downsample(
-    df: Union[pl.DataFrame, pl.LazyFrame],
-    conditions: Union[Tuple[pl.Expr, Union[float, int]], List[Tuple[pl.Expr, Union[float, int]]]],
+    df: PolarsFrame,
+    *conditions: Tuple[pl.Expr, Union[float, int]],
     seed: Optional[int] = None,
 ) -> pl.DataFrame:
     """
@@ -100,8 +99,9 @@ def downsample(
     df
         Either a lazy or eager Polars dataframe
     conditions
-        Either a Tuple[pl.Expr, float|int] or a list of such tuples. The first entry in the tuple should be a
-        boolean expression and the second entry means we sample either n or x% on the part where the boolean is true.
+        Tuple[pl.Expr, float|int] or a sequence of such tuples as positional arguments.
+        The first entry in the tuple should be a boolean expression and the second entry means we sample
+        either n or x% on the part where the boolean is true.
     seed
         A random seed
 
@@ -142,17 +142,12 @@ def downsample(
     >>>     [(pl.col("y").is_between(1, 2, closed="both"), 0.5)]
     >>> )
     """
-    if isinstance(conditions, Tuple):
-        all_conds = [conditions]
-    else:
-        all_conds = conditions
-
-    all_filters = ((_sampler_expr(r, seed).over(c) | (~c)) for c, r in all_conds)
+    all_filters = ((_sampler_expr(r, seed).over(c) | (~c)) for c, r in conditions)
     return df.lazy().filter(pl.lit(True).and_(*all_filters)).collect()
 
 
 def random_cols(
-    df: Union[pl.DataFrame, pl.LazyFrame],
+    df: PolarsFrame,
     k: int,
     keep: Optional[List[str]] = None,
     seed: Optional[int] = None,

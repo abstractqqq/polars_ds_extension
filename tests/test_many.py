@@ -1194,37 +1194,37 @@ def test_psi_discrete(df, res):
     assert np.isclose(ans, res)
 
 
-@pytest.mark.parametrize(
-    "df, target, path, cost",
-    [
-        # It is easier to provide a frame that needs to be exploded by
-        (
-            pl.DataFrame(
-                {
-                    "id": range(5),
-                    "conn": [[1, 2, 3, 4], [2, 3], [4], [0, 1, 2], [1]],
-                    "cost": [[0.4, 0.3, 0.2, 0.1], [0.1, 1.0], [0.5], [0.1, 0.1, 0.1], [0.1]],
-                }
-            ).with_columns(
-                pl.col("id").cast(pl.UInt32), pl.col("conn").list.eval(pl.element().cast(pl.UInt32))
-            ),
-            1,
-            [[4, 1], [], [4, 1], [1], [1]],
-            [0.2, 0.0, 0.6, 0.1, 0.1],
-        ),
-    ],
-)
-def test_shortest_dist(df, target, path, cost):
-    df = df.explode([pl.col("conn"), pl.col("cost")])
+# @pytest.mark.parametrize(
+#     "df, target, path, cost",
+#     [
+#         # It is easier to provide a frame that needs to be exploded by
+#         (
+#             pl.DataFrame(
+#                 {
+#                     "id": range(5),
+#                     "conn": [[1, 2, 3, 4], [2, 3], [4], [0, 1, 2], [1]],
+#                     "cost": [[0.4, 0.3, 0.2, 0.1], [0.1, 1.0], [0.5], [0.1, 0.1, 0.1], [0.1]],
+#                 }
+#             ).with_columns(
+#                 pl.col("id").cast(pl.UInt32), pl.col("conn").list.eval(pl.element().cast(pl.UInt32))
+#             ),
+#             1,
+#             [[4, 1], [], [4, 1], [1], [1]],
+#             [0.2, 0.0, 0.6, 0.1, 0.1],
+#         ),
+#     ],
+# )
+# def test_shortest_dist(df, target, path, cost):
+#     df = df.explode([pl.col("conn"), pl.col("cost")])
 
-    res = (
-        df.select(pds.query_shortest_path("id", "conn", target=target, cost="cost").alias("path"))
-        .unnest("path")
-        .sort("id")
-    )
+#     res = (
+#         df.select(pds.query_shortest_path("id", "conn", target=target, cost="cost").alias("path"))
+#         .unnest("path")
+#         .sort("id")
+#     )
 
-    for p, ans in zip(res["path"], path):
-        assert list(p) == ans
+#     for p, ans in zip(res["path"], path):
+#         assert list(p) == ans
 
-    for c, ans in zip(res["cost"], cost):
-        assert c == ans
+#     for c, ans in zip(res["cost"], cost):
+#         assert c == ans

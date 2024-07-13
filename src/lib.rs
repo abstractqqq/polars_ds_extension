@@ -1,7 +1,6 @@
 #![feature(float_gamma)]
 
 mod arkadia;
-mod graph;
 mod num;
 mod stats;
 mod stats_utils;
