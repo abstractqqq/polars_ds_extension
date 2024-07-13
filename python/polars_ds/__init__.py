@@ -4,7 +4,6 @@ from typing import Optional
 from .type_alias import str_to_expr, StrOrExpr
 
 from polars_ds.num import *  # noqa: F403
-from polars_ds.graph import *  # noqa: F403
 from polars_ds.metrics import *  # noqa: F403
 from polars_ds.stats import *  # noqa: F403
 from polars_ds.string import *  # noqa: F403

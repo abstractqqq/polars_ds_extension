@@ -41,46 +41,6 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
     Ok(out.into_series())
 }
 
-#[polars_expr(output_type=Int32)]
-fn pl_rand_int_w_ref(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
-    let reference = &inputs[0];
-    let low = inputs[1].i32()?;
-    let high = inputs[2].i32()?;
-
-    let respect_null = kwargs.respect_null;
-    let seed = kwargs.seed;
-
-    let (mut low, mut high) = (low.get(0).unwrap_or(0), high.get(0).unwrap_or(10));
-    if high == low {
-        return Err(PolarsError::ComputeError(
-            "Sample: Low and high must be different values.".into(),
-        ));
-    } else if high < low {
-        std::mem::swap(&mut low, &mut high);
-    }
-
-    let n = reference.len();
-    let dist = Uniform::new(low, high);
-    let mut rng = if let Some(s) = seed {
-        StdRng::seed_from_u64(s)
-    } else {
-        StdRng::from_entropy()
-    };
-    if respect_null && reference.has_validity() {
-        let ca = reference.is_null();
-        let out: Int32Chunked = ca.apply_generic(|x| {
-            if x.unwrap_or(true) {
-                None
-            } else {
-                Some(rng.sample(dist))
-            }
-        });
-        Ok(out.into_series())
-    } else {
-        let out = Int32Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(n));
-        Ok(out.into_series())
-    }
-}
 
 #[polars_expr(output_type=UInt64)]
 fn pl_rand_binomial(inputs: &[Series]) -> PolarsResult<Series> {
@@ -101,41 +61,6 @@ fn pl_rand_binomial(inputs: &[Series]) -> PolarsResult<Series> {
     };
     let out = UInt64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(len));
     Ok(out.into_series())
-}
-
-#[polars_expr(output_type=UInt64)]
-fn pl_rand_binomial_w_ref(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
-    let reference = &inputs[0];
-    let n = inputs[1].u32()?;
-    let n = n.get(0).unwrap();
-    let p = inputs[2].f64()?;
-    let p = p.get(0).unwrap();
-
-    let m = reference.len();
-    let respect_null = kwargs.respect_null;
-    let seed = kwargs.seed;
-
-    let dist =
-        Binomial::new(n.into(), p).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
-    let mut rng = if let Some(s) = seed {
-        StdRng::seed_from_u64(s)
-    } else {
-        StdRng::from_entropy()
-    };
-    if respect_null && reference.has_validity() {
-        let ca = reference.is_null();
-        let out: UInt64Chunked = ca.apply_generic(|x| {
-            if x.unwrap_or(true) {
-                None
-            } else {
-                Some(rng.sample(dist))
-            }
-        });
-        Ok(out.into_series())
-    } else {
-        let out = UInt64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(m));
-        Ok(out.into_series())
-    }
 }
 
 #[polars_expr(output_type=Float64)]
@@ -163,55 +88,6 @@ fn pl_rand_exp(inputs: &[Series]) -> PolarsResult<Series> {
 }
 
 #[polars_expr(output_type=Float64)]
-fn pl_rand_exp_w_ref(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
-    let reference = &inputs[0];
-    let lambda = inputs[1].f64()?;
-    let lambda = lambda.get(0).unwrap();
-    let m = reference.len();
-
-    let respect_null = kwargs.respect_null;
-    let seed = kwargs.seed;
-
-    let mut rng = if let Some(s) = seed {
-        StdRng::seed_from_u64(s)
-    } else {
-        StdRng::from_entropy()
-    };
-    if lambda == 1.0 {
-        if respect_null && reference.has_validity() {
-            let ca = reference.is_null();
-            let out: Float64Chunked = ca.apply_generic(|x| {
-                if x.unwrap_or(true) {
-                    None
-                } else {
-                    Some(rng.sample(Exp1))
-                }
-            });
-            Ok(out.into_series())
-        } else {
-            let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(Exp1).take(m));
-            Ok(out.into_series())
-        }
-    } else {
-        let dist = Exp::new(lambda).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
-        if respect_null && reference.has_validity() {
-            let ca = reference.is_null();
-            let out: Float64Chunked = ca.apply_generic(|x| {
-                if x.unwrap_or(true) {
-                    None
-                } else {
-                    Some(rng.sample(dist))
-                }
-            });
-            Ok(out.into_series())
-        } else {
-            let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(m));
-            Ok(out.into_series())
-        }
-    }
-}
-
-#[polars_expr(output_type=Float64)]
 fn pl_random(inputs: &[Series]) -> PolarsResult<Series> {
     let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
     let len = len.get(0).unwrap() as usize;
@@ -229,56 +105,6 @@ fn pl_random(inputs: &[Series]) -> PolarsResult<Series> {
     };
     let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(len));
     Ok(out.into_series())
-}
-
-#[polars_expr(output_type=Float64)]
-fn pl_rand_uniform_w_ref(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
-    let reference = &inputs[0];
-    let low = inputs[1].f64()?;
-    let mut low = low.get(0).unwrap();
-    let high = inputs[2].f64()?;
-    let mut high = high.get(0).unwrap();
-
-    let respect_null = kwargs.respect_null;
-    let seed = kwargs.seed;
-
-    let n = reference.len();
-    let valid = low.is_finite() && high.is_finite();
-    if !valid {
-        return Err(PolarsError::ComputeError(
-            "Sample: Low and high must be finite.".into(),
-        ));
-    }
-    if high == low {
-        return Err(PolarsError::ComputeError(
-            "Sample: Low and high must be different values.".into(),
-        ));
-    } else if high < low {
-        std::mem::swap(&mut low, &mut high);
-    }
-
-    let dist = Uniform::new(low, high);
-    let mut rng = if let Some(s) = seed {
-        StdRng::seed_from_u64(s)
-    } else {
-        StdRng::from_entropy()
-    };
-    if respect_null && reference.has_validity() {
-        // Create a dummy. I just need to access the apply_nonnull_values_generic method
-        // on chunked arrays.
-        let ca = reference.is_null();
-        let out: Float64Chunked = ca.apply_generic(|x| {
-            if x.unwrap_or(true) {
-                None
-            } else {
-                Some(dist.sample(&mut rng))
-            }
-        });
-        Ok(out.into_series())
-    } else {
-        let out = Float64Chunked::from_iter_values("", dist.sample_iter(&mut rng).take(n));
-        Ok(out.into_series())
-    }
 }
 
 // Perturb and Jitter respect float type. Unlike others which default to f64
@@ -376,66 +202,6 @@ fn pl_rand_normal(inputs: &[Series]) -> PolarsResult<Series> {
 }
 
 #[polars_expr(output_type=Float64)]
-fn pl_rand_normal_w_ref(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
-    let reference = &inputs[0];
-    let mean = inputs[1].f64()?;
-    let mean = mean.get(0).unwrap_or(0.);
-    let std_ = inputs[2].f64()?;
-    let std_ = std_.get(0).unwrap_or(1.);
-
-    let n = reference.len();
-    let respect_null = kwargs.respect_null;
-    let seed = kwargs.seed;
-
-    let valid = mean.is_finite() && std_.is_finite();
-    if !valid {
-        return Err(PolarsError::ComputeError(
-            "Sample: Mean and std must be finite.".into(),
-        ));
-    }
-    let mut rng = if let Some(s) = seed {
-        StdRng::seed_from_u64(s)
-    } else {
-        StdRng::from_entropy()
-    };
-    // Standard Normal, use the more optimized version
-    if mean == 0. && std_ == 1. {
-        let dist = StandardNormal;
-        if respect_null && reference.has_validity() {
-            let ca = reference.is_null();
-            let out: Float64Chunked = ca.apply_generic(|x| {
-                if x.unwrap_or(true) {
-                    None
-                } else {
-                    Some(rng.sample(dist))
-                }
-            });
-            Ok(out.into_series())
-        } else {
-            let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(n));
-            Ok(out.into_series())
-        }
-    } else {
-        // Guaranteed that std is finite
-        let dist = Normal::new(mean, std_).unwrap();
-        if respect_null && reference.has_validity() {
-            let ca = reference.is_null();
-            let out: Float64Chunked = ca.apply_generic(|x| {
-                if x.unwrap_or(true) {
-                    None
-                } else {
-                    Some(rng.sample(dist))
-                }
-            });
-            Ok(out.into_series())
-        } else {
-            let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(n));
-            Ok(out.into_series())
-        }
-    }
-}
-
-#[polars_expr(output_type=Float64)]
 fn pl_rand_str(inputs: &[Series]) -> PolarsResult<Series> {
     let len = inputs[0].u32()?;
     let len = len.get(0).unwrap() as usize;
@@ -459,46 +225,4 @@ fn pl_rand_str(inputs: &[Series]) -> PolarsResult<Series> {
     });
     let out = StringChunked::from_iter_values("", sample);
     Ok(out.into_series())
-}
-
-#[polars_expr(output_type=String)]
-fn pl_rand_str_w_ref(inputs: &[Series], kwargs: SampleKwargs) -> PolarsResult<Series> {
-    let reference = &inputs[0];
-    let min_size = inputs[1].u32()?;
-    let mut min_size = min_size.get(0).unwrap() as usize;
-    let max_size = inputs[2].u32()?;
-    let mut max_size = max_size.get(0).unwrap() as usize;
-
-    let n = reference.len();
-    let respect_null = kwargs.respect_null;
-    let seed = kwargs.seed;
-
-    if min_size > max_size {
-        std::mem::swap(&mut min_size, &mut max_size);
-    }
-    let uniform = Uniform::new_inclusive(min_size, max_size);
-    let mut rng = if let Some(s) = seed {
-        StdRng::seed_from_u64(s)
-    } else {
-        StdRng::from_entropy()
-    };
-    if respect_null && reference.has_validity() {
-        let ca = reference.is_null();
-        let out: StringChunked = ca.apply_generic(|x| {
-            if x.unwrap_or(true) {
-                None
-            } else {
-                let length = rng.sample(uniform);
-                Some(Alphanumeric.sample_string(&mut rng, length))
-            }
-        });
-        Ok(out.into_series())
-    } else {
-        let sample = (0..n).map(|_| {
-            let length = rng.sample(uniform);
-            Alphanumeric.sample_string(&mut rng, length)
-        });
-        let out = StringChunked::from_iter_values("", sample);
-        Ok(out.into_series())
-    }
 }
