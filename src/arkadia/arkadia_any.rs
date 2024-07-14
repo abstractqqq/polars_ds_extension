@@ -1,4 +1,4 @@
-/// L1 and Linf distance KdTrees
+/// KDT with any distance metric. L1, L2, SQL2 and LINF are included already.
 use crate::arkadia::{leaf::KdLeaf, suggest_capacity, Leaf, SplitMethod, KDTQ, NB};
 use num::Float;
 

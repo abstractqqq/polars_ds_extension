@@ -12,7 +12,7 @@ from .type_alias import (
     SimpleScaleMethod,
     ExprTransform,
     StrOrExpr,
-    RollingInterpolationMethod,
+    QuantileMethod,
 )
 from . import num as pds_num
 from ._utils import _IS_POLARS_V1
@@ -194,7 +194,7 @@ def robust_scale(
     cols: List[str],
     q1: float = 0.25,
     q2: float = 0.75,
-    method: RollingInterpolationMethod = "midpoint",
+    method: QuantileMethod = "midpoint",
 ) -> ExprTransform:
     """
     Like min-max scaling, but scales each column by the quantile value at q1 and q2.
@@ -233,7 +233,7 @@ def winsorize(
     cols: List[str],
     lower: float = 0.05,
     upper: float = 0.95,
-    method: RollingInterpolationMethod = "nearest",
+    method: QuantileMethod = "nearest",
 ) -> ExprTransform:
     """
     Learns the lower and upper percentile from the columns, then clip each end at those values.

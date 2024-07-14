@@ -1,19 +1,20 @@
 import polars.selectors as cs
 import polars as pl
+import graphviz
 import logging
 import plotly.express as px
 import plotly.graph_objects as go
 from typing import Union, List, Optional, Iterable
 from functools import lru_cache
 from itertools import combinations
+from great_tables import GT, nanoplot_options
+from polars.type_aliases import IntoExpr
+
 from .num import query_cond_entropy, query_principal_components, query_lstsq_report
 from .type_alias import CorrMethod
 from .stats import corr
 from ._utils import _IS_POLARS_V1
 from .sample import sample
-import graphviz
-from great_tables import GT, nanoplot_options
-from polars.type_aliases import IntoExpr
 
 logger = logging.getLogger(__name__)
 

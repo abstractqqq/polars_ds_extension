@@ -1,14 +1,7 @@
 from __future__ import annotations
 import polars as pl
 import math
-from .type_alias import (
-    Alternative,
-    str_to_expr,
-    StrOrExpr,
-    CorrMethod,
-    Noise,
-    RollingInterpolationMethod,
-)
+from .type_alias import Alternative, str_to_expr, StrOrExpr, CorrMethod, Noise, QuantileMethod
 from typing import Optional, Union
 from ._utils import pl_plugin
 
@@ -570,7 +563,7 @@ def winsorize(
     x: StrOrExpr,
     lower: float = 0.05,
     upper: float = 0.95,
-    method: RollingInterpolationMethod = "nearest",
+    method: QuantileMethod = "nearest",
 ) -> pl.Expr:
     """
     Winsorize the data by clipping by percentiles at the lower and upper ends.

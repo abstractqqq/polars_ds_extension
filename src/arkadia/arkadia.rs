@@ -1,3 +1,4 @@
+/// Norm cached KDT
 use crate::arkadia::{
     leaf::{KdLeaf, LeafWithNorm},
     suggest_capacity, SplitMethod, KDTQ, NB,
@@ -466,9 +467,9 @@ mod tests {
     use ndarray::{arr1, Array2, ArrayView2};
 
     pub fn squared_l2<T: Float + 'static>(a: &[T], b: &[T]) -> T {
-        a.iter().zip(b.iter()).fold(
-            T::zero(), |acc, (&a, &b)| acc + (a - b) * (a - b)
-        )
+        a.iter()
+            .zip(b.iter())
+            .fold(T::zero(), |acc, (&a, &b)| acc + (a - b) * (a - b))
     }
 
     fn random_10d_rows() -> [f64; 10] {
@@ -631,8 +632,7 @@ mod tests {
         let mat = mat.as_standard_layout().to_owned();
         let point = arr1(&[0.5; 10]);
         // brute force test
-        let (_, ans_distances) =
-            generate_test_answer(mat.view(), point.view(), squared_l2::<f64>);
+        let (_, ans_distances) = generate_test_answer(mat.view(), point.view(), squared_l2::<f64>);
 
         let bound: f64 = 0.29; // usually random data will give min dist ~ 0.24, 0.25
         let idx = ans_distances.partition_point(|d| d < &bound);

@@ -18,9 +18,9 @@ pub mod leaf;
 pub mod neighbor;
 pub mod utils;
 
-pub use leaf::{KdLeaf, Leaf, LeafWithNorm};
-pub use arkadia_any::{AnyKDT, DIST};
 pub use arkadia::KDT;
+pub use arkadia_any::{AnyKDT, DIST};
+pub use leaf::{KdLeaf, Leaf, LeafWithNorm};
 pub use neighbor::NB;
 pub use utils::{
     matrix_to_empty_leaves, matrix_to_empty_leaves_w_norm, matrix_to_leaves,

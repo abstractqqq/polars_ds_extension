@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Literal, Union, List, Callable
-from polars.type_aliases import RollingInterpolationMethod  # noqa: F401
 import sys
 import polars as pl
 
@@ -20,6 +19,8 @@ CorrMethod: TypeAlias = Literal["pearson", "spearman", "xi", "kendall", "bicor"]
 SimpleImputeMethod: TypeAlias = Literal["mean", "median", "mode"]
 SimpleScaleMethod: TypeAlias = Literal["min_max", "standard", "abs_max"]
 Noise: TypeAlias = Literal["gaussian", "uniform"]
+# Copy of Polars
+QuantileMethod: TypeAlias = Literal["nearest", "higher", "lower", "midpoint", "linear"]
 
 # Other Custom Types
 PolarsFrame: TypeAlias = Union[pl.DataFrame, pl.LazyFrame]

@@ -5,14 +5,10 @@
 // use crate::utils::get_common_float_dtype;
 use crate::{
     arkadia::{
-        KDT, AnyKDT, DIST,
-        matrix_to_empty_leaves, matrix_to_leaves, matrix_to_leaves_w_norm,
-        matrix_to_leaves_w_row_num, matrix_to_empty_leaves_w_norm,
-        Leaf, LeafWithNorm, SplitMethod, KDTQ,
+        matrix_to_empty_leaves, matrix_to_empty_leaves_w_norm, matrix_to_leaves,
+        matrix_to_leaves_w_norm, AnyKDT, Leaf, LeafWithNorm, SplitMethod, DIST, KDT, KDTQ,
     },
-    utils::{
-        list_u32_output, rechunk_to_frame, series_to_ndarray, series_to_ndarray_f32, split_offsets,
-    },
+    utils::{list_u32_output, series_to_ndarray, split_offsets},
 };
 
 use ndarray::{s, ArrayView2, Axis};
@@ -53,11 +49,6 @@ pub(crate) struct KDTRadiusKwargs {
     pub(crate) sort: bool,
 }
 
-pub fn build_knn_matrix_data(features: &[Series]) -> PolarsResult<ndarray::Array2<f64>> {
-    let data = rechunk_to_frame(features)?;
-    data.to_ndarray::<Float64Type>(IndexOrder::C)
-}
-
 pub fn matrix_to_leaves_filtered<'a, T: Float + 'static, A: Copy>(
     matrix: &'a ArrayView2<'a, T>,
     values: &'a [A],
@@ -90,7 +81,7 @@ pub fn dist_from_str<T: Float + 'static>(dist_str: &str) -> Result<DIST<T>, Stri
         "l1" => Ok(DIST::L1),
         "l2" => Ok(DIST::L2),
         "sql2" => Ok(DIST::SQL2),
-        "linf"|"inf" => Ok(DIST::LINF),
+        "linf" | "inf" => Ok(DIST::LINF),
         "cosine" => Ok(DIST::ANY(super::cosine_dist)),
         _ => Err("Unknown distance metric.".into()),
     }
@@ -386,7 +377,8 @@ fn pl_knn_ptwise_w_dist(
             }
         }
         Err(e) => Err(e),
-    }.map_err(|err| PolarsError::ComputeError(err.into()))?;
+    }
+    .map_err(|err| PolarsError::ComputeError(err.into()))?;
 
     let out = StructChunked::new("knn_dist", &[ca_nb.into_series(), ca_dist.into_series()])?;
     Ok(out.into_series())
@@ -473,10 +465,10 @@ fn pl_query_radius_ptwise(
             }
         }
         Err(e) => Err(e),
-    }.map_err(|err| PolarsError::ComputeError(err.into()))?;
+    }
+    .map_err(|err| PolarsError::ComputeError(err.into()))?;
     Ok(ca.into_series())
 }
-
 
 #[inline]
 pub fn query_nb_cnt<'a, Kdt>(
@@ -566,11 +558,7 @@ where
 /// For every point in this dataframe, find the number of neighbors within radius r
 /// The point itself is always considered as a neighbor to itself.
 #[polars_expr(output_type=UInt32)]
-fn pl_nb_cnt(
-    inputs: &[Series],
-    context: CallerContext,
-    kwargs: KDTKwargs,
-) -> PolarsResult<Series> {
+fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> PolarsResult<Series> {
     // Set up params
     // let leaf_size = kwargs.leaf_size;
     // Set up radius
@@ -596,9 +584,10 @@ fn pl_nb_cnt(
                     AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
                         .map(|tree| query_nb_cnt(tree, data.view(), r, can_parallel))
                 }
-            },
+            }
             Err(e) => Err(e),
-        }.map_err(|err| PolarsError::ComputeError(err.into()))?;
+        }
+        .map_err(|err| PolarsError::ComputeError(err.into()))?;
         Ok(ca.with_name("cnt").into_series())
     } else if radius.len() == nrows {
         let ca = match dist_from_str::<f64>(kwargs.metric.as_str()) {
@@ -613,9 +602,10 @@ fn pl_nb_cnt(
                     AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
                         .map(|tree| query_nb_cnt_w_radius(tree, data.view(), radius, can_parallel))
                 }
-            },
+            }
             Err(e) => Err(e),
-        }.map_err(|err| PolarsError::ComputeError(err.into()))?;
+        }
+        .map_err(|err| PolarsError::ComputeError(err.into()))?;
         Ok(ca.with_name("cnt").into_series())
     } else {
         Err(PolarsError::ShapeMismatch(

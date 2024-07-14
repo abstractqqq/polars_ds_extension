@@ -1,4 +1,4 @@
-use crate::utils::rechunk_to_frame;
+use crate::utils::{rechunk_to_frame, to_frame};
 /// OLS using Faer.
 use faer::{prelude::*, Side};
 use faer_ext::IntoFaer;
@@ -59,32 +59,29 @@ fn series_to_mat_for_lstsq(
     add_bias: bool,
     skip_null: bool,
 ) -> PolarsResult<(Array2<f64>, BooleanChunked)> {
-    let nrows = inputs[0].len();
-    // minus 1 because target is also in inputs
+    // minus 1 because target is also in inputs. Target is at position 0.
     let n_features = inputs.len().abs_diff(1);
-    // Create null mask
-    let mut has_null = inputs[0].has_validity();
-    let mut mask = inputs[0].is_not_null();
-    for s in inputs.iter() {
-        has_null |= s.has_validity();
-        mask = mask & s.is_not_null();
-    }
-    // Return a mask where true is kept (true means not null).
-
+    let has_null = inputs.iter().fold(false, |acc, s| acc | s.has_validity());
     if has_null && !skip_null {
         Err(PolarsError::ComputeError(
             "Lstsq: Data must not contain nulls when skip_null is False.".into(),
         ))
     } else {
-        let mut df = if add_bias {
-            let mut series_vec = inputs.to_vec(); // cheap copy
-            series_vec.push(Series::from_iter(std::iter::repeat(1f64).take(nrows)));
-            rechunk_to_frame(&series_vec)
+        let mut df = to_frame(inputs)?;
+        // Return a mask where true is kept (true means not null).
+        let mask = if has_null && skip_null {
+            let mask = inputs[0].is_not_null(); //0 always exist
+            let mask = inputs[1..]
+                .iter()
+                .fold(mask, |acc, s| acc & (s.is_not_null()));
+            df = df.filter(&mask).unwrap();
+            mask.clone()
         } else {
-            rechunk_to_frame(inputs)
-        }?;
-        if has_null && skip_null {
-            df = df.filter(&mask)?;
+            BooleanChunked::from_iter(std::iter::repeat(true).take(df.height()))
+        };
+
+        if add_bias {
+            df = df.lazy().with_column(lit(1f64)).collect().unwrap();
         }
         if df.height() < n_features {
             Err(PolarsError::ComputeError(
