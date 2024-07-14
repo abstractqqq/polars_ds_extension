@@ -31,6 +31,7 @@ approx = "*"
 ahash = ">=0.8.5"
 unicode-normalization = "0.1.23"
 
+
 [profile.release]
 codegen-units = 1
 strip = "symbols" 
