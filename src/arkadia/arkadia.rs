@@ -463,8 +463,13 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for KDT<'a, T, A> {
 mod tests {
     use super::super::matrix_to_leaves_w_norm;
     use super::*;
-    use kdtree::distance::squared_euclidean;
     use ndarray::{arr1, Array2, ArrayView2};
+
+    pub fn squared_l2<T: Float + 'static>(a: &[T], b: &[T]) -> T {
+        a.iter().zip(b.iter()).fold(
+            T::zero(), |acc, (&a, &b)| acc + (a - b) * (a - b)
+        )
+    }
 
     fn random_10d_rows() -> [f64; 10] {
         rand::random()
@@ -503,7 +508,7 @@ mod tests {
         let point = arr1(&[0.5; 10]);
         // brute force test
         let (ans_argmins, ans_distances) =
-            generate_test_answer(mat.view(), point.view(), squared_euclidean::<f64>);
+            generate_test_answer(mat.view(), point.view(), squared_l2::<f64>);
 
         let values = (0..rows).collect::<Vec<_>>();
         let binding = mat.view();
@@ -539,7 +544,7 @@ mod tests {
         let point = arr1(&[0.5; 10]);
         // brute force test
         let (ans_argmins, ans_distances) =
-            generate_test_answer(mat.view(), point.view(), squared_euclidean::<f64>);
+            generate_test_answer(mat.view(), point.view(), squared_l2::<f64>);
 
         let bound: f64 = 0.28; // usually random data will give min dist ~ 0.24, 0.25
         let idx = ans_distances.partition_point(|d| d < &bound);
@@ -584,7 +589,7 @@ mod tests {
         let point = arr1(&[0.5; 10]);
         // brute force test
         let (ans_argmins, ans_distances) =
-            generate_test_answer(mat.view(), point.view(), squared_euclidean::<f64>);
+            generate_test_answer(mat.view(), point.view(), squared_l2::<f64>);
 
         let bound: f64 = 0.29; // usually random data will give min dist ~ 0.24, 0.25
         let idx = ans_distances.partition_point(|d| d < &bound);
@@ -627,7 +632,7 @@ mod tests {
         let point = arr1(&[0.5; 10]);
         // brute force test
         let (_, ans_distances) =
-            generate_test_answer(mat.view(), point.view(), squared_euclidean::<f64>);
+            generate_test_answer(mat.view(), point.view(), squared_l2::<f64>);
 
         let bound: f64 = 0.29; // usually random data will give min dist ~ 0.24, 0.25
         let idx = ans_distances.partition_point(|d| d < &bound);
@@ -660,7 +665,7 @@ mod tests {
         let point = arr1(&[0.5; 10]);
         // brute force test
         let (ans_argmins, ans_distances) =
-            generate_test_answer(mat.view(), point.view(), squared_euclidean::<f64>);
+            generate_test_answer(mat.view(), point.view(), squared_l2::<f64>);
 
         let values = (0..rows).collect::<Vec<_>>();
         let binding = mat.view();
@@ -696,7 +701,7 @@ mod tests {
         let point = arr1(&[0.5; 10]);
         // brute force test
         let (ans_argmins, ans_distances) =
-            generate_test_answer(mat.view(), point.view(), squared_euclidean::<f64>);
+            generate_test_answer(mat.view(), point.view(), squared_l2::<f64>);
 
         let values = (0..rows).collect::<Vec<_>>();
         let binding = mat.view();
