@@ -1,4 +1,4 @@
-use crate::utils::{rechunk_to_frame, to_frame};
+use crate::utils::to_frame;
 /// OLS using Faer.
 use faer::{prelude::*, Side};
 use faer_ext::IntoFaer;
@@ -8,10 +8,26 @@ use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use serde::Deserialize;
 
+enum LRMethods {
+    Normal, // Normal. Normal Equation
+    L2,     // L2 regularized
+}
+
+impl From<String> for LRMethods {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "l2" => LRMethods::L2,
+            _ => LRMethods::Normal,
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub(crate) struct LstsqKwargs {
     pub(crate) bias: bool,
     pub(crate) skip_null: bool,
+    pub(crate) method: String,
+    pub(crate) lambda: f64,
 }
 
 fn report_output(_: &[Field]) -> PolarsResult<Field> {
@@ -39,17 +55,26 @@ fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 /// Returns the coefficients for lstsq as a nrows x 1 matrix
-/// The uses Cholesky decomposition as default method to compute inverse,
-/// and falls back to LU decomposition
-fn faer_cholesky_lstsq(x: MatRef<f64>, xt: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
-    let xtx = xt * x;
-    let inv = match xtx.cholesky(Side::Lower) {
-        Ok(cho) => cho.inverse(),
-        // Fall back to LU decomp
-        Err(_) => xtx.partial_piv_lu().inverse(),
-    };
-    let coeffs = inv * xt * y;
-    coeffs
+/// The uses QR (column pivot) decomposition as default method to compute inverse,
+/// Column Pivot QR is chosen to deal with rank deficient cases.
+#[inline(always)]
+fn faer_qr_lstsq(x: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
+    let qr = x.col_piv_qr();
+    qr.solve_lstsq(y)
+}
+
+/// Returns the coefficients for lstsq with l2 regularization as a nrows x 1 matrix
+/// This is currently slow. Using SVD might be faster.
+#[inline(always)]
+fn faer_qr_lstsq_l2(x: MatRef<f64>, y: MatRef<f64>, lambda: f64) -> Mat<f64> {
+    let xt = x.transpose();
+    let matrix = xt * x
+        + Mat::from_fn(x.ncols(), x.ncols(), |i, j| {
+            lambda * ((i == j) as u64) as f64
+        });
+    let qr = matrix.qr();
+    let inv = qr.inverse();
+    inv * xt * y
 }
 
 /// Returns a Array2 ready for linear regression, and a mask, indicating valid rows
@@ -98,17 +123,20 @@ fn series_to_mat_for_lstsq(
 fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
     let skip_null = kwargs.skip_null;
+    let method = LRMethods::from(kwargs.method);
     // Target y is at index 0
     match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
         Ok((mat, _)) => {
-            let nrows = mat.nrows();
-            let y = mat.slice(s![0..nrows, 0..1]);
+            let y = mat.slice(s![.., 0..1]);
             let y = y.view().into_faer();
-            let x = mat.slice(s![0..nrows, 1..]);
-            let xt = x.t().into_faer();
+            let x = mat.slice(s![.., 1..]);
             let x = x.view().into_faer();
+
             // Solving Least Square
-            let coeffs = faer_cholesky_lstsq(x, xt, y);
+            let coeffs = match method {
+                LRMethods::Normal => faer_qr_lstsq(x, y),
+                LRMethods::L2 => faer_qr_lstsq_l2(x, y, kwargs.lambda),
+            };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new("betas", 1, coeffs.nrows(), DataType::Float64);
 
@@ -124,19 +152,21 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
 fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
     let skip_null = kwargs.skip_null;
+    let method = LRMethods::from(kwargs.method);
     // Copy data
     // Target y is at index 0
     match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
         Ok((mat, mask)) => {
             // Mask = True indicates the the nulls that we skipped.
-            let nrows = mat.nrows();
-            let y = mat.slice(s![0..nrows, 0..1]);
+            let y = mat.slice(s![.., 0..1]);
             let y = y.view().into_faer();
-            let x = mat.slice(s![0..nrows, 1..]);
-            let xt = x.t().into_faer();
+            let x = mat.slice(s![.., 1..]);
             let x = x.view().into_faer();
             // Solving Least Square
-            let coeffs = faer_cholesky_lstsq(x, xt, y);
+            let coeffs = match method {
+                LRMethods::Normal => faer_qr_lstsq(x, y),
+                LRMethods::L2 => faer_qr_lstsq_l2(x, y, kwargs.lambda),
+            };
 
             let pred = x * &coeffs;
             let resid = y - &pred;
@@ -193,10 +223,8 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
             let x = x.view().into_faer();
             // Solving Least Square
             let xtx = xt * &x;
-            let xtx_inv = match xtx.cholesky(Side::Lower) {
-                Ok(cho) => cho.inverse(),
-                Err(_) => xtx.partial_piv_lu().inverse(),
-            };
+            let xtx_qr = xtx.col_piv_qr();
+            let xtx_inv = xtx_qr.inverse();
             let coeffs = &xtx_inv * xt * y;
             let betas = coeffs.col_as_slice(0);
             // Degree of Freedom

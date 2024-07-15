@@ -31,8 +31,10 @@ approx = "*"
 ahash = ">=0.8.5"
 unicode-normalization = "0.1.23"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }
 
 [profile.release]
 codegen-units = 1
 strip = "symbols" 
-# lto = "fat"
+lto = "fat"
