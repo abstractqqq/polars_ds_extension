@@ -20,6 +20,12 @@ pub fn rechunk_to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
     Ok(df)
 }
 
+// Rechunk series, rename then by the order, and return a PolarsResult<DataFrame>
+#[inline(always)]
+pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
+    DataFrame::new(inputs.to_vec())
+}
+
 #[inline(always)]
 pub fn series_to_ndarray(inputs: &[Series], order: IndexOrder) -> PolarsResult<Array2<f64>> {
     let df = DataFrame::new(inputs.to_vec())?;

@@ -41,7 +41,6 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
     Ok(out.into_series())
 }
 
-
 #[polars_expr(output_type=UInt64)]
 fn pl_rand_binomial(inputs: &[Series]) -> PolarsResult<Series> {
     let len = inputs[0].u32()?;

@@ -2,7 +2,15 @@ from __future__ import annotations
 import math
 import polars as pl
 from typing import Union, Optional, List, Iterable
-from .type_alias import DetrendMethod, Distance, ConvMode, ConvMethod, str_to_expr, StrOrExpr
+from .type_alias import (
+    DetrendMethod,
+    Distance,
+    ConvMode,
+    ConvMethod,
+    str_to_expr,
+    StrOrExpr,
+    LinearRegressionMethod,
+)
 from ._utils import pl_plugin
 
 __all__ = [
@@ -871,6 +879,8 @@ def query_lstsq(
     add_bias: bool = False,
     skip_null: bool = False,
     return_pred: bool = False,
+    method: LinearRegressionMethod = "normal",
+    lambda_: float = 0.0,
 ) -> pl.Expr:
     """
     Computes least squares solution to the equation Ax = y where y is the target.
@@ -881,10 +891,8 @@ def query_lstsq(
     If add_bias is true, it will be the last coefficient in the output
     and output will have len(variables) + 1.
 
-    Note: if columns are not linearly independent, some numerical issue may occur. E.g
-    you may see unrealistic coefficients in the output. It is possible to have
-    `silent` numerical issue during computation. Also note that if any input column contains null,
-    NaNs will be returned.
+    Note: if using bias and regularization, the bias term will also be regularized. This might be
+    changed in the future.
 
     Parameters
     ----------
@@ -900,22 +908,27 @@ def query_lstsq(
         If true, return prediction and residue. If false, return coefficients. Note that
         for coefficients, it reduces to one output (like max/min), but for predictions and
         residue, it will return the same number of rows as in input.
+    method
+        Linear Regression method. One of "normal" (normal equation), "l2" (l2 regularized)
+    lambda
+        Regularization factor. Should be nonzero when method != normal.
     """
     t = str_to_expr(target).cast(pl.Float64)
     cols = [t]
     cols.extend(str_to_expr(z) for z in x)
+    lr_kwargs = {"bias": add_bias, "skip_null": skip_null, "method": method, "lambda": lambda_}
     if return_pred:
         return pl_plugin(
             symbol="pl_lstsq_pred",
             args=cols,
-            kwargs={"bias": add_bias, "skip_null": skip_null},
+            kwargs=lr_kwargs,
             pass_name_to_apply=True,
         )
     else:
         return pl_plugin(
             symbol="pl_lstsq",
             args=cols,
-            kwargs={"bias": add_bias, "skip_null": skip_null},
+            kwargs=lr_kwargs,
             returns_scalar=True,
             pass_name_to_apply=True,
         )
@@ -956,7 +969,7 @@ def query_lstsq_report(
     return pl_plugin(
         symbol="pl_lstsq_report",
         args=cols,
-        kwargs={"bias": add_bias, "skip_null": skip_null},
+        kwargs={"bias": add_bias, "skip_null": skip_null, "method": "normal", "lambda": 0.0},
         changes_length=True,
         pass_name_to_apply=True,
     )

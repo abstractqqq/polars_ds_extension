@@ -13,7 +13,7 @@ mod haversine;
 mod jaccard;
 mod knn;
 mod lempel_ziv;
-mod ols;
+mod linear_regression;
 mod pca;
 mod psi;
 mod target_encode;
