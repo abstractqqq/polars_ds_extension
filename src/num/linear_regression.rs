@@ -1,22 +1,25 @@
+/// Least Squares using Faer and ndarray.
+
 use crate::utils::to_frame;
-/// OLS using Faer.
-use faer::{prelude::*, Side};
+use faer::prelude::*;
 use faer_ext::IntoFaer;
 use itertools::Itertools;
-use ndarray::{s, Array2};
+use ndarray::{s, Array2, ArrayView, ArrayView1, ArrayView2, ArrayViewMut2, Axis};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use serde::Deserialize;
 
 enum LRMethods {
     Normal, // Normal. Normal Equation
-    L2,     // L2 regularized
+    L2,     // Ridge, L2 regularized
+    L1, // Lasso, L1 regularized
 }
 
 impl From<String> for LRMethods {
     fn from(value: String) -> Self {
         match value.as_str() {
-            "l2" => LRMethods::L2,
+            "l1" | "lasso" => LRMethods::L1,
+            "l2" | "ridge" => LRMethods::L2,
             _ => LRMethods::Normal,
         }
     }
@@ -58,7 +61,9 @@ fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
 /// The uses QR (column pivot) decomposition as default method to compute inverse,
 /// Column Pivot QR is chosen to deal with rank deficient cases.
 #[inline(always)]
-fn faer_qr_lstsq(x: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
+fn faer_qr_lstsq(x: ArrayView2<f64>, y: ArrayView2<f64>) -> Mat<f64> {
+    let x = x.into_faer();
+    let y = y.into_faer();
     let qr = x.col_piv_qr();
     qr.solve_lstsq(y)
 }
@@ -66,7 +71,11 @@ fn faer_qr_lstsq(x: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
 /// Returns the coefficients for lstsq with l2 regularization as a nrows x 1 matrix
 /// This is currently slow. Using SVD might be faster.
 #[inline(always)]
-fn faer_qr_lstsq_l2(x: MatRef<f64>, y: MatRef<f64>, lambda: f64) -> Mat<f64> {
+fn faer_qr_lstsq_l2(x: ArrayView2<f64>, y: ArrayView2<f64>, lambda: f64) -> Mat<f64> {
+
+    let x = x.into_faer();
+    let y = y.into_faer();
+
     let xt = x.transpose();
     let matrix = xt * x
         + Mat::from_fn(x.ncols(), x.ncols(), |i, j| {
@@ -76,6 +85,71 @@ fn faer_qr_lstsq_l2(x: MatRef<f64>, y: MatRef<f64>, lambda: f64) -> Mat<f64> {
     let inv = qr.inverse();
     inv * xt * y
 }
+
+fn soft_threshold(rho:f64, lambda:f64) -> f64 {
+
+    if rho < -lambda {
+        rho + lambda
+    } else if rho > lambda {
+        rho - lambda
+    } else {
+        0f64
+    }
+    
+    // lambda >= 0 always
+    // So it is equivalent to ???
+    // if |rho| > lambda, then |rho| - lambda, else 0
+
+    // To make it branchless, we can 
+    // let r = rho.abs();
+    // let diff = r - lambda;
+    // let flag = ((diff > 0.) as u64) as f64;
+    // flag * diff + (1.0 - flag)
+}
+
+/// Computes Lasso Regression coefficients by the use of Coordinate Descent
+/// It is easier to use ndarray to write the implementation. The output, however, is still a Faer matrix
+/// for consistency with other functions.
+/// 
+/// Reference:
+/// https://xavierbourretsicotte.github.io/lasso_implementation.html
+#[inline(always)]
+fn lasso_regression(x: ArrayView2<f64>, y: ArrayView2<f64>, lambda:f64, has_bias:bool, num_iter:usize) -> Mat<f64> {
+
+    let n = x.ncols();
+    let n1 = n.abs_diff(1);
+
+    let mut beta = vec![1f64; n];
+
+    for _ in 0..num_iter {
+
+        for j in 0..n {
+
+            let x_j = x.column(j);
+            let beta_view = ArrayView2::from_shape((n, 1), &beta).unwrap();
+            let y_pred = x.dot(&beta_view);
+            let temp = &y - &y_pred + x_j.mapv(|x| x * beta[j]);
+            let temp = temp.column(0); // temp has shape m by 1.
+            let rho = x_j.dot(&temp);
+
+            if has_bias {
+                if j == n1 {
+                    beta[j] = rho;
+                } else {
+                    beta[j] = soft_threshold(rho, lambda);
+                }
+            } else {
+                beta[j] = soft_threshold(rho, lambda);
+            }
+        }
+    }
+    // Copy theta into a Faer Mat
+    Mat::<f64>::from_fn(n, 1, |i, _| beta[i])
+
+
+}
+
+
 
 /// Returns a Array2 ready for linear regression, and a mask, indicating valid rows
 #[inline(always)]
@@ -113,6 +187,10 @@ fn series_to_mat_for_lstsq(
                 "Lstsq: #Data < #features. No conclusive result.".into(),
             ))
         } else {
+
+            // let y = df.drop_in_place(target_name).unwrap();
+            // let y = y.f64().unwrap();
+
             let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
             Ok((mat, mask))
         }
@@ -126,16 +204,26 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let method = LRMethods::from(kwargs.method);
     // Target y is at index 0
     match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
-        Ok((mat, _)) => {
-            let y = mat.slice(s![.., 0..1]);
-            let y = y.view().into_faer();
-            let x = mat.slice(s![.., 1..]);
-            let x = x.view().into_faer();
-
+        Ok((mut mat, _)) => {
             // Solving Least Square
             let coeffs = match method {
-                LRMethods::Normal => faer_qr_lstsq(x, y),
-                LRMethods::L2 => faer_qr_lstsq_l2(x, y, kwargs.lambda),
+                LRMethods::Normal => {
+                    let y = mat.slice(s![.., 0..1]);
+                    let x = mat.slice(s![.., 1..]);
+                    faer_qr_lstsq(x, y)
+                },
+                LRMethods::L2 => {
+                    let y = mat.slice(s![.., 0..1]);
+                    let x = mat.slice(s![.., 1..]);
+                    faer_qr_lstsq_l2(x, y, kwargs.lambda)
+                },
+                LRMethods::L1 => {
+                    let (y, mut x) = mat.multi_slice_mut((s![.., 0..1], s![.., 1..]));
+                    x.rows_mut().into_iter().for_each(
+                        |mut row| row /= row.dot(&row)
+                    );
+                    lasso_regression(x.view(), y.view(), kwargs.lambda, add_bias, 100)
+                }
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new("betas", 1, coeffs.nrows(), DataType::Float64);
@@ -158,18 +246,33 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
     match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
         Ok((mat, mask)) => {
             // Mask = True indicates the the nulls that we skipped.
-            let y = mat.slice(s![.., 0..1]);
-            let y = y.view().into_faer();
-            let x = mat.slice(s![.., 1..]);
-            let x = x.view().into_faer();
-            // Solving Least Square
             let coeffs = match method {
-                LRMethods::Normal => faer_qr_lstsq(x, y),
-                LRMethods::L2 => faer_qr_lstsq_l2(x, y, kwargs.lambda),
+                LRMethods::Normal => {
+                    let y = mat.slice(s![.., 0..1]);
+                    let x = mat.slice(s![.., 1..]);
+                    faer_qr_lstsq(x, y)
+                },
+                LRMethods::L2 => {
+                    let y = mat.slice(s![.., 0..1]);
+                    let x = mat.slice(s![.., 1..]);
+                    faer_qr_lstsq_l2(x, y, kwargs.lambda)
+                },
+                LRMethods::L1 => {
+                    // Have to copy because we need to use Mat later.
+                    let y = mat.slice(s![.., 0..1]);
+                    let mut x_normalized = mat.slice(s![.., 1..]).to_owned();
+                    // Normalize x 
+                    x_normalized.rows_mut().into_iter().for_each(
+                        |mut row| row /= row.dot(&row)
+                    );
+                    lasso_regression(x_normalized.view(), y, kwargs.lambda, add_bias, 100)
+                }
             };
 
-            let pred = x * &coeffs;
-            let resid = y - &pred;
+            let y = mat.slice(s![.., 0..1]);
+            let x = mat.slice(s![.., 1..]);
+            let pred = x.into_faer() * &coeffs;
+            let resid = y.into_faer() - &pred;
             let pred = pred.col_as_slice(0);
             let resid = resid.col_as_slice(0);
             // Need extra work when skip_null is true and there are nulls

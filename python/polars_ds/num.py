@@ -910,7 +910,7 @@ def query_lstsq(
         residue, it will return the same number of rows as in input.
     method
         Linear Regression method. One of "normal" (normal equation), "l2" (l2 regularized)
-    lambda
+    lambda_
         Regularization factor. Should be nonzero when method != normal.
     """
     t = str_to_expr(target).cast(pl.Float64)
