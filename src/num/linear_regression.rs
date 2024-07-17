@@ -86,25 +86,9 @@ fn faer_qr_lstsq_l2(x: ArrayView2<f64>, y: ArrayView2<f64>, lambda: f64) -> Mat<
     inv * xt * y
 }
 
+#[inline(always)]
 fn soft_threshold(rho:f64, lambda:f64) -> f64 {
-
-    if rho < -lambda {
-        rho + lambda
-    } else if rho > lambda {
-        rho - lambda
-    } else {
-        0f64
-    }
-    
-    // lambda >= 0 always
-    // So it is equivalent to ???
-    // if |rho| > lambda, then |rho| - lambda, else 0
-
-    // To make it branchless, we can 
-    // let r = rho.abs();
-    // let diff = r - lambda;
-    // let flag = ((diff > 0.) as u64) as f64;
-    // flag * diff + (1.0 - flag)
+    rho.signum() * (rho.abs() - lambda).max(0f64)
 }
 
 /// Computes Lasso Regression coefficients by the use of Coordinate Descent
@@ -119,32 +103,33 @@ fn lasso_regression(x: ArrayView2<f64>, y: ArrayView2<f64>, lambda:f64, has_bias
     let n = x.ncols();
     let n1 = n.abs_diff(1);
 
-    let mut beta = vec![1f64; n];
+    // Safe because it is n by 1
+    let mut beta = unsafe { Array2::from_shape_vec_unchecked((n, 1), vec![0f64; n]) };
+    
+    // compute column normalizing factors = 1 / column squared l2 
+    let normalize_factor = 
+        x.columns()
+        .into_iter().map(|r| 1f64 / r.dot(&r)).collect::<Vec<_>>();
 
     for _ in 0..num_iter {
 
         for j in 0..n {
-
+            // temporary set beta[(j, 0)] to 0.
+            *beta.get_mut((j, 0)).unwrap() = 0f64;
+            let residue = &y - (x.dot(&beta));
             let x_j = x.column(j);
-            let beta_view = ArrayView2::from_shape((n, 1), &beta).unwrap();
-            let y_pred = x.dot(&beta_view);
-            let temp = &y - &y_pred + x_j.mapv(|x| x * beta[j]);
-            let temp = temp.column(0); // temp has shape m by 1.
-            let rho = x_j.dot(&temp);
+            let res = residue.remove_axis(Axis(1));
+            let beta_j = normalize_factor[j] * x_j.dot(&res);
 
-            if has_bias {
-                if j == n1 {
-                    beta[j] = rho;
-                } else {
-                    beta[j] = soft_threshold(rho, lambda);
-                }
+            let update = if has_bias && j == n1 {
+                beta_j
             } else {
-                beta[j] = soft_threshold(rho, lambda);
-            }
+                soft_threshold(beta_j, lambda)
+            };
+            *beta.get_mut((j, 0)).unwrap() = update;
         }
     }
-    // Copy theta into a Faer Mat
-    Mat::<f64>::from_fn(n, 1, |i, _| beta[i])
+    beta.view().into_faer().to_owned()
 
 
 }
@@ -246,31 +231,22 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
     match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
         Ok((mat, mask)) => {
             // Mask = True indicates the the nulls that we skipped.
+            let y = mat.slice(s![.., 0..1]);
+            let x = mat.slice(s![.., 1..]);
             let coeffs = match method {
                 LRMethods::Normal => {
-                    let y = mat.slice(s![.., 0..1]);
-                    let x = mat.slice(s![.., 1..]);
                     faer_qr_lstsq(x, y)
                 },
                 LRMethods::L2 => {
-                    let y = mat.slice(s![.., 0..1]);
-                    let x = mat.slice(s![.., 1..]);
                     faer_qr_lstsq_l2(x, y, kwargs.lambda)
                 },
                 LRMethods::L1 => {
-                    // Have to copy because we need to use Mat later.
-                    let y = mat.slice(s![.., 0..1]);
-                    let mut x_normalized = mat.slice(s![.., 1..]).to_owned();
-                    // Normalize x 
-                    x_normalized.rows_mut().into_iter().for_each(
-                        |mut row| row /= row.dot(&row)
-                    );
-                    lasso_regression(x_normalized.view(), y, kwargs.lambda, add_bias, 100)
+                    return Err(PolarsError::ComputeError(
+                        "NotImplemented".into(),
+                    ))
                 }
             };
 
-            let y = mat.slice(s![.., 0..1]);
-            let x = mat.slice(s![.., 1..]);
             let pred = x.into_faer() * &coeffs;
             let resid = y.into_faer() - &pred;
             let pred = pred.col_as_slice(0);
