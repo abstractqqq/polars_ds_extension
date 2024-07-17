@@ -233,16 +233,16 @@ def query_principal_components(
         and do it for input features by hand.
     """
     feats = [str_to_expr(f) for f in features]
-    if k > len(feats) or k < 0:
+    if k > len(feats) or k <= 0:
         raise ValueError("Input `k` should be between 1 and the number of features inclusive.")
 
+    actual_inputs = [pl.lit(k, dtype=pl.UInt32).alias("principal_components")]
     if center:
-        actual_inputs = [f - f.mean() for f in feats]
+        actual_inputs.extend(f - f.mean() for f in feats)
     else:
-        actual_inputs = feats
+        actual_inputs.extend(feats)
 
-    actual_inputs.insert(0, pl.lit(k, dtype=pl.UInt32).alias("principal_components"))
-    return pl_plugin(symbol="pl_principal_components", args=actual_inputs, changes_length=True)
+    return pl_plugin(symbol="pl_principal_components", args=actual_inputs)
 
 
 def query_knn_ptwise(
