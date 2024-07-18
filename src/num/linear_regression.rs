@@ -60,7 +60,8 @@ fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
 
 /// Returns the coefficients for lstsq as a nrows x 1 matrix
 /// The uses QR (column pivot) decomposition as default method to compute inverse,
-/// Column Pivot QR is chosen to deal with rank deficient cases.
+/// Column Pivot QR is chosen to deal with rank deficient cases. It is also slightly
+/// faster compared to other methods.
 #[inline(always)]
 fn faer_qr_lstsq(x: ArrayView2<f64>, y: ArrayView2<f64>) -> Mat<f64> {
     let x = x.into_faer();
@@ -69,7 +70,7 @@ fn faer_qr_lstsq(x: ArrayView2<f64>, y: ArrayView2<f64>) -> Mat<f64> {
     qr.solve_lstsq(y)
 }
 
-/// Returns the coefficients for lstsq with l2 regularization as a nrows x 1 matrix
+/// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
 #[inline(always)]
 fn faer_svd_lstsq_l2(x: ArrayView2<f64>, y: ArrayView2<f64>, lambda: f64, has_bias:bool) -> Mat<f64> {
 
@@ -111,7 +112,7 @@ fn faer_lasso_regression(
 ) -> Mat<f64> {
     let m = x.nrows() as f64;
     let ncols = x.ncols();
-    let n1 = if has_bias { ncols.abs_diff(1) } else { ncols };
+    let n1 = ncols.abs_diff(has_bias as usize);
 
     let x = x.into_faer();
     let y = y.into_faer();
