@@ -988,10 +988,18 @@ def query_lstsq_report(
     t = str_to_expr(target).cast(pl.Float64)
     cols = [t]
     cols.extend(str_to_expr(z) for z in x)
+    lr_kwargs = {
+        "bias": add_bias,
+        "skip_null": skip_null,
+        "method": "normal",
+        "l1_reg": 0.0,
+        "l2_reg": 0.0,
+        "tol": 0.0,
+    }
     return pl_plugin(
         symbol="pl_lstsq_report",
         args=cols,
-        kwargs={"bias": add_bias, "skip_null": skip_null, "method": "normal", "lambda": 0.0},
+        kwargs=lr_kwargs,
         changes_length=True,
         pass_name_to_apply=True,
     )
