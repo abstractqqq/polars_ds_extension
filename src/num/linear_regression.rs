@@ -70,20 +70,22 @@ fn faer_qr_lstsq(x: ArrayView2<f64>, y: ArrayView2<f64>) -> Mat<f64> {
 }
 
 /// Returns the coefficients for lstsq with l2 regularization as a nrows x 1 matrix
-/// This is currently slow. Using SVD might be faster.
 #[inline(always)]
-fn faer_qr_lstsq_l2(x: ArrayView2<f64>, y: ArrayView2<f64>, lambda: f64) -> Mat<f64> {
-    let x = x.into_faer();
+fn faer_svd_lstsq_l2(x: ArrayView2<f64>, y: ArrayView2<f64>, lambda: f64, has_bias:bool) -> Mat<f64> {
+
+    let x = x.into_faer();    
     let y = y.into_faer();
+    let n1 = x.ncols().abs_diff(has_bias as usize);
 
     let xt = x.transpose();
-    let matrix = xt * x
-        + Mat::from_fn(x.ncols(), x.ncols(), |i, j| {
-            lambda * ((i == j) as u64) as f64
-        });
-    let qr = matrix.qr();
-    let inv = qr.inverse();
-    inv * xt * y
+    let mut xtx_plus = xt * x; 
+    // xtx + diagonal of lambda. If has bias, last diagonal element is 0. No added in the for loop.
+    // Safe. Index is valid and value is initialized.
+    for i in 0..n1 {
+        *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
+    }
+    let svd = xtx_plus.thin_svd();
+    svd.inverse() * xt * y
 }
 
 #[inline(always)]
@@ -135,7 +137,7 @@ fn faer_lasso_regression(
             *unsafe { beta.get_mut_unchecked(j, 0) } = 0f64;
             let x_j = x.get(.., j..j + 1);
             let dot = x_j.transpose() * (y - x * &beta); // should be 1x1 matrix
-                                                         // update beta(j, 0).
+            // update beta(j, 0).
             let after = soft_threshold(dot.read(0, 0), lambda_new) / norms[j];
             *unsafe { beta.get_mut_unchecked(j, 0) } = after;
             max_change = (after - before).abs().max(max_change);
@@ -217,7 +219,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
             let coeffs = match method {
                 LRMethods::Normal => faer_qr_lstsq(x, y),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
-                LRMethods::L2 => faer_qr_lstsq_l2(x, y, kwargs.l2_reg),
+                LRMethods::L2 => faer_svd_lstsq_l2(x, y, kwargs.l2_reg, add_bias),
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new("betas", 1, coeffs.nrows(), DataType::Float64);
@@ -245,7 +247,7 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let coeffs = match method {
                 LRMethods::Normal => faer_qr_lstsq(x, y),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
-                LRMethods::L2 => faer_qr_lstsq_l2(x, y, kwargs.l2_reg),
+                LRMethods::L2 => faer_svd_lstsq_l2(x, y, kwargs.l2_reg, add_bias),
             };
 
             let pred = x.into_faer() * &coeffs;

@@ -891,10 +891,7 @@ def query_lstsq(
     does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
 
     If add_bias is true, it will be the last coefficient in the output
-    and output will have len(variables) + 1.
-
-    Note: if using bias and regularization, the bias term will also be regularized. This might be
-    changed in the future.
+    and output will have len(variables) + 1. Bias term will not be regularized if method is l1 or l2.
 
     Memory hint: if data takes 100MB of memory, you need to have at least 200MB of memory to run this.
 
