@@ -1,18 +1,17 @@
 /// Least Squares using Faer and ndarray.
-
 use crate::utils::to_frame;
 use faer::prelude::*;
 use faer_ext::IntoFaer;
 use itertools::Itertools;
-use ndarray::{s, Array2, ArrayView, ArrayView1, ArrayView2, ArrayViewMut2, Axis};
+use ndarray::{s, Array2, ArrayView2};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use serde::Deserialize;
 
 enum LRMethods {
     Normal, // Normal. Normal Equation
+    L1,     // Lasso, L1 regularized
     L2,     // Ridge, L2 regularized
-    L1, // Lasso, L1 regularized
 }
 
 impl From<String> for LRMethods {
@@ -30,7 +29,9 @@ pub(crate) struct LstsqKwargs {
     pub(crate) bias: bool,
     pub(crate) skip_null: bool,
     pub(crate) method: String,
-    pub(crate) lambda: f64,
+    pub(crate) l1_reg: f64,
+    pub(crate) l2_reg: f64,
+    pub(crate) tol: f64,
 }
 
 fn report_output(_: &[Field]) -> PolarsResult<Field> {
@@ -72,7 +73,6 @@ fn faer_qr_lstsq(x: ArrayView2<f64>, y: ArrayView2<f64>) -> Mat<f64> {
 /// This is currently slow. Using SVD might be faster.
 #[inline(always)]
 fn faer_qr_lstsq_l2(x: ArrayView2<f64>, y: ArrayView2<f64>, lambda: f64) -> Mat<f64> {
-
     let x = x.into_faer();
     let y = y.into_faer();
 
@@ -87,54 +87,79 @@ fn faer_qr_lstsq_l2(x: ArrayView2<f64>, y: ArrayView2<f64>, lambda: f64) -> Mat<
 }
 
 #[inline(always)]
-fn soft_threshold(rho:f64, lambda:f64) -> f64 {
+fn soft_threshold(rho: f64, lambda: f64) -> f64 {
     rho.signum() * (rho.abs() - lambda).max(0f64)
 }
 
-/// Computes Lasso Regression coefficients by the use of Coordinate Descent
-/// It is easier to use ndarray to write the implementation. The output, however, is still a Faer matrix
-/// for consistency with other functions.
-/// 
+/// Computes Lasso Regression coefficients by the use of Coordinate Descent.
+/// The current stopping criterion is based on L Inf norm of the changes in the
+/// coordinates. A better alternative might be the dual gap.
+///
 /// Reference:
 /// https://xavierbourretsicotte.github.io/lasso_implementation.html
+/// https://github.com/minatosato/Lasso/blob/master/coordinate_descent_lasso.py
+/// https://en.wikipedia.org/wiki/Lasso_(statistics)
 #[inline(always)]
-fn lasso_regression(x: ArrayView2<f64>, y: ArrayView2<f64>, lambda:f64, has_bias:bool, num_iter:usize) -> Mat<f64> {
+fn faer_lasso_regression(
+    x: ArrayView2<f64>,
+    y: ArrayView2<f64>,
+    lambda: f64,
+    has_bias: bool,
+    tol: f64,
+) -> Mat<f64> {
+    let m = x.nrows() as f64;
+    let ncols = x.ncols();
+    let n1 = if has_bias { ncols.abs_diff(1) } else { ncols };
 
-    let n = x.ncols();
-    let n1 = n.abs_diff(1);
+    let x = x.into_faer();
+    let y = y.into_faer();
 
-    // Safe because it is n by 1
-    let mut beta = unsafe { Array2::from_shape_vec_unchecked((n, 1), vec![0f64; n]) };
-    
-    // compute column normalizing factors = 1 / column squared l2 
-    let normalize_factor = 
-        x.columns()
-        .into_iter().map(|r| 1f64 / r.dot(&r)).collect::<Vec<_>>();
+    let lambda_new = m * lambda;
 
-    for _ in 0..num_iter {
+    let mut beta: Mat<f64> = Mat::zeros(ncols, 1);
+    let mut converge = false;
 
-        for j in 0..n {
-            // temporary set beta[(j, 0)] to 0.
-            *beta.get_mut((j, 0)).unwrap() = 0f64;
-            let residue = &y - (x.dot(&beta));
-            let x_j = x.column(j);
-            let res = residue.remove_axis(Axis(1));
-            let beta_j = normalize_factor[j] * x_j.dot(&res);
+    // compute column squared l2 norms.
+    let norms = x
+        .col_iter()
+        .map(|c| c.squared_norm_l2())
+        .collect::<Vec<_>>();
 
-            let update = if has_bias && j == n1 {
-                beta_j
-            } else {
-                soft_threshold(beta_j, lambda)
-            };
-            *beta.get_mut((j, 0)).unwrap() = update;
+    for _ in 0..2000 {
+        let mut max_change = 0f64;
+        // Random selection often leads to faster convergence?
+        for j in 0..n1 {
+            // temporary set beta(j, 0) to 0.
+            // Safe. The index is valid and the value is initialized.
+            let before = *unsafe { beta.get_unchecked(j, 0) };
+            *unsafe { beta.get_mut_unchecked(j, 0) } = 0f64;
+            let x_j = x.get(.., j..j + 1);
+            let dot = x_j.transpose() * (y - x * &beta); // should be 1x1 matrix
+                                                         // update beta(j, 0).
+            let after = soft_threshold(dot.read(0, 0), lambda_new) / norms[j];
+            *unsafe { beta.get_mut_unchecked(j, 0) } = after;
+            max_change = (after - before).abs().max(max_change);
+        }
+        // if has_bias, n1 = last index = ncols - 1 = column of bias. If has_bias is False, n = ncols
+        if has_bias {
+            // Safe. The index is valid and the value is initialized.
+            let xx = unsafe { x.get_unchecked(.., 0..n1) };
+            let bb = unsafe { beta.get_unchecked(0..n1, ..) };
+            let ss = (y - xx * bb).sum() / m;
+            *unsafe { beta.get_mut_unchecked(n1, 0) } = ss;
+        }
+        converge = max_change < tol;
+        if converge {
+            break;
         }
     }
-    beta.view().into_faer().to_owned()
 
+    if !converge {
+        println!("Lasso regression: 2000 iterations have passed and result hasn't converged.")
+    }
 
+    beta
 }
-
-
 
 /// Returns a Array2 ready for linear regression, and a mask, indicating valid rows
 #[inline(always)]
@@ -172,10 +197,6 @@ fn series_to_mat_for_lstsq(
                 "Lstsq: #Data < #features. No conclusive result.".into(),
             ))
         } else {
-
-            // let y = df.drop_in_place(target_name).unwrap();
-            // let y = y.f64().unwrap();
-
             let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
             Ok((mat, mask))
         }
@@ -189,26 +210,14 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let method = LRMethods::from(kwargs.method);
     // Target y is at index 0
     match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
-        Ok((mut mat, _)) => {
+        Ok((mat, _)) => {
             // Solving Least Square
+            let x = mat.slice(s![.., 1..]);
+            let y = mat.slice(s![.., 0..1]);
             let coeffs = match method {
-                LRMethods::Normal => {
-                    let y = mat.slice(s![.., 0..1]);
-                    let x = mat.slice(s![.., 1..]);
-                    faer_qr_lstsq(x, y)
-                },
-                LRMethods::L2 => {
-                    let y = mat.slice(s![.., 0..1]);
-                    let x = mat.slice(s![.., 1..]);
-                    faer_qr_lstsq_l2(x, y, kwargs.lambda)
-                },
-                LRMethods::L1 => {
-                    let (y, mut x) = mat.multi_slice_mut((s![.., 0..1], s![.., 1..]));
-                    x.rows_mut().into_iter().for_each(
-                        |mut row| row /= row.dot(&row)
-                    );
-                    lasso_regression(x.view(), y.view(), kwargs.lambda, add_bias, 100)
-                }
+                LRMethods::Normal => faer_qr_lstsq(x, y),
+                LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
+                LRMethods::L2 => faer_qr_lstsq_l2(x, y, kwargs.l2_reg),
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new("betas", 1, coeffs.nrows(), DataType::Float64);
@@ -234,17 +243,9 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let y = mat.slice(s![.., 0..1]);
             let x = mat.slice(s![.., 1..]);
             let coeffs = match method {
-                LRMethods::Normal => {
-                    faer_qr_lstsq(x, y)
-                },
-                LRMethods::L2 => {
-                    faer_qr_lstsq_l2(x, y, kwargs.lambda)
-                },
-                LRMethods::L1 => {
-                    return Err(PolarsError::ComputeError(
-                        "NotImplemented".into(),
-                    ))
-                }
+                LRMethods::Normal => faer_qr_lstsq(x, y),
+                LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
+                LRMethods::L2 => faer_qr_lstsq_l2(x, y, kwargs.l2_reg),
             };
 
             let pred = x.into_faer() * &coeffs;
