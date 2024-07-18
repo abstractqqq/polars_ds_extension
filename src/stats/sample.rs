@@ -7,13 +7,6 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rand::{distributions::DistString, Rng};
 use rand_distr::{Alphanumeric, Binomial, Distribution, Exp, Exp1, Normal, StandardNormal};
-use serde::Deserialize;
-
-#[derive(Deserialize, Debug)]
-pub(crate) struct SampleKwargs {
-    pub(crate) seed: Option<u64>,
-    pub(crate) respect_null: bool,
-}
 
 #[polars_expr(output_type=Int32)]
 fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {

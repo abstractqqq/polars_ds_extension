@@ -546,12 +546,64 @@ def test_lstsq_against_sklearn():
             "x3",
             target="y",
             method="l2",
-            lambda_=0.1,
+            l2_reg=0.1,
         ).alias("pred")
     ).explode("pred")
     all_coeffs = normal_coeffs["pred"].to_numpy()
     # non-bias terms, slightly bigger precision differences expected.
     assert np.all(np.abs(all_coeffs[:3] - reg.coef_) < 1e-3)
+
+
+def test_lasso_regression():
+    # These tests have bigger precision differences because of different stopping criterions
+
+    from sklearn import linear_model
+
+    df = (
+        pds.random_data(size=5_000, n_cols=0)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_columns(
+            y=pl.col("x1") * 0.5 + pl.col("x2") * 0.25 - pl.col("x3") * 0.15 + pds.random() * 0.0001
+        )
+    )
+
+    x = df.select("x1", "x2", "x3").to_numpy()
+    y = df["y"].to_numpy()
+
+    for lambda_ in [0.01, 0.05, 0.1, 0.2]:
+        df_res = df.select(
+            pds.query_lstsq(
+                "x1", "x2", "x3", target="y", method="l1", l1_reg=lambda_, add_bias=False
+            ).alias("coeffs")
+        ).explode("coeffs")
+
+        res = df_res["coeffs"].to_numpy()
+
+        reg = linear_model.Lasso(alpha=lambda_, fit_intercept=False)
+        reg.fit(x, y)
+        res_sklearn = np.asarray(reg.coef_)
+        assert np.all(np.abs(res_sklearn - res) < 1e-4)
+
+    for lambda_ in [0.01, 0.05, 0.1, 0.2]:
+        df_res = df.select(
+            pds.query_lstsq(
+                "x1", "x2", "x3", target="y", method="l1", l1_reg=lambda_, add_bias=True
+            ).alias("coeffs")
+        ).explode("coeffs")
+
+        res = df_res["coeffs"].to_numpy()
+        res_coef = res[:3]
+        res_bias = res[-1]
+
+        reg = linear_model.Lasso(alpha=lambda_, fit_intercept=True)
+        reg.fit(x, y)
+        res_sklearn = np.asarray(reg.coef_)
+        assert np.all(np.abs(res_sklearn - res_coef) < 1e-4)
+        assert abs(res_bias - reg.intercept_) < 1e-4
 
 
 # Hard to write generic tests because ncols can vary in X

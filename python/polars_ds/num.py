@@ -233,16 +233,16 @@ def query_principal_components(
         and do it for input features by hand.
     """
     feats = [str_to_expr(f) for f in features]
-    if k > len(feats) or k < 0:
+    if k > len(feats) or k <= 0:
         raise ValueError("Input `k` should be between 1 and the number of features inclusive.")
 
+    actual_inputs = [pl.lit(k, dtype=pl.UInt32).alias("principal_components")]
     if center:
-        actual_inputs = [f - f.mean() for f in feats]
+        actual_inputs.extend(f - f.mean() for f in feats)
     else:
-        actual_inputs = feats
+        actual_inputs.extend(feats)
 
-    actual_inputs.insert(0, pl.lit(k, dtype=pl.UInt32).alias("principal_components"))
-    return pl_plugin(symbol="pl_principal_components", args=actual_inputs, changes_length=True)
+    return pl_plugin(symbol="pl_principal_components", args=actual_inputs)
 
 
 def query_knn_ptwise(
@@ -880,7 +880,9 @@ def query_lstsq(
     skip_null: bool = False,
     return_pred: bool = False,
     method: LinearRegressionMethod = "normal",
-    lambda_: float = 0.0,
+    l1_reg: float = 0.0,
+    l2_reg: float = 0.0,
+    tol: float = 1e-5,
 ) -> pl.Expr:
     """
     Computes least squares solution to the equation Ax = y where y is the target.
@@ -893,6 +895,8 @@ def query_lstsq(
 
     Note: if using bias and regularization, the bias term will also be regularized. This might be
     changed in the future.
+
+    Memory hint: if data takes 100MB of memory, you need to have at least 200MB of memory to run this.
 
     Parameters
     ----------
@@ -909,14 +913,34 @@ def query_lstsq(
         for coefficients, it reduces to one output (like max/min), but for predictions and
         residue, it will return the same number of rows as in input.
     method
-        Linear Regression method. One of "normal" (normal equation), "l2" (l2 regularized)
-    lambda
-        Regularization factor. Should be nonzero when method != normal.
+        Linear Regression method. One of "normal" (normal equation), "l2" (l2 regularized, Ridge),
+        "l1" (l1 regularized, Lasso).
+    l1_reg
+        Regularization factor for Lasso. Should be nonzero when method = l1.
+    l2_reg
+        Regularization factor for Ridge. Should be nonzero when method = l2.
+    tol
+        When method = l1, if maximum coordinate update is < tol, the algorithm is considered to have
+        converged. If not, it will run for at most 2000 iterations. This stopping criterion is not as
+        good as the dual gap.
     """
     t = str_to_expr(target).cast(pl.Float64)
     cols = [t]
     cols.extend(str_to_expr(z) for z in x)
-    lr_kwargs = {"bias": add_bias, "skip_null": skip_null, "method": method, "lambda": lambda_}
+
+    if method == "l1" and l1_reg <= 0.0:
+        raise ValueError("For Lasso regression, `lambda_l1` must be positive.")
+    if method == "l2" and l2_reg <= 0.0:
+        raise ValueError("For Ridge regression, `lambda_l2` must be positive.")
+
+    lr_kwargs = {
+        "bias": add_bias,
+        "skip_null": skip_null,
+        "method": str(method).lower(),
+        "l1_reg": l1_reg,
+        "l2_reg": l2_reg,
+        "tol": tol,
+    }
     if return_pred:
         return pl_plugin(
             symbol="pl_lstsq_pred",
@@ -950,7 +974,8 @@ def query_lstsq_report(
     form solution to compute the least square report.
 
     This functions returns a struct with the same length as the number of features used
-    in the linear regression, and +1 if add_bias is true.
+    in the linear regression, and +1 if add_bias is true. This can only perform ordinary
+    least squares.
 
     Parameters
     ----------
@@ -1391,7 +1416,7 @@ def convolve(
     parallel: bool = False,
 ) -> pl.Expr:
     """
-    Performs a convolution with the filter via FFT. The current implementation's performance is worse
+    Performs a convolution with the given kernel(filter). The current implementation's performance is worse
     than SciPy but offers parallelization within Polars.
 
     For large kernels (usually kernel length > 120), convolving with FFT is faster, but for smaller kernels,
@@ -1412,7 +1437,7 @@ def convolve(
         Please check the reference. One of `same`, `left` (left-aligned same), `right` (right-aligned same),
         `valid` or `full`.
     parallel
-        Only applies when method = direct. Whether to compute the convulition in parallel. Note that this may not
+        Only applies when method is `direct`. Whether to compute the convulotion in parallel. Note that this may not
         have the expected performance when you are in group_by or other parallel context already. It is recommended
         to use this in select/with_columns context, when few expressions are being run at the same time.
 
