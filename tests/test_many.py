@@ -535,7 +535,7 @@ def test_lstsq_against_sklearn():
     assert np.isclose(all_coeffs[-1], reg.intercept_, rtol=1e-5)
 
     # sklearn, L2 (Ridge), with bias
-    reg = linear_model.Ridge(alpha=0.1, fit_intercept=False)
+    reg = linear_model.Ridge(alpha=0.1, fit_intercept=True)
     reg.fit(x, y)
 
     # pds, normal, with bias
@@ -547,11 +547,15 @@ def test_lstsq_against_sklearn():
             target="y",
             method="l2",
             l2_reg=0.1,
+            add_bias=True,
         ).alias("pred")
     ).explode("pred")
     all_coeffs = normal_coeffs["pred"].to_numpy()
+    coeffs = all_coeffs[:3]
+    bias = all_coeffs[-1]
     # non-bias terms, slightly bigger precision differences expected.
-    assert np.all(np.abs(all_coeffs[:3] - reg.coef_) < 1e-3)
+    assert np.all(np.abs(coeffs - reg.coef_) < 1e-3)
+    assert abs(bias - reg.intercept_) < 1e-3
 
 
 def test_lasso_regression():

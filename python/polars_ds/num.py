@@ -891,10 +891,7 @@ def query_lstsq(
     does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
 
     If add_bias is true, it will be the last coefficient in the output
-    and output will have len(variables) + 1.
-
-    Note: if using bias and regularization, the bias term will also be regularized. This might be
-    changed in the future.
+    and output will have len(variables) + 1. Bias term will not be regularized if method is l1 or l2.
 
     Memory hint: if data takes 100MB of memory, you need to have at least 200MB of memory to run this.
 
@@ -991,10 +988,18 @@ def query_lstsq_report(
     t = str_to_expr(target).cast(pl.Float64)
     cols = [t]
     cols.extend(str_to_expr(z) for z in x)
+    lr_kwargs = {
+        "bias": add_bias,
+        "skip_null": skip_null,
+        "method": "normal",
+        "l1_reg": 0.0,
+        "l2_reg": 0.0,
+        "tol": 0.0,
+    }
     return pl_plugin(
         symbol="pl_lstsq_report",
         args=cols,
-        kwargs={"bias": add_bias, "skip_null": skip_null, "method": "normal", "lambda": 0.0},
+        kwargs=lr_kwargs,
         changes_length=True,
         pass_name_to_apply=True,
     )
