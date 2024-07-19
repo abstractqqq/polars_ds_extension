@@ -14,7 +14,7 @@ from .type_alias import (
     SimpleImputeMethod,
     SimpleScaleMethod,
     StrOrExpr,
-    RollingInterpolationMethod,
+    QuantileMethod,
 )
 
 from ._utils import _POLARS_LEGACY_SUPPORT, _IS_POLARS_V1
@@ -74,20 +74,36 @@ def _to_json_dict(step: FittedStep) -> Dict:
     """
     Turns a fitted step into a JSON dict.
     """
-    exprs = []
-    if isinstance(step.exprs, pl.Expr):
-        exprs.append(step.exprs.meta.serialize())
-    elif isinstance(step.exprs, list):
-        for e in step.exprs:
-            if isinstance(e, pl.Expr):
-                exprs.append(e.meta.serialize())
-            else:
-                raise ValueError("Non-expression detected. This object is ill-defined.")
+    if _IS_POLARS_V1:
+        exprs = []
+        if isinstance(step.exprs, pl.Expr):
+            exprs.append(step.exprs.meta.serialize(format="json"))
+        elif isinstance(step.exprs, list):
+            for e in step.exprs:
+                if isinstance(e, pl.Expr):
+                    exprs.append(e.meta.serialize(format="json"))
+                else:
+                    raise ValueError("Non-expression detected. This object is ill-defined.")
 
-    if isinstance(step, SelectStep):
-        return {"SelectStep": exprs}
+        if isinstance(step, SelectStep):
+            return {"SelectStep": exprs}
+        else:
+            return {"WithColumnsStep": exprs}
     else:
-        return {"WithColumnsStep": exprs}
+        exprs = []
+        if isinstance(step.exprs, pl.Expr):  # For < v1, it is json format by default
+            exprs.append(step.exprs.meta.serialize())
+        elif isinstance(step.exprs, list):
+            for e in step.exprs:
+                if isinstance(e, pl.Expr):
+                    exprs.append(e.meta.serialize())
+                else:
+                    raise ValueError("Non-expression detected. This object is ill-defined.")
+
+        if isinstance(step, SelectStep):
+            return {"SelectStep": exprs}
+        else:
+            return {"WithColumnsStep": exprs}
 
 
 @dataclass
@@ -191,17 +207,31 @@ class Pipeline:
         transforms = pipeline_dict["transforms"]
         transform_steps = []
         step: Dict[str, List[str]]
-        for (
-            step
-        ) in transforms:  # each step is a dict like {'SelectStep': [jsonified str expressions..]}
+        # each step is a dict like {'SelectStep': [jsonified str expressions..]}
+        for step in transforms:
             if "SelectStep" in step:
-                json_exprs = step.pop("SelectStep")
-                actual_exprs = [pl.Expr.deserialize(StringIO(e)) for e in json_exprs]
-                transform_steps.append(SelectStep(actual_exprs))
+                if _IS_POLARS_V1:
+                    json_exprs = step.pop("SelectStep")
+                    actual_exprs = [
+                        pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs
+                    ]
+                    transform_steps.append(SelectStep(actual_exprs))
+                else:
+                    json_exprs = step.pop("SelectStep")
+                    actual_exprs = [pl.Expr.deserialize(StringIO(e)) for e in json_exprs]
+                    transform_steps.append(SelectStep(actual_exprs))
+
             elif "WithColumnsStep" in step:
-                json_exprs = step.pop("WithColumnsStep")
-                actual_exprs = [pl.Expr.deserialize(StringIO(e)) for e in json_exprs]
-                transform_steps.append(WithColumnsStep(actual_exprs))
+                if _IS_POLARS_V1:
+                    json_exprs = step.pop("WithColumnsStep")
+                    actual_exprs = [
+                        pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs
+                    ]
+                    transform_steps.append(WithColumnsStep(actual_exprs))
+                else:
+                    json_exprs = step.pop("WithColumnsStep")
+                    actual_exprs = [pl.Expr.deserialize(StringIO(e)) for e in json_exprs]
+                    transform_steps.append(WithColumnsStep(actual_exprs))
             else:
                 raise ValueError(f"Invalid step {step}")
 
@@ -495,7 +525,7 @@ class Blueprint:
         cols: IntoExprColumn,
         lower: float = 0.05,
         upper: float = 0.95,
-        method: RollingInterpolationMethod = "nearest",
+        method: QuantileMethod = "nearest",
     ) -> Self:
         """
         Learns the lower and upper percentile from the columns, then clip each end at those values.
