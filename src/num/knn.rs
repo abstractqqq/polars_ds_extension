@@ -11,7 +11,7 @@ use crate::{
     utils::{list_u32_output, series_to_ndarray, split_offsets},
 };
 
-use ndarray::{s, ArrayView2, Axis};
+use ndarray::{s, ArrayView2};
 use num::Float;
 use polars::prelude::*;
 use pyo3_polars::{
@@ -38,6 +38,7 @@ pub(crate) struct KDTKwargs {
     pub(crate) parallel: bool,
     pub(crate) skip_eval: bool,
     pub(crate) skip_data: bool,
+    pub(crate) epsilon: f64,
 }
 
 #[derive(Deserialize, Debug)]
@@ -194,7 +195,7 @@ fn pl_knn_ptwise(
                     matrix_to_leaves_w_norm(&binding, id)
                 };
                 KDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
-                    .map(|tree| knn_ptwise(tree, eval_mask, binding, k, can_parallel, 0.))
+                    .map(|tree| knn_ptwise(tree, eval_mask, binding, k, can_parallel, kwargs.epsilon))
             } else {
                 let mut leaves = if skip_data {
                     let data_mask = inputs[inputs_offset].bool().unwrap();
@@ -203,7 +204,7 @@ fn pl_knn_ptwise(
                     matrix_to_leaves(&binding, id)
                 };
                 AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
-                    .map(|tree| knn_ptwise(tree, eval_mask, binding, k, can_parallel, 0.))
+                    .map(|tree| knn_ptwise(tree, eval_mask, binding, k, can_parallel, kwargs.epsilon))
             }
         }
         Err(e) => Err(e),
@@ -364,7 +365,7 @@ fn pl_knn_ptwise_w_dist(
                     matrix_to_leaves_w_norm(&binding, id)
                 };
                 KDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
-                    .map(|tree| knn_ptwise_w_dist(tree, eval_mask, binding, k, can_parallel, 0.))
+                    .map(|tree| knn_ptwise_w_dist(tree, eval_mask, binding, k, can_parallel, kwargs.epsilon))
             } else {
                 let mut leaves = if skip_data {
                     let data_mask = inputs[inputs_offset].bool().unwrap();
@@ -373,7 +374,7 @@ fn pl_knn_ptwise_w_dist(
                     matrix_to_leaves(&binding, id)
                 };
                 AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
-                    .map(|tree| knn_ptwise_w_dist(tree, eval_mask, binding, k, can_parallel, 0.))
+                    .map(|tree| knn_ptwise_w_dist(tree, eval_mask, binding, k, can_parallel, kwargs.epsilon))
             }
         }
         Err(e) => Err(e),
