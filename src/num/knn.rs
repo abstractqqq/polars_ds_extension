@@ -35,9 +35,13 @@ pub(crate) struct KDTKwargs {
     pub(crate) k: usize,
     pub(crate) leaf_size: usize,
     pub(crate) metric: String,
+    #[serde(default)]
     pub(crate) parallel: bool,
+    #[serde(default)]
     pub(crate) skip_eval: bool,
+    #[serde(default)]
     pub(crate) skip_data: bool,
+    #[serde(default)]
     pub(crate) epsilon: f64,
 }
 
