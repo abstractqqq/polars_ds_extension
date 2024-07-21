@@ -255,6 +255,7 @@ def query_knn_ptwise(
     return_dist: bool = False,
     eval_mask: Optional[StrOrExpr] = None,
     data_mask: Optional[StrOrExpr] = None,
+    epsilon: float = 0.0,
 ) -> pl.Expr:
     """
     Takes the index column, and uses feature columns to determine the k nearest neighbors
@@ -295,6 +296,10 @@ def query_knn_ptwise(
     data_mask
         Either None or a boolean expression or the name of a boolean column. If none, all rows can be
         neighbors. If not None, the pool of possible neighbors will be rows where this is true.
+    epsilon
+        If > 0, then it is possible to miss a neighbor within epsilon distance away. This parameter
+        should increase as the dimension of the vector space increases because higher dimensions
+        allow for errors from more directions.
     """
     if k < 1:
         raise ValueError("Input `k` must be >= 1.")
@@ -314,6 +319,7 @@ def query_knn_ptwise(
         skip_data = True
         cols.append(str_to_expr(data_mask))
 
+    cols.extend(str_to_expr(x) for x in features)
     kwargs = {
         "k": k,
         "leaf_size": leaf_size,
@@ -321,9 +327,8 @@ def query_knn_ptwise(
         "parallel": parallel,
         "skip_eval": skip_eval,
         "skip_data": skip_data,
+        "epsilon": abs(epsilon),
     }
-
-    cols.extend(str_to_expr(x) for x in features)
     if return_dist:
         return pl_plugin(
             symbol="pl_knn_ptwise_w_dist",
@@ -753,18 +758,6 @@ def query_knn_entropy(
         returns_scalar=True,
         pass_name_to_apply=True,
     )
-
-
-# def query_mutual_info(*features: StrOrExpr, k: int = 3, parallel: bool = False) -> pl.Expr:
-#     """
-#     Estimates Copula Entropy via rank statistics.
-
-#     Reference
-#     ---------
-#     Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
-#     """
-#     ranks = [x.rank(method="max") / x.len() for x in (str_to_expr(f) for f in features)]
-#     return query_knn_entropy(*ranks, k=k, dist="l2", parallel=parallel)
 
 
 def query_copula_entropy(*features: StrOrExpr, k: int = 3, parallel: bool = False) -> pl.Expr:
