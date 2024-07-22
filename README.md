@@ -17,7 +17,7 @@
 
 # The Project
 
-PDS is a modern take on data science and traditional tabular machine learning. It is dataframe-centric in design, and provides parallelism for free via **Polars**. It offers SQL-like syntax that works both in normal and aggregation contexts, and provides these conveniences to the end user without any additional dependency. It includes the most common functions from NumPy, SciPy, edit distances, KNN-related queries, EDA tools. Yes, it only depends on Polars (unless you want to use the plotting functionalities). Most of the code is rewritten in **Rust** and is on par or even faster than existing functions in SciPy and Scikit-learn. The following are some examples:
+PDS is a modern take on data science and traditional tabular machine learning. It is dataframe-centric in design, and provides parallelism for free via **Polars**. It offers Polars syntax that works both in normal and aggregation contexts, and provides these conveniences to the end user without any additional dependency. It includes the most common functions from NumPy, SciPy, edit distances, KNN-related queries, EDA tools. Yes, it only depends on Polars (unless you want to use the plotting functionalities). Most of the code is rewritten in **Rust** and is on par or even faster than existing functions in SciPy and Scikit-learn. The following are some examples:
 
 Parallel evaluations of classification metrics on segments
 
