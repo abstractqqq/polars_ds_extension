@@ -1,6 +1,5 @@
 use ndarray::ArrayView1;
 use num::Float;
-use polars::error::{PolarsError, PolarsResult};
 
 mod benford;
 mod cond_entropy;

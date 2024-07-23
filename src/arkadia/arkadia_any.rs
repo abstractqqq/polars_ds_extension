@@ -469,6 +469,12 @@ mod tests {
             .fold(0., |acc, (x, y)| acc.max((x - y).abs()))
     }
 
+    pub fn squared_l2<T: Float + 'static>(a: &[T], b: &[T]) -> T {
+        a.iter()
+            .zip(b.iter())
+            .fold(T::zero(), |acc, (&a, &b)| acc + (a - b) * (a - b))
+    }
+
     fn random_10d_rows() -> [f64; 10] {
         rand::random()
     }
@@ -513,6 +519,42 @@ mod tests {
         let mut leaves = matrix_to_leaves(&binding, &values);
 
         let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::LINF).unwrap();
+
+        let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
+
+        assert!(output.is_some());
+        let output = output.unwrap();
+        let indices = output.iter().map(|nb| nb.item).collect::<Vec<_>>();
+        let distances = output.iter().map(|nb| nb.dist).collect::<Vec<_>>();
+
+        assert_eq!(&ans_argmins[..k], &indices);
+        for (d1, d2) in ans_distances[..k].iter().zip(distances.into_iter()) {
+            assert!((d1 - d2).abs() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_10d_knn_l2_dist_midpoint() {
+        // 10 nearest neighbors, matrix of size 1000 x 10
+        let k = 10usize;
+        let mut v = Vec::new();
+        let rows = 5_000usize;
+        for _ in 0..rows {
+            v.extend_from_slice(&random_10d_rows());
+        }
+
+        let mat = Array2::from_shape_vec((rows, 10), v).unwrap();
+        let mat = mat.as_standard_layout().to_owned();
+        let point = arr1(&[0.5; 10]);
+        // brute force test
+        let (ans_argmins, ans_distances) =
+            generate_test_answer(mat.view(), point.view(), squared_l2);
+
+        let values = (0..rows).collect::<Vec<_>>();
+        let binding = mat.view();
+        let mut leaves = matrix_to_leaves(&binding, &values);
+
+        let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, DIST::SQL2).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 

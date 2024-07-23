@@ -4,10 +4,7 @@
 // use kdtree::KdTree;
 // use crate::utils::get_common_float_dtype;
 use crate::{
-    arkadia::{
-        matrix_to_empty_leaves, matrix_to_empty_leaves_w_norm, matrix_to_leaves,
-        matrix_to_leaves_w_norm, AnyKDT, Leaf, LeafWithNorm, SplitMethod, DIST, KDT, KDTQ,
-    },
+    arkadia::{matrix_to_empty_leaves, matrix_to_leaves, AnyKDT, Leaf, SplitMethod, DIST, KDTQ},
     utils::{list_u32_output, series_to_ndarray, split_offsets},
 };
 
@@ -59,19 +56,6 @@ pub fn matrix_to_leaves_filtered<'a, T: Float + 'static, A: Copy>(
     values: &'a [A],
     filter: &BooleanChunked,
 ) -> Vec<Leaf<'a, T, A>> {
-    filter
-        .into_iter()
-        .zip(values.iter().copied().zip(matrix.rows()))
-        .filter(|(f, _)| f.unwrap_or(false))
-        .map(|(_, pair)| pair.into())
-        .collect::<Vec<_>>()
-}
-
-pub fn matrix_to_leaves_w_norm_filtered<'a, T: Float + 'static, A: Copy>(
-    matrix: &'a ArrayView2<'a, T>,
-    values: &'a [A],
-    filter: &BooleanChunked,
-) -> Vec<LeafWithNorm<'a, T, A>> {
     filter
         .into_iter()
         .zip(values.iter().copied().zip(matrix.rows()))
@@ -190,26 +174,14 @@ fn pl_knn_ptwise(
 
     let ca = match dist_from_str::<f64>(kwargs.metric.as_str()) {
         Ok(d) => {
-            if d == DIST::L2 {
-                // This kdtree will be faster because norms are cached
-                let mut leaves = if skip_data {
-                    let data_mask = inputs[inputs_offset].bool().unwrap();
-                    matrix_to_leaves_w_norm_filtered(&binding, id, data_mask)
-                } else {
-                    matrix_to_leaves_w_norm(&binding, id)
-                };
-                KDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
-                    .map(|tree| knn_ptwise(tree, eval_mask, binding, k, can_parallel, kwargs.epsilon))
+            let mut leaves = if skip_data {
+                let data_mask = inputs[inputs_offset].bool().unwrap();
+                matrix_to_leaves_filtered(&binding, id, data_mask)
             } else {
-                let mut leaves = if skip_data {
-                    let data_mask = inputs[inputs_offset].bool().unwrap();
-                    matrix_to_leaves_filtered(&binding, id, data_mask)
-                } else {
-                    matrix_to_leaves(&binding, id)
-                };
-                AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
-                    .map(|tree| knn_ptwise(tree, eval_mask, binding, k, can_parallel, kwargs.epsilon))
-            }
+                matrix_to_leaves(&binding, id)
+            };
+            AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
+                .map(|tree| knn_ptwise(tree, eval_mask, binding, k, can_parallel, kwargs.epsilon))
         }
         Err(e) => Err(e),
     }
@@ -360,26 +332,15 @@ fn pl_knn_ptwise_w_dist(
 
     let (ca_nb, ca_dist) = match dist_from_str::<f64>(kwargs.metric.as_str()) {
         Ok(d) => {
-            if d == DIST::L2 {
-                // This kdtree will be faster because norms are cached
-                let mut leaves = if skip_data {
-                    let data_mask = inputs[inputs_offset].bool().unwrap();
-                    matrix_to_leaves_w_norm_filtered(&binding, id, data_mask)
-                } else {
-                    matrix_to_leaves_w_norm(&binding, id)
-                };
-                KDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
-                    .map(|tree| knn_ptwise_w_dist(tree, eval_mask, binding, k, can_parallel, kwargs.epsilon))
+            let mut leaves = if skip_data {
+                let data_mask = inputs[inputs_offset].bool().unwrap();
+                matrix_to_leaves_filtered(&binding, id, data_mask)
             } else {
-                let mut leaves = if skip_data {
-                    let data_mask = inputs[inputs_offset].bool().unwrap();
-                    matrix_to_leaves_filtered(&binding, id, data_mask)
-                } else {
-                    matrix_to_leaves(&binding, id)
-                };
-                AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
-                    .map(|tree| knn_ptwise_w_dist(tree, eval_mask, binding, k, can_parallel, kwargs.epsilon))
-            }
+                matrix_to_leaves(&binding, id)
+            };
+            AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d).map(|tree| {
+                knn_ptwise_w_dist(tree, eval_mask, binding, k, can_parallel, kwargs.epsilon)
+            })
         }
         Err(e) => Err(e),
     }
@@ -458,16 +419,9 @@ fn pl_query_radius_ptwise(
 
     let ca = match dist_from_str::<f64>(kwargs.metric.as_str()) {
         Ok(d) => {
-            if d == DIST::L2 {
-                // This kdtree will be faster because norms are cached
-                let mut leaves = matrix_to_leaves_w_norm(&binding, id);
-                KDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
-                    .map(|tree| query_radius_ptwise(tree, binding, radius, can_parallel, sort))
-            } else {
-                let mut leaves = matrix_to_leaves(&binding, id);
-                AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
-                    .map(|tree| query_radius_ptwise(tree, binding, radius, can_parallel, sort))
-            }
+            let mut leaves = matrix_to_leaves(&binding, id);
+            AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
+                .map(|tree| query_radius_ptwise(tree, binding, radius, can_parallel, sort))
         }
         Err(e) => Err(e),
     }
@@ -579,16 +533,9 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
         let r = radius.get(0).unwrap();
         let ca = match dist_from_str::<f64>(kwargs.metric.as_str()) {
             Ok(d) => {
-                if d == DIST::L2 {
-                    // This kdtree will be faster because norms are cached
-                    let mut leaves = matrix_to_empty_leaves_w_norm(&binding);
-                    KDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
-                        .map(|tree| query_nb_cnt(tree, data.view(), r, can_parallel))
-                } else {
-                    let mut leaves = matrix_to_empty_leaves(&binding);
-                    AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
-                        .map(|tree| query_nb_cnt(tree, data.view(), r, can_parallel))
-                }
+                let mut leaves = matrix_to_empty_leaves(&binding);
+                AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
+                    .map(|tree| query_nb_cnt(tree, data.view(), r, can_parallel))
             }
             Err(e) => Err(e),
         }
@@ -597,16 +544,9 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
     } else if radius.len() == nrows {
         let ca = match dist_from_str::<f64>(kwargs.metric.as_str()) {
             Ok(d) => {
-                if d == DIST::L2 {
-                    // This kdtree will be faster because norms are cached
-                    let mut leaves = matrix_to_empty_leaves_w_norm(&binding);
-                    KDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT)
-                        .map(|tree| query_nb_cnt_w_radius(tree, data.view(), radius, can_parallel))
-                } else {
-                    let mut leaves = matrix_to_empty_leaves(&binding);
-                    AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
-                        .map(|tree| query_nb_cnt_w_radius(tree, data.view(), radius, can_parallel))
-                }
+                let mut leaves = matrix_to_empty_leaves(&binding);
+                AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
+                    .map(|tree| query_nb_cnt_w_radius(tree, data.view(), radius, can_parallel))
             }
             Err(e) => Err(e),
         }

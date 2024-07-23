@@ -1146,14 +1146,14 @@ def test_is_knn_from(df, x, dist, k, res):
                     "val3": [0.1, 0.4, 11.0],
                 }
             ),
-            "l2",
+            "sql2",
             pl.DataFrame({"id": [[1, 2], [2, 1], [3]]}),
         ),
     ],
 )
 def test_radius_ptwise(df, dist, res):
     test = df.select(
-        pds.query_radius_ptwise("val1", "val2", "val3", dist="l2", r=0.3, index="id").alias("id")
+        pds.query_radius_ptwise("val1", "val2", "val3", dist=dist, r=0.3, index="id").alias("id")
     ).explode("id")  # compare after explode
     res = res.explode("id").select(pl.col("id").cast(pl.UInt32))
     assert_frame_equal(test, res)
@@ -1165,7 +1165,7 @@ def test_radius_ptwise(df, dist, res):
         (
             pl.DataFrame({"x": range(5), "y": range(5), "z": range(5)}),
             4,
-            "l2",
+            "sql2",
             pl.DataFrame({"nb_cnt": [2, 3, 3, 3, 2]}),  # A point is always its own neighbor
         ),
         (

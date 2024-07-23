@@ -74,8 +74,12 @@ fn faer_qr_lstsq(x: ArrayView2<f64>, y: ArrayView2<f64>) -> Mat<f64> {
 /// By default this uses Choleskey to solve the system, and in case the matrix is not positive
 /// definite, it falls back to SVD. (I suspect the matrix in this case is always positive definite!)
 #[inline(always)]
-fn faer_cholskey_lstsq_l2(x: ArrayView2<f64>, y: ArrayView2<f64>, lambda: f64, has_bias:bool) -> Mat<f64> {
-
+fn faer_cholskey_lstsq_l2(
+    x: ArrayView2<f64>,
+    y: ArrayView2<f64>,
+    lambda: f64,
+    has_bias: bool,
+) -> Mat<f64> {
     let x = x.into_faer();
     let y = y.into_faer();
     let n1 = x.ncols().abs_diff(has_bias as usize);
@@ -99,7 +103,6 @@ fn faer_cholskey_lstsq_l2(x: ArrayView2<f64>, y: ArrayView2<f64>, lambda: f64, h
 fn soft_threshold_l1(rho: f64, lambda: f64) -> f64 {
     rho.signum() * (rho.abs() - lambda).max(0f64)
 }
-
 
 /// Computes Lasso Regression coefficients by the use of Coordinate Descent.
 /// The current stopping criterion is based on L Inf norm of the changes in the
@@ -146,7 +149,7 @@ fn faer_lasso_regression(
             // Safe. The index is valid and the value is initialized.
             let before = *unsafe { beta.get_unchecked(j, 0) };
             *unsafe { beta.get_mut_unchecked(j, 0) } = 0f64;
-            let xtx_j = unsafe { xtx.get_unchecked(j..j+1, ..) };
+            let xtx_j = unsafe { xtx.get_unchecked(j..j + 1, ..) };
 
             // let x_j = j th column of x
             // let dot = x_j.transpose() * (y - x * &beta); // Slow.

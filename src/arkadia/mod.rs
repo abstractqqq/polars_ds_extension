@@ -12,19 +12,17 @@
 /// and it is more convenient to just use strings.
 /// E.g.
 /// within_count returns a u32 as opposed to usize because that can help me skip a type conversion when used with Polars.
-pub mod arkadia;
 pub mod arkadia_any;
 pub mod leaf;
 pub mod neighbor;
 pub mod utils;
 
-pub use arkadia::KDT;
 pub use arkadia_any::{AnyKDT, DIST};
-pub use leaf::{KdLeaf, Leaf, LeafWithNorm};
+pub use leaf::{KdLeaf, Leaf};
 pub use neighbor::NB;
 pub use utils::{
-    matrix_to_empty_leaves, matrix_to_empty_leaves_w_norm, matrix_to_leaves,
-    matrix_to_leaves_w_norm, matrix_to_leaves_w_row_num, suggest_capacity, SplitMethod,
+    matrix_to_empty_leaves, matrix_to_leaves, matrix_to_leaves_w_row_num, suggest_capacity,
+    SplitMethod,
 };
 
 // ---------------------------------------------------------------------------------------------------------
