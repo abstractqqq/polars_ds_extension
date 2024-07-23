@@ -211,6 +211,10 @@ See this for Polars Extensions: [notebook](./examples/basics.ipynb)
 
 See this for Native Polars DataFrame Explorative tools: [notebook](./examples/diagnosis.ipynb)
 
+## HELP WANTED!
+
+1. Documentation writing, Doc Review, and Benchmark preparation
+
 ## Road Map
 
 1. Standalone KNN and linear regression module.

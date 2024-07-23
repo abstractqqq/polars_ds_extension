@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Literal, Union, List, Callable
+from typing import Literal, List, Callable, Union
 import sys
 import polars as pl
 

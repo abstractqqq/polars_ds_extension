@@ -1,6 +1,6 @@
 /// Least Squares using Faer and ndarray.
 use crate::utils::to_frame;
-use faer::prelude::*;
+use faer::{prelude::*, Side};
 use faer_ext::IntoFaer;
 use itertools::Itertools;
 use ndarray::{s, Array2, ArrayView2};
@@ -71,28 +71,35 @@ fn faer_qr_lstsq(x: ArrayView2<f64>, y: ArrayView2<f64>) -> Mat<f64> {
 }
 
 /// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
+/// By default this uses Choleskey to solve the system, and in case the matrix is not positive
+/// definite, it falls back to SVD. (I suspect the matrix in this case is always positive definite!)
 #[inline(always)]
-fn faer_svd_lstsq_l2(x: ArrayView2<f64>, y: ArrayView2<f64>, lambda: f64, has_bias:bool) -> Mat<f64> {
+fn faer_cholskey_lstsq_l2(x: ArrayView2<f64>, y: ArrayView2<f64>, lambda: f64, has_bias:bool) -> Mat<f64> {
 
-    let x = x.into_faer();    
+    let x = x.into_faer();
     let y = y.into_faer();
     let n1 = x.ncols().abs_diff(has_bias as usize);
 
     let xt = x.transpose();
-    let mut xtx_plus = xt * x; 
+    let mut xtx_plus = xt * x;
+
     // xtx + diagonal of lambda. If has bias, last diagonal element is 0. No added in the for loop.
     // Safe. Index is valid and value is initialized.
     for i in 0..n1 {
         *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
     }
-    let svd = xtx_plus.thin_svd();
-    svd.inverse() * xt * y
+
+    match xtx_plus.cholesky(Side::Lower) {
+        Ok(cho) => cho.solve(xt * y),
+        Err(_) => xtx_plus.thin_svd().solve(xt * y),
+    }
 }
 
 #[inline(always)]
-fn soft_threshold(rho: f64, lambda: f64) -> f64 {
+fn soft_threshold_l1(rho: f64, lambda: f64) -> f64 {
     rho.signum() * (rho.abs() - lambda).max(0f64)
 }
+
 
 /// Computes Lasso Regression coefficients by the use of Coordinate Descent.
 /// The current stopping criterion is based on L Inf norm of the changes in the
@@ -128,6 +135,9 @@ fn faer_lasso_regression(
         .map(|c| c.squared_norm_l2())
         .collect::<Vec<_>>();
 
+    let xty = x.transpose() * y;
+    let xtx = x.transpose() * x;
+
     for _ in 0..2000 {
         let mut max_change = 0f64;
         // Random selection often leads to faster convergence?
@@ -136,10 +146,15 @@ fn faer_lasso_regression(
             // Safe. The index is valid and the value is initialized.
             let before = *unsafe { beta.get_unchecked(j, 0) };
             *unsafe { beta.get_mut_unchecked(j, 0) } = 0f64;
-            let x_j = x.get(.., j..j + 1);
-            let dot = x_j.transpose() * (y - x * &beta); // should be 1x1 matrix
+            let xtx_j = unsafe { xtx.get_unchecked(j..j+1, ..) };
+
+            // let x_j = j th column of x
+            // let dot = x_j.transpose() * (y - x * &beta); // Slow.
+            // xty.read(j, 0) = x_j.transpose() * y,  xtx_j * &beta = x_j.transpose() * x * &beta
+            let dot = xty.read(j, 0) - (xtx_j * &beta).read(0, 0);
+
             // update beta(j, 0).
-            let after = soft_threshold(dot.read(0, 0), lambda_new) / norms[j];
+            let after = soft_threshold_l1(dot, lambda_new) / norms[j];
             *unsafe { beta.get_mut_unchecked(j, 0) } = after;
             max_change = (after - before).abs().max(max_change);
         }
@@ -220,7 +235,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
             let coeffs = match method {
                 LRMethods::Normal => faer_qr_lstsq(x, y),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
-                LRMethods::L2 => faer_svd_lstsq_l2(x, y, kwargs.l2_reg, add_bias),
+                LRMethods::L2 => faer_cholskey_lstsq_l2(x, y, kwargs.l2_reg, add_bias),
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new("betas", 1, coeffs.nrows(), DataType::Float64);
@@ -248,7 +263,7 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let coeffs = match method {
                 LRMethods::Normal => faer_qr_lstsq(x, y),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
-                LRMethods::L2 => faer_svd_lstsq_l2(x, y, kwargs.l2_reg, add_bias),
+                LRMethods::L2 => faer_cholskey_lstsq_l2(x, y, kwargs.l2_reg, add_bias),
             };
 
             let pred = x.into_faer() * &coeffs;
