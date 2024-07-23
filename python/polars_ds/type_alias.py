@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Literal, List, Callable
+from typing import Literal, List, Callable, Union
 import sys
 import polars as pl
 
@@ -24,9 +24,9 @@ LinearRegressionMethod: TypeAlias = Literal["normal", "l2"]
 QuantileMethod: TypeAlias = Literal["nearest", "higher", "lower", "midpoint", "linear"]
 
 # Other Custom Types
-PolarsFrame: TypeAlias = pl.DataFrame | pl.LazyFrame
-StrOrExpr: TypeAlias = str | pl.Expr
-ExprTransform: TypeAlias = pl.Expr | List[pl.Expr]
+PolarsFrame: TypeAlias = Union[pl.DataFrame, pl.LazyFrame]
+StrOrExpr: TypeAlias = Union[str, pl.Expr]
+ExprTransform: TypeAlias = Union[pl.Expr, List[pl.Expr]]
 # Need ...
 FitTransformFunc: TypeAlias = Callable[[PolarsFrame, List[str]], ExprTransform]
 
