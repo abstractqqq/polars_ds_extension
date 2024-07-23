@@ -249,7 +249,7 @@ def query_knn_ptwise(
     *features: StrOrExpr,
     index: StrOrExpr,
     k: int = 5,
-    dist: Distance = "l2",
+    dist: Distance = "sql2",
     parallel: bool = False,
     return_dist: bool = False,
     eval_mask: Optional[StrOrExpr] = None,
@@ -281,8 +281,8 @@ def query_knn_ptwise(
         Number of neighbors to query
     leaf_size : int
         Leaf size for the kd-tree. Tuning this might improve runtime performance.
-    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
-        Note `l2` is actually squared `l2` for computational efficiency.
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+        Note `sql2` stands for squared l2.
     parallel : bool
         Whether to run the k-nearest neighbor query in parallel. This is recommended when you
         are running only this expression, and not in group_by context.
@@ -304,7 +304,6 @@ def query_knn_ptwise(
         raise ValueError("Input `k` must be >= 1.")
 
     idx = str_to_expr(index).cast(pl.UInt32).rechunk()
-    metric = str(dist).lower()
     cols = [idx]
     if eval_mask is None:
         skip_eval = False
@@ -322,7 +321,7 @@ def query_knn_ptwise(
     kwargs = {
         "k": k,
         "leaf_size": 32,
-        "metric": metric,
+        "metric": str(dist).lower(),
         "parallel": parallel,
         "skip_eval": skip_eval,
         "skip_data": skip_data,
@@ -348,7 +347,7 @@ def within_dist_from(
     *features: StrOrExpr,
     pt: Iterable[float],
     r: Union[float, pl.Expr],
-    dist: Distance = "l2",
+    dist: Distance = "sql2",
 ) -> pl.Expr:
     """
     Returns a boolean column that returns points that are within radius from the given point.
@@ -361,8 +360,8 @@ def within_dist_from(
         The point, at which we filter using the radius.
     r : either a float or an expression
         The radius to query with. If this is an expression, the radius will be applied row-wise.
-    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
-        Note `l2` is actually squared `l2` for computational efficiency.
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+        Note `sql2` stands for squared l2.
     """
     # For a single point, it is faster to just do it in native polars
     oth = [str_to_expr(x) for x in features]
@@ -374,7 +373,7 @@ def within_dist_from(
             pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
             <= r
         )
-    elif dist == "l2":
+    elif dist in ("l2", "sql2"):
         return (
             pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(pt, oth))
             <= r
@@ -413,7 +412,7 @@ def is_knn_from(
     *features: StrOrExpr,
     pt: Iterable[float],
     k: int,
-    dist: Distance = "l2",
+    dist: Distance = "sql2",
 ) -> pl.Expr:
     """
     Returns a boolean column that returns points that are k nearest neighbors from the point.
@@ -426,8 +425,8 @@ def is_knn_from(
         The point, at which we filter using the radius.
     k : int
         k nearest neighbor
-    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
-        Note `l2` is actually squared `l2` for computational efficiency.
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+        Note `sql2` stands for squared l2.
     """
     # For a single point, it is faster to just do it in native polars
     oth = [str_to_expr(x) for x in features]
@@ -437,7 +436,7 @@ def is_knn_from(
     if dist == "l1":
         dist = pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
         return dist <= dist.bottom_k(k=k).max()
-    elif dist == "l2":
+    elif dist in ("l2", "sql2"):
         dist = pl.sum_horizontal(
             (e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(pt, oth)
         )
@@ -474,7 +473,7 @@ def query_radius_ptwise(
     *features: StrOrExpr,
     index: StrOrExpr,
     r: float,
-    dist: Distance = "l2",
+    dist: Distance = "sql2",
     sort: bool = True,
     parallel: bool = False,
 ) -> pl.Expr:
@@ -498,8 +497,8 @@ def query_radius_ptwise(
         The column used as index, must be castable to u32
     r : float
         The radius. Must be a scalar value now.
-    dist : Literal[`l1`, `l2`, `inf`, `cosine`]
-        Note `l2` is actually squared `l2` for computational efficiency.
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+        Note `sql2` stands for squared l2.
     sort
         Whether the neighbors returned should be sorted by the distance. Setting this to False can
         improve performance by 10-20%.
@@ -527,7 +526,7 @@ def query_radius_ptwise(
 def query_nb_cnt(
     r: Union[float, str, pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
     *features: StrOrExpr,
-    dist: Distance = "l2",
+    dist: Distance = "sql2",
     parallel: bool = False,
 ) -> pl.Expr:
     """
@@ -543,8 +542,8 @@ def query_nb_cnt(
         it must be the name of a column
     *features : str | pl.Expr
         Other columns used as features
-    dist : Literal[`l1`, `l2`, `inf`, `h`, `cosine`]
-        Note `l2` is actually squared `l2` for computational efficiency.
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+        Note `sql2` stands for squared l2.
     parallel : bool
         Whether to run the distance query in parallel. This is recommended when you
         are running only this expression, and not in group_by context.

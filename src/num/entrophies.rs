@@ -1,7 +1,6 @@
 use crate::arkadia::{
-    arkadia::KDT,
     arkadia_any::{AnyKDT, DIST},
-    matrix_to_empty_leaves, matrix_to_empty_leaves_w_norm, SplitMethod, KDTQ,
+    matrix_to_empty_leaves, SplitMethod, KDTQ,
 };
 use crate::num::knn::{query_nb_cnt, KDTKwargs};
 use crate::utils::{series_to_ndarray, split_offsets};

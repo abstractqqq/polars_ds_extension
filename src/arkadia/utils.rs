@@ -1,4 +1,4 @@
-use crate::arkadia::leaf::{Leaf, LeafWithNorm};
+use crate::arkadia::leaf::Leaf;
 use ndarray::ArrayView2;
 use num::Float;
 
@@ -28,28 +28,6 @@ pub fn suggest_capacity(dim: usize) -> usize {
     } else {
         256
     }
-}
-
-pub fn matrix_to_leaves_w_norm<'a, T: Float + 'static, A: Copy>(
-    matrix: &'a ArrayView2<'a, T>,
-    values: &'a [A],
-) -> Vec<LeafWithNorm<'a, T, A>> {
-    values
-        .iter()
-        .copied()
-        .zip(matrix.rows())
-        .map(|pair| pair.into())
-        .collect::<Vec<_>>()
-}
-
-pub fn matrix_to_empty_leaves_w_norm<'a, T: Float + 'static>(
-    matrix: &'a ArrayView2<'a, T>,
-) -> Vec<LeafWithNorm<'a, T, ()>> {
-    matrix
-        .rows()
-        .into_iter()
-        .map(|row| ((), row).into())
-        .collect::<Vec<_>>()
 }
 
 pub fn matrix_to_leaves<'a, T: Float + 'static, A: Copy>(
