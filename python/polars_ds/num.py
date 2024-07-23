@@ -914,9 +914,9 @@ def query_lstsq(
     cols.extend(str_to_expr(z) for z in x)
 
     if method == "l1" and l1_reg <= 0.0:
-        raise ValueError("For Lasso regression, `lambda_l1` must be positive.")
+        raise ValueError("For Lasso regression, `l1_reg` must be positive.")
     if method == "l2" and l2_reg <= 0.0:
-        raise ValueError("For Ridge regression, `lambda_l2` must be positive.")
+        raise ValueError("For Ridge regression, `l2_reg` must be positive.")
 
     lr_kwargs = {
         "bias": add_bias,
