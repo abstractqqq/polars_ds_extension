@@ -1,28 +1,15 @@
+use crate::linalg::lstsq::{
+    faer_cholskey_ridge_regression, faer_lasso_regression, faer_qr_lstsq, LRMethods,
+};
 /// Least Squares using Faer and ndarray.
 use crate::utils::to_frame;
-use faer::{prelude::*, Side};
+use faer::prelude::*;
 use faer_ext::IntoFaer;
 use itertools::Itertools;
-use ndarray::{s, Array2, ArrayView2};
+use ndarray::{s, Array2};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use serde::Deserialize;
-
-enum LRMethods {
-    Normal, // Normal. Normal Equation
-    L1,     // Lasso, L1 regularized
-    L2,     // Ridge, L2 regularized
-}
-
-impl From<String> for LRMethods {
-    fn from(value: String) -> Self {
-        match value.as_str() {
-            "l1" | "lasso" => LRMethods::L1,
-            "l2" | "ridge" => LRMethods::L2,
-            _ => LRMethods::Normal,
-        }
-    }
-}
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct LstsqKwargs {
@@ -35,12 +22,12 @@ pub(crate) struct LstsqKwargs {
 }
 
 fn report_output(_: &[Field]) -> PolarsResult<Field> {
-    let index = Field::new("idx", DataType::UInt16); // index of feature
-    let coeff = Field::new("coeff", DataType::Float64); // estimated value for this coefficient
+    let features = Field::new("features", DataType::String); // index of feature
+    let beta = Field::new("beta", DataType::Float64); // estimated value for this coefficient
     let stderr = Field::new("std_err", DataType::Float64); // Std Err for this coefficient
     let t = Field::new("t", DataType::Float64); // t value for this coefficient
     let p = Field::new("p>|t|", DataType::Float64); // p value for this coefficient
-    let v: Vec<Field> = vec![index, coeff, stderr, t, p];
+    let v: Vec<Field> = vec![features, beta, stderr, t, p];
     Ok(Field::new("lstsq_report", DataType::Struct(v)))
 }
 
@@ -56,130 +43,6 @@ fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
         "coeffs",
         DataType::List(Box::new(DataType::Float64)),
     ))
-}
-
-/// Returns the coefficients for lstsq as a nrows x 1 matrix
-/// The uses QR (column pivot) decomposition as default method to compute inverse,
-/// Column Pivot QR is chosen to deal with rank deficient cases. It is also slightly
-/// faster compared to other methods.
-#[inline(always)]
-fn faer_qr_lstsq(x: ArrayView2<f64>, y: ArrayView2<f64>) -> Mat<f64> {
-    let x = x.into_faer();
-    let y = y.into_faer();
-    let qr = x.col_piv_qr();
-    qr.solve_lstsq(y)
-}
-
-/// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
-/// By default this uses Choleskey to solve the system, and in case the matrix is not positive
-/// definite, it falls back to SVD. (I suspect the matrix in this case is always positive definite!)
-#[inline(always)]
-fn faer_cholskey_lstsq_l2(
-    x: ArrayView2<f64>,
-    y: ArrayView2<f64>,
-    lambda: f64,
-    has_bias: bool,
-) -> Mat<f64> {
-    let x = x.into_faer();
-    let y = y.into_faer();
-    let n1 = x.ncols().abs_diff(has_bias as usize);
-
-    let xt = x.transpose();
-    let mut xtx_plus = xt * x;
-
-    // xtx + diagonal of lambda. If has bias, last diagonal element is 0. No added in the for loop.
-    // Safe. Index is valid and value is initialized.
-    for i in 0..n1 {
-        *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
-    }
-
-    match xtx_plus.cholesky(Side::Lower) {
-        Ok(cho) => cho.solve(xt * y),
-        Err(_) => xtx_plus.thin_svd().solve(xt * y),
-    }
-}
-
-#[inline(always)]
-fn soft_threshold_l1(rho: f64, lambda: f64) -> f64 {
-    rho.signum() * (rho.abs() - lambda).max(0f64)
-}
-
-/// Computes Lasso Regression coefficients by the use of Coordinate Descent.
-/// The current stopping criterion is based on L Inf norm of the changes in the
-/// coordinates. A better alternative might be the dual gap.
-///
-/// Reference:
-/// https://xavierbourretsicotte.github.io/lasso_implementation.html
-/// https://github.com/minatosato/Lasso/blob/master/coordinate_descent_lasso.py
-/// https://en.wikipedia.org/wiki/Lasso_(statistics)
-#[inline(always)]
-fn faer_lasso_regression(
-    x: ArrayView2<f64>,
-    y: ArrayView2<f64>,
-    lambda: f64,
-    has_bias: bool,
-    tol: f64,
-) -> Mat<f64> {
-    let m = x.nrows() as f64;
-    let ncols = x.ncols();
-    let n1 = ncols.abs_diff(has_bias as usize);
-
-    let x = x.into_faer();
-    let y = y.into_faer();
-
-    let lambda_new = m * lambda;
-
-    let mut beta: Mat<f64> = Mat::zeros(ncols, 1);
-    let mut converge = false;
-
-    // compute column squared l2 norms.
-    let norms = x
-        .col_iter()
-        .map(|c| c.squared_norm_l2())
-        .collect::<Vec<_>>();
-
-    let xty = x.transpose() * y;
-    let xtx = x.transpose() * x;
-
-    for _ in 0..2000 {
-        let mut max_change = 0f64;
-        // Random selection often leads to faster convergence?
-        for j in 0..n1 {
-            // temporary set beta(j, 0) to 0.
-            // Safe. The index is valid and the value is initialized.
-            let before = *unsafe { beta.get_unchecked(j, 0) };
-            *unsafe { beta.get_mut_unchecked(j, 0) } = 0f64;
-            let xtx_j = unsafe { xtx.get_unchecked(j..j + 1, ..) };
-
-            // let x_j = j th column of x
-            // let dot = x_j.transpose() * (y - x * &beta); // Slow.
-            // xty.read(j, 0) = x_j.transpose() * y,  xtx_j * &beta = x_j.transpose() * x * &beta
-            let dot = xty.read(j, 0) - (xtx_j * &beta).read(0, 0);
-
-            // update beta(j, 0).
-            let after = soft_threshold_l1(dot, lambda_new) / norms[j];
-            *unsafe { beta.get_mut_unchecked(j, 0) } = after;
-            max_change = (after - before).abs().max(max_change);
-        }
-        // if has_bias, n1 = last index = ncols - 1 = column of bias. If has_bias is False, n = ncols
-        if has_bias {
-            // Safe. The index is valid and the value is initialized.
-            let xx = unsafe { x.get_unchecked(.., 0..n1) };
-            let bb = unsafe { beta.get_unchecked(0..n1, ..) };
-            let ss = (y - xx * bb).sum() / m;
-            *unsafe { beta.get_mut_unchecked(n1, 0) } = ss;
-        }
-        converge = max_change < tol;
-        if converge {
-            break;
-        }
-    }
-
-    if !converge {
-        println!("Lasso regression: 2000 iterations have passed and result hasn't converged.")
-    }
-
-    beta
 }
 
 /// Returns a Array2 ready for linear regression, and a mask, indicating valid rows
@@ -238,7 +101,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
             let coeffs = match method {
                 LRMethods::Normal => faer_qr_lstsq(x, y),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
-                LRMethods::L2 => faer_cholskey_lstsq_l2(x, y, kwargs.l2_reg, add_bias),
+                LRMethods::L2 => faer_cholskey_ridge_regression(x, y, kwargs.l2_reg, add_bias),
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new("betas", 1, coeffs.nrows(), DataType::Float64);
@@ -266,7 +129,7 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let coeffs = match method {
                 LRMethods::Normal => faer_qr_lstsq(x, y),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
-                LRMethods::L2 => faer_cholskey_lstsq_l2(x, y, kwargs.l2_reg, add_bias),
+                LRMethods::L2 => faer_cholskey_ridge_regression(x, y, kwargs.l2_reg, add_bias),
             };
 
             let pred = x.into_faer() * &coeffs;
@@ -310,6 +173,15 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
 fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
     let skip_null = kwargs.skip_null;
+    // index 0 is target y. Skip
+    let mut name_builder =
+        StringChunkedBuilder::new("features", inputs.len() + (add_bias) as usize);
+    for s in inputs[1..].iter().map(|s| s.name()) {
+        name_builder.append_value(s);
+    }
+    if add_bias {
+        name_builder.append_value("__bias__");
+    }
     // Copy data
     // Target y is at index 0
     match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
@@ -355,9 +227,9 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
                 )
                 .collect_vec();
             // Finalize
-            let idx_series = UInt16Chunked::from_iter((0..ncols).map(|i| Some(i as u16)));
-            let idx_series = idx_series.with_name("idx").into_series();
-            let coeffs_series = Float64Chunked::from_slice("coeff", betas);
+            let names_ca = name_builder.finish();
+            let names_series = names_ca.into_series();
+            let coeffs_series = Float64Chunked::from_slice("beta", betas);
             let coeffs_series = coeffs_series.into_series();
             let stderr_series = Float64Chunked::from_vec("std_err", std_err);
             let stderr_series = stderr_series.into_series();
@@ -367,7 +239,13 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
             let p_series = p_series.into_series();
             let out = StructChunked::new(
                 "lstsq_report",
-                &[idx_series, coeffs_series, stderr_series, t_series, p_series],
+                &[
+                    names_series,
+                    coeffs_series,
+                    stderr_series,
+                    t_series,
+                    p_series,
+                ],
             )?;
             Ok(out.into_series())
         }
