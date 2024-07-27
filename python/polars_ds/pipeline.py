@@ -520,6 +520,25 @@ class Blueprint:
         self._steps.append(SelectStep(cols))
         return self
 
+    def shrink_dtype(self, force_f32: bool = False) -> pl.Expr:
+        """
+        Shrinks the dtype by calling shrink_dtype on all numerical columns. This may reduce
+        the memory pressure during the process.
+
+        Parameters
+        ----------
+        force_f32
+            If true, force all float columns to be f32 type.
+        """
+        import polars.selectors as cs
+
+        exprs = cs.integer().shrink_dtype()
+        self._steps.append(WithColumnsStep(exprs))
+        if force_f32:
+            self._steps.append(WithColumnsStep(cs.float().cast(pl.Float32)))
+
+        return self
+
     def winsorize(
         self,
         cols: IntoExprColumn,
