@@ -31,6 +31,15 @@ plot = [
     "graphviz>=0.20",
     "plotly>=5.0,<6" 
 ]
+models = [
+    "numpy>=1.16"
+]
+all = [
+    "great-tables>=0.9",
+    "graphviz>=0.20",
+    "plotly>=5.0,<6",
+    "numpy>=1.16"
+]
 
 [tool.maturin]
 strip = true

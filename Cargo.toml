@@ -30,6 +30,7 @@ ordered-float = "4.2.0"
 approx = "*"
 ahash = ">=0.8.5"
 unicode-normalization = "0.1.23"
+numpy = "0.21.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }

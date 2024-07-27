@@ -8,13 +8,12 @@ nav:
 - Diagnosis: dia.md
 - Pipeline: pipeline.md
 - Sample: sample.md
+- Linear Models: linear_models.md
 - Numerical Extension: num.md
 - Stats Extension: stats.md
 - String Extension: str2.md
 - ML Metrics/Loss Extension: metrics.md
-- Graph Extension: graph.md
-- Complex Extension: complex.md
-- Additional Expressions: polars_ds.md
+- Miscellaneous: polars_ds.md
 
 theme:
   name: material
