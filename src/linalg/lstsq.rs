@@ -1,5 +1,6 @@
-use faer::{prelude::*, Side};
+use faer::{prelude::*, scale, Scale, Side};
 use faer_ext::IntoFaer;
+use mat::As2D;
 use ndarray::ArrayView2;
 
 // add elastic net
@@ -141,4 +142,58 @@ pub fn faer_cholskey_ridge_regression(
         Ok(cho) => cho.solve(xt * y),
         Err(_) => xtx_plus.thin_svd().solve(xt * y),
     }
+}
+
+
+pub fn faer_recursive_lstsq(    
+    x: ArrayView2<f64>,
+    y: ArrayView2<f64>,
+    n: usize,
+) -> Vec<Mat<f64>>{
+
+    let x = x.into_faer(); // size n x m
+    let xn = x.nrows();
+    let y = y.into_faer(); // size n x 1
+    // Vector of matrix of size m x 1
+    let mut coefficients = Vec::with_capacity(xn-n); // xn >= n is checked in Python
+
+
+    let x0 = x.get(..n, ..);
+    let y0 = y.get(..n, ..);
+
+    // The y part of the Sherman-Morrison update
+    let mut y_part = x0.row_iter().enumerate().fold(Col::zeros(x.ncols()), |acc, (i, row)| {
+        let scale = scale(y.read(i, 0));
+        acc + scale * row.transpose()
+    });
+    let mut y_part = y_part.as_2d_mut();
+
+    let xtx = x.transpose() * x;
+
+    let qr = xtx.qr();
+    let mut inv = qr.inverse();
+
+    coefficients.push(&inv * y0);    
+    for j in n..xn {
+
+        let next_x = x.get(j..j+1, ..);
+        let next_y = scale(y.read(j, 0));
+
+        y_part += next_y * next_x.transpose();
+
+        let left = &inv * next_x.transpose();
+        let right = next_x * &inv;
+        let denominator = 1f64 + (x * &inv * x.transpose()).read(0, 0);
+        // Update the inverse
+        faer::linalg::matmul::matmul(
+            inv.as_mut(), 
+            left, 
+            right, 
+            Some(1.0), 
+            denominator.recip(), 
+            faer::Parallelism::Rayon(0) // 
+        ); // inv is updated
+        coefficients.push(&inv * &y_part);
+    }
+    coefficients
 }

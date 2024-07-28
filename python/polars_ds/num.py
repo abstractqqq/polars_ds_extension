@@ -35,6 +35,7 @@ __all__ = [
     "query_transfer_entropy",
     "query_permute_entropy",
     "query_lstsq",
+    "query_recursive_lstsq",
     "query_lstsq_report",
     "query_lempel_ziv",
     "query_jaccard_row",
@@ -940,6 +941,26 @@ def query_lstsq(
             returns_scalar=True,
             pass_name_to_apply=True,
         )
+
+
+def query_recursive_lstsq(
+    *x: StrOrExpr,
+    target: StrOrExpr,
+    start_at: int,
+    # skip_null: bool = False,
+):
+    recursive_lr_kwargs = {"skip_null": False, "n": start_at}
+
+    t = str_to_expr(target).cast(pl.Float64)
+    cols = [t]
+    cols.extend(str_to_expr(z) for z in x)
+    return pl_plugin(
+        symbol="pl_recursive_lstsq",
+        args=cols,
+        kwargs=recursive_lr_kwargs,
+        is_elementwise=True,
+        pass_name_to_apply=True,
+    )
 
 
 def query_lstsq_report(

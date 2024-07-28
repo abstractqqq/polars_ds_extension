@@ -1,5 +1,9 @@
 use crate::linalg::lstsq::{
-    faer_cholskey_ridge_regression, faer_lasso_regression, faer_qr_lstsq, LRMethods,
+    faer_cholskey_ridge_regression, 
+    faer_lasso_regression, 
+    faer_qr_lstsq,
+    faer_recursive_lstsq,
+    LRMethods,
 };
 /// Least Squares using Faer and ndarray.
 use crate::utils::to_frame;
@@ -19,6 +23,12 @@ pub(crate) struct LstsqKwargs {
     pub(crate) l1_reg: f64,
     pub(crate) l2_reg: f64,
     pub(crate) tol: f64,
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct RecursiveLstsqKwargs {
+    pub(crate) skip_null: bool,
+    pub(crate) n: usize,
 }
 
 fn report_output(_: &[Field]) -> PolarsResult<Field> {
@@ -107,6 +117,36 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                 ListPrimitiveChunkedBuilder::new("betas", 1, coeffs.nrows(), DataType::Float64);
 
             builder.append_slice(&coeffs.col_as_slice(0));
+            let out = builder.finish();
+            Ok(out.into_series())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+#[polars_expr(output_type_func=coeff_output)]
+fn pl_recursive_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> PolarsResult<Series> {
+
+    let n = kwargs.n;
+    let skip_null = kwargs.skip_null;
+    // Target y is at index 0
+    match series_to_mat_for_lstsq(inputs, false, skip_null) {
+        Ok((mat, _)) => {
+            // Solving Least Square
+            let x = mat.slice(s![.., 1..]);
+            let y = mat.slice(s![.., 0..1]);
+
+            let coeffs = faer_recursive_lstsq(x, y, n);
+            let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
+                ListPrimitiveChunkedBuilder::new("betas", mat.nrows(), mat.ncols(), DataType::Float64);
+
+            for _ in 0..n.abs_diff(1) {
+                builder.append_null();
+            }
+            for coefficients in coeffs.into_iter() {
+                let coef = coefficients.col_as_slice(0);
+                builder.append_slice(coef);
+            }
             let out = builder.finish();
             Ok(out.into_series())
         }
