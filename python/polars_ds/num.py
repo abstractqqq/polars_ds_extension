@@ -949,7 +949,35 @@ def query_recursive_lstsq(
     start_at: int,
     # skip_null: bool = False,
 ):
-    recursive_lr_kwargs = {"skip_null": False, "n": start_at}
+    """
+    Using the first `start_at` rows of data as basis, start computing the least square solutions
+    by updating the betas per row. A prediction for that row will also be included in the output.
+    This uses the famous Sherman-Morrison-Woodbury Formula under the hood.
+
+    Note: Currently this requires all input data to have no nulls.
+
+    Note: Recursive L2 regularized lstsq is on the roadmap and will come in later versions.
+
+    In the author's opinion, this should be called "cumulative" instead of resursive because of
+    its similarity with other cumulative operations on sequences of data. However, I will go with
+    the academia's name.
+
+    Parameters
+    ----------
+    x : str | pl.Expr
+        The variables used to predict target
+    target : str | pl.Expr
+        The target variable
+    start_at: int
+        Must be >= 1. Rows before start_at will be used as the first initial fit on the data.
+    """
+
+    if start_at >= 1:
+        start = start_at
+    else:
+        raise ValueError("You must start at >=1 for recursive lstsq.")
+
+    recursive_lr_kwargs = {"skip_null": False, "n": start}
 
     t = str_to_expr(target).cast(pl.Float64)
     cols = [t]
