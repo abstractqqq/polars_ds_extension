@@ -50,7 +50,7 @@ df.select(
         pl.col("var1"), pl.col("var2"), pl.col("var3"), # Columns used as the coordinates in 3d space
         index = pl.col("id"),
         r = 0.1, 
-        dist = "l2", # actually this is squared l2
+        dist = "sql2", # squared l2
         parallel = True
     ).alias("best friends"),
 ).with_columns( # -1 to remove the point itself
