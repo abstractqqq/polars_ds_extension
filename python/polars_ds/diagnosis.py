@@ -10,7 +10,7 @@ from itertools import combinations
 from great_tables import GT, nanoplot_options
 from polars.type_aliases import IntoExpr
 
-from .num import query_cond_entropy, query_principal_components, query_lstsq_report
+from . import query_cond_entropy, query_principal_components, query_lstsq_report
 from .type_alias import CorrMethod
 from .stats import corr
 from ._utils import _IS_POLARS_V1
@@ -749,9 +749,9 @@ class DIA:
             .collect()
         )
         if add_bias:
-            b1, alpha = coeffs["coeff"]
+            b1, alpha = coeffs["beta"]
         else:
-            b1, alpha = coeffs["coeff"][0], 0
+            b1, alpha = coeffs["beta"][0], 0
         # Get the data necessary for plotting
         temp = temp.select(
             pl.col(x_name).alias("x"),
