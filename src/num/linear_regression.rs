@@ -1,5 +1,9 @@
 use crate::linalg::lstsq::{
-    faer_cholskey_ridge_regression, faer_lasso_regression, faer_qr_lstsq, LRMethods,
+    faer_cholskey_ridge_regression, 
+    faer_lasso_regression, 
+    faer_qr_lstsq,
+    faer_recursive_lstsq,
+    LRMethods,
 };
 /// Least Squares using Faer and ndarray.
 use crate::utils::to_frame;
@@ -21,6 +25,12 @@ pub(crate) struct LstsqKwargs {
     pub(crate) tol: f64,
 }
 
+#[derive(Deserialize, Debug)]
+pub(crate) struct RecursiveLstsqKwargs {
+    pub(crate) skip_null: bool,
+    pub(crate) n: usize,
+}
+
 fn report_output(_: &[Field]) -> PolarsResult<Field> {
     let features = Field::new("features", DataType::String); // index of feature
     let beta = Field::new("beta", DataType::Float64); // estimated value for this coefficient
@@ -36,6 +46,17 @@ fn pred_residue_output(_: &[Field]) -> PolarsResult<Field> {
     let residue = Field::new("resid", DataType::Float64);
     let v = vec![pred, residue];
     Ok(Field::new("pred", DataType::Struct(v)))
+}
+
+fn recursive_lstsq_output(_: &[Field]) -> PolarsResult<Field> {
+    let coeffs = Field::new(
+        "coeffs",
+        DataType::List(Box::new(DataType::Float64)),
+    );
+    let pred = Field::new("prediction", DataType::Float64);
+    let v: Vec<Field> = vec![coeffs, pred];
+    Ok(Field::new("recursive_lstsq", DataType::Struct(v)))
+
 }
 
 fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
@@ -96,19 +117,65 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
         Ok((mat, _)) => {
             // Solving Least Square
-            let x = mat.slice(s![.., 1..]);
-            let y = mat.slice(s![.., 0..1]);
+            let x = mat.slice(s![.., 1..]).into_faer();
+            let y = mat.slice(s![.., 0..1]).into_faer();
             let coeffs = match method {
                 LRMethods::Normal => faer_qr_lstsq(x, y),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
                 LRMethods::L2 => faer_cholskey_ridge_regression(x, y, kwargs.l2_reg, add_bias),
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                ListPrimitiveChunkedBuilder::new("betas", 1, coeffs.nrows(), DataType::Float64);
+                ListPrimitiveChunkedBuilder::new("coeffs", 1, coeffs.nrows(), DataType::Float64);
 
             builder.append_slice(&coeffs.col_as_slice(0));
             let out = builder.finish();
             Ok(out.into_series())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+#[polars_expr(output_type_func=recursive_lstsq_output)]
+fn pl_recursive_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> PolarsResult<Series> {
+
+    let n = kwargs.n; // Gauranteed n >= 1
+    let skip_null = kwargs.skip_null;
+
+    if inputs.iter().fold(false, |acc, s| s.has_validity() | acc) {
+        return Err(PolarsError::ComputeError(
+            "Recursive Lstsq: Currently this doesn't support data that contain nulls.".into(),
+        ))
+    }
+
+    // Target y is at index 0
+    match series_to_mat_for_lstsq(inputs, false, skip_null) {
+        Ok((mat, _)) => {
+            // Solving Least Square
+            let x = mat.slice(s![.., 1..]).into_faer();
+            let y = mat.slice(s![.., 0..1]).into_faer();
+
+            let coeffs = faer_recursive_lstsq(x, y, n);
+            let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
+                ListPrimitiveChunkedBuilder::new("coeffs", mat.nrows(), mat.ncols(), DataType::Float64);
+            let mut pred_builder: PrimitiveChunkedBuilder<Float64Type> = 
+                PrimitiveChunkedBuilder::new("pred", mat.nrows());
+
+            let m = n.abs_diff(1);
+            for _ in 0..m {
+                builder.append_null();
+                pred_builder.append_null();
+            }
+            for (i, coefficients) in coeffs.into_iter().enumerate() {
+                let row = x.get(m+i..m+i+1, ..);
+                let pred = (row * &coefficients).read(0, 0);
+                let coef = coefficients.col_as_slice(0);
+                builder.append_slice(coef);
+                pred_builder.append_value(pred);
+            }
+            let coef_out = builder.finish();
+            let pred_out = pred_builder.finish();
+            let ca = StructChunked::new("recursive_lstsq", &[coef_out.into_series(), pred_out.into_series()])?;          
+            Ok(ca.into_series())
         }
         Err(e) => Err(e),
     }
@@ -124,16 +191,16 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
     match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
         Ok((mat, mask)) => {
             // Mask = True indicates the the nulls that we skipped.
-            let y = mat.slice(s![.., 0..1]);
-            let x = mat.slice(s![.., 1..]);
+            let y = mat.slice(s![.., 0..1]).into_faer();
+            let x = mat.slice(s![.., 1..]).into_faer();
             let coeffs = match method {
                 LRMethods::Normal => faer_qr_lstsq(x, y),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
                 LRMethods::L2 => faer_cholskey_ridge_regression(x, y, kwargs.l2_reg, add_bias),
             };
 
-            let pred = x.into_faer() * &coeffs;
-            let resid = y.into_faer() - &pred;
+            let pred = x * &coeffs;
+            let resid = y - &pred;
             let pred = pred.col_as_slice(0);
             let resid = resid.col_as_slice(0);
             // Need extra work when skip_null is true and there are nulls
@@ -189,16 +256,13 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
             let ncols = mat.ncols() - 1;
             let nrows = mat.nrows();
 
-            let y = mat.slice(s![0..nrows, 0..1]);
-            let y = y.view().into_faer();
-            let x = mat.slice(s![0..nrows, 1..]);
-            let xt = x.t().into_faer();
-            let x = x.view().into_faer();
+            let y = mat.slice(s![0..nrows, 0..1]).into_faer();
+            let x = mat.slice(s![0..nrows, 1..]).into_faer();
             // Solving Least Square
-            let xtx = xt * &x;
+            let xtx = x.transpose() * &x;
             let xtx_qr = xtx.col_piv_qr();
             let xtx_inv = xtx_qr.inverse();
-            let coeffs = &xtx_inv * xt * y;
+            let coeffs = &xtx_inv * x.transpose() * y;
             let betas = coeffs.col_as_slice(0);
             // Degree of Freedom
             let dof = nrows as f64 - ncols as f64;

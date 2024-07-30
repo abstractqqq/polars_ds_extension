@@ -53,6 +53,7 @@ jobs:
           pip install --force-reinstall --verbose dist/*.tar.gz
           pip install typing_extensions
           python -c 'import polars_ds as pds'
+          python -c 'from polars_ds import linear_models'
 
       - name: Upload sdist
         uses: actions/upload-artifact@v4

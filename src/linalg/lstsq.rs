@@ -1,4 +1,6 @@
-use faer::{prelude::*, Side};
+use std::ops::Neg;
+
+use faer::{prelude::*, scale, Side};
 use faer_ext::IntoFaer;
 use ndarray::ArrayView2;
 
@@ -29,9 +31,7 @@ fn soft_threshold_l1(rho: f64, lambda: f64) -> f64 {
 /// Column Pivot QR is chosen to deal with rank deficient cases. It is also slightly
 /// faster compared to other methods.
 #[inline(always)]
-pub fn faer_qr_lstsq(x: ArrayView2<f64>, y: ArrayView2<f64>) -> Mat<f64> {
-    let x = x.into_faer();
-    let y = y.into_faer();
+pub fn faer_qr_lstsq(x: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
     let qr = x.col_piv_qr();
     qr.solve_lstsq(y)
 }
@@ -46,8 +46,8 @@ pub fn faer_qr_lstsq(x: ArrayView2<f64>, y: ArrayView2<f64>) -> Mat<f64> {
 /// https://en.wikipedia.org/wiki/Lasso_(statistics)
 #[inline(always)]
 pub fn faer_lasso_regression(
-    x: ArrayView2<f64>,
-    y: ArrayView2<f64>,
+    x: MatRef<f64>,
+    y: MatRef<f64>,
     lambda: f64,
     has_bias: bool,
     tol: f64,
@@ -55,9 +55,6 @@ pub fn faer_lasso_regression(
     let m = x.nrows() as f64;
     let ncols = x.ncols();
     let n1 = ncols.abs_diff(has_bias as usize);
-
-    let x = x.into_faer();
-    let y = y.into_faer();
 
     let lambda_new = m * lambda;
 
@@ -119,19 +116,18 @@ pub fn faer_lasso_regression(
 /// definite, it falls back to SVD. (I suspect the matrix in this case is always positive definite!)
 #[inline(always)]
 pub fn faer_cholskey_ridge_regression(
-    x: ArrayView2<f64>,
-    y: ArrayView2<f64>,
+    x: MatRef<f64>,
+    y: MatRef<f64>,
     lambda: f64,
     has_bias: bool,
 ) -> Mat<f64> {
-    let x = x.into_faer();
-    let y = y.into_faer();
+
     let n1 = x.ncols().abs_diff(has_bias as usize);
 
     let xt = x.transpose();
     let mut xtx_plus = xt * x;
 
-    // xtx + diagonal of lambda. If has bias, last diagonal element is 0. No added in the for loop.
+    // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
     // Safe. Index is valid and value is initialized.
     for i in 0..n1 {
         *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
@@ -142,3 +138,118 @@ pub fn faer_cholskey_ridge_regression(
         Err(_) => xtx_plus.thin_svd().solve(xt * y),
     }
 }
+
+/// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
+/// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
+pub fn faer_recursive_lstsq(    
+    x: MatRef<f64>,
+    y: MatRef<f64>,
+    n: usize,
+) -> Vec<Mat<f64>>{
+
+    let xn = x.nrows();
+    // x: size xn x m
+    // y: size xn x 1
+    // Vector of matrix of size m x 1
+    let mut coefficients = Vec::with_capacity(xn-n); // xn >= n is checked in Python
+
+    let x0 = x.get(..n, ..);
+    let y0 = y.get(..n, ..);
+
+    let x0t = x0.transpose();
+    let qr = (x0t * x0).qr();
+    let mut inv = qr.inverse();
+    // The y part of the update (The non Sherman-Morrison part)
+    let mut weights = &inv * x0t * y0;
+    coefficients.push(weights.to_owned());
+    for j in n..xn {
+
+        let next_x = x.get(j..j+1, ..); // 1 by m, m = # of columns
+        let next_y = y.get(j..j+1, ..); // 1 by 1
+
+        let left = &inv * next_x.transpose();
+        let right = next_x * &inv;
+        let denominator = 1f64 + (&right * next_x.transpose()).read(0, 0);
+        // Update the inverse
+        faer::linalg::matmul::matmul(
+            inv.as_mut(), 
+            left, 
+            right, 
+            Some(1.0), 
+            denominator.recip().neg(), 
+            faer::Parallelism::Rayon(0) // 
+        ); // inv is updated
+
+        let scaler = (next_y - (next_x * &weights)).read(0, 0);
+        // Update weights
+        faer::linalg::matmul::matmul(
+            weights.as_mut(), 
+            &inv, 
+            next_x.transpose(), 
+            Some(1.0), 
+            scaler, 
+            faer::Parallelism::Rayon(0) // 
+        ); // weights is updated
+
+        coefficients.push(weights.to_owned());
+    }
+    coefficients
+}
+
+// /// Initial fit for a recursive lstsq.
+// /// This will return the inverse matrix (XtX) and the coefficients.
+// pub fn faer_recursive_lstsq_init(    
+//     x: MatRef<f64>, // n x m matrix, n >= 1
+//     y: MatRef<f64>, // n x 1 matrix)
+// ) -> (Mat<f64>, Mat<f64>) {
+
+//     let xtx = x.transpose() * x;
+//     let qr = xtx.col_piv_qr();
+//     let inv = qr.inverse();
+//     let coeffs = &inv * x.transpose() * y;
+//     (inv, coeffs)
+// }
+
+// /// Batch update of the resursive lstsq
+// /// This performs inplace updates and returns the inverse matrix (XtX) and the coefficients.
+// pub fn faer_recursive_lstsq_batch_update(    
+//     x: MatRef<f64>, // n x m matrix, n >= 1
+//     y: MatRef<f64>, // n x 1 matrix
+//     prev_weight: MatRef<f64>, // m x 1 matrix
+//     prev_inv: MatRef<f64> // m x m matrix
+// ) -> (Mat<f64>, Mat<f64>) {
+
+//     let mut inv = prev_inv.to_owned();
+//     let mut weights = prev_weight.to_owned();
+
+//     for j in 0..x.nrows() {
+
+//         let next_x = x.get(j..j+1, ..); // 1 by m, m = # of columns
+//         let next_y = y.get(j..j+1, ..); // 1 by 1
+
+//         let left = &inv * next_x.transpose();
+//         let right = next_x * &inv;
+//         let denominator = 1f64 + (&right * next_x.transpose()).read(0, 0);
+//         // Update the inverse
+//         faer::linalg::matmul::matmul(
+//             inv.as_mut(), 
+//             left, 
+//             right, 
+//             Some(1.0), 
+//             denominator.recip().neg(), 
+//             faer::Parallelism::Rayon(0) // 
+//         ); // inv is updated
+
+//         let scaler = (next_y - (next_x * &weights)).read(0, 0);
+//         // Update weights
+//         faer::linalg::matmul::matmul(
+//             weights.as_mut(), 
+//             &inv, 
+//             next_x.transpose(), 
+//             Some(1.0), 
+//             scaler, 
+//             faer::Parallelism::Rayon(0) // 
+//         ); // weights is updated
+//     }
+//     (inv, weights)
+// }

@@ -8,15 +8,17 @@ This module requires the NumPy package. PDS only requires Polars, but you can ge
 
 """
 
-# Currently skipping tests for this module because the underlying functions are all tested in one way or
+# Currently skipping tests for this module because the underlying functi  ons are all tested in one way or
 # another.
+
+from __future__ import annotations
 
 import polars as pl
 import numpy as np
 from .type_alias import LinearRegressionMethod
-from ._polars_ds import pds_linear_regression
 from typing import List
 from .type_alias import PolarsFrame
+from ._polars_ds import pds_faer_lr
 
 import sys
 
@@ -52,7 +54,7 @@ def linear_regression_report(X: np.ndarray, y: np.ndarray) -> pl.DataFrame:
     ).unnest("report")
 
 
-class LinearRegression:
+class LR:
 
     """
     Normal, L1 and L2 regression models.
@@ -60,6 +62,8 @@ class LinearRegression:
 
     def __init__(
         self,
+        X: np.ndarray | None = None,
+        y: np.ndarray | None = None,
         add_bias: bool = False,
         method: LinearRegressionMethod = "normal",
         lambda_: float = 0.0,
@@ -94,6 +98,21 @@ class LinearRegression:
         self.tol: float = tol
         self.feature_names_in_: List[str] = []
 
+        if X is not None and y is not None:
+            self.fit(X, y)
+
+    def __repr__(self) -> str:
+        output = ""
+        output += f"Coefficients: {list(self.coeffs.flatten())}\n"
+        output += f"Bias/Intercept: {self.bias}\n"
+        output += f"Fit Method: {self.method}\n"
+        if self.method != "normal":
+            output += f"Regularization: {self.lambda_}\n"
+        if self.method == "l1":
+            output += f"Algorithm tolerance: {self.tol}\n"
+
+        return output
+
     def set_input_features(self, features: List[str]) -> Self:
         """
         Sets the names of input features.
@@ -119,17 +138,18 @@ class LinearRegression:
         """
 
         new_y = y.reshape((-1, 1))
+        if X.shape[0] != y.shape[0]:
+            raise ValueError("Number of rows do not match.")
+
         n_features = X.shape[0]  # no bias
         if self.add_bias:
             new_x = np.hstack((X, np.ones((n_features, 1))))
         else:
             new_x = X
 
-        temp = pds_linear_regression(
-            new_x, new_y, self.add_bias, self.method, self.lambda_, self.tol
-        )
+        temp = pds_faer_lr(new_x, new_y, self.add_bias, self.method, self.lambda_, self.tol)
 
-        self.coeffs = temp[:n_features]
+        self.coeffs = temp[:n_features].reshape((-1, 1))
         if self.add_bias:
             self.bias = temp[-1]
 
@@ -163,7 +183,7 @@ class LinearRegression:
         X
             New feature matrix
         """
-        return X @ (self.coeffs.reshape((-1, 1))) + self.bias
+        return X @ self.coeffs + self.bias
 
     def predict_df(self, df: PolarsFrame, name: str = "prediction") -> PolarsFrame:
         """
@@ -183,9 +203,49 @@ class LinearRegression:
             )
 
         pred = pl.sum_horizontal(
-            beta * pl.col(c) for c, beta in zip(self.feature_names_in_, self.coeffs)
+            beta * pl.col(c) for c, beta in zip(self.feature_names_in_, self.coeffs.flatten())
         )
         if self.add_bias:
             pred = pred + self.bias
 
         return df.with_columns(pred.alias(name))
+
+
+# class RecursiveLR:
+
+#     def __init__(
+#         self,
+#         X: np.ndarray | None = None,
+#         y: np.ndarray | None = None,
+#         add_bias: bool = False,
+#         # method: LinearRegressionMethod = "normal",
+#         # lambda_: float = 0.0,
+#         # tol: float = 1e-5,
+#     ):
+
+#         self.coeffs: np.ndarray = np.array([])
+#         self.inv: np.ndarray = np.empty()
+#         self.weights: np.ndarray = np.empty()
+#         self.add_bias:bool = add_bias
+
+#         # Updated at least once
+#         self._initialized:bool = False
+
+#     def update(self, X:np.ndarray, y:np.ndarray) -> Self:
+
+#         new_y = y.reshape((-1, 1))
+#         if X.shape[0] != y.shape[0]:
+#             raise ValueError("Number of rows do not match.")
+
+#         n_features = X.shape[0]  # no bias
+#         if self.add_bias:
+#             new_x = np.hstack((X, np.ones((n_features, 1))))
+#         else:
+#             new_x = X
+
+
+#         if self._initialized:
+#             pass
+#         else:
+#             # initialize
+#             pass

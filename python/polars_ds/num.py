@@ -35,6 +35,7 @@ __all__ = [
     "query_transfer_entropy",
     "query_permute_entropy",
     "query_lstsq",
+    "query_recursive_lstsq",
     "query_lstsq_report",
     "query_lempel_ziv",
     "query_jaccard_row",
@@ -908,7 +909,7 @@ def query_lstsq(
         converged. If not, it will run for at most 2000 iterations. This stopping criterion is not as
         good as the dual gap.
     """
-    t = str_to_expr(target).cast(pl.Float64)
+    t = str_to_expr(target)  # .cast(pl.Float64)
     cols = [t]
     cols.extend(str_to_expr(z) for z in x)
 
@@ -939,7 +940,55 @@ def query_lstsq(
             kwargs=lr_kwargs,
             returns_scalar=True,
             pass_name_to_apply=True,
-        )
+        ).cast(pl.Array(pl.Float64, len(cols) - 1))
+
+
+def query_recursive_lstsq(
+    *x: StrOrExpr,
+    target: StrOrExpr,
+    start_at: int,
+    # skip_null: bool = False,
+):
+    """
+    Using the first `start_at` rows of data as basis, start computing the least square solutions
+    by updating the betas per row. A prediction for that row will also be included in the output.
+    This uses the famous Sherman-Morrison-Woodbury Formula under the hood.
+
+    Note: Currently this requires all input data to have no nulls.
+
+    Note: Recursive L2 regularized lstsq is on the roadmap and will come in later versions.
+
+    In the author's opinion, this should be called "cumulative" instead of resursive because of
+    its similarity with other cumulative operations on sequences of data. However, I will go with
+    the academia's name.
+
+    Parameters
+    ----------
+    x : str | pl.Expr
+        The variables used to predict target
+    target : str | pl.Expr
+        The target variable
+    start_at: int
+        Must be >= 1. Rows before start_at will be used as the first initial fit on the data.
+    """
+
+    if start_at >= 1:
+        start = start_at
+    else:
+        raise ValueError("You must start at >=1 for recursive lstsq.")
+
+    recursive_lr_kwargs = {"skip_null": False, "n": start}
+
+    t = str_to_expr(target).cast(pl.Float64)
+    cols = [t]
+    cols.extend(str_to_expr(z) for z in x)
+    return pl_plugin(
+        symbol="pl_recursive_lstsq",
+        args=cols,
+        kwargs=recursive_lr_kwargs,
+        is_elementwise=True,
+        pass_name_to_apply=True,
+    )
 
 
 def query_lstsq_report(
