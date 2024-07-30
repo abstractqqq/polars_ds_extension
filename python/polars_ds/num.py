@@ -909,7 +909,7 @@ def query_lstsq(
         converged. If not, it will run for at most 2000 iterations. This stopping criterion is not as
         good as the dual gap.
     """
-    t = str_to_expr(target).cast(pl.Float64)
+    t = str_to_expr(target)  # .cast(pl.Float64)
     cols = [t]
     cols.extend(str_to_expr(z) for z in x)
 
@@ -940,7 +940,7 @@ def query_lstsq(
             kwargs=lr_kwargs,
             returns_scalar=True,
             pass_name_to_apply=True,
-        )
+        ).cast(pl.Array(pl.Float64, len(cols) - 1))
 
 
 def query_recursive_lstsq(

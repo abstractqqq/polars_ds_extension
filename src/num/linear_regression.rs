@@ -125,7 +125,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                 LRMethods::L2 => faer_cholskey_ridge_regression(x, y, kwargs.l2_reg, add_bias),
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                ListPrimitiveChunkedBuilder::new("betas", 1, coeffs.nrows(), DataType::Float64);
+                ListPrimitiveChunkedBuilder::new("coeffs", 1, coeffs.nrows(), DataType::Float64);
 
             builder.append_slice(&coeffs.col_as_slice(0));
             let out = builder.finish();
@@ -156,7 +156,7 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> Polars
 
             let coeffs = faer_recursive_lstsq(x, y, n);
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                ListPrimitiveChunkedBuilder::new("betas", mat.nrows(), mat.ncols(), DataType::Float64);
+                ListPrimitiveChunkedBuilder::new("coeffs", mat.nrows(), mat.ncols(), DataType::Float64);
             let mut pred_builder: PrimitiveChunkedBuilder<Float64Type> = 
                 PrimitiveChunkedBuilder::new("pred", mat.nrows());
 

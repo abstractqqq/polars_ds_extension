@@ -8,7 +8,7 @@ This module requires the NumPy package. PDS only requires Polars, but you can ge
 
 """
 
-# Currently skipping tests for this module because the underlying functions are all tested in one way or
+# Currently skipping tests for this module because the underlying functi  ons are all tested in one way or
 # another.
 
 from __future__ import annotations
