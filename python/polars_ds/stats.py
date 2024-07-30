@@ -6,13 +6,6 @@ from typing import Optional, Union
 from ._utils import pl_plugin
 
 __all__ = [
-    "query_cv",
-    "query_std_over_median",
-    "query_std_over_range",
-    "query_std_over_quantiles",
-    "query_longest_streak",
-    "query_avg_streak",
-    "query_streak",
     "query_ttest_ind",
     "query_ttest_1samp",
     "query_ttest_ind_from_stats",
@@ -20,9 +13,6 @@ __all__ = [
     "query_f_test",
     "query_mann_whitney_u",
     "query_chi2",
-    "query_first_digit_cnt",
-    "query_c3_stats",
-    "query_cid_ce",
     "perturb",
     "jitter",
     "add_noise",
@@ -48,185 +38,6 @@ __all__ = [
     "bicor",
     "corr",
 ]
-
-
-def query_cv(x: StrOrExpr, ddof: int = 1) -> pl.Expr:
-    """
-    Returns the coefficient of variation for the variable. This is a shorthand for std / mean.
-
-    Parameters
-    ----------
-    x
-        The variable
-    ddof
-        The delta degree of frendom used in std computation
-    """
-    xx = str_to_expr(x)
-    return xx.std(ddof=ddof) / xx.mean()
-
-
-def query_std_over_median(x: StrOrExpr, ddof: int = 1) -> pl.Expr:
-    """
-    This is a shorthand for std / median.
-
-    Parameters
-    ----------
-    x
-        The variable
-    ddof
-        The delta degree of frendom used in std computation
-    """
-    xx = str_to_expr(x)
-    return xx.std(ddof=ddof) / xx.median()
-
-
-def query_std_over_range(x: StrOrExpr, ddof: int = 1) -> pl.Expr:
-    """
-    Standard deviation over the range of the variable. This is a shorthand for std / (max - min)
-
-    Parameters
-    ----------
-    x
-        The variable
-    ddof
-        The delta degree of frendom used in std computation
-    """
-    xx = str_to_expr(x)
-    return xx.std(ddof=ddof) / (xx.max() - xx.min())
-
-
-def query_std_over_quantiles(
-    x: StrOrExpr, ddof: int = 1, q1: float = 0.25, q2: float = 0.75
-) -> pl.Expr:
-    """
-    A more robust version of std over range, where range is replaced by quantiles q1 and q2.
-
-    Parameters
-    ----------
-    x
-        The variable
-    ddof
-        The delta degree of frendom used in std computation
-    q1
-        The lower quantile
-    q2
-        The higher quantile
-    """
-    if q1 >= 1.0 or q1 <= 0.0 or q2 >= 1.0 or q2 <= 0.0 or q1 >= q2:
-        raise ValueError("The quantiles q1, q2 must be within (0, 1) and q2 must be > q1.")
-
-    xx = str_to_expr(x)
-    return xx.std(ddof=ddof) / (xx.quantile(q2) - xx.quantile(q1))
-
-
-def query_longest_streak(where: StrOrExpr) -> pl.Expr:
-    """
-    Finds the longest streak length where the condition `where` is true.
-
-    Note: the query is still runnable when `where` doesn't represent boolean column / boolean expressions.
-    However, if that is the case the answer will not be easily interpretable.
-
-    Parameters
-    ----------
-    where
-        If where is string, the string must represent the name of a string column. If where is
-        an expression, the expression must evaluate to some boolean expression.
-    """
-
-    if isinstance(where, str):
-        condition = pl.col(where)
-    else:
-        condition = where
-
-    y = condition.rle().struct.rename_fields(
-        ["len", "value"]
-    )  # POLARS V1 rename fields can be removed when polars hit v1.0
-    return (
-        y.filter(y.struct.field("value"))
-        .struct.field("len")
-        .max()
-        .fill_null(0)
-        .alias("longest_streak")
-    )
-
-
-def query_avg_streak(where: StrOrExpr) -> pl.Expr:
-    """
-    Finds the average streak length where the condition `where` is true. The average is taken on
-    the true set.
-
-    Note: the query is still runnable when `where` doesn't represent boolean column / boolean expressions.
-    However, if that is the case the answer will not be easily interpretable.
-
-    Parameters
-    ----------
-    where
-        If where is string, the string must represent the name of a string column. If where is
-        an expression, the expression must evaluate to some boolean expression.
-    """
-
-    if isinstance(where, str):
-        condition = pl.col(where)
-    else:
-        condition = where
-
-    y = condition.rle().struct.rename_fields(
-        ["len", "value"]
-    )  # POLARS V1 rename fields can be removed when polars hit v1.0
-    return (
-        y.filter(y.struct.field("value"))
-        .struct.field("len")
-        .mean()
-        .fill_null(0)
-        .alias("avg_streak")
-    )
-
-
-def query_streak(where: StrOrExpr) -> pl.Expr:
-    """
-    Finds the streak length where the condition `where` is true. This returns a full column of streak lengths.
-
-    Note: the query is still runnable when `where` doesn't represent boolean column / boolean expressions.
-    However, if that is the case the answer will not be easily interpretable.
-
-    Parameters
-    ----------
-    where
-        If where is string, the string must represent the name of a string column. If where is
-        an expression, the expression must evaluate to some boolean expression.
-    """
-
-    if isinstance(where, str):
-        condition = pl.col(where)
-    else:
-        condition = where
-
-    y = condition.rle().struct.rename_fields(
-        ["len", "value"]
-    )  # POLARS V1 rename fields can be removed when polars hit v1.0
-    return y.struct.field("len").alias("streak_len")
-
-
-def query_first_digit_cnt(var: StrOrExpr) -> pl.Expr:
-    """
-    Finds the first digit count in the data. This is closely related to Benford's law,
-    which states that the the first digits (1-9) follow a certain distribution.
-
-    The output is a single element column of type list[u32]. The first value represents the count of 1s
-    that are the first digit, the second value represents the count of 2s that are the first digit, etc.
-
-    E.g. first digit of 12 is 1, of 0.0312 is 3. For integers, it is possible to have value = 0, and this
-    will not be counted as a first digit.
-
-    Reference
-    ---------
-    https://en.wikipedia.org/wiki/Benford%27s_law
-    """
-    return pl_plugin(
-        symbol="pl_benford_law",
-        args=[str_to_expr(var)],
-        returns_scalar=True,
-    )
 
 
 def query_ttest_ind(
@@ -467,52 +278,6 @@ def query_chi2(var1: StrOrExpr, var2: StrOrExpr) -> pl.Expr:
         args=[str_to_expr(var1), str_to_expr(var2)],
         returns_scalar=True,
     )
-
-
-def query_c3_stats(x: StrOrExpr, lag: int) -> pl.Expr:
-    """
-    Measure of non-linearity in the time series using c3 statistics.
-
-    Parameters
-    ----------
-    x : pl.Expr
-        Either the name of the column or a Polars expression
-    lag : int
-        The lag that should be used in the calculation of the feature.
-
-    Reference
-    ---------
-    https://arxiv.org/pdf/chao-dyn/9909043
-    """
-    two_lags = 2 * lag
-    xx = str_to_expr(x)
-    return ((xx.mul(xx.shift(lag)).mul(xx.shift(two_lags))).sum()).truediv(xx.len() - two_lags)
-
-
-def query_cid_ce(x: StrOrExpr, normalize: bool = False) -> pl.Expr:
-    """
-    Estimates the time series complexity.
-
-    Parameters
-    ----------
-    x : pl.Expr
-        Either the name of the column or a Polars expression
-    normalize : bool, optional
-        If True, z-normalizes the time-series before computing the feature.
-        Default is False.
-
-    Reference
-    ---------
-    https://www.cs.ucr.edu/~eamonn/Complexity-Invariant%20Distance%20Measure.pdf
-    """
-    xx = str_to_expr(x)
-    if normalize:
-        y = (xx - xx.mean()) / xx.std()
-    else:
-        y = xx
-
-    z = y - y.shift(-1)
-    return z.dot(z).sqrt()
 
 
 def query_mann_whitney_u(
@@ -1035,7 +800,7 @@ def weighted_corr(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Expr:
 
 def cosine_sim(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
     """
-    Column-wise cosine similarity
+    Column-and-column cosine similarity
 
     Parameters
     ----------

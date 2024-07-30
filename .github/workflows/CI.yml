@@ -54,6 +54,8 @@ jobs:
           pip install typing_extensions
           python -c 'import polars_ds as pds'
           python -c 'from polars_ds import linear_models'
+          python -c 'from polars_ds.features import *'
+          python -c 'from polars_ds.knn_queries import *'
 
       - name: Upload sdist
         uses: actions/upload-artifact@v4
