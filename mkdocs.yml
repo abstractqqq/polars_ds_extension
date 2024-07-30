@@ -9,9 +9,11 @@ nav:
 - Pipeline: pipeline.md
 - Sample: sample.md
 - Linear Models: linear_models.md
+- Time Series Features: features.md
+- KNN Queries: knn_queries.md
 - Numerical Extension: num.md
 - Stats Extension: stats.md
-- String Extension: str2.md
+- String Extension: string.md
 - ML Metrics/Loss Extension: metrics.md
 - Miscellaneous: polars_ds.md
 

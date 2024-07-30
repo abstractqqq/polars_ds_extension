@@ -7,6 +7,8 @@ from polars_ds.num import *  # noqa: F403
 from polars_ds.metrics import *  # noqa: F403
 from polars_ds.stats import *  # noqa: F403
 from polars_ds.string import *  # noqa: F403
+from polars_ds.features import *  # noqa: F403
+from polars_ds.knn_queries import *  # noqa: F403
 
 logging.basicConfig(level=logging.INFO)
 

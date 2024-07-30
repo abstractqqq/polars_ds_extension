@@ -660,7 +660,7 @@ def test_recursive_lstsq():
         lr = LinearRegression(fit_intercept=False)
         lr.fit(x_test, y_test)
         sklearn_result = lr.coef_.flatten()
-        pds_result = df_recursive_lr["betas"][i].to_numpy()
+        pds_result = df_recursive_lr["coeffs"][i].to_numpy()
         assert np.all(np.abs(sklearn_result - pds_result) < 1e-3)  # a bigger tolerance
 
 
