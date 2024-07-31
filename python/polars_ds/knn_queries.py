@@ -27,17 +27,21 @@ def query_knn_ptwise(
     eval_mask: str | pl.Expr | None = None,
     data_mask: str | pl.Expr | None = None,
     epsilon: float = 0.0,
+    max_bound: float = 99999.0,
 ) -> pl.Expr:
     """
     Takes the index column, and uses feature columns to determine the k nearest neighbors
-    to every id in the index columns. By default, this will return k + 1 neighbors, because in almost
-    all cases, the point is a neighbor to itself and this returns k actual neighbors. The only exception
+    to each row. By default, this will return k + 1 neighbors, because the point (the row) itself
+    is a neighbor to itself and this returns k additional neighbors. The only exception to this
     is when data_mask excludes the point from being a neighbor, in which case, k + 1 distinct neighbors will
     be returned.
 
     Note that the index column must be convertible to u32. If you do not have a u32 column,
     you can generate one using pl.int_range(..), which should be a step before this. The index column
     must not contain nulls.
+
+    Note that a default max distance bound of 99999.0 is applied. This means that if we cannot find
+    k-neighbors within `max_bound`, then there will be < k neighbors returned.
 
     Also note that this internally builds a kd-tree for fast querying and deallocates it once we
     are done. If you need to repeatedly run the same query on the same data, then it is not
@@ -71,6 +75,8 @@ def query_knn_ptwise(
         If > 0, then it is possible to miss a neighbor within epsilon distance away. This parameter
         should increase as the dimension of the vector space increases because higher dimensions
         allow for errors from more directions.
+    max_bound
+        Max distance the neighbors must be within
     """
     if k < 1:
         raise ValueError("Input `k` must be >= 1.")
@@ -97,6 +103,7 @@ def query_knn_ptwise(
         "parallel": parallel,
         "skip_eval": skip_eval,
         "skip_data": skip_data,
+        "max_bound": max_bound,
         "epsilon": abs(epsilon),
     }
     if return_dist:
