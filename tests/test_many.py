@@ -1074,10 +1074,47 @@ def test_knn_ptwise(df, dist, k, res):
         pds.query_knn_ptwise(
             pl.col("val1"), pl.col("val2"), pl.col("val3"), index="id", dist=dist, k=k
         )
-        .list.eval(pl.element().sort().cast(pl.UInt32))
+        .list.eval(
+            pl.element().sort().cast(pl.UInt32)
+        )  # sort to prevent false results on equidistant neighbors
         .alias("nn")
     )
     res = res.select(pl.col("nn").list.eval(pl.element().sort().cast(pl.UInt32)))
+    assert_frame_equal(df2, res)
+
+
+@pytest.mark.parametrize(
+    "df, dist, k, max_bound, res",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "id": [0, 1, 2, 3],
+                    "a": [0.1, 1, 10, 100],
+                    "b": [0.15, 1.5, 15, 150],
+                    "c": [0.12, 1.2, 12, 120],
+                }
+            ),
+            "sql2",
+            2,
+            4.0,
+            pl.DataFrame({"friends": [[0, 1], [1, 0], [2], [3]]}),
+        ),
+    ],
+)
+def test_knn_ptwise_max_bound(df, dist, k, max_bound, res):
+    df2 = df.select(
+        pds.query_knn_ptwise(
+            "a",
+            "b",
+            "c",
+            index="id",
+            k=k,
+            dist="sql2",
+            max_bound=max_bound,
+        ).alias("friends")
+    )
+    res = res.select(pl.col("friends").list.eval(pl.element().cast(pl.UInt32)))
     assert_frame_equal(df2, res)
 
 

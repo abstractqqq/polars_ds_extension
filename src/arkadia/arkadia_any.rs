@@ -1,9 +1,6 @@
-/// KDT with any distance metric. L1, L2, SQL2 and LINF are included already.
+/// A Kdtree
 use crate::arkadia::{leaf::KdLeaf, suggest_capacity, Leaf, SplitMethod, KDTQ, NB};
 use num::Float;
-
-// Although this implements L2 and SQL2 distances, the fastest way is still to use arkadia.rs if multiple queries
-// are needed. This is because norm-caching benefits reduces a lot of computation when running lots of queries on the same tree
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum DIST<T: Float + 'static> {
@@ -48,7 +45,7 @@ impl<T: Float + 'static> DIST<T> {
     }
 }
 
-pub struct AnyKDT<'a, T: Float + 'static, A> {
+pub struct AnyKDT<'a, T: Float + 'static + std::fmt::Debug, A> {
     dim: usize,
     // Nodes
     left: Option<Box<AnyKDT<'a, T, A>>>,
@@ -61,16 +58,16 @@ pub struct AnyKDT<'a, T: Float + 'static, A> {
     // Data
     data: Option<&'a [Leaf<'a, T, A>]>, // Not none when this is a leaf
     //
-    lp: DIST<T>,
+    d: DIST<T>,
 }
 
-impl<'a, T: Float + 'static, A: Copy> AnyKDT<'a, T, A> {
+impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a, T, A> {
     // Add method to create the tree by adding leaf elements one by one
 
     pub fn from_leaves(
         data: &'a mut [Leaf<'a, T, A>],
         how: SplitMethod,
-        lp: DIST<T>,
+        d: DIST<T>,
     ) -> Result<Self, String> {
         if data.is_empty() {
             return Err("Empty data.".into());
@@ -82,7 +79,7 @@ impl<'a, T: Float + 'static, A: Copy> AnyKDT<'a, T, A> {
             suggest_capacity(dim),
             0,
             how,
-            lp,
+            d,
         ))
     }
 
@@ -90,7 +87,7 @@ impl<'a, T: Float + 'static, A: Copy> AnyKDT<'a, T, A> {
         data: &'a mut [Leaf<'a, T, A>],
         capacity: usize,
         how: SplitMethod,
-        lp: DIST<T>,
+        d: DIST<T>,
     ) -> Result<Self, String> {
         if data.is_empty() {
             return Err("Empty data.".into());
@@ -99,7 +96,7 @@ impl<'a, T: Float + 'static, A: Copy> AnyKDT<'a, T, A> {
         if capacity == 0 {
             return Err("Zero capacity.".into());
         }
-        Ok(Self::from_leaves_unchecked(data, dim, capacity, 0, how, lp))
+        Ok(Self::from_leaves_unchecked(data, dim, capacity, 0, how, d))
     }
 
     fn from_leaves_unchecked(
@@ -108,7 +105,7 @@ impl<'a, T: Float + 'static, A: Copy> AnyKDT<'a, T, A> {
         capacity: usize,
         depth: usize,
         how: SplitMethod,
-        lp: DIST<T>,
+        d: DIST<T>,
     ) -> Self {
         let n = data.len();
         let (min_bounds, max_bounds) = Self::find_bounds(data, dim);
@@ -122,7 +119,7 @@ impl<'a, T: Float + 'static, A: Copy> AnyKDT<'a, T, A> {
                 min_bounds: min_bounds,
                 max_bounds: max_bounds,
                 data: Some(data),
-                lp: lp,
+                d: d,
             }
         } else {
             let axis = depth % dim;
@@ -182,7 +179,7 @@ impl<'a, T: Float + 'static, A: Copy> AnyKDT<'a, T, A> {
                     min_bounds: min_bounds,
                     max_bounds: max_bounds,
                     data: Some(right),
-                    lp: lp,
+                    d: d,
                 }
             } else {
                 AnyKDT {
@@ -193,7 +190,7 @@ impl<'a, T: Float + 'static, A: Copy> AnyKDT<'a, T, A> {
                         capacity,
                         depth + 1,
                         how.clone(),
-                        lp.clone(),
+                        d.clone(),
                     ))),
                     right: Some(Box::new(Self::from_leaves_unchecked(
                         right,
@@ -201,14 +198,14 @@ impl<'a, T: Float + 'static, A: Copy> AnyKDT<'a, T, A> {
                         capacity,
                         depth + 1,
                         how,
-                        lp.clone(),
+                        d.clone(),
                     ))),
                     split_axis: Some(axis),
                     split_axis_value: Some(split_axis_value),
                     min_bounds: min_bounds,
                     max_bounds: max_bounds,
                     data: None,
-                    lp: lp,
+                    d: d,
                 }
             }
         }
@@ -221,7 +218,7 @@ impl<'a, T: Float + 'static, A: Copy> AnyKDT<'a, T, A> {
     #[inline(always)]
     fn closest_dist_to_box(&self, min_bounds: &[T], max_bounds: &[T], point: &[T]) -> T {
         let mut dist = T::zero();
-        match self.lp {
+        match self.d {
             DIST::L1 => {
                 for i in 0..point.len() {
                     if point[i] > max_bounds[i] {
@@ -282,13 +279,13 @@ impl<'a, T: Float + 'static, A: Copy> AnyKDT<'a, T, A> {
 
     #[inline(always)]
     fn update_top_k(&self, top_k: &mut Vec<NB<T, A>>, k: usize, point: &[T], max_dist_bound: T) {
-        let max_permissible_dist = T::max_value().min(max_dist_bound);
+        let max_permissible_dist = max_dist_bound;
         // This is only called if is_leaf. Safe to unwrap.
         for element in self.data.unwrap().iter() {
             let cur_max_dist = top_k.last().map(|nb| nb.dist).unwrap_or(max_dist_bound);
             let y = element.row_vec;
-            let dist = self.lp.dist(y, point);
-            if dist < cur_max_dist || (top_k.len() < k && dist <= max_permissible_dist) {
+            let dist = self.d.dist(y, point);
+            if dist <= max_permissible_dist && (dist < cur_max_dist || top_k.len() < k) {
                 let nb = NB {
                     dist: dist,
                     item: element.item,
@@ -312,7 +309,7 @@ impl<'a, T: Float + 'static, A: Copy> AnyKDT<'a, T, A> {
         // This is only called if is_leaf. Safe to unwrap.
         for element in self.data.unwrap().iter() {
             let y = element.row_vec;
-            let dist = self.lp.dist(y, point);
+            let dist = self.d.dist(y, point);
             if dist <= radius {
                 neighbors.push(NB {
                     dist: dist,
@@ -323,7 +320,7 @@ impl<'a, T: Float + 'static, A: Copy> AnyKDT<'a, T, A> {
     }
 }
 
-impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for AnyKDT<'a, T, A> {
+impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> KDTQ<'a, T, A> for AnyKDT<'a, T, A> {
     fn dim(&self) -> usize {
         self.dim
     }
@@ -335,10 +332,10 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for AnyKDT<'a, T, A> {
         top_k: &mut Vec<NB<T, A>>,
         k: usize,
         point: &[T],
-        _: T,
         max_dist_bound: T,
         epsilon: T,
     ) {
+        // k > 0 is guaranteed.
         let current_max = if top_k.len() < k {
             max_dist_bound
         } else {
@@ -377,7 +374,6 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for AnyKDT<'a, T, A> {
         pending: &mut Vec<(T, &AnyKDT<'a, T, A>)>,
         neighbors: &mut Vec<NB<T, A>>,
         point: &[T],
-        _: T,
         radius: T,
     ) {
         let (dist_to_box, tree) = pending.pop().unwrap(); // safe
@@ -411,7 +407,6 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for AnyKDT<'a, T, A> {
         &self,
         pending: &mut Vec<(T, &AnyKDT<'a, T, A>)>,
         point: &[T],
-        _: T,
         radius: T,
     ) -> u32 {
         let (dist_to_box, tree) = pending.pop().unwrap(); // safe
@@ -444,7 +439,7 @@ impl<'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for AnyKDT<'a, T, A> {
             // Return the count in current
             current.data.unwrap().iter().fold(0u32, |acc, element| {
                 let y = element.vec();
-                let dist = self.lp.dist(y, point);
+                let dist = self.d.dist(y, point);
                 acc + (dist <= radius) as u32
             })
         }

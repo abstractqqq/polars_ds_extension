@@ -38,8 +38,14 @@ pub(crate) struct KDTKwargs {
     pub(crate) skip_eval: bool,
     #[serde(default)]
     pub(crate) skip_data: bool,
+    #[serde(default="_max_bound")]
+    pub(crate) max_bound: f64,
     #[serde(default)]
     pub(crate) epsilon: f64,
+}
+
+fn _max_bound() -> f64 {
+    f64::max_value()
 }
 
 #[derive(Deserialize, Debug)]
@@ -82,6 +88,7 @@ pub fn knn_ptwise<'a, Kdt>(
     data: ArrayView2<'a, f64>,
     k: usize,
     can_parallel: bool,
+    max_bound:f64,
     epsilon: f64,
 ) -> ListChunked
 where
@@ -99,7 +106,7 @@ where
             let mask = &eval_mask[offset..offset + len];
             for (b, p) in mask.iter().zip(piece.rows()) {
                 if *b {
-                    match tree.knn(k + 1, p.to_slice().unwrap(), epsilon) {
+                    match tree.knn_bounded(k + 1, p.to_slice().unwrap(), max_bound, epsilon) {
                         Some(nbs) => {
                             let v = nbs.into_iter().map(|nb| nb.to_item()).collect::<Vec<u32>>();
                             builder.append_slice(&v);
@@ -124,7 +131,7 @@ where
         );
         for (b, p) in eval_mask.into_iter().zip(data.rows()) {
             if b {
-                match tree.knn(k + 1, p.to_slice().unwrap(), epsilon) {
+                match tree.knn_bounded(k + 1, p.to_slice().unwrap(), max_bound, epsilon) {
                     Some(nbs) => {
                         let v = nbs.into_iter().map(|nb| nb.to_item()).collect::<Vec<u32>>();
                         builder.append_slice(&v);
@@ -181,7 +188,7 @@ fn pl_knn_ptwise(
                 matrix_to_leaves(&binding, id)
             };
             AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
-                .map(|tree| knn_ptwise(tree, eval_mask, binding, k, can_parallel, kwargs.epsilon))
+                .map(|tree| knn_ptwise(tree, eval_mask, binding, k, can_parallel, kwargs.max_bound, kwargs.epsilon))
         }
         Err(e) => Err(e),
     }
@@ -196,6 +203,7 @@ pub fn knn_ptwise_w_dist<'a, Kdt>(
     data: ArrayView2<'a, f64>,
     k: usize,
     can_parallel: bool,
+    max_bound: f64,
     epsilon: f64,
 ) -> (ListChunked, ListChunked)
 where
@@ -225,7 +233,7 @@ where
                     let mask = &eval_mask[offset..offset + len];
                     for (b, p) in mask.iter().zip(piece.rows()) {
                         if *b {
-                            match tree.knn(k + 1, p.to_slice().unwrap(), epsilon) {
+                            match tree.knn_bounded(k + 1, p.to_slice().unwrap(), max_bound, epsilon) {
                                 Some(nbs) => {
                                     let mut distances = Vec::with_capacity(nbs.len());
                                     let mut neighbors = Vec::with_capacity(nbs.len());
@@ -270,7 +278,7 @@ where
         );
         for (b, p) in eval_mask.into_iter().zip(data.rows()) {
             if b {
-                match tree.knn(k + 1, p.to_slice().unwrap(), epsilon) {
+                match tree.knn_bounded(k + 1, p.to_slice().unwrap(), max_bound, epsilon) {
                     Some(nbs) => {
                         // let v = nbs.into_iter().map(|nb| nb.to_item()).collect::<Vec<u32>>();
                         // builder.append_slice(&v);
@@ -339,7 +347,7 @@ fn pl_knn_ptwise_w_dist(
                 matrix_to_leaves(&binding, id)
             };
             AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d).map(|tree| {
-                knn_ptwise_w_dist(tree, eval_mask, binding, k, can_parallel, kwargs.epsilon)
+                knn_ptwise_w_dist(tree, eval_mask, binding, k, can_parallel, kwargs.max_bound, kwargs.epsilon)
             })
         }
         Err(e) => Err(e),

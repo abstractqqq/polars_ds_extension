@@ -55,7 +55,6 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
         top_k: &mut Vec<NB<T, A>>,
         k: usize,
         point: &[T],
-        point_norm_cache: T,
         max_dist_bound: T,
         epsilon: T,
     );
@@ -65,7 +64,6 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
         pending: &mut Vec<(T, &Self)>,
         neighbors: &mut Vec<NB<T, A>>,
         point: &[T],
-        point_norm_cache: T,
         radius: T,
     );
 
@@ -73,7 +71,6 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
         &self,
         pending: &mut Vec<(T, &Self)>,
         point: &[T],
-        point_norm_cache: T,
         radius: T,
     ) -> u32;
 
@@ -91,7 +88,6 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
                     &mut top_k,
                     k,
                     point,
-                    T::zero(),
                     T::max_value(),
                     epsilon,
                 );
@@ -100,7 +96,7 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
         }
     }
 
-    fn knn_bounded(&self, k: usize, point: &[T], max_dist_bound: T) -> Option<Vec<NB<T, A>>> {
+    fn knn_bounded(&self, k: usize, point: &[T], max_dist_bound: T, epsilon:T) -> Option<Vec<NB<T, A>>> {
         if k == 0
             || (point.len() != self.dim())
             || (point.iter().any(|x| !x.is_finite()))
@@ -118,9 +114,8 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
                     &mut top_k,
                     k,
                     point,
-                    T::zero(),
                     max_dist_bound,
-                    T::zero(),
+                    epsilon,
                 );
             }
             Some(top_k)
@@ -136,7 +131,7 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
             let mut neighbors = Vec::with_capacity(32);
             let mut pending = vec![(T::min_value(), self)];
             while !pending.is_empty() {
-                self.within_one_step(&mut pending, &mut neighbors, point, T::zero(), radius);
+                self.within_one_step(&mut pending, &mut neighbors, point, radius);
             }
             if sort {
                 neighbors.sort_unstable();
@@ -155,7 +150,7 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
             let mut cnt = 0u32;
             let mut pending = vec![(T::min_value(), self)];
             while !pending.is_empty() {
-                cnt += self.within_count_one_step(&mut pending, point, T::zero(), radius);
+                cnt += self.within_count_one_step(&mut pending, point, radius);
             }
             Some(cnt)
         }
@@ -180,7 +175,7 @@ pub trait KNNRegressor<'a, T: Float + Into<f64> + 'static, A: Float + Into<f64>>
     KDTQ<'a, T, A>
 {
     fn knn_regress(&self, k: usize, point: &[T], max_dist_bound: T, how: KNNMethod) -> Option<f64> {
-        let knn = self.knn_bounded(k, point, max_dist_bound);
+        let knn = self.knn_bounded(k, point, max_dist_bound, T::zero());
         match knn {
             Some(nn) => match how {
                 KNNMethod::DInvW => {
@@ -213,7 +208,7 @@ pub trait KNNRegressor<'a, T: Float + Into<f64> + 'static, A: Float + Into<f64>>
 
 pub trait KNNClassifier<'a, T: Float + 'static>: KDTQ<'a, T, u32> {
     fn knn_classif(&self, k: usize, point: &[T], max_dist_bound: T, how: KNNMethod) -> Option<u32> {
-        let knn = self.knn_bounded(k, point, max_dist_bound);
+        let knn = self.knn_bounded(k, point, max_dist_bound, T::zero());
         match knn {
             Some(nn) => match how {
                 KNNMethod::DInvW => {
