@@ -29,8 +29,8 @@ pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct KDTKwargs {
+    // pub(crate) leaf_size: usize,
     pub(crate) k: usize,
-    pub(crate) leaf_size: usize,
     pub(crate) metric: String,
     #[serde(default)]
     pub(crate) parallel: bool,
@@ -50,8 +50,8 @@ fn _max_bound() -> f64 {
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct KDTRadiusKwargs {
+    // pub(crate) leaf_size: usize,
     pub(crate) r: f64,
-    pub(crate) leaf_size: usize,
     pub(crate) metric: String,
     pub(crate) parallel: bool,
     pub(crate) sort: bool,

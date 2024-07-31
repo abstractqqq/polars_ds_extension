@@ -3,6 +3,7 @@ This module provides classic ML dataset transforms. Note all functions here are 
 that the data learned (e.g. mean value in mean imputation) will not be preserved. For pipeline usage, which
 preserves the learned values and optimizes the transform query, see pipeline.py.
 """
+from __future__ import annotations
 
 import polars as pl
 import polars.selectors as cs
@@ -11,12 +12,11 @@ from .type_alias import (
     SimpleImputeMethod,
     SimpleScaleMethod,
     ExprTransform,
-    StrOrExpr,
     QuantileMethod,
 )
 from . import num as pds_num
 from ._utils import _IS_POLARS_V1
-from typing import List, Union, Optional
+from typing import List
 
 
 def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean") -> ExprTransform:
@@ -76,7 +76,7 @@ def impute_nan(
 
 
 def linear_impute(
-    df: PolarsFrame, features: List[str], target: Union[str, pl.Expr], add_bias: bool = False
+    df: PolarsFrame, features: List[str], target: str | pl.Expr, add_bias: bool = False
 ) -> ExprTransform:
     """
     Imputes the target column by training a simple linear regression using the other features. This will
@@ -320,10 +320,10 @@ def target_encode(
     df: PolarsFrame,
     cols: List[str],
     /,
-    target: Union[StrOrExpr, pl.Series],
+    target: str | pl.Expr | pl.Series,
     min_samples_leaf: int = 20,
     smoothing: float = 10.0,
-    default: Optional[float] = None,
+    default: float | None = None,
 ) -> ExprTransform:
     """
     Target encode the given variables. This will overwrite the columns that will be encoded.
@@ -388,8 +388,8 @@ def woe_encode(
     df: PolarsFrame,
     cols: List[str],
     /,
-    target: Union[StrOrExpr, pl.Series],
-    default: Optional[float] = None,
+    target: str | pl.Expr | pl.Series,
+    default: float | None = None,
 ) -> ExprTransform:
     """
     Use Weight of Evidence to encode a discrete variable x with respect to target. This assumes x
@@ -449,8 +449,8 @@ def iv_encode(
     df: PolarsFrame,
     cols: List[str],
     /,
-    target: Union[StrOrExpr, pl.Series],
-    default: Optional[float] = None,
+    target: str | pl.Expr | pl.Series,
+    default: float | None = None,
 ) -> ExprTransform:
     """
     Use Information Value to encode a discrete variable x with respect to target. This assumes x

@@ -1,11 +1,11 @@
 """
 Common feature engineering queries and time series features as Polars queries. 
 """
-
 from __future__ import annotations
+
 import math
 import polars as pl
-from .type_alias import StrOrExpr, str_to_expr, Distance
+from .type_alias import str_to_expr, Distance
 from ._utils import pl_plugin
 
 __all__ = [
@@ -42,7 +42,7 @@ __all__ = [
 # index_mass_quantile
 
 
-def symmetry_ratio(x: StrOrExpr) -> pl.Expr:
+def symmetry_ratio(x: str | pl.Expr) -> pl.Expr:
     """
     Returns |mean - median| / (max - min). Note the closer to 0 this value is, the more symmetric
     the series is.
@@ -51,7 +51,7 @@ def symmetry_ratio(x: StrOrExpr) -> pl.Expr:
     return (y.mean() - y.median()).abs() / (y.max() - y.min())
 
 
-def query_abs_energy(x: StrOrExpr) -> pl.Expr:
+def query_abs_energy(x: str | pl.Expr) -> pl.Expr:
     """
     Absolute energy is defined as Sum(x_i^2).
     """
@@ -59,14 +59,14 @@ def query_abs_energy(x: StrOrExpr) -> pl.Expr:
     return y.dot(y)
 
 
-def query_mean_abs_change(x: StrOrExpr) -> pl.Expr:
+def query_mean_abs_change(x: str | pl.Expr) -> pl.Expr:
     """
     Returns the mean of all successive differences |X_i - X_i-1|
     """
     return str_to_expr(x).diff(null_behavior="drop").abs().mean()
 
 
-def query_mean_n_abs_max(x: StrOrExpr, n_maxima: int) -> pl.Expr:
+def query_mean_n_abs_max(x: str | pl.Expr, n_maxima: int) -> pl.Expr:
     """
     Returns the average of the top `n_maxima` of |x|.
     """
@@ -75,7 +75,7 @@ def query_mean_n_abs_max(x: StrOrExpr, n_maxima: int) -> pl.Expr:
     return str_to_expr(x).abs().top_k(n_maxima).mean()
 
 
-def query_cv(x: StrOrExpr, ddof: int = 1) -> pl.Expr:
+def query_cv(x: str | pl.Expr, ddof: int = 1) -> pl.Expr:
     """
     Returns the coefficient of variation for the variable. This is a shorthand for std / mean.
 
@@ -90,21 +90,21 @@ def query_cv(x: StrOrExpr, ddof: int = 1) -> pl.Expr:
     return xx.std(ddof=ddof) / xx.mean()
 
 
-def query_count_uniques(x: StrOrExpr) -> pl.Expr:
+def query_count_uniques(x: str | pl.Expr) -> pl.Expr:
     """
     Returns the count of unique values.
     """
     return str_to_expr(x).is_unique().sum()
 
 
-def query_range_count(x: StrOrExpr, lower: float, upper: float) -> pl.Expr:
+def query_range_count(x: str | pl.Expr, lower: float, upper: float) -> pl.Expr:
     """
     Returns the number of values inside [`lower`, `upper`].
     """
     return str_to_expr(x).is_between(lower_bound=lower, upper_bound=upper).sum()
 
 
-def query_longest_streak(where: StrOrExpr) -> pl.Expr:
+def query_longest_streak(where: str | pl.Expr) -> pl.Expr:
     """
     Finds the longest streak length where the condition `where` is true.
 
@@ -135,7 +135,7 @@ def query_longest_streak(where: StrOrExpr) -> pl.Expr:
     )
 
 
-def query_avg_streak(where: StrOrExpr) -> pl.Expr:
+def query_avg_streak(where: str | pl.Expr) -> pl.Expr:
     """
     Finds the average streak length where the condition `where` is true. The average is taken on
     the true set.
@@ -167,7 +167,7 @@ def query_avg_streak(where: StrOrExpr) -> pl.Expr:
     )
 
 
-def query_streak(where: StrOrExpr) -> pl.Expr:
+def query_streak(where: str | pl.Expr) -> pl.Expr:
     """
     Finds the streak length where the condition `where` is true. This returns a full column of streak lengths.
 
@@ -192,7 +192,7 @@ def query_streak(where: StrOrExpr) -> pl.Expr:
     return y.struct.field("len").alias("streak_len")
 
 
-def query_first_digit_cnt(var: StrOrExpr) -> pl.Expr:
+def query_first_digit_cnt(var: str | pl.Expr) -> pl.Expr:
     """
     Finds the first digit count in the data. This is closely related to Benford's law,
     which states that the the first digits (1-9) follow a certain distribution.
@@ -214,7 +214,7 @@ def query_first_digit_cnt(var: StrOrExpr) -> pl.Expr:
     )
 
 
-def query_lempel_ziv(b: StrOrExpr, as_ratio: bool = True) -> pl.Expr:
+def query_lempel_ziv(b: str | pl.Expr, as_ratio: bool = True) -> pl.Expr:
     """
     Computes Lempel Ziv complexity on a boolean column. Null will be mapped to False.
 
@@ -236,7 +236,7 @@ def query_lempel_ziv(b: StrOrExpr, as_ratio: bool = True) -> pl.Expr:
     return out
 
 
-def query_c3_stats(x: StrOrExpr, lag: int) -> pl.Expr:
+def query_c3_stats(x: str | pl.Expr, lag: int) -> pl.Expr:
     """
     Measure of non-linearity in the time series using c3 statistics.
 
@@ -256,7 +256,7 @@ def query_c3_stats(x: StrOrExpr, lag: int) -> pl.Expr:
     return ((xx.mul(xx.shift(lag)).mul(xx.shift(two_lags))).sum()).truediv(xx.len() - two_lags)
 
 
-def query_cid_ce(x: StrOrExpr, normalize: bool = False) -> pl.Expr:
+def query_cid_ce(x: str | pl.Expr, normalize: bool = False) -> pl.Expr:
     """
     Estimates the time series complexity.
 
@@ -282,7 +282,7 @@ def query_cid_ce(x: StrOrExpr, normalize: bool = False) -> pl.Expr:
     return z.dot(z).sqrt()
 
 
-def query_time_reversal_asymmetry_stats(x: StrOrExpr, n_lags: int) -> pl.Expr:
+def query_time_reversal_asymmetry_stats(x: str | pl.Expr, n_lags: int) -> pl.Expr:
     """
     Queries the Time Reversal Asymmetry Statistic, which is the average of
     (L^2(x) * L(x) - L(x) * x^2), where L is the lag operator.
@@ -298,7 +298,7 @@ def query_time_reversal_asymmetry_stats(x: StrOrExpr, n_lags: int) -> pl.Expr:
 #################################################
 
 
-def query_cond_entropy(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
+def query_cond_entropy(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
     """
     Queries the conditional entropy of x on y, aka. H(x|y).
 
@@ -318,7 +318,7 @@ def query_cond_entropy(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
 
 
 def query_sample_entropy(
-    ts: StrOrExpr, ratio: float = 0.2, m: int = 2, parallel: bool = False
+    ts: str | pl.Expr, ratio: float = 0.2, m: int = 2, parallel: bool = False
 ) -> pl.Expr:
     """
     Calculate the sample entropy of this column. It is highly
@@ -368,7 +368,7 @@ def query_sample_entropy(
 
 
 def query_approx_entropy(
-    ts: StrOrExpr,
+    ts: str | pl.Expr,
     m: int,
     filtering_level: float,
     scale_by_std: bool = True,
@@ -433,7 +433,7 @@ def query_approx_entropy(
 
 
 def query_knn_entropy(
-    *features: StrOrExpr,
+    *features: str | pl.Expr,
     k: int = 3,
     dist: Distance = "l2",
     parallel: bool = False,
@@ -480,7 +480,7 @@ def query_knn_entropy(
     )
 
 
-def query_copula_entropy(*features: StrOrExpr, k: int = 3, parallel: bool = False) -> pl.Expr:
+def query_copula_entropy(*features: str | pl.Expr, k: int = 3, parallel: bool = False) -> pl.Expr:
     """
     Estimates Copula Entropy via rank statistics.
 
@@ -493,7 +493,7 @@ def query_copula_entropy(*features: StrOrExpr, k: int = 3, parallel: bool = Fals
 
 
 def query_cond_indep(
-    x: StrOrExpr, y: StrOrExpr, z: StrOrExpr, k: int = 3, parallel: bool = False
+    x: str | pl.Expr, y: str | pl.Expr, z: str | pl.Expr, k: int = 3, parallel: bool = False
 ) -> pl.Expr:
     """
     Computes the conditional independance of `x`  and `y`, conditioned on `z`
@@ -513,7 +513,7 @@ def query_cond_indep(
 
 
 def query_transfer_entropy(
-    x: StrOrExpr, source: StrOrExpr, lag: int = 1, k: int = 3, parallel: bool = False
+    x: str | pl.Expr, source: str | pl.Expr, lag: int = 1, k: int = 3, parallel: bool = False
 ) -> pl.Expr:
     """
     Estimating transfer entropy from `source` to `x` with a lag
@@ -533,7 +533,7 @@ def query_transfer_entropy(
 
 
 def query_permute_entropy(
-    ts: StrOrExpr,
+    ts: str | pl.Expr,
     tau: int = 1,
     n_dims: int = 3,
     base: float = math.e,

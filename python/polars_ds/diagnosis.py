@@ -1,20 +1,26 @@
+from __future__ import annotations
+
 import polars.selectors as cs
 import polars as pl
 import graphviz
 import logging
 import plotly.express as px
 import plotly.graph_objects as go
-from typing import Union, List, Optional, Iterable
+from typing import List, Iterable
 from functools import lru_cache
 from itertools import combinations
 from great_tables import GT, nanoplot_options
-from polars.type_aliases import IntoExpr
 
 from . import query_cond_entropy, query_principal_components, query_lstsq_report
-from .type_alias import CorrMethod
+from .type_alias import CorrMethod, PolarsFrame
 from .stats import corr
 from ._utils import _IS_POLARS_V1
 from .sample import sample
+
+if _IS_POLARS_V1:
+    from polars._typing import IntoExpr
+else:
+    from polars.type_aliases import IntoExpr
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +35,7 @@ class DIA:
     If you cannot import this module, please try: pip install "polars_ds[plot]"
     """
 
-    def __init__(self, df: Union[pl.DataFrame, pl.LazyFrame]):
+    def __init__(self, df: PolarsFrame):
         self._frame: pl.LazyFrame = df.lazy()
         self.numerics: List[str] = df.select(cs.numeric()).columns
         self.ints: List[str] = df.select(cs.integer()).columns
@@ -216,7 +222,7 @@ class DIA:
 
     def plot_null_distribution(
         self,
-        subset: Union[IntoExpr, Iterable[IntoExpr]] = pl.all(),
+        subset: IntoExpr | Iterable[IntoExpr] = pl.all(),
         condition: pl.Expr = pl.lit(True),
         n_bins: int = 50,
     ) -> GT:
@@ -236,7 +242,11 @@ class DIA:
         n_bins
             The number of bins to group the rows
         """
-        cols = self._frame.select(subset).columns
+        if _IS_POLARS_V1:
+            cols = self._frame.select(subset).collect_schema().names()
+        else:
+            cols = self._frame.select(subset).columns
+
         frame = self._frame.filter(condition)
         temp = (
             frame.with_row_index(name="row_group")
@@ -316,7 +326,7 @@ class DIA:
         return pl.concat(pl.collect_all(frames))
 
     def corr(
-        self, subset: Union[IntoExpr, Iterable[IntoExpr]], method: CorrMethod = "pearson"
+        self, subset: IntoExpr | Iterable[IntoExpr], method: CorrMethod = "pearson"
     ) -> pl.DataFrame:
         """
         Returns a dataframe containing correlation information between the subset and all numeric columns.
@@ -330,7 +340,11 @@ class DIA:
             One of ["pearson", "spearman", "xi", "kendall", "bicor"]
         """
 
-        to_check = self._frame.select(subset).select(cs.numeric()).columns
+        if _IS_POLARS_V1:
+            to_check = self._frame.select(subset).collect_schema().names()
+        else:
+            to_check = self._frame.select(subset).select(cs.numeric()).columns
+
         corrs = [
             self._frame.select(
                 # This calls corr from .stats
@@ -343,7 +357,7 @@ class DIA:
         return pl.concat(pl.collect_all(corrs))
 
     def plot_corr(
-        self, subset: Union[IntoExpr, Iterable[IntoExpr]], method: CorrMethod = "pearson"
+        self, subset: IntoExpr | Iterable[IntoExpr], method: CorrMethod = "pearson"
     ) -> GT:
         """
         Plots the correlations using classic heat maps.
@@ -583,9 +597,7 @@ class DIA:
             pl.col("corr").abs(), descending=True
         )
 
-    def infer_dependency(
-        self, subset: Union[IntoExpr, Iterable[IntoExpr]] = pl.all()
-    ) -> pl.DataFrame:
+    def infer_dependency(self, subset: IntoExpr | Iterable[IntoExpr] = pl.all()) -> pl.DataFrame:
         """
         Infers (functional) dependency using the method of conditional entropy. This only evaluates
         potential qualifying columns. Potential qualifying columns are columns of type:
@@ -605,7 +617,11 @@ class DIA:
 
         # Infer valid columns to run this detection
         valid = self.ints + self.strs + self.cats + self.bools
-        to_check = [x for x in self._frame.select(subset).columns if x in valid]
+
+        if _IS_POLARS_V1:
+            to_check = [x for x in self._frame.collect_schema().names() if x in valid]
+        else:
+            to_check = [x for x in self._frame.select(subset).columns if x in valid]
 
         n_uniques = self._frame.select(pl.col(c).n_unique() for c in to_check).collect().row(0)
 
@@ -649,7 +665,7 @@ class DIA:
         return out
 
     def plot_dependency(
-        self, threshold: float = 0.01, subset: Union[IntoExpr, Iterable[IntoExpr]] = pl.all()
+        self, threshold: float = 0.01, subset: IntoExpr | Iterable[IntoExpr] = pl.all()
     ) -> graphviz.Digraph:
         """
         Plot dependency using the result of self.infer_dependency and positively dtermines
@@ -700,10 +716,10 @@ class DIA:
 
     def plot_lstsq(
         self,
-        x: Union[IntoExpr, Iterable[IntoExpr]],
-        target: Union[IntoExpr, Iterable[IntoExpr]],
+        x: IntoExpr | Iterable[IntoExpr],
+        target: IntoExpr | Iterable[IntoExpr],
         add_bias: bool = False,
-        condition: Optional[pl.Expr] = None,
+        condition: pl.Expr | None = None,
         max_points: int = 20_000,
         **kwargs,
     ) -> go.Figure:
@@ -774,11 +790,11 @@ class DIA:
 
     def plot_distribution(
         self,
-        feature: Union[IntoExpr, Iterable[IntoExpr]],
-        n_bins: Optional[int] = None,
-        by: Optional[Union[IntoExpr, Iterable[IntoExpr]]] = None,
+        feature: IntoExpr | Iterable[IntoExpr],
+        n_bins: int | None = None,
+        by: IntoExpr | Iterable[IntoExpr] | None = None,
         density: bool = False,
-        condition: Optional[pl.Expr] = None,
+        condition: pl.Expr | None = None,
         include_null: bool = True,
         **kwargs,
     ) -> go.Figure:
@@ -805,7 +821,7 @@ class DIA:
             Keyword arguments for plotly's histogram function
         """
 
-        histnorm: Optional[str] = "probability density" if density else None
+        histnorm: str | None = "probability density" if density else None
         if condition is None:
             frame = self._frame
         else:
@@ -842,8 +858,8 @@ class DIA:
 
     def plot_pca(
         self,
-        *features: Union[IntoExpr, Iterable[IntoExpr]],
-        by: Union[IntoExpr, Iterable[IntoExpr]],
+        *features: IntoExpr | Iterable[IntoExpr],
+        by: IntoExpr,
         center: bool = True,
         dim: int = 2,
         max_points: int = 20_000,

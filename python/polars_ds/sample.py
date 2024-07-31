@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 import polars as pl
 import random
 import math
 from .type_alias import PolarsFrame
-from typing import Union, Optional, List, Tuple
+from typing import List, Tuple
 from itertools import combinations, islice
 
 
-def _sampler_expr(value: Union[float, int], seed: Optional[int] = None) -> pl.Expr:
+def _sampler_expr(value: float | int, seed: int | None = None) -> pl.Expr:
     if isinstance(value, float):
         if value >= 1.0 or value <= 0.0:
             raise ValueError("Sample rate must be in (0, 1) range.")
@@ -21,7 +23,7 @@ def _sampler_expr(value: Union[float, int], seed: Optional[int] = None) -> pl.Ex
         raise ValueError("Sample value must be either int or float.")
 
 
-def sample(df: PolarsFrame, value: Union[float, int], seed: Optional[int] = None) -> pl.DataFrame:
+def sample(df: PolarsFrame, value: float | int, seed: int | None = None) -> pl.DataFrame:
     """
     Samples the dataframe.
 
@@ -41,9 +43,9 @@ def sample(df: PolarsFrame, value: Union[float, int], seed: Optional[int] = None
 def volume_neutral(
     df: PolarsFrame,
     by: pl.Expr,
-    control: Optional[Union[pl.Expr, List[pl.Expr]]] = None,
-    target_volume: Optional[int] = None,
-    seed: Optional[int] = None,
+    control: pl.Expr | List[pl.Expr] | None = None,
+    target_volume: int | None = None,
+    seed: int | None = None,
 ) -> pl.DataFrame:
     """
     Select volume neutral many population from each segment in `by`, with optional control categories.
@@ -88,8 +90,8 @@ def volume_neutral(
 
 def downsample(
     df: PolarsFrame,
-    *conditions: Tuple[pl.Expr, Union[float, int]],
-    seed: Optional[int] = None,
+    *conditions: Tuple[pl.Expr, float | int],
+    seed: int | None = None,
 ) -> pl.DataFrame:
     """
     Downsamples data on the subsets where condition is true.
@@ -149,8 +151,8 @@ def downsample(
 def random_cols(
     df: PolarsFrame,
     k: int,
-    keep: Optional[List[str]] = None,
-    seed: Optional[int] = None,
+    keep: List[str] | None = None,
+    seed: int | None = None,
 ) -> List[str]:
     """
     Selects random columns in the dataframe. Returns the selected columns in a list. Note, it is

@@ -5,7 +5,7 @@ from . import transforms as t
 from functools import partial
 from dataclasses import dataclass
 from polars.type_aliases import IntoExprColumn
-from typing import List, Optional, Union, Dict, Any
+from typing import List, Union, Dict, Any
 from .type_alias import (
     TypeAlias,
     PolarsFrame,
@@ -114,7 +114,7 @@ class Pipeline:
     """
 
     name: str
-    target: Optional[str]
+    target: str | None
     feature_names_in_: List[str]
     feature_names_out_: List[str]
     transforms: List[FittedStep]
@@ -171,7 +171,7 @@ class Pipeline:
             "ensure_features_out": self.ensure_features_out,
         }
 
-    def to_json(self, path: Optional[str] = None, **kwargs) -> Optional[str]:
+    def to_json(self, path: str | None = None, **kwargs) -> str | None:
         """
         Turns self into a JSON string.
 
@@ -331,8 +331,8 @@ class Blueprint:
         self,
         df: PolarsFrame,
         name: str = "test",
-        target: Optional[str] = None,
-        exclude: Optional[List[str]] = None,
+        target: str | None = None,
+        exclude: List[str] | None = None,
     ):
         """
         Creates a blueprint object.
@@ -372,7 +372,7 @@ class Blueprint:
         out += f"Features Expected: {self.feature_names_in_}\n"
         return out
 
-    def _get_target(self, target: Optional[StrOrExpr] = None) -> StrOrExpr:
+    def _get_target(self, target: str | pl.Expr | None = None) -> StrOrExpr:
         if target is None:
             if self.target is None:
                 raise ValueError(
@@ -437,7 +437,7 @@ class Blueprint:
         return self
 
     def linear_impute(
-        self, features: IntoExprColumn, target: Optional[StrOrExpr] = None, add_bias: bool = False
+        self, features: IntoExprColumn, target: str | pl.Expr | None = None, add_bias: bool = False
     ) -> Self:
         """
         Imputes the target column by training a simple linear regression using the other features. This will
@@ -640,10 +640,10 @@ class Blueprint:
         self,
         cols: IntoExprColumn,
         /,
-        target: Optional[StrOrExpr] = None,
+        target: str | pl.Expr | None = None,
         min_samples_leaf: int = 20,
         smoothing: float = 10.0,
-        default: Optional[float] = None,
+        default: float | None = None,
     ) -> Self:
         """
         Target encode the given variables.
@@ -687,8 +687,8 @@ class Blueprint:
         self,
         cols: IntoExprColumn,
         /,
-        target: Optional[StrOrExpr] = None,
-        default: Optional[float] = None,
+        target: str | pl.Expr | None = None,
+        default: float | None = None,
     ) -> Self:
         """
         Use Weight of Evidence to encode a discrete variable x with respect to target. This assumes x
@@ -728,8 +728,8 @@ class Blueprint:
         self,
         cols: IntoExprColumn,
         /,
-        target: Optional[StrOrExpr] = None,
-        default: Optional[float] = None,
+        target: str | pl.Expr | None = None,
+        default: float | None = None,
     ) -> Self:
         """
         Use Information Value to encode a discrete variable x with respect to target. This assumes x
