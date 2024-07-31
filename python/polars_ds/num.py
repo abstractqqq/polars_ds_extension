@@ -1,13 +1,12 @@
 from __future__ import annotations
 import math
 import polars as pl
-from typing import Union, Optional, List, Iterable
+from typing import Union, List, Iterable
 from .type_alias import (
     DetrendMethod,
     ConvMode,
     ConvMethod,
     str_to_expr,
-    StrOrExpr,
     LinearRegressionMethod,
 )
 from ._utils import pl_plugin
@@ -47,7 +46,7 @@ __all__ = [
 ]
 
 
-def softmax(x: StrOrExpr) -> pl.Expr:
+def softmax(x: str | pl.Expr) -> pl.Expr:
     """
     Applies the softmax function to the column, which turns any real valued column into valid probability
     values. This is simply a shorthand for x.exp() / x.exp().sum() for expressions x.
@@ -61,7 +60,7 @@ def softmax(x: StrOrExpr) -> pl.Expr:
     return xx.exp() / (xx.exp().sum())
 
 
-def query_gcd(x: StrOrExpr, y: Union[int, str, pl.Expr]) -> pl.Expr:
+def query_gcd(x: str | pl.Expr, y: int | str | pl.Expr) -> pl.Expr:
     """
     Computes GCD of two integer columns. This will try to cast everything to int32.
 
@@ -84,7 +83,7 @@ def query_gcd(x: StrOrExpr, y: Union[int, str, pl.Expr]) -> pl.Expr:
     )
 
 
-def query_lcm(x: StrOrExpr, y: Union[int, str, pl.Expr]) -> pl.Expr:
+def query_lcm(x: str | pl.Expr, y: Union[int, str, pl.Expr]) -> pl.Expr:
     """
     Computes LCM of two integer columns. This will try to cast everything to int32.
 
@@ -108,8 +107,8 @@ def query_lcm(x: StrOrExpr, y: Union[int, str, pl.Expr]) -> pl.Expr:
 
 
 def haversine(
-    x_lat: StrOrExpr,
-    x_long: StrOrExpr,
+    x_lat: str | pl.Expr,
+    x_long: str | pl.Expr,
     y_lat: Union[float, str, pl.Expr],
     y_long: Union[float, str, pl.Expr],
 ) -> pl.Expr:
@@ -140,7 +139,7 @@ def haversine(
 
 
 def query_singular_values(
-    *features: StrOrExpr,
+    *features: str | pl.Expr,
     center: bool = True,
     as_explained_var: bool = False,
     as_ratio: bool = False,
@@ -179,7 +178,7 @@ def query_singular_values(
 
 
 def query_pca(
-    *features: StrOrExpr,
+    *features: str | pl.Expr,
     center: bool = True,
 ) -> pl.Expr:
     """
@@ -203,7 +202,7 @@ def query_pca(
 
 
 def query_principal_components(
-    *features: StrOrExpr,
+    *features: str | pl.Expr,
     k: int = 2,
     center: bool = True,
 ) -> pl.Expr:
@@ -232,8 +231,8 @@ def query_principal_components(
 
 
 def query_lstsq(
-    *x: StrOrExpr,
-    target: StrOrExpr,
+    *x: str | pl.Expr,
+    target: str | pl.Expr,
     add_bias: bool = False,
     skip_null: bool = False,
     return_pred: bool = False,
@@ -314,8 +313,8 @@ def query_lstsq(
 
 
 def query_recursive_lstsq(
-    *x: StrOrExpr,
-    target: StrOrExpr,
+    *x: str | pl.Expr,
+    target: str | pl.Expr,
     start_at: int,
     # skip_null: bool = False,
 ):
@@ -362,8 +361,8 @@ def query_recursive_lstsq(
 
 
 def query_lstsq_report(
-    *x: StrOrExpr,
-    target: StrOrExpr,
+    *x: str | pl.Expr,
+    target: str | pl.Expr,
     add_bias: bool = False,
     skip_null: bool = False,
 ) -> pl.Expr:
@@ -411,7 +410,7 @@ def query_lstsq_report(
     )
 
 
-def query_jaccard_row(first: StrOrExpr, second: StrOrExpr) -> pl.Expr:
+def query_jaccard_row(first: str | pl.Expr, second: str | pl.Expr) -> pl.Expr:
     """
     Computes jaccard similarity pairwise between this and the other column. The type of
     each column must be list and the lists must have the same inner type. The inner type
@@ -431,7 +430,9 @@ def query_jaccard_row(first: StrOrExpr, second: StrOrExpr) -> pl.Expr:
     )
 
 
-def query_jaccard_col(first: StrOrExpr, second: StrOrExpr, count_null: bool = False) -> pl.Expr:
+def query_jaccard_col(
+    first: str | pl.Expr, second: str | pl.Expr, count_null: bool = False
+) -> pl.Expr:
     """
     Computes jaccard similarity column-wise. This will hash entire columns and compares the two
     hashsets. Note: only integer/str columns can be compared.
@@ -453,8 +454,8 @@ def query_jaccard_col(first: StrOrExpr, second: StrOrExpr, count_null: bool = Fa
 
 
 def query_psi(
-    new: Union[pl.Expr, Iterable[float]],
-    baseline: Union[pl.Expr, Iterable[float]],
+    new: str | pl.expr | Iterable[float],
+    baseline: str | pl.expr | Iterable[float],
     n_bins: int = 10,
     return_report: bool = False,
 ) -> pl.Expr:
@@ -532,8 +533,8 @@ def query_psi(
 
 
 def query_psi_discrete(
-    new: Union[StrOrExpr, Iterable[str]],
-    baseline: Union[StrOrExpr, Iterable[str]],
+    new: str | pl.expr | Iterable[float],
+    baseline: str | pl.expr | Iterable[float],
     return_report: bool = False,
 ) -> pl.Expr:
     """
@@ -595,9 +596,9 @@ def query_psi_discrete(
 
 
 def query_psi_w_breakpoints(
-    new: Union[StrOrExpr, Iterable[float]],
-    baseline: Union[StrOrExpr, Iterable[float]],
-    breakpoints: List[float],  # noqa: F821
+    new: str | pl.expr | Iterable[float],
+    baseline: str | pl.expr | Iterable[float],
+    breakpoints: List[float],
 ) -> pl.Expr:
     """
     Creates a PSI report using the custom breakpoints.
@@ -640,7 +641,9 @@ def query_psi_w_breakpoints(
     ).alias("psi_report")
 
 
-def query_woe(x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], n_bins: int = 10) -> pl.Expr:
+def query_woe(
+    x: str | pl.Expr, target: str | pl.expr | Iterable[float], n_bins: int = 10
+) -> pl.Expr:
     """
     Compute the Weight of Evidence for x with respect to target. This assumes x
     is continuous. A value of 1 is added to all events/non-events
@@ -672,8 +675,8 @@ def query_woe(x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], n_bins: int
 
 
 def query_woe_discrete(
-    x: StrOrExpr,
-    target: Union[StrOrExpr, Iterable[int]],
+    x: str | pl.Expr,
+    target: Union[str | pl.Expr, Iterable[int]],
 ) -> pl.Expr:
     """
     Compute the Weight of Evidence for x with respect to target. This assumes x
@@ -703,7 +706,10 @@ def query_woe_discrete(
 
 
 def query_iv(
-    x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], n_bins: int = 10, return_sum: bool = True
+    x: str | pl.Expr,
+    target: str | pl.expr | Iterable[float],
+    n_bins: int = 10,
+    return_sum: bool = True,
 ) -> pl.Expr:
     """
     Compute Information Value for x with respect to target. This assumes the variable x
@@ -740,7 +746,7 @@ def query_iv(
 
 
 def query_iv_discrete(
-    x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], return_sum: bool = True
+    x: str | pl.Expr, target: str | pl.Expr | Iterable[int], return_sum: bool = True
 ) -> pl.Expr:
     """
     Compute the Information Value for x with respect to target. This assumes x
@@ -769,7 +775,7 @@ def query_iv_discrete(
     return out.struct.field("iv").sum() if return_sum else out
 
 
-def integrate_trapz(y: StrOrExpr, x: Union[float, pl.Expr]) -> pl.Expr:
+def integrate_trapz(y: str | pl.Expr, x: float | pl.Expr) -> pl.Expr:
     """
     Integrate y along x using the trapezoidal rule. If x is not a single
     value, then x should be sorted.
@@ -797,8 +803,8 @@ def integrate_trapz(y: StrOrExpr, x: Union[float, pl.Expr]) -> pl.Expr:
 
 
 def convolve(
-    x: StrOrExpr,
-    kernel: Union[List[float], "np.ndarray", pl.Series, pl.Expr],  # noqa: F821
+    x: str | pl.Expr,
+    kernel: List[float] | "np.ndarray" | pl.Series | pl.Expr,  # noqa: F821
     fill_value: Union[float, pl.Expr] = 0.0,
     method: ConvMethod = "direct",
     mode: ConvMode = "full",
@@ -854,7 +860,7 @@ def convolve(
     )
 
 
-def list_amax(list_col: StrOrExpr) -> pl.Expr:
+def list_amax(list_col: str | pl.Expr) -> pl.Expr:
     """
     Finds the argmax of the list in this column. This is useful for
 
@@ -865,7 +871,7 @@ def list_amax(list_col: StrOrExpr) -> pl.Expr:
     return str_to_expr(list_col).list.eval(pl.element().arg_max())
 
 
-def gamma(x: StrOrExpr) -> pl.Expr:
+def gamma(x: str | pl.Expr) -> pl.Expr:
     """
     Applies the gamma function to self. Note, this will return NaN for negative values and inf when x = 0,
     whereas SciPy's gamma function will return inf for all x <= 0.
@@ -877,7 +883,7 @@ def gamma(x: StrOrExpr) -> pl.Expr:
     )
 
 
-def expit(x: StrOrExpr) -> pl.Expr:
+def expit(x: str | pl.Expr) -> pl.Expr:
     """
     Applies the Expit function to self. Expit(x) = 1 / (1 + e^(-x))
     """
@@ -888,7 +894,7 @@ def expit(x: StrOrExpr) -> pl.Expr:
     )
 
 
-def logit(x: StrOrExpr) -> pl.Expr:
+def logit(x: str | pl.Expr) -> pl.Expr:
     """
     Applies the logit function to self. Logit(x) = ln(x/(1-x)).
     Note that logit(0) = -inf, logit(1) = inf, and logit(p) for p < 0 or p > 1 yields nan.
@@ -900,7 +906,7 @@ def logit(x: StrOrExpr) -> pl.Expr:
     )
 
 
-def exp2(x: StrOrExpr) -> pl.Expr:
+def exp2(x: str | pl.Expr) -> pl.Expr:
     """
     Returns 2^x.
     """
@@ -911,7 +917,7 @@ def exp2(x: StrOrExpr) -> pl.Expr:
     )
 
 
-def fract(x: StrOrExpr) -> pl.Expr:
+def fract(x: str | pl.Expr) -> pl.Expr:
     """
     Returns the fractional part of the input values. E.g. fractional part of 1.1 is 0.1
     """
@@ -922,7 +928,7 @@ def fract(x: StrOrExpr) -> pl.Expr:
     )
 
 
-def trunc(x: StrOrExpr) -> pl.Expr:
+def trunc(x: str | pl.Expr) -> pl.Expr:
     """
     Returns the integer part of the input values. E.g. integer part of 1.1 is 1.0
     """
@@ -933,7 +939,7 @@ def trunc(x: StrOrExpr) -> pl.Expr:
     )
 
 
-def sinc(x: StrOrExpr) -> pl.Expr:
+def sinc(x: str | pl.Expr) -> pl.Expr:
     """
     Computes the sinc function normalized by pi.
     """
@@ -942,7 +948,7 @@ def sinc(x: StrOrExpr) -> pl.Expr:
     return y.sin() / y
 
 
-def detrend(x: StrOrExpr, method: DetrendMethod = "linear") -> pl.Expr:
+def detrend(x: str | pl.Expr, method: DetrendMethod = "linear") -> pl.Expr:
     """
     Detrends self using either linear/mean method. This does not persist.
 
@@ -964,7 +970,7 @@ def detrend(x: StrOrExpr, method: DetrendMethod = "linear") -> pl.Expr:
         raise ValueError(f"Unknown detrend method: {method}")
 
 
-def rfft(series: StrOrExpr, n: Optional[int] = None, return_full: bool = False) -> pl.Expr:
+def rfft(series: str | pl.Expr, n: int | None = None, return_full: bool = False) -> pl.Expr:
     """
     Computes the DFT transform of a real-valued input series using FFT Algorithm. Note that
     by default a series of length (length // 2 + 1) will be returned.
@@ -990,8 +996,8 @@ def rfft(series: StrOrExpr, n: Optional[int] = None, return_full: bool = False) 
 
 
 def target_encode(
-    s: StrOrExpr,
-    target: Union[StrOrExpr, Iterable[int]],
+    s: str | pl.Expr,
+    target: str | pl.Expr | Iterable[int],
     min_samples_leaf: int = 20,
     smoothing: float = 10.0,
 ) -> pl.Expr:

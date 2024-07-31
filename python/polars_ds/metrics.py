@@ -3,7 +3,7 @@ from __future__ import annotations
 import polars as pl
 
 from ._utils import pl_plugin
-from .type_alias import ROCAUCStrategy, StrOrExpr, str_to_expr
+from .type_alias import ROCAUCStrategy, str_to_expr
 
 
 __all__ = [
@@ -27,7 +27,7 @@ __all__ = [
 ]
 
 
-def query_mad(x: StrOrExpr) -> pl.Expr:
+def query_mad(x: str | pl.Expr) -> pl.Expr:
     """
     Computes the Median Absolute Deviation. Shorthand for (x - x.median()).abs().median().
     """
@@ -35,7 +35,7 @@ def query_mad(x: StrOrExpr) -> pl.Expr:
     return (xx - xx.median()).abs().median()
 
 
-def query_r2(actual: StrOrExpr, pred: StrOrExpr) -> pl.Expr:
+def query_r2(actual: str | pl.Expr, pred: str | pl.Expr) -> pl.Expr:
     """
     Returns the coefficient of determineation for a regression model.
 
@@ -55,7 +55,7 @@ def query_r2(actual: StrOrExpr, pred: StrOrExpr) -> pl.Expr:
     return 1.0 - ss_res / ss_tot
 
 
-def query_adj_r2(actual: StrOrExpr, pred: StrOrExpr, p: int) -> pl.Expr:
+def query_adj_r2(actual: str | pl.Expr, pred: str | pl.Expr, p: int) -> pl.Expr:
     """
     Returns the adjusted coefficient of determineation for a regression model.
 
@@ -79,7 +79,7 @@ def query_adj_r2(actual: StrOrExpr, pred: StrOrExpr, p: int) -> pl.Expr:
     return 1.0 - (ss_res / df_res) / (ss_tot / df_tot)
 
 
-def query_log_cosh(actual: StrOrExpr, pred: StrOrExpr, normalize: bool = True) -> pl.Expr:
+def query_log_cosh(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = True) -> pl.Expr:
     """
     Computes log cosh of the the prediction error, which is a smooth variation of MAE (L1 loss).
     """
@@ -89,7 +89,7 @@ def query_log_cosh(actual: StrOrExpr, pred: StrOrExpr, normalize: bool = True) -
     return (p - a).cosh().log().sum()
 
 
-def query_hubor_loss(actual: StrOrExpr, pred: StrOrExpr, delta: float) -> pl.Expr:
+def query_hubor_loss(actual: str | pl.Expr, pred: str | pl.Expr, delta: float) -> pl.Expr:
     """
     Computes huber loss between this and the other expression. This assumes
     this expression is actual, and the input is predicted, although the order
@@ -108,7 +108,7 @@ def query_hubor_loss(actual: StrOrExpr, pred: StrOrExpr, delta: float) -> pl.Exp
     )
 
 
-def query_l2(actual: StrOrExpr, pred: StrOrExpr, normalize: bool = True) -> pl.Expr:
+def query_l2(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = True) -> pl.Expr:
     """
     Returns squared L2 loss.
 
@@ -129,7 +129,7 @@ def query_l2(actual: StrOrExpr, pred: StrOrExpr, normalize: bool = True) -> pl.E
     return diff.dot(diff)
 
 
-def query_l1(actual: StrOrExpr, pred: StrOrExpr, normalize: bool = True) -> pl.Expr:
+def query_l1(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = True) -> pl.Expr:
     """
     Returns L1 loss.
 
@@ -149,7 +149,7 @@ def query_l1(actual: StrOrExpr, pred: StrOrExpr, normalize: bool = True) -> pl.E
     return (a - p).abs().sum()
 
 
-def query_l_inf(actual: StrOrExpr, pred: StrOrExpr) -> pl.Expr:
+def query_l_inf(actual: str | pl.Expr, pred: str | pl.Expr) -> pl.Expr:
     """
     Returns L Inf loss.
 
@@ -165,7 +165,7 @@ def query_l_inf(actual: StrOrExpr, pred: StrOrExpr) -> pl.Expr:
     return (a - p).abs().max()
 
 
-def query_log_loss(actual: StrOrExpr, pred: StrOrExpr, normalize: bool = True) -> pl.Expr:
+def query_log_loss(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = True) -> pl.Expr:
     """
     Computes log loss, aka binary cross entropy loss, between self and other `pred` expression.
 
@@ -186,7 +186,7 @@ def query_log_loss(actual: StrOrExpr, pred: StrOrExpr, normalize: bool = True) -
     return -out
 
 
-def query_mape(actual: StrOrExpr, pred: StrOrExpr, weighted: bool = False) -> pl.Expr:
+def query_mape(actual: str | pl.Expr, pred: str | pl.Expr, weighted: bool = False) -> pl.Expr:
     """
     Computes mean absolute percentage error between self and the other `pred` expression.
     If weighted, it will compute the weighted version as defined here:
@@ -210,7 +210,7 @@ def query_mape(actual: StrOrExpr, pred: StrOrExpr, weighted: bool = False) -> pl
         return (1 - p / a).abs().mean()
 
 
-def query_smape(actual: StrOrExpr, pred: StrOrExpr) -> pl.Expr:
+def query_smape(actual: str | pl.Expr, pred: str | pl.Expr) -> pl.Expr:
     """
     Computes symmetric mean absolute percentage error between self and other `pred` expression.
     The value is always between 0 and 1. This is the third version in the wikipedia without
@@ -232,7 +232,7 @@ def query_smape(actual: StrOrExpr, pred: StrOrExpr) -> pl.Expr:
     return (numerator / denominator).sum() / a.count()
 
 
-def query_msle(actual: StrOrExpr, pred: StrOrExpr, normalize: bool = True) -> pl.Expr:
+def query_msle(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = True) -> pl.Expr:
     """
     Computes the mean square log error between this and the other `pred` expression.
 
@@ -253,8 +253,8 @@ def query_msle(actual: StrOrExpr, pred: StrOrExpr, normalize: bool = True) -> pl
 
 
 def query_roc_auc(
-    actual: StrOrExpr,
-    pred: StrOrExpr,
+    actual: str | pl.Expr,
+    pred: str | pl.Expr,
 ) -> pl.Expr:
     """
     Computes ROC AUC using self as actual and pred as predictions.
@@ -278,7 +278,7 @@ def query_roc_auc(
     )
 
 
-def query_gini(actual: StrOrExpr, pred: StrOrExpr) -> pl.Expr:
+def query_gini(actual: str | pl.Expr, pred: str | pl.Expr) -> pl.Expr:
     """
     Computes the Gini coefficient. This is 2 * AUC - 1.
 
@@ -297,8 +297,8 @@ def query_gini(actual: StrOrExpr, pred: StrOrExpr) -> pl.Expr:
 
 
 def query_confusion_matrix(
-    actual: StrOrExpr,
-    pred: StrOrExpr,
+    actual: str | pl.Expr,
+    pred: str | pl.Expr,
     threshold: float = 0.5,
     all_metrics: bool = False,
 ) -> pl.Expr:
@@ -309,9 +309,9 @@ def query_confusion_matrix(
 
     Parameters
     ----------
-    actual : StrOrExpr
+    actual : str | pl.Expr
         An expression representing the actual labels. Must be castable to boolean
-    pred : StrOrExpr
+    pred : str | pl.Expr
         An expression representing the column with predicted probability
     threshold : float, optional
         The threshold used to compute the predicted labels, by default 0.5
@@ -375,7 +375,9 @@ def query_confusion_matrix(
         )
 
 
-def query_binary_metrics(actual: StrOrExpr, pred: StrOrExpr, threshold: float = 0.5) -> pl.Expr:
+def query_binary_metrics(
+    actual: str | pl.Expr, pred: str | pl.Expr, threshold: float = 0.5
+) -> pl.Expr:
     """
     Computes the following binary classificaition metrics using self as actual and pred as predictions:
     precision, recall, f, average_precision and roc_auc. The return will be a struct with values
@@ -410,8 +412,8 @@ def query_binary_metrics(actual: StrOrExpr, pred: StrOrExpr, threshold: float = 
 
 
 def query_multi_roc_auc(
-    actual: StrOrExpr,
-    pred: StrOrExpr,
+    actual: str | pl.Expr,
+    pred: str | pl.Expr,
     n_classes: int,
     strategy: ROCAUCStrategy = "weighted",
 ) -> pl.Expr:
@@ -448,7 +450,7 @@ def query_multi_roc_auc(
 
 
 def query_cat_cross_entropy(
-    actual: StrOrExpr, pred: StrOrExpr, normalize: bool = True, dense: bool = True
+    actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = True, dense: bool = True
 ) -> pl.Expr:
     """
     Returns the categorical cross entropy. If you want to avoid numerical error due to log, please

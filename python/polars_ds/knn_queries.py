@@ -20,7 +20,7 @@ __all__ = [
 def query_knn_ptwise(
     *features: StrOrExpr,
     index: StrOrExpr,
-    k: int = 5,
+    k: int,
     dist: Distance = "sql2",
     parallel: bool = False,
     return_dist: bool = False,
@@ -55,8 +55,6 @@ def query_knn_ptwise(
         The column used as index, must be castable to u32
     k : int
         Number of neighbors to query
-    leaf_size : int
-        Leaf size for the kd-tree. Tuning this might improve runtime performance.
     dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
         Note `sql2` stands for squared l2.
     parallel : bool
@@ -98,7 +96,6 @@ def query_knn_ptwise(
     cols.extend(str_to_expr(x) for x in features)
     kwargs = {
         "k": k,
-        "leaf_size": 32,
         "metric": str(dist).lower(),
         "parallel": parallel,
         "skip_eval": skip_eval,
@@ -136,7 +133,7 @@ def within_dist_from(
     *features : str | pl.Expr
         Other columns used as features
     pt : Iterable[float]
-        The point, at which we filter using the radius.
+        The point
     r : either a float or an expression
         The radius to query with. If this is an expression, the radius will be applied row-wise.
     dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
@@ -203,7 +200,7 @@ def is_knn_from(
     *features : str | pl.Expr
         Other columns used as features
     pt : Iterable[float]
-        The point, at which we filter using the radius.
+        The point
     k : int
         k nearest neighbor
     dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
@@ -301,7 +298,7 @@ def query_radius_ptwise(
     return pl_plugin(
         symbol="pl_query_radius_ptwise",
         args=cols,
-        kwargs={"r": r, "leaf_size": 32, "metric": metric, "parallel": parallel, "sort": sort},
+        kwargs={"r": r, "metric": metric, "parallel": parallel, "sort": sort},
         is_elementwise=True,
     )
 
@@ -345,7 +342,6 @@ def query_nb_cnt(
         args=[rad] + [str_to_expr(x) for x in features],
         kwargs={
             "k": 0,
-            "leaf_size": 32,  # useless now
             "metric": dist,
             "parallel": parallel,
             "skip_eval": False,
