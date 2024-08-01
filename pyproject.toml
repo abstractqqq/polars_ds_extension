@@ -41,4 +41,3 @@ src = ["python"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--ignore=tests/benchmarks/"

@@ -5,9 +5,9 @@ from sklearn.linear_model import Lasso, LinearRegression, Ridge
 
 SEED = 208
 
-size = 100_000
+SIZE = 100_000
 DF = (
-    pds.random_data(size=size, n_cols=0)
+    pds.random_data(size=SIZE, n_cols=0)
     .select(
         pds.random(0.0, 1.0).alias("x1"),
         pds.random(0.0, 1.0).alias("x2"),
@@ -15,7 +15,7 @@ DF = (
         pds.random(0.0, 1.0).alias("x4"),
         pds.random(0.0, 1.0).alias("x5"),
         pds.random_int(0, 4).alias("code"),
-        pl.Series(name="id", values=range(size)),
+        pl.Series(name="id", values=range(SIZE)),
     )
     .with_columns(
         y=pl.col("x1") * 0.5
