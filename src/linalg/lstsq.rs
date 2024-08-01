@@ -1,8 +1,6 @@
 use std::ops::Neg;
-
 use faer::{prelude::*, scale, Side};
-use faer_ext::IntoFaer;
-use ndarray::ArrayView2;
+
 
 // add elastic net
 pub enum LRMethods {
@@ -31,9 +29,12 @@ fn soft_threshold_l1(rho: f64, lambda: f64) -> f64 {
 /// Column Pivot QR is chosen to deal with rank deficient cases. It is also slightly
 /// faster compared to other methods.
 #[inline(always)]
-pub fn faer_qr_lstsq(x: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
-    let qr = x.col_piv_qr();
-    qr.solve_lstsq(y)
+pub fn faer_qr_lstsq(x: MatRef<f64>, y: MatRef<f64>, has_bias: bool) -> Mat<f64> {
+    if x.nrows() <= x.ncols() {
+        faer_cholskey_ridge_regression(x, y, 1e-3, has_bias)
+    } else {
+        x.col_piv_qr().solve_lstsq(y)
+    }
 }
 
 /// Computes Lasso Regression coefficients by the use of Coordinate Descent.

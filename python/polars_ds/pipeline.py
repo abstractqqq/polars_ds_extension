@@ -1,6 +1,7 @@
 import polars as pl
 import json
 import sys
+import polars.selectors as cs
 from . import transforms as t
 from functools import partial
 from dataclasses import dataclass
@@ -418,22 +419,11 @@ class Blueprint:
         self._steps.append(FitStep(partial(t.impute, method=method), cols, self.exclude))
         return self
 
-    def impute_nan(self, cols: IntoExprColumn, method: SimpleImputeMethod = "mean") -> Self:
+    def nan_to_null(self) -> Self:
         """
-        Impute NaN values in the given columns. NaN is not the same as null in Polars. In most Polars dataframes,
-        NaN should occur only because of numerical problems, such as log(-1). This transformation
-        also only applies to float columns and non-float columns will be ignored despite being passed in cols.
-
-        This transform will collect if input is lazy.
-
-        Parameters
-        ----------
-        cols
-            Any Polars expression that can be understood as columns.
-        method
-            One of `mean` or `median`. `mode` will result in error.
+        Maps NaN values to null.
         """
-        self._steps.append(FitStep(partial(t.impute_nan, method=method), cols, self.exclude))
+        self._steps.append(WithColumnsStep(cs.float().nan_to_null()))
         return self
 
     def linear_impute(
@@ -530,7 +520,6 @@ class Blueprint:
         force_f32
             If true, force all float columns to be f32 type.
         """
-        import polars.selectors as cs
 
         exprs = cs.integer().shrink_dtype()
         self._steps.append(WithColumnsStep(exprs))

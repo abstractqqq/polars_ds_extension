@@ -35,7 +35,7 @@ fn _polars_ds(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
         let y = y.as_array().into_faer();
         // Add bias is done in Python.
         let coeffs = match lstsq::LRMethods::from(method) {
-            lstsq::LRMethods::Normal => lstsq::faer_qr_lstsq(x, y),
+            lstsq::LRMethods::Normal => lstsq::faer_qr_lstsq(x, y, has_bias),
             lstsq::LRMethods::L1 => lstsq::faer_lasso_regression(x, y, lambda, has_bias, tol),
             lstsq::LRMethods::L2 => lstsq::faer_cholskey_ridge_regression(x, y, lambda, has_bias),
         };

@@ -6,7 +6,8 @@ use crate::linalg::lstsq::{
     LRMethods,
 };
 /// Least Squares using Faer and ndarray.
-use crate::utils::to_frame;
+use crate::utils::{to_frame, NullPolicy};
+use polars::prelude as pl;
 use faer::prelude::*;
 use faer_ext::IntoFaer;
 use itertools::Itertools;
@@ -18,7 +19,7 @@ use serde::Deserialize;
 #[derive(Deserialize, Debug)]
 pub(crate) struct LstsqKwargs {
     pub(crate) bias: bool,
-    pub(crate) skip_null: bool,
+    pub(crate) null_policy: String,
     pub(crate) method: String,
     pub(crate) l1_reg: f64,
     pub(crate) l2_reg: f64,
@@ -27,7 +28,7 @@ pub(crate) struct LstsqKwargs {
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct RecursiveLstsqKwargs {
-    pub(crate) skip_null: bool,
+    pub(crate) null_policy: String,
     pub(crate) n: usize,
 }
 
@@ -66,61 +67,94 @@ fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
     ))
 }
 
-/// Returns a Array2 ready for linear regression, and a mask, indicating valid rows
+/// Returns a Array2 ready for linear regression, and a mask, where true means the row has null
 #[inline(always)]
 fn series_to_mat_for_lstsq(
     inputs: &[Series],
     add_bias: bool,
-    skip_null: bool,
+    null_policy: NullPolicy,
 ) -> PolarsResult<(Array2<f64>, BooleanChunked)> {
-    // minus 1 because target is also in inputs. Target is at position 0.
     let n_features = inputs.len().abs_diff(1);
-    let has_null = inputs.iter().fold(false, |acc, s| acc | s.has_validity());
-    if has_null && !skip_null {
+
+    // minus 1 because target is also in inputs. Target is at position 0.
+    let y_has_null = inputs[0].has_validity();
+    let has_null = inputs[1..]
+        .iter()
+        .fold(false, |_, s| s.has_validity()) | y_has_null;
+    
+    let mut df = to_frame(inputs)?;
+    if df.is_empty() {
+        return Err(PolarsError::ComputeError(
+            "Lstsq: empty data".into(),
+        ))
+    }
+    // Add a constant column if add_bias
+    if add_bias {
+        df = df.lazy().with_column(lit(1f64)).collect()?;
+    }
+
+    // In mask, true means not null.
+    let y_name = inputs[0].name();
+    let init_mask = inputs[0].is_not_null(); //0 always exist
+    let (df, mask) = if has_null {
+        match null_policy {
+            NullPolicy::RAISE => {
+                Err(PolarsError::ComputeError(
+                    "Lstsq: nulls found in data".into(),
+                ))
+            },
+            NullPolicy::SKIP => {
+                let init_mask = inputs[0].is_not_null(); //0 always exist
+                let mask = inputs[1..]
+                    .iter()
+                    .fold(init_mask, |acc, s| acc & s.is_not_null());
+
+                df = df.filter(&mask).unwrap();
+                Ok((df, mask))
+            },
+            NullPolicy::FILL(x) => {
+                if y_has_null {
+                    df = df.filter(&init_mask).unwrap();
+                } 
+                df = df.lazy()
+                    .with_columns([pl::col("*").exclude([y_name]).cast(DataType::Float64).fill_null(lit(x))])
+                    .collect()?;
+                Ok((df, init_mask))
+            }
+        }
+    } else {
+        // In this case, the (!mask).any() is never true, which means there is no null.
+        let mask = BooleanChunked::from_slice("", &[true]);
+        Ok((df, mask))
+    }?;
+
+    if df.height() < n_features {
         Err(PolarsError::ComputeError(
-            "Lstsq: Data must not contain nulls when skip_null is False.".into(),
+            "Lstsq: #Data < #features. No conclusive result.".into(),
         ))
     } else {
-        let mut df = to_frame(inputs)?;
-        // Return a mask where true is kept (true means not null).
-        let mask = if has_null && skip_null {
-            let mask = inputs[0].is_not_null(); //0 always exist
-            let mask = inputs[1..]
-                .iter()
-                .fold(mask, |acc, s| acc & (s.is_not_null()));
-            df = df.filter(&mask).unwrap();
-            mask.clone()
-        } else {
-            BooleanChunked::from_iter(std::iter::repeat(true).take(df.height()))
-        };
-
-        if add_bias {
-            df = df.lazy().with_column(lit(1f64)).collect().unwrap();
-        }
-        if df.height() < n_features {
-            Err(PolarsError::ComputeError(
-                "Lstsq: #Data < #features. No conclusive result.".into(),
-            ))
-        } else {
-            let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
-            Ok((mat, mask))
-        }
+        let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
+        Ok((mat, mask))
     }
+
 }
 
 #[polars_expr(output_type_func=coeff_output)]
 fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
-    let skip_null = kwargs.skip_null;
+    let null_policy = NullPolicy::try_from(kwargs.null_policy).map_err(|e|
+        PolarsError::ComputeError(e.into())
+    )?;
+
     let method = LRMethods::from(kwargs.method);
     // Target y is at index 0
-    match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
+    match series_to_mat_for_lstsq(inputs, add_bias, null_policy) {
         Ok((mat, _)) => {
             // Solving Least Square
             let x = mat.slice(s![.., 1..]).into_faer();
             let y = mat.slice(s![.., 0..1]).into_faer();
             let coeffs = match method {
-                LRMethods::Normal => faer_qr_lstsq(x, y),
+                LRMethods::Normal => faer_qr_lstsq(x, y, add_bias),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
                 LRMethods::L2 => faer_cholskey_ridge_regression(x, y, kwargs.l2_reg, add_bias),
             };
@@ -139,16 +173,9 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
 fn pl_recursive_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> PolarsResult<Series> {
 
     let n = kwargs.n; // Gauranteed n >= 1
-    let skip_null = kwargs.skip_null;
-
-    if inputs.iter().fold(false, |acc, s| s.has_validity() | acc) {
-        return Err(PolarsError::ComputeError(
-            "Recursive Lstsq: Currently this doesn't support data that contain nulls.".into(),
-        ))
-    }
 
     // Target y is at index 0
-    match series_to_mat_for_lstsq(inputs, false, skip_null) {
+    match series_to_mat_for_lstsq(inputs, false, NullPolicy::RAISE) {
         Ok((mat, _)) => {
             // Solving Least Square
             let x = mat.slice(s![.., 1..]).into_faer();
@@ -184,17 +211,18 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> Polars
 #[polars_expr(output_type_func=pred_residue_output)]
 fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
-    let skip_null = kwargs.skip_null;
+    let null_policy = NullPolicy::try_from(kwargs.null_policy).map_err(|e|
+        PolarsError::ComputeError(e.into())
+    )?;
     let method = LRMethods::from(kwargs.method);
     // Copy data
     // Target y is at index 0
-    match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
+    match series_to_mat_for_lstsq(inputs, add_bias, null_policy.clone()) {
         Ok((mat, mask)) => {
-            // Mask = True indicates the the nulls that we skipped.
             let y = mat.slice(s![.., 0..1]).into_faer();
             let x = mat.slice(s![.., 1..]).into_faer();
             let coeffs = match method {
-                LRMethods::Normal => faer_qr_lstsq(x, y),
+                LRMethods::Normal => faer_qr_lstsq(x, y, add_bias),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
                 LRMethods::L2 => faer_cholskey_ridge_regression(x, y, kwargs.l2_reg, add_bias),
             };
@@ -203,15 +231,17 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let resid = y - &pred;
             let pred = pred.col_as_slice(0);
             let resid = resid.col_as_slice(0);
-            // Need extra work when skip_null is true and there are nulls
-            let (p, r) = if skip_null && mask.any() {
+            // If null policy is raise and we have nulls, we won't reach here
+            // If null policy is raise and we are here, then (!&mask).any() will be false.
+            // No need to check null policy here.
+            let (p, r) = if (!&mask).any() {
                 let mut p_builder: PrimitiveChunkedBuilder<Float64Type> =
                     PrimitiveChunkedBuilder::new("pred", mask.len());
                 let mut r_builder: PrimitiveChunkedBuilder<Float64Type> =
                     PrimitiveChunkedBuilder::new("resid", mask.len());
                 let mut i: usize = 0;
                 for mm in mask.into_no_null_iter() {
-                    // mask is always non-null, mm = true means is not null
+                    // mask is always non-null, mm = true means it is not null
                     if mm {
                         p_builder.append_value(pred[i]);
                         r_builder.append_value(resid[i]);
@@ -239,7 +269,9 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
 #[polars_expr(output_type_func=report_output)]
 fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
-    let skip_null = kwargs.skip_null;
+    let null_policy = NullPolicy::try_from(kwargs.null_policy).map_err(|e|
+        PolarsError::ComputeError(e.into())
+    )?;
     // index 0 is target y. Skip
     let mut name_builder =
         StringChunkedBuilder::new("features", inputs.len() + (add_bias) as usize);
@@ -251,7 +283,7 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
     }
     // Copy data
     // Target y is at index 0
-    match series_to_mat_for_lstsq(inputs, add_bias, skip_null) {
+    match series_to_mat_for_lstsq(inputs, add_bias, null_policy) {
         Ok((mat, _)) => {
             let ncols = mat.ncols() - 1;
             let nrows = mat.nrows();
