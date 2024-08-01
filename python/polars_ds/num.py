@@ -289,7 +289,9 @@ def query_lstsq(
         import warnings
 
         warnings.warn(
-            "`skip_null` is deprecated. Please use null_policy = 'skip'.", DeprecationWarning
+            "`skip_null` is deprecated. Please use null_policy = 'skip'.",
+            DeprecationWarning,
+            stacklevel=2,
         )
         null_policy = "skip"
 
@@ -411,10 +413,12 @@ def query_lstsq_report(
         columns.
     """
     if skip_null:
-        import warnings
+        import warnings  # noqa: E401
 
         warnings.warn(
-            "`skip_null` is deprecated. Please use null_policy = 'skip'.", DeprecationWarning
+            "`skip_null` is deprecated. Please use null_policy = 'skip'.",
+            DeprecationWarning,
+            stacklevel=2,
         )
         null_policy = "skip"
 
