@@ -8,6 +8,7 @@ from .type_alias import (
     ConvMethod,
     str_to_expr,
     LinearRegressionMethod,
+    NullPolicy,
 )
 from ._utils import pl_plugin
 
@@ -240,6 +241,7 @@ def query_lstsq(
     l1_reg: float = 0.0,
     l2_reg: float = 0.0,
     tol: float = 1e-5,
+    null_policy: NullPolicy = "raise",
 ) -> pl.Expr:
     """
     Computes least squares solution to the equation Ax = y where y is the target.
@@ -261,7 +263,7 @@ def query_lstsq(
     add_bias
         Whether to add a bias term
     skip_null
-        Whether to skip a row if there is a null value in row
+        Deprecated. Use null_policy = 'skip'. Whether to skip a row if there is a null value in row
     return_pred
         If true, return prediction and residue. If false, return coefficients. Note that
         for coefficients, it reduces to one output (like max/min), but for predictions and
@@ -277,7 +279,22 @@ def query_lstsq(
         When method = l1, if maximum coordinate update is < tol, the algorithm is considered to have
         converged. If not, it will run for at most 2000 iterations. This stopping criterion is not as
         good as the dual gap.
+    null_policy: Literal['raise', 'skip', 'zero', 'one']
+        One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
+        fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
+        the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
+        columns.
     """
+    if skip_null:
+        import warnings
+
+        warnings.warn(
+            "`skip_null` is deprecated. Please use null_policy = 'skip'.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        null_policy = "skip"
+
     t = str_to_expr(target)  # .cast(pl.Float64)
     cols = [t]
     cols.extend(str_to_expr(z) for z in x)
@@ -289,7 +306,7 @@ def query_lstsq(
 
     lr_kwargs = {
         "bias": add_bias,
-        "skip_null": skip_null,
+        "null_policy": null_policy,
         "method": str(method).lower(),
         "l1_reg": l1_reg,
         "l2_reg": l2_reg,
@@ -316,7 +333,6 @@ def query_recursive_lstsq(
     *x: str | pl.Expr,
     target: str | pl.Expr,
     start_at: int,
-    # skip_null: bool = False,
 ):
     """
     Using the first `start_at` rows of data as basis, start computing the least square solutions
@@ -346,7 +362,7 @@ def query_recursive_lstsq(
     else:
         raise ValueError("You must start at >=1 for recursive lstsq.")
 
-    recursive_lr_kwargs = {"skip_null": False, "n": start}
+    recursive_lr_kwargs = {"null_policy": "raise", "n": start}
 
     t = str_to_expr(target).cast(pl.Float64)
     cols = [t]
@@ -365,6 +381,7 @@ def query_lstsq_report(
     target: str | pl.Expr,
     add_bias: bool = False,
     skip_null: bool = False,
+    null_policy: NullPolicy = "raise",
 ) -> pl.Expr:
     """
     Creates a least square report with more stats about each coefficient.
@@ -388,14 +405,29 @@ def query_lstsq_report(
     add_bias
         Whether to add a bias term. If bias is added, it is always the last feature.
     skip_null
-        Whether to skip a row if there is a null value in row
+        Deprecated. Use null_policy = 'skip'. Whether to skip a row if there is a null value in row
+    null_policy: Literal['raise', 'skip', 'zero', 'one']
+        One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
+        fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
+        the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
+        columns.
     """
+    if skip_null:
+        import warnings  # noqa: E401
+
+        warnings.warn(
+            "`skip_null` is deprecated. Please use null_policy = 'skip'.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        null_policy = "skip"
+
     t = str_to_expr(target).cast(pl.Float64)
     cols = [t]
     cols.extend(str_to_expr(z) for z in x)
     lr_kwargs = {
         "bias": add_bias,
-        "skip_null": skip_null,
+        "null_policy": null_policy,
         "method": "normal",
         "l1_reg": 0.0,
         "l2_reg": 0.0,

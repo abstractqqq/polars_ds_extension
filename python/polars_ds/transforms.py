@@ -46,35 +46,6 @@ def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean"
         raise ValueError(f"Unknown input method: {method}")
 
 
-def impute_nan(
-    df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean"
-) -> ExprTransform:
-    """
-    Impute NaN values in the given columns. NaN is not the same as null in Polars. In most Polars dataframes,
-    NaN should occur only because of numerical problems, such as log(-1). This transformation
-    also only applies to float columns and non-float columns will be ignored despite being passed in cols.
-
-    This transform will collect if input is lazy.
-
-    Parameters
-    ----------
-    df
-        Either a lazy or an eager dataframe
-    cols
-        A list of strings representing column names
-    method
-        One of `mean` or `median`. `mode` will result in error.
-    """
-    if method == "mean":
-        temp = df.lazy().select(cols).select(cs.float().mean()).collect()
-        return [pl.col(c).fill_nan(m) for c, m in zip(temp.columns, temp.row(0))]
-    elif method == "median":
-        temp = df.lazy().select(cols).select(cs.float().median()).collect()
-        return [pl.col(c).fill_nan(m) for c, m in zip(temp.columns, temp.row(0))]
-    else:
-        raise ValueError(f"Unknown input method: {method}")
-
-
 def linear_impute(
     df: PolarsFrame, features: List[str], target: str | pl.Expr, add_bias: bool = False
 ) -> ExprTransform:
@@ -104,7 +75,9 @@ def linear_impute(
         target_name = df.select(target).columns[0]
     temp = (
         df.lazy()
-        .select(pds_num.query_lstsq(*features, target=target, add_bias=add_bias, skip_null=True))
+        .select(
+            pds_num.query_lstsq(*features, target=target, add_bias=add_bias, null_policy="skip")
+        )
         .collect()
     )  # Add streaming config
     coeffs = temp.item(0, 0)

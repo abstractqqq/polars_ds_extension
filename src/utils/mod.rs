@@ -122,3 +122,34 @@ pub fn list_str_output(_: &[Field]) -> PolarsResult<Field> {
 pub fn float_output(fields: &[Field]) -> PolarsResult<Field> {
     FieldsMapper::new(fields).map_to_float_dtype()
 }
+
+
+// -------------------------------------------------------------------------------
+// Common, Structures
+// -------------------------------------------------------------------------------
+#[derive(PartialEq, Clone)]
+pub enum NullPolicy {
+    RAISE,
+    SKIP,
+    FILL(f64)
+}
+
+impl TryFrom<String> for NullPolicy {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let binding = value.to_lowercase();
+        let test = binding.as_ref();
+        match test {
+            "raise" => Ok(Self::RAISE),
+            "skip" => Ok(Self::SKIP),
+            "zero" => Ok(Self::FILL(0.)),
+            "one" => Ok(Self::FILL(1.)),
+            _ => match test.parse::<f64>() {
+                Ok(x) => Ok(Self::FILL(x)),
+                Err(_) => Err("Invalid NullPolicy.".into()),
+            }
+
+        }
+    }
+}
