@@ -75,7 +75,9 @@ def linear_impute(
         target_name = df.select(target).columns[0]
     temp = (
         df.lazy()
-        .select(pds_num.query_lstsq(*features, target=target, add_bias=add_bias, skip_null=True))
+        .select(
+            pds_num.query_lstsq(*features, target=target, add_bias=add_bias, null_policy="skip")
+        )
         .collect()
     )  # Add streaming config
     coeffs = temp.item(0, 0)
