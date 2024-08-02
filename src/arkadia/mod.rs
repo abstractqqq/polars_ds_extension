@@ -67,12 +67,7 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
         radius: T,
     );
 
-    fn within_count_one_step(
-        &self,
-        pending: &mut Vec<(T, &Self)>,
-        point: &[T],
-        radius: T,
-    ) -> u32;
+    fn within_count_one_step(&self, pending: &mut Vec<(T, &Self)>, point: &[T], radius: T) -> u32;
 
     fn knn(&self, k: usize, point: &[T], epsilon: T) -> Option<Vec<NB<T, A>>> {
         if k == 0 || (point.len() != self.dim()) || (point.iter().any(|x| !x.is_finite())) {
@@ -83,20 +78,19 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
             let mut pending = Vec::with_capacity(k + 1);
             pending.push((T::min_value(), self));
             while !pending.is_empty() {
-                self.knn_one_step(
-                    &mut pending,
-                    &mut top_k,
-                    k,
-                    point,
-                    T::max_value(),
-                    epsilon,
-                );
+                self.knn_one_step(&mut pending, &mut top_k, k, point, T::max_value(), epsilon);
             }
             Some(top_k)
         }
     }
 
-    fn knn_bounded(&self, k: usize, point: &[T], max_dist_bound: T, epsilon:T) -> Option<Vec<NB<T, A>>> {
+    fn knn_bounded(
+        &self,
+        k: usize,
+        point: &[T],
+        max_dist_bound: T,
+        epsilon: T,
+    ) -> Option<Vec<NB<T, A>>> {
         if k == 0
             || (point.len() != self.dim())
             || (point.iter().any(|x| !x.is_finite()))
@@ -109,14 +103,7 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
             let mut pending = Vec::with_capacity(k + 1);
             pending.push((T::min_value(), self));
             while !pending.is_empty() {
-                self.knn_one_step(
-                    &mut pending,
-                    &mut top_k,
-                    k,
-                    point,
-                    max_dist_bound,
-                    epsilon,
-                );
+                self.knn_one_step(&mut pending, &mut top_k, k, point, max_dist_bound, epsilon);
             }
             Some(top_k)
         }

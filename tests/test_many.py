@@ -609,62 +609,59 @@ def test_lasso_regression():
         assert abs(res_bias - reg.intercept_) < 1e-4
 
 
-# Don't test for now. Because the precision issue is more significant than I thought. Need
-# better approach to test this.
+def test_recursive_lstsq():
+    # Use sklearn as the reference for truth. Test multiple steps of recursive
+    # linear regression against results from LinearRegression of scikit learn.
+    # A bigger tolerence should be used because of (1) potentially different methods used
+    # to evaluate the coefficients (Sklearn is most likely using SVD, while pds is using column
+    # pivot QR decomp for first fit and Sherman-William Update for subsequent updates, etc.),
+    # and (2) Some precision error will inevitably propagate when we do recursive linear regression.
+    # In the tests, sklearn LinearRegression is fitted on all available data and is not recursive.
+    # And (3) inherent precision issues in any linear algebra algorithms
 
-# def test_recursive_lstsq():
-#     # Use sklearn as the reference for truth. Test multiple steps of recursive
-#     # linear regression against results from LinearRegression of scikit learn.
-#     # A bigger tolerence should be used because of (1) potentially different methods used
-#     # to evaluate the coefficients (Sklearn is most likely using SVD, while pds is using column
-#     # pivot QR decomp for first fit and Sherman-William Update for subsequent updates, etc.),
-#     # and (2) Some precision error will inevitably propagate when we do recursive linear regression.
-#     # In the tests, sklearn LinearRegression is fitted on all available data and is not recursive.
-#     # And (3) inherent precision issues in any linear algebra algorithms
+    from sklearn.linear_model import LinearRegression
 
-#     from sklearn.linear_model import LinearRegression
+    size = 1_000
+    df = (
+        pds.random_data(size=size, n_cols=0)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+            pds.random_int(0, 3).alias("categories"),
+            id=pl.Series(values=list(range(size))),
+        )
+        .with_columns(
+            pl.col("id").cast(pl.UInt32),
+            y=pl.col("x1") * 0.5
+            + pl.col("x2") * 0.25
+            - pl.col("x3") * 0.15
+            + pds.random() * 0.0001,
+        )
+    )
 
-#     size = 1_000
-#     df = (
-#         pds.random_data(size=size, n_cols=0)
-#         .select(
-#             pds.random(0.0, 1.0).alias("x1"),
-#             pds.random(0.0, 1.0).alias("x2"),
-#             pds.random(0.0, 1.0).alias("x3"),
-#             pds.random_int(0, 3).alias("categories"),
-#             id=pl.Series(values=list(range(size))),
-#         )
-#         .with_columns(
-#             pl.col("id").cast(pl.UInt32),
-#             y=pl.col("x1") * 0.5
-#             + pl.col("x2") * 0.25
-#             - pl.col("x3") * 0.15
-#             + pds.random() * 0.0001,
-#         )
-#     )
+    start_at = 3
 
-#     start_at = 3
+    df_recursive_lr = df.select(
+        "y",
+        pds.query_recursive_lstsq(
+            "x1",
+            "x2",
+            "x3",
+            target="y",
+            start_at=start_at,
+        ).alias("result"),
+    ).unnest("result")
 
-#     df_recursive_lr = df.select(
-#         "y",
-#         pds.query_recursive_lstsq(
-#             "x1",
-#             "x2",
-#             "x3",
-#             target="y",
-#             start_at=start_at,
-#         ).alias("result"),
-#     ).unnest("result")
-
-#     for i in range(start_at, 30):
-#         df_test = df.limit(i)
-#         x_test = df_test.select("x1", "x2", "x3").to_numpy()
-#         y_test = df_test.select("y").to_numpy()
-#         lr = LinearRegression(fit_intercept=False)
-#         lr.fit(x_test, y_test)
-#         sklearn_result = lr.coef_.flatten()
-#         pds_result = df_recursive_lr["coeffs"][i].to_numpy()
-#         assert np.all(np.abs(sklearn_result - pds_result) < 1e-3)  # a bigger tolerance
+    for i in range(start_at, 30):
+        df_test = df.limit(i)
+        x_test = df_test.select("x1", "x2", "x3").to_numpy()
+        y_test = df_test.select("y").to_numpy()
+        lr = LinearRegression(fit_intercept=False)
+        lr.fit(x_test, y_test)
+        sklearn_result = lr.coef_.flatten()
+        pds_result = df_recursive_lr["coeffs"][i].to_numpy()
+        assert np.all(np.abs(sklearn_result - pds_result) < 1e-4)  # a bigger tolerance
 
 
 def test_lstsq_skip_null():
@@ -684,7 +681,7 @@ def test_lstsq_skip_null():
     assert_frame_equal(
         df.select(
             pds.query_lstsq(
-                pl.col("a"), pl.col("b"), target="y", skip_null=True, return_pred=True
+                pl.col("a"), pl.col("b"), target="y", return_pred=True, null_policy="skip"
             ).alias("result")
         ).unnest("result"),
         res,

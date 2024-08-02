@@ -357,16 +357,24 @@ def query_recursive_lstsq(
         Must be >= 1. Rows before start_at will be used as the first initial fit on the data.
     """
 
+    features = [str_to_expr(z) for z in x]
     if start_at >= 1:
-        start = start_at
+        if start_at < len(features):
+            import warnings
+
+            warnings.warn(
+                f"Input `start_at` must be >= the number of features. It is reset to {len(features)}",
+                stacklevel=2,
+            )
+
+        start = max(start_at, len(features))
     else:
         raise ValueError("You must start at >=1 for recursive lstsq.")
 
     recursive_lr_kwargs = {"null_policy": "raise", "n": start}
-
     t = str_to_expr(target).cast(pl.Float64)
     cols = [t]
-    cols.extend(str_to_expr(z) for z in x)
+    cols.extend(features)
     return pl_plugin(
         symbol="pl_recursive_lstsq",
         args=cols,

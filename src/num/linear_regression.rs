@@ -1,17 +1,14 @@
 use crate::linalg::lstsq::{
-    faer_cholskey_ridge_regression, 
-    faer_lasso_regression, 
-    faer_qr_lstsq,
-    faer_recursive_lstsq,
+    faer_cholskey_ridge_regression, faer_lasso_regression, faer_qr_lstsq, faer_recursive_lstsq,
     LRMethods,
 };
 /// Least Squares using Faer and ndarray.
 use crate::utils::{to_frame, NullPolicy};
-use polars::prelude as pl;
 use faer::prelude::*;
 use faer_ext::IntoFaer;
 use itertools::Itertools;
 use ndarray::{s, Array2};
+use polars::prelude as pl;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use serde::Deserialize;
@@ -50,14 +47,10 @@ fn pred_residue_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 fn recursive_lstsq_output(_: &[Field]) -> PolarsResult<Field> {
-    let coeffs = Field::new(
-        "coeffs",
-        DataType::List(Box::new(DataType::Float64)),
-    );
+    let coeffs = Field::new("coeffs", DataType::List(Box::new(DataType::Float64)));
     let pred = Field::new("prediction", DataType::Float64);
     let v: Vec<Field> = vec![coeffs, pred];
     Ok(Field::new("recursive_lstsq", DataType::Struct(v)))
-
 }
 
 fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
@@ -78,15 +71,11 @@ fn series_to_mat_for_lstsq(
 
     // minus 1 because target is also in inputs. Target is at position 0.
     let y_has_null = inputs[0].has_validity();
-    let has_null = inputs[1..]
-        .iter()
-        .fold(false, |_, s| s.has_validity()) | y_has_null;
-    
+    let has_null = inputs[1..].iter().fold(false, |_, s| s.has_validity()) | y_has_null;
+
     let mut df = to_frame(inputs)?;
     if df.is_empty() {
-        return Err(PolarsError::ComputeError(
-            "Lstsq: empty data".into(),
-        ))
+        return Err(PolarsError::ComputeError("Lstsq: empty data".into()));
     }
     // Add a constant column if add_bias
     if add_bias {
@@ -98,11 +87,9 @@ fn series_to_mat_for_lstsq(
     let init_mask = inputs[0].is_not_null(); //0 always exist
     let (df, mask) = if has_null {
         match null_policy {
-            NullPolicy::RAISE => {
-                Err(PolarsError::ComputeError(
-                    "Lstsq: nulls found in data".into(),
-                ))
-            },
+            NullPolicy::RAISE => Err(PolarsError::ComputeError(
+                "Lstsq: nulls found in data".into(),
+            )),
             NullPolicy::SKIP => {
                 let init_mask = inputs[0].is_not_null(); //0 always exist
                 let mask = inputs[1..]
@@ -111,13 +98,17 @@ fn series_to_mat_for_lstsq(
 
                 df = df.filter(&mask).unwrap();
                 Ok((df, mask))
-            },
+            }
             NullPolicy::FILL(x) => {
                 if y_has_null {
                     df = df.filter(&init_mask).unwrap();
-                } 
-                df = df.lazy()
-                    .with_columns([pl::col("*").exclude([y_name]).cast(DataType::Float64).fill_null(lit(x))])
+                }
+                df = df
+                    .lazy()
+                    .with_columns([pl::col("*")
+                        .exclude([y_name])
+                        .cast(DataType::Float64)
+                        .fill_null(lit(x))])
                     .collect()?;
                 Ok((df, init_mask))
             }
@@ -136,15 +127,13 @@ fn series_to_mat_for_lstsq(
         let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
         Ok((mat, mask))
     }
-
 }
 
 #[polars_expr(output_type_func=coeff_output)]
 fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
-    let null_policy = NullPolicy::try_from(kwargs.null_policy).map_err(|e|
-        PolarsError::ComputeError(e.into())
-    )?;
+    let null_policy = NullPolicy::try_from(kwargs.null_policy)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
     let method = LRMethods::from(kwargs.method);
     // Target y is at index 0
@@ -171,20 +160,32 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
 
 #[polars_expr(output_type_func=recursive_lstsq_output)]
 fn pl_recursive_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> PolarsResult<Series> {
-
     let n = kwargs.n; // Gauranteed n >= 1
 
     // Target y is at index 0
     match series_to_mat_for_lstsq(inputs, false, NullPolicy::RAISE) {
         Ok((mat, _)) => {
+            if mat.nrows() < n {
+                return Err(PolarsError::ComputeError(
+                    format!(
+                        "Recursive lstsq: Number of rows in feature matrix must be >= `start_at`. Found {} rows and start_at = {}", 
+                        mat.nrows(), n
+                    ).into()
+                ));
+            }
             // Solving Least Square
             let x = mat.slice(s![.., 1..]).into_faer();
             let y = mat.slice(s![.., 0..1]).into_faer();
 
             let coeffs = faer_recursive_lstsq(x, y, n);
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                ListPrimitiveChunkedBuilder::new("coeffs", mat.nrows(), mat.ncols(), DataType::Float64);
-            let mut pred_builder: PrimitiveChunkedBuilder<Float64Type> = 
+                ListPrimitiveChunkedBuilder::new(
+                    "coeffs",
+                    mat.nrows(),
+                    mat.ncols(),
+                    DataType::Float64,
+                );
+            let mut pred_builder: PrimitiveChunkedBuilder<Float64Type> =
                 PrimitiveChunkedBuilder::new("pred", mat.nrows());
 
             let m = n.abs_diff(1);
@@ -193,7 +194,7 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> Polars
                 pred_builder.append_null();
             }
             for (i, coefficients) in coeffs.into_iter().enumerate() {
-                let row = x.get(m+i..m+i+1, ..);
+                let row = x.get(m + i..m + i + 1, ..);
                 let pred = (row * &coefficients).read(0, 0);
                 let coef = coefficients.col_as_slice(0);
                 builder.append_slice(coef);
@@ -201,7 +202,10 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> Polars
             }
             let coef_out = builder.finish();
             let pred_out = pred_builder.finish();
-            let ca = StructChunked::new("recursive_lstsq", &[coef_out.into_series(), pred_out.into_series()])?;          
+            let ca = StructChunked::new(
+                "recursive_lstsq",
+                &[coef_out.into_series(), pred_out.into_series()],
+            )?;
             Ok(ca.into_series())
         }
         Err(e) => Err(e),
@@ -211,9 +215,8 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> Polars
 #[polars_expr(output_type_func=pred_residue_output)]
 fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
-    let null_policy = NullPolicy::try_from(kwargs.null_policy).map_err(|e|
-        PolarsError::ComputeError(e.into())
-    )?;
+    let null_policy = NullPolicy::try_from(kwargs.null_policy)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
     let method = LRMethods::from(kwargs.method);
     // Copy data
     // Target y is at index 0
@@ -269,9 +272,8 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
 #[polars_expr(output_type_func=report_output)]
 fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
-    let null_policy = NullPolicy::try_from(kwargs.null_policy).map_err(|e|
-        PolarsError::ComputeError(e.into())
-    )?;
+    let null_policy = NullPolicy::try_from(kwargs.null_policy)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
     // index 0 is target y. Skip
     let mut name_builder =
         StringChunkedBuilder::new("features", inputs.len() + (add_bias) as usize);

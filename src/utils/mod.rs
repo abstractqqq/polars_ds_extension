@@ -123,7 +123,6 @@ pub fn float_output(fields: &[Field]) -> PolarsResult<Field> {
     FieldsMapper::new(fields).map_to_float_dtype()
 }
 
-
 // -------------------------------------------------------------------------------
 // Common, Structures
 // -------------------------------------------------------------------------------
@@ -131,7 +130,7 @@ pub fn float_output(fields: &[Field]) -> PolarsResult<Field> {
 pub enum NullPolicy {
     RAISE,
     SKIP,
-    FILL(f64)
+    FILL(f64),
 }
 
 impl TryFrom<String> for NullPolicy {
@@ -148,8 +147,7 @@ impl TryFrom<String> for NullPolicy {
             _ => match test.parse::<f64>() {
                 Ok(x) => Ok(Self::FILL(x)),
                 Err(_) => Err("Invalid NullPolicy.".into()),
-            }
-
+            },
         }
     }
 }

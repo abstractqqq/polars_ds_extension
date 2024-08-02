@@ -10,13 +10,11 @@ mod utils;
 
 use faer_ext::{IntoFaer, IntoNdarray};
 use numpy::{Ix1, Ix2, PyArray, PyReadonlyArray2, ToPyArray};
-use pyo3::{types::PyModule, pymodule, Bound, PyResult, Python};
-
+use pyo3::{pymodule, types::PyModule, Bound, PyResult, Python};
 
 #[pymodule]
 #[pyo3(name = "_polars_ds")]
 fn _polars_ds(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
-
     // How do I factor out this? I don't want to put all code here.
     #[pyfn(m)]
     #[pyo3(name = "pds_faer_lr")]
