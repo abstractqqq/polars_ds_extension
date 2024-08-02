@@ -22,6 +22,7 @@ __all__ = [
     "query_principal_components",
     "query_lstsq",
     "query_recursive_lstsq",
+    "query_rolling_lstsq",
     "query_lstsq_report",
     "query_jaccard_row",
     "query_jaccard_col",
@@ -330,9 +331,7 @@ def query_lstsq(
 
 
 def query_recursive_lstsq(
-    *x: str | pl.Expr,
-    target: str | pl.Expr,
-    start_at: int,
+    *x: str | pl.Expr, target: str | pl.Expr, start_at: int, null_policy: NullPolicy = "raise"
 ):
     """
     Using the first `start_at` rows of data as basis, start computing the least square solutions
@@ -355,7 +354,13 @@ def query_recursive_lstsq(
         The target variable
     start_at: int
         Must be >= 1. Rows before start_at will be used as the first initial fit on the data.
+    null_policy: Literal['raise', 'skip', 'zero', 'one']
+        Currently, this only supports raise and any kind of direct fill strategy. `skip` doesn't work.
+        This won't fill target, and if target has null, an error will be thrown.
     """
+
+    if null_policy == "skip":
+        raise NotImplementedError
 
     features = [str_to_expr(z) for z in x]
     if start_at >= 1:
@@ -371,14 +376,69 @@ def query_recursive_lstsq(
     else:
         raise ValueError("You must start at >=1 for recursive lstsq.")
 
-    recursive_lr_kwargs = {"null_policy": "raise", "n": start}
+    kwargs = {"null_policy": "raise", "n": start}
     t = str_to_expr(target).cast(pl.Float64)
     cols = [t]
     cols.extend(features)
     return pl_plugin(
         symbol="pl_recursive_lstsq",
         args=cols,
-        kwargs=recursive_lr_kwargs,
+        kwargs=kwargs,
+        is_elementwise=True,
+        pass_name_to_apply=True,
+    )
+
+
+def query_rolling_lstsq(
+    *x: str | pl.Expr, target: str | pl.Expr, window_size: int, null_policy: NullPolicy = "raise"
+):
+    """
+    Using every `window_size` rows of data as feature matrix, and computes least square solutions
+    by rolling the window. A prediction for that row will also be included in the output.
+    This uses the famous Sherman-Morrison-Woodbury Formula under the hood.
+
+    Note: Currently this requires all input data to have no nulls.
+
+    Note: Recursive L2 regularized lstsq is on the roadmap and will come in later versions.
+
+    Parameters
+    ----------
+    x : str | pl.Expr
+        The variables used to predict target
+    target : str | pl.Expr
+        The target variable
+    window_size: int
+        Must be >= 1. Rows before start_at will be used as the first initial fit on the data.
+    null_policy: Literal['raise', 'skip', 'zero', 'one']
+        Currently, this only supports raise and any kind of direct fill strategy. `skip` doesn't work.
+        This won't fill target, and if target has null, an error will be thrown.
+    """
+
+    if null_policy == "skip":
+        raise NotImplementedError
+
+    features = [str_to_expr(z) for z in x]
+    if window_size >= 1:
+        if window_size < len(features):
+            import warnings
+
+            warnings.warn(
+                f"Input `window_size` must be >= the number of features. It is reset to {len(features)}",
+                stacklevel=2,
+            )
+
+        start = max(window_size, len(features))
+    else:
+        raise ValueError("You must window_size >=1 for rolling lstsq.")
+
+    kwargs = {"null_policy": "raise", "n": start}
+    t = str_to_expr(target).cast(pl.Float64)
+    cols = [t]
+    cols.extend(features)
+    return pl_plugin(
+        symbol="pl_rolling_lstsq",
+        args=cols,
+        kwargs=kwargs,
         is_elementwise=True,
         pass_name_to_apply=True,
     )

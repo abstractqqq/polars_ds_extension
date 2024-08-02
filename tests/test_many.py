@@ -664,6 +664,54 @@ def test_recursive_lstsq():
         assert np.all(np.abs(sklearn_result - pds_result) < 1e-4)  # a bigger tolerance
 
 
+def test_rolling_lstsq():
+    # Test rolling lstsq by comparing it with a manually rolled lstsq result.
+    # Test on multiple window sizes
+    size = 500
+    df = (
+        pds.random_data(size=size, n_cols=0)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+            pds.random(0.0, 1.0).alias("x4"),
+            pds.random(0.0, 1.0).alias("x5"),
+            id=pl.Series(values=list(range(size))),
+        )
+        .with_columns(
+            pl.col("id").cast(pl.UInt32),
+            y=pl.col("x1") * 0.5
+            + pl.col("x2") * 0.25
+            - pl.col("x3") * 0.15
+            + pds.random() * 0.0001,
+        )
+    )
+
+    for window_size in [5, 8, 12, 15]:
+        df_to_test = df.select(
+            "id",
+            "y",
+            pds.query_rolling_lstsq(
+                "x1",
+                "x2",
+                "x3",
+                target="y",
+                window_size=window_size,
+            ).alias("result"),
+        ).unnest("result")  # .limit(10)
+        df_to_test = df_to_test.filter(pl.col("id") >= window_size - 1).select("coeffs")
+
+        results = []
+        for i in range(len(df) - window_size + 1):
+            temp = df.slice(i, length=window_size)
+            results.append(
+                temp.select(pds.query_lstsq("x1", "x2", "x3", target="y").alias("coeffs"))
+            )
+
+        df_answer = pl.concat(results)
+        assert_frame_equal(df_to_test, df_answer)
+
+
 def test_lstsq_skip_null():
     df = pl.DataFrame(
         {

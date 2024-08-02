@@ -1,6 +1,5 @@
 use crate::linalg::lstsq::{
-    faer_cholskey_ridge_regression, faer_lasso_regression, faer_qr_lstsq, faer_recursive_lstsq,
-    LRMethods,
+    faer_cholskey_ridge_regression, faer_lasso_regression, faer_qr_lstsq, faer_recursive_lstsq, faer_rolling_lstsq, LRMethods
 };
 /// Least Squares using Faer and ndarray.
 use crate::utils::{to_frame, NullPolicy};
@@ -46,11 +45,11 @@ fn pred_residue_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new("pred", DataType::Struct(v)))
 }
 
-fn recursive_lstsq_output(_: &[Field]) -> PolarsResult<Field> {
+fn coeff_pred_output(_: &[Field]) -> PolarsResult<Field> {
     let coeffs = Field::new("coeffs", DataType::List(Box::new(DataType::Float64)));
     let pred = Field::new("prediction", DataType::Float64);
     let v: Vec<Field> = vec![coeffs, pred];
-    Ok(Field::new("recursive_lstsq", DataType::Struct(v)))
+    Ok(Field::new("", DataType::Struct(v)))
 }
 
 fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
@@ -158,17 +157,27 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     }
 }
 
-#[polars_expr(output_type_func=recursive_lstsq_output)]
+#[polars_expr(output_type_func=coeff_pred_output)]
 fn pl_recursive_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> PolarsResult<Series> {
     let n = kwargs.n; // Gauranteed n >= 1
+    
+    // Gauranteed in Python that this won't be SKIP. SKIP doesn't work now.
+    let null_policy = NullPolicy::try_from(kwargs.null_policy)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+
+    if inputs[0].has_validity() {
+        return Err(PolarsError::ComputeError(
+            "Target column must not have nulls".into(), 
+        ));
+    }
 
     // Target y is at index 0
-    match series_to_mat_for_lstsq(inputs, false, NullPolicy::RAISE) {
+    match series_to_mat_for_lstsq(inputs, false, null_policy) {
         Ok((mat, _)) => {
             if mat.nrows() < n {
                 return Err(PolarsError::ComputeError(
                     format!(
-                        "Recursive lstsq: Number of rows in feature matrix must be >= `start_at`. Found {} rows and start_at = {}", 
+                        "Number of rows in feature matrix ({}) must be >= {}.", 
                         mat.nrows(), n
                     ).into()
                 ));
@@ -203,7 +212,72 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> Polars
             let coef_out = builder.finish();
             let pred_out = pred_builder.finish();
             let ca = StructChunked::new(
-                "recursive_lstsq",
+                "",
+                &[coef_out.into_series(), pred_out.into_series()],
+            )?;
+            Ok(ca.into_series())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+
+#[polars_expr(output_type_func=coeff_pred_output)] // They share the same output type
+fn pl_rolling_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> PolarsResult<Series> {
+    let n = kwargs.n; // Gauranteed n >= 1
+
+    // Gauranteed in Python that this won't be SKIP. SKIP doesn't work now.
+    let null_policy = NullPolicy::try_from(kwargs.null_policy)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+
+    if inputs[0].has_validity() {
+        return Err(PolarsError::ComputeError(
+            "Target column must not have nulls".into(), 
+        ));
+    }
+
+    // Target y is at index 0
+    match series_to_mat_for_lstsq(inputs, false, null_policy) {
+        Ok((mat, _)) => {
+            if mat.nrows() < n {
+                return Err(PolarsError::ComputeError(
+                    format!(
+                        "Number of rows in feature matrix ({}) must be >= {}.", 
+                        mat.nrows(), n
+                    ).into()
+                ));
+            }
+            // Solving Least Square
+            let x = mat.slice(s![.., 1..]).into_faer();
+            let y = mat.slice(s![.., 0..1]).into_faer();
+
+            let coeffs = faer_rolling_lstsq(x, y, n);
+            let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
+                ListPrimitiveChunkedBuilder::new(
+                    "coeffs",
+                    mat.nrows(),
+                    mat.ncols(),
+                    DataType::Float64,
+                );
+            let mut pred_builder: PrimitiveChunkedBuilder<Float64Type> =
+                PrimitiveChunkedBuilder::new("pred", mat.nrows());
+
+            let m = n.abs_diff(1);
+            for _ in 0..m {
+                builder.append_null();
+                pred_builder.append_null();
+            }
+            for (i, coefficients) in coeffs.into_iter().enumerate() {
+                let row = x.get(m + i..m + i + 1, ..);
+                let pred = (row * &coefficients).read(0, 0);
+                let coef = coefficients.col_as_slice(0);
+                builder.append_slice(coef);
+                pred_builder.append_value(pred);
+            }
+            let coef_out = builder.finish();
+            let pred_out = pred_builder.finish();
+            let ca = StructChunked::new(
+                "",
                 &[coef_out.into_series(), pred_out.into_series()],
             )?;
             Ok(ca.into_series())
