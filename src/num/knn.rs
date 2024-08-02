@@ -38,7 +38,7 @@ pub(crate) struct KDTKwargs {
     pub(crate) skip_eval: bool,
     #[serde(default)]
     pub(crate) skip_data: bool,
-    #[serde(default="_max_bound")]
+    #[serde(default = "_max_bound")]
     pub(crate) max_bound: f64,
     #[serde(default)]
     pub(crate) epsilon: f64,
@@ -88,7 +88,7 @@ pub fn knn_ptwise<'a, Kdt>(
     data: ArrayView2<'a, f64>,
     k: usize,
     can_parallel: bool,
-    max_bound:f64,
+    max_bound: f64,
     epsilon: f64,
 ) -> ListChunked
 where
@@ -187,8 +187,17 @@ fn pl_knn_ptwise(
             } else {
                 matrix_to_leaves(&binding, id)
             };
-            AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
-                .map(|tree| knn_ptwise(tree, eval_mask, binding, k, can_parallel, kwargs.max_bound, kwargs.epsilon))
+            AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d).map(|tree| {
+                knn_ptwise(
+                    tree,
+                    eval_mask,
+                    binding,
+                    k,
+                    can_parallel,
+                    kwargs.max_bound,
+                    kwargs.epsilon,
+                )
+            })
         }
         Err(e) => Err(e),
     }
@@ -233,7 +242,8 @@ where
                     let mask = &eval_mask[offset..offset + len];
                     for (b, p) in mask.iter().zip(piece.rows()) {
                         if *b {
-                            match tree.knn_bounded(k + 1, p.to_slice().unwrap(), max_bound, epsilon) {
+                            match tree.knn_bounded(k + 1, p.to_slice().unwrap(), max_bound, epsilon)
+                            {
                                 Some(nbs) => {
                                     let mut distances = Vec::with_capacity(nbs.len());
                                     let mut neighbors = Vec::with_capacity(nbs.len());
@@ -347,7 +357,15 @@ fn pl_knn_ptwise_w_dist(
                 matrix_to_leaves(&binding, id)
             };
             AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d).map(|tree| {
-                knn_ptwise_w_dist(tree, eval_mask, binding, k, can_parallel, kwargs.max_bound, kwargs.epsilon)
+                knn_ptwise_w_dist(
+                    tree,
+                    eval_mask,
+                    binding,
+                    k,
+                    can_parallel,
+                    kwargs.max_bound,
+                    kwargs.epsilon,
+                )
             })
         }
         Err(e) => Err(e),

@@ -1,6 +1,5 @@
-use std::ops::Neg;
 use faer::{prelude::*, scale, Side};
-
+use std::ops::Neg;
 
 // add elastic net
 pub enum LRMethods {
@@ -71,9 +70,9 @@ pub fn faer_lasso_regression(
     let xty = x.transpose() * y;
     let xtx = x.transpose() * x;
 
+    // Random selection often leads to faster convergence?
     for _ in 0..2000 {
         let mut max_change = 0f64;
-        // Random selection often leads to faster convergence?
         for j in 0..n1 {
             // temporary set beta(j, 0) to 0.
             // Safe. The index is valid and the value is initialized.
@@ -81,9 +80,6 @@ pub fn faer_lasso_regression(
             *unsafe { beta.get_mut_unchecked(j, 0) } = 0f64;
             let xtx_j = unsafe { xtx.get_unchecked(j..j + 1, ..) };
 
-            // let x_j = j th column of x
-            // let dot = x_j.transpose() * (y - x * &beta); // Slow.
-            // xty.read(j, 0) = x_j.transpose() * y,  xtx_j * &beta = x_j.transpose() * x * &beta
             let dot = xty.read(j, 0) - (xtx_j * &beta).read(0, 0);
 
             // update beta(j, 0).
@@ -122,7 +118,6 @@ pub fn faer_cholskey_ridge_regression(
     lambda: f64,
     has_bias: bool,
 ) -> Mat<f64> {
-
     let n1 = x.ncols().abs_diff(has_bias as usize);
 
     let xt = x.transpose();
@@ -142,17 +137,12 @@ pub fn faer_cholskey_ridge_regression(
 
 /// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
-pub fn faer_recursive_lstsq(    
-    x: MatRef<f64>,
-    y: MatRef<f64>,
-    n: usize,
-) -> Vec<Mat<f64>>{
-
+pub fn faer_recursive_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat<f64>> {
     let xn = x.nrows();
     // x: size xn x m
     // y: size xn x 1
     // Vector of matrix of size m x 1
-    let mut coefficients = Vec::with_capacity(xn-n); // xn >= n is checked in Python
+    let mut coefficients = Vec::with_capacity(xn - n); // xn >= n is checked in Python
 
     let x0 = x.get(..n, ..);
     let y0 = y.get(..n, ..);
@@ -164,93 +154,86 @@ pub fn faer_recursive_lstsq(
     let mut weights = &inv * x0t * y0;
     coefficients.push(weights.to_owned());
     for j in n..xn {
-
-        let next_x = x.get(j..j+1, ..); // 1 by m, m = # of columns
-        let next_y = y.get(j..j+1, ..); // 1 by 1
-
-        let left = &inv * next_x.transpose();
-        let right = next_x * &inv;
-        let denominator = 1f64 + (&right * next_x.transpose()).read(0, 0);
-        // Update the inverse
-        faer::linalg::matmul::matmul(
-            inv.as_mut(), 
-            left, 
-            right, 
-            Some(1.0), 
-            denominator.recip().neg(), 
-            faer::Parallelism::Rayon(0) // 
-        ); // inv is updated
-
-        let scaler = (next_y - (next_x * &weights)).read(0, 0);
-        // Update weights
-        faer::linalg::matmul::matmul(
-            weights.as_mut(), 
-            &inv, 
-            next_x.transpose(), 
-            Some(1.0), 
-            scaler, 
-            faer::Parallelism::Rayon(0) // 
-        ); // weights is updated
-
+        let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
+        let next_y = y.get(j..j + 1, ..); // 1 by 1
+        woodbury_step(inv.as_mut(), weights.as_mut(), next_x, next_y, 1.0);
         coefficients.push(weights.to_owned());
     }
     coefficients
 }
 
-// /// Initial fit for a recursive lstsq.
-// /// This will return the inverse matrix (XtX) and the coefficients.
-// pub fn faer_recursive_lstsq_init(    
-//     x: MatRef<f64>, // n x m matrix, n >= 1
-//     y: MatRef<f64>, // n x 1 matrix)
-// ) -> (Mat<f64>, Mat<f64>) {
+// Need to Re-think the structure if I want to expose this to Python and NumPy. The biggest difficulty, however,
+// is more about Faer interop with NumPy at this moment.
 
-//     let xtx = x.transpose() * x;
-//     let qr = xtx.col_piv_qr();
-//     let inv = qr.inverse();
-//     let coeffs = &inv * x.transpose() * y;
-//     (inv, coeffs)
-// }
+/// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
+/// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
+pub fn faer_rolling_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat<f64>> {
+    let xn = x.nrows();
+    // x: size xn x m
+    // y: size xn x 1
+    // Vector of matrix of size m x 1
+    let mut coefficients = Vec::with_capacity(xn - n); // xn >= n is checked in Python
 
-// /// Batch update of the resursive lstsq
-// /// This performs inplace updates and returns the inverse matrix (XtX) and the coefficients.
-// pub fn faer_recursive_lstsq_batch_update(    
-//     x: MatRef<f64>, // n x m matrix, n >= 1
-//     y: MatRef<f64>, // n x 1 matrix
-//     prev_weight: MatRef<f64>, // m x 1 matrix
-//     prev_inv: MatRef<f64> // m x m matrix
-// ) -> (Mat<f64>, Mat<f64>) {
+    let x0 = x.get(..n, ..);
+    let y0 = y.get(..n, ..);
 
-//     let mut inv = prev_inv.to_owned();
-//     let mut weights = prev_weight.to_owned();
+    let x0t = x0.transpose();
+    let qr = (x0t * x0).qr();
+    let mut inv = qr.inverse();
+    // The y part of the update (The non Sherman-Morrison part)
+    let mut weights = &inv * x0t * y0;
+    coefficients.push(weights.to_owned());
+    for j in n..xn {
+        let remove_x = x.get(j-n..j-n+1, ..);
+        let remove_y = y.get(j-n..j-n+1, ..);
+        woodbury_step(inv.as_mut(), weights.as_mut(), remove_x, remove_y, -1.0);
 
-//     for j in 0..x.nrows() {
+        let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
+        let next_y = y.get(j..j + 1, ..); // 1 by 1
+        woodbury_step(inv.as_mut(), weights.as_mut(), next_x, next_y, 1.0);
+        coefficients.push(weights.to_owned());
+    }
+    coefficients
+}
 
-//         let next_x = x.get(j..j+1, ..); // 1 by m, m = # of columns
-//         let next_y = y.get(j..j+1, ..); // 1 by 1
+/// Update the inverse and the weights for one step in a Woodbury update.
+/// Reference: https://cpb-us-w2.wpmucdn.com/sites.gatech.edu/dist/2/436/files/2017/07/22-notes-6250-f16.pdf
+/// https://en.wikipedia.org/wiki/Woodbury_matrix_identity
+#[inline(always)]
+fn woodbury_step(
+    inverse: MatMut<f64>, 
+    weights: MatMut<f64>, 
+    new_x: MatRef<f64>, 
+    new_y: MatRef<f64>,
+    c: f64 // Should be +1 or -1, for a "update" and a "removal"
+) {
 
-//         let left = &inv * next_x.transpose();
-//         let right = next_x * &inv;
-//         let denominator = 1f64 + (&right * next_x.transpose()).read(0, 0);
-//         // Update the inverse
-//         faer::linalg::matmul::matmul(
-//             inv.as_mut(), 
-//             left, 
-//             right, 
-//             Some(1.0), 
-//             denominator.recip().neg(), 
-//             faer::Parallelism::Rayon(0) // 
-//         ); // inv is updated
+    // It is truly amazing that the C in the Woodbury identity essentially controls the update and 
+    // and removal of a new record (rolling)... Linear regression seems to be designed by God to work so well
 
-//         let scaler = (next_y - (next_x * &weights)).read(0, 0);
-//         // Update weights
-//         faer::linalg::matmul::matmul(
-//             weights.as_mut(), 
-//             &inv, 
-//             next_x.transpose(), 
-//             Some(1.0), 
-//             scaler, 
-//             faer::Parallelism::Rayon(0) // 
-//         ); // weights is updated
-//     }
-//     (inv, weights)
-// }
+    let left = &inverse * new_x.transpose(); // corresponding to u in the reference
+    // right = left.transpose() by the fact that if A is symmetric, invertible, A-1 is also symmetric
+    let z = (c + (new_x * &left).read(0, 0)).recip();
+    // Update the inverse
+    faer::linalg::matmul::matmul(
+        inverse,
+        &left,
+        left.transpose(),
+        Some(1.0),
+        z.neg(),
+        faer::Parallelism::Rayon(0), //
+    ); // inv is updated
+
+    // Difference from esitmate using prior weights vs. actual next y
+    let y_diff = new_y - (new_x * &weights); 
+    // Update weights
+    faer::linalg::matmul::matmul(
+        weights,
+        left,
+        y_diff,
+        Some(1.0),
+        z,
+        faer::Parallelism::Rayon(0), //
+    ); // weights are updated
+
+}
