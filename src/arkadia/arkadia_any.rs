@@ -1,6 +1,10 @@
+use std::fmt::Debug;
+
 /// A Kdtree
 use crate::arkadia::{leaf::KdLeaf, suggest_capacity, Leaf, SplitMethod, KDTQ, NB};
 use num::Float;
+
+use super::KNNRegressor;
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum DIST<T: Float + 'static> {
@@ -445,6 +449,8 @@ impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> KDTQ<'a, T, A> for AnyKD
         }
     }
 }
+
+impl<'a, T: Float + 'static + std::fmt::Debug + Into<f64>, A: Float + Into<f64>> KNNRegressor<'a, T, A> for AnyKDT<'a, T, A> {}
 
 #[cfg(test)]
 mod tests {

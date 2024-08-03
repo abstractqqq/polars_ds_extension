@@ -4,12 +4,13 @@ KNN related queries within a dataframe.
 
 from __future__ import annotations
 import polars as pl
-from typing import Iterable
+from typing import Iterable, List
 from .type_alias import StrOrExpr, str_to_expr, Distance
 from ._utils import pl_plugin
 
 __all__ = [
     "query_knn_ptwise",
+    "query_knn_avg",
     "is_knn_from",
     "within_dist_from",
     "query_radius_ptwise",
@@ -34,14 +35,14 @@ def query_knn_ptwise(
     to each row. By default, this will return k + 1 neighbors, because the point (the row) itself
     is a neighbor to itself and this returns k additional neighbors. The only exception to this
     is when data_mask excludes the point from being a neighbor, in which case, k + 1 distinct neighbors will
-    be returned.
+    be returned. Any row with a null will never be a neighbor and will get null for its neighbors.
 
     Note that the index column must be convertible to u32. If you do not have a u32 column,
     you can generate one using pl.int_range(..), which should be a step before this. The index column
     must not contain nulls.
 
     Note that a default max distance bound of 99999.0 is applied. This means that if we cannot find
-    k-neighbors within `max_bound`, then there will be < k neighbors returned.
+    k neighbors within `max_bound`, then there will be < k neighbors returned.
 
     Also note that this internally builds a kd-tree for fast querying and deallocates it once we
     are done. If you need to repeatedly run the same query on the same data, then it is not
@@ -81,25 +82,25 @@ def query_knn_ptwise(
 
     idx = str_to_expr(index).cast(pl.UInt32).rechunk()
     cols = [idx]
-    if eval_mask is None:
-        skip_eval = False
+    feats: List[pl.Expr] = [str_to_expr(e) for e in features]
+
+    skip_data = data_mask is not None
+    if skip_data:
+        keep_mask = pl.all_horizontal(str_to_expr(data_mask), *(f.is_not_null() for f in feats))
     else:
-        skip_eval = True
+        keep_mask = pl.all_horizontal(f.is_not_null() for f in feats)
+
+    cols.append(keep_mask)
+    skip_eval = eval_mask is not None
+    if skip_eval:
         cols.append(str_to_expr(eval_mask))
 
-    if data_mask is None:
-        skip_data = False
-    else:
-        skip_data = True
-        cols.append(str_to_expr(data_mask))
-
-    cols.extend(str_to_expr(x) for x in features)
+    cols.extend(feats)
     kwargs = {
         "k": k,
         "metric": str(dist).lower(),
         "parallel": parallel,
         "skip_eval": skip_eval,
-        "skip_data": skip_data,
         "max_bound": max_bound,
         "epsilon": abs(epsilon),
     }
@@ -117,6 +118,74 @@ def query_knn_ptwise(
             kwargs=kwargs,
             is_elementwise=True,
         )
+
+
+def query_knn_avg(
+    *features: StrOrExpr,
+    target: StrOrExpr,
+    k: int,
+    dist: Distance = "sql2",
+    weighted: bool = False,
+    parallel: bool = False,
+    min_bound: float = 1e-9,
+    max_bound: float = 99999.0,
+) -> pl.Expr:
+    """
+    Takes the target column, and uses feature columns to determine the k nearest neighbors
+    to each row. By default, this will return k + 1 neighbors, because the point (the row) itself
+    is a neighbor to itself and this returns k additional neighbors. Any row with a null will never be a neighbor
+    and will get null as the average.
+
+    Note that a default max distance bound of 99999.0 is applied. This means that if we cannot find
+    k neighbors within `max_bound`, then there will be < k neighbors returned.
+
+    Parameters
+    ----------
+    *features : str | pl.Expr
+        Other columns used as features
+    target : str | pl.Expr
+        Float, must be castable to f64. This should not contain null.
+    k : int
+        Number of neighbors to query
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+        Note `sql2` stands for squared l2.
+    weighted : bool
+        If weighted, it will use 1/distance as weights to compute the KNN average. If min_bound is
+        an extremely small value, this will default to 1/(1+distance) as weights to avoid division by 0.
+    parallel : bool
+        Whether to run the k-nearest neighbor query in parallel. This is recommended when you
+        are running only this expression, and not in group_by context.
+    min_bound
+        Min distance (>=) for a neighbor to be part of the average calculation. This prevents "identical"
+        points from being part of the average and prevents division by 0. Note that this filter is applied
+        after getting k nearest neighbors.
+    max_bound
+        Max distance the neighbors must be within (<)
+    """
+    if k < 1:
+        raise ValueError("Input `k` must be >= 1.")
+
+    idx = str_to_expr(target).cast(pl.Float64).rechunk()
+    feats = [str_to_expr(f) for f in features]
+    keep_data = ~pl.any_horizontal(f.is_null() for f in feats)
+    cols = [idx, keep_data]
+    cols.extend(feats)
+
+    kwargs = {
+        "k": k,
+        "metric": str(dist).lower(),
+        "parallel": parallel,
+        "weighted": weighted,
+        "min_bound": max_bound,
+        "max_bound": max_bound,
+    }
+
+    return pl_plugin(
+        symbol="pl_knn_regress",
+        args=cols,
+        kwargs=kwargs,
+        is_elementwise=True,
+    )
 
 
 def within_dist_from(
