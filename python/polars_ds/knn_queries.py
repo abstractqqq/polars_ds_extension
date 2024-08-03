@@ -35,7 +35,7 @@ def query_knn_ptwise(
     to each row. By default, this will return k + 1 neighbors, because the point (the row) itself
     is a neighbor to itself and this returns k additional neighbors. The only exception to this
     is when data_mask excludes the point from being a neighbor, in which case, k + 1 distinct neighbors will
-    be returned. Any row with a null will never be a neighbor and will get null for its neighbors.
+    be returned. Any row with a null/NaN will never be a neighbor and will have null as its neighbor.
 
     Note that the index column must be convertible to u32. If you do not have a u32 column,
     you can generate one using pl.int_range(..), which should be a step before this. The index column
@@ -133,11 +133,13 @@ def query_knn_avg(
     """
     Takes the target column, and uses feature columns to determine the k nearest neighbors
     to each row. By default, this will return k + 1 neighbors, because the point (the row) itself
-    is a neighbor to itself and this returns k additional neighbors. Any row with a null will never be a neighbor
-    and will get null as the average.
+    is a neighbor to itself and this returns k additional neighbors. Any row with a null/NaN will
+    never be a neighbor and will get null as the average.
 
     Note that a default max distance bound of 99999.0 is applied. This means that if we cannot find
     k neighbors within `max_bound`, then there will be < k neighbors returned.
+
+    This is also known as KNN Regression, but really it is just the average of the K nearest neighbors.
 
     Parameters
     ----------
@@ -174,14 +176,14 @@ def query_knn_avg(
     kwargs = {
         "k": k,
         "metric": str(dist).lower(),
-        "parallel": parallel,
         "weighted": weighted,
-        "min_bound": max_bound,
+        "parallel": parallel,
+        "min_bound": min_bound,
         "max_bound": max_bound,
     }
 
     return pl_plugin(
-        symbol="pl_knn_regress",
+        symbol="pl_knn_avg",
         args=cols,
         kwargs=kwargs,
         is_elementwise=True,

@@ -31,10 +31,11 @@ pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 #[derive(Deserialize)]
-pub(crate) struct KNNRegressKwargs {
+pub(crate) struct KNNAvgKwargs {
     // pub(crate) leaf_size: usize,
     pub(crate) k: usize,
     pub(crate) metric: String,
+    #[serde(default)]
     pub(crate) weighted: bool,
     #[serde(default)]
     pub(crate) parallel: bool,
@@ -100,10 +101,10 @@ pub fn dist_from_str<T: Float + 'static>(dist_str: &str) -> Result<DIST<T>, Stri
 /// Always do k + 1 because this operation is in-dataframe, and this means
 /// that the point itself is always a neighbor to itself.
 #[polars_expr(output_type=Float64)]
-fn pl_knn_regress(
+fn pl_knn_avg(
     inputs: &[Series],
     context: CallerContext,
-    kwargs: KNNRegressKwargs,
+    kwargs: KNNAvgKwargs,
 ) -> PolarsResult<Series> {
     // Set up params
 
@@ -141,7 +142,7 @@ fn pl_knn_regress(
                         "",
                         slice.rows().into_iter().map(|row| {
                             let sl = row.as_slice().unwrap();
-                            tree.knn_regress(k + 1, sl, max_bound, min_bound, method)
+                            tree.knn_regress(k + 1, sl, min_bound, max_bound, method)
                         }),
                     );
                     out.downcast_iter().cloned().collect::<Vec<_>>()
@@ -155,7 +156,7 @@ fn pl_knn_regress(
             "",
             data.rows().into_iter().map(|row| {
                 let sl = row.as_slice().unwrap();
-                tree.knn_regress(k + 1, sl, max_bound, min_bound, method)
+                tree.knn_regress(k + 1, sl, min_bound, max_bound, method)
             }),
         )
     };

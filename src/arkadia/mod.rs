@@ -171,8 +171,8 @@ pub trait KNNRegressor<'a, T: Float + Into<f64> + 'static, A: Float + Into<f64>>
         &self,
         k: usize,
         point: &[T],
-        max_dist_bound: T,
         min_dist_bound: T,
+        max_dist_bound: T,
         how: KNNMethod,
     ) -> Option<f64> {
         let knn = self
