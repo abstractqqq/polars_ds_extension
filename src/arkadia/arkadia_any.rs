@@ -450,7 +450,10 @@ impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> KDTQ<'a, T, A> for AnyKD
     }
 }
 
-impl<'a, T: Float + 'static + std::fmt::Debug + Into<f64>, A: Float + Into<f64>> KNNRegressor<'a, T, A> for AnyKDT<'a, T, A> {}
+impl<'a, T: Float + 'static + std::fmt::Debug + Into<f64>, A: Float + Into<f64>>
+    KNNRegressor<'a, T, A> for AnyKDT<'a, T, A>
+{
+}
 
 #[cfg(test)]
 mod tests {

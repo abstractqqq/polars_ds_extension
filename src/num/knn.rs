@@ -4,7 +4,10 @@
 // use kdtree::KdTree;
 // use crate::utils::get_common_float_dtype;
 use crate::{
-    arkadia::{matrix_to_empty_leaves, matrix_to_leaves, AnyKDT, Leaf, SplitMethod, DIST, KDTQ, KNNRegressor, KNNMethod},
+    arkadia::{
+        matrix_to_empty_leaves, matrix_to_leaves, AnyKDT, KNNMethod, KNNRegressor, Leaf,
+        SplitMethod, DIST, KDTQ,
+    },
     utils::{list_u32_output, series_to_ndarray, split_offsets},
 };
 
@@ -93,7 +96,7 @@ pub fn dist_from_str<T: Float + 'static>(dist_str: &str) -> Result<DIST<T>, Stri
     }
 }
 
-/// KNN Regression 
+/// KNN Regression
 /// Always do k + 1 because this operation is in-dataframe, and this means
 /// that the point itself is always a neighbor to itself.
 #[polars_expr(output_type=Float64)]
@@ -115,15 +118,13 @@ fn pl_knn_regress(
     let id = id.cont_slice()?;
     let null_mask = inputs[1].bool().unwrap();
     let nrows = null_mask.len();
-    
+
     let data = series_to_ndarray(&inputs[2..], IndexOrder::C)?;
     let binding = data.view();
     let mut leaves = matrix_to_leaves_filtered(&binding, id, &null_mask);
 
     let tree = match dist_from_str::<f64>(kwargs.metric.as_str()) {
-        Ok(d) => {
-            AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
-        }
+        Ok(d) => AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d),
         Err(e) => Err(e),
     }
     .map_err(|err| PolarsError::ComputeError(err.into()))?;
@@ -135,28 +136,28 @@ fn pl_knn_regress(
             let chunks: Vec<_> = splits
                 .into_par_iter()
                 .map(|(offset, len)| {
-                    let slice = binding.slice(s![offset..offset+len, ..]);
+                    let slice = binding.slice(s![offset..offset + len, ..]);
                     let out = Float64Chunked::from_iter_options(
-                        "", 
+                        "",
                         slice.rows().into_iter().map(|row| {
                             let sl = row.as_slice().unwrap();
-                            tree.knn_regress(k+1, sl, max_bound, min_bound, method)
-                        }
-                    ));
+                            tree.knn_regress(k + 1, sl, max_bound, min_bound, method)
+                        }),
+                    );
                     out.downcast_iter().cloned().collect::<Vec<_>>()
                 })
                 .collect();
-            
+
             Float64Chunked::from_chunk_iter("", chunks.into_iter().flatten())
         })
     } else {
         Float64Chunked::from_iter_options(
-            "", 
+            "",
             data.rows().into_iter().map(|row| {
                 let sl = row.as_slice().unwrap();
-                tree.knn_regress(k+1, sl, max_bound, min_bound, method)
-            }
-        ))
+                tree.knn_regress(k + 1, sl, max_bound, min_bound, method)
+            }),
+        )
     };
 
     Ok(ca.into_series())
@@ -247,7 +248,7 @@ fn pl_knn_ptwise(
 
     // True means no nulls, keep
     let null_mask = inputs[1].bool().unwrap();
-    
+
     let mut inputs_offset = 2;
     let eval_mask = if skip_eval {
         let eval_mask = inputs[2].bool().unwrap();
@@ -411,7 +412,7 @@ fn pl_knn_ptwise_w_dist(
     let nrows = id.len();
 
     let null_mask = inputs[1].bool().unwrap();
-    
+
     let mut inputs_offset = 2;
     let eval_mask = if skip_eval {
         let eval_mask = inputs[2].bool().unwrap();

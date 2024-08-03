@@ -38,7 +38,7 @@ pub enum KNNMethod {
 }
 
 impl KNNMethod {
-    pub fn new(weighted: bool, min_dist:f64) -> Self {
+    pub fn new(weighted: bool, min_dist: f64) -> Self {
         if weighted {
             if min_dist <= f64::epsilon() {
                 Self::P1Weighted
@@ -167,10 +167,21 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
 pub trait KNNRegressor<'a, T: Float + Into<f64> + 'static, A: Float + Into<f64>>:
     KDTQ<'a, T, A>
 {
-    fn knn_regress(&self, k: usize, point: &[T], max_dist_bound: T, min_dist_bound:T, how: KNNMethod) -> Option<f64> {
-        let knn = self.knn_bounded(k, point, max_dist_bound, T::zero()).map(
-            |nn| nn.into_iter().filter(|nb| nb.dist >= min_dist_bound).collect::<Vec<_>>()
-        ); 
+    fn knn_regress(
+        &self,
+        k: usize,
+        point: &[T],
+        max_dist_bound: T,
+        min_dist_bound: T,
+        how: KNNMethod,
+    ) -> Option<f64> {
+        let knn = self
+            .knn_bounded(k, point, max_dist_bound, T::zero())
+            .map(|nn| {
+                nn.into_iter()
+                    .filter(|nb| nb.dist >= min_dist_bound)
+                    .collect::<Vec<_>>()
+            });
         match knn {
             Some(nn) => match how {
                 KNNMethod::P1Weighted => {
@@ -185,7 +196,7 @@ pub trait KNNRegressor<'a, T: Float + Into<f64> + 'static, A: Float + Into<f64>>
                         Some(
                             nn.into_iter()
                                 .zip(weights.into_iter())
-                                .fold(0f64, |acc, (nb, w )| acc + w * nb.to_item().into())
+                                .fold(0f64, |acc, (nb, w)| acc + w * nb.to_item().into())
                                 / sum,
                         )
                     }
@@ -216,7 +227,7 @@ pub trait KNNRegressor<'a, T: Float + Into<f64> + 'static, A: Float + Into<f64>>
                             nn.into_iter()
                                 .fold(A::zero(), |acc, nb| acc + nb.to_item())
                                 .into()
-                                / n
+                                / n,
                         )
                     }
                 }
