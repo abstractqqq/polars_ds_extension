@@ -184,8 +184,8 @@ pub fn faer_rolling_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat<f
     let mut weights = &inv * x0t * y0;
     coefficients.push(weights.to_owned());
     for j in n..xn {
-        let remove_x = x.get(j-n..j-n+1, ..);
-        let remove_y = y.get(j-n..j-n+1, ..);
+        let remove_x = x.get(j - n..j - n + 1, ..);
+        let remove_y = y.get(j - n..j - n + 1, ..);
         woodbury_step(inv.as_mut(), weights.as_mut(), remove_x, remove_y, -1.0);
 
         let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
@@ -201,18 +201,17 @@ pub fn faer_rolling_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat<f
 /// https://en.wikipedia.org/wiki/Woodbury_matrix_identity
 #[inline(always)]
 fn woodbury_step(
-    inverse: MatMut<f64>, 
-    weights: MatMut<f64>, 
-    new_x: MatRef<f64>, 
+    inverse: MatMut<f64>,
+    weights: MatMut<f64>,
+    new_x: MatRef<f64>,
     new_y: MatRef<f64>,
-    c: f64 // Should be +1 or -1, for a "update" and a "removal"
+    c: f64, // Should be +1 or -1, for a "update" and a "removal"
 ) {
-
-    // It is truly amazing that the C in the Woodbury identity essentially controls the update and 
+    // It is truly amazing that the C in the Woodbury identity essentially controls the update and
     // and removal of a new record (rolling)... Linear regression seems to be designed by God to work so well
 
     let left = &inverse * new_x.transpose(); // corresponding to u in the reference
-    // right = left.transpose() by the fact that if A is symmetric, invertible, A-1 is also symmetric
+                                             // right = left.transpose() by the fact that if A is symmetric, invertible, A-1 is also symmetric
     let z = (c + (new_x * &left).read(0, 0)).recip();
     // Update the inverse
     faer::linalg::matmul::matmul(
@@ -225,7 +224,7 @@ fn woodbury_step(
     ); // inv is updated
 
     // Difference from esitmate using prior weights vs. actual next y
-    let y_diff = new_y - (new_x * &weights); 
+    let y_diff = new_y - (new_x * &weights);
     // Update weights
     faer::linalg::matmul::matmul(
         weights,
@@ -235,5 +234,4 @@ fn woodbury_step(
         z,
         faer::Parallelism::Rayon(0), //
     ); // weights are updated
-
 }

@@ -32,12 +32,6 @@ pub fn series_to_ndarray(inputs: &[Series], order: IndexOrder) -> PolarsResult<A
     df.to_ndarray::<Float64Type>(order)
 }
 
-#[inline(always)]
-pub fn series_to_ndarray_f32(inputs: &[Series], order: IndexOrder) -> PolarsResult<Array2<f32>> {
-    let df = DataFrame::new(inputs.to_vec())?;
-    df.to_ndarray::<Float32Type>(order)
-}
-
 // Shared splitting method
 pub fn split_offsets(len: usize, n: usize) -> Vec<(usize, usize)> {
     if n == 1 {

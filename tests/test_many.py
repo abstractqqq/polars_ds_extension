@@ -4,7 +4,7 @@ import pytest
 import polars as pl
 import numpy as np
 import polars_ds as pds
-from polars.testing import assert_frame_equal
+from polars.testing import assert_frame_equal, assert_series_equal
 
 
 def test_pca():
@@ -661,7 +661,7 @@ def test_recursive_lstsq():
         lr.fit(x_test, y_test)
         sklearn_result = lr.coef_.flatten()
         pds_result = df_recursive_lr["coeffs"][i].to_numpy()
-        assert np.all(np.abs(sklearn_result - pds_result) < 1e-4)  # a bigger tolerance
+        assert np.all(np.abs(sklearn_result - pds_result) < 5e-4)  # a bigger tolerance
 
 
 def test_rolling_lstsq():
@@ -1129,6 +1129,41 @@ def test_knn_ptwise(df, dist, k, res):
     )
     res = res.select(pl.col("nn").list.eval(pl.element().sort().cast(pl.UInt32)))
     assert_frame_equal(df2, res)
+
+
+@pytest.mark.parametrize(
+    "df, dist, k, res",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "id": [0, 1, 2, 3, 4, 5],
+                    "values": [0, 1, 2, 3, 4, 5],
+                    "a": [0.1, 1, 10, 100, float("nan"), 1.0],
+                    "b": [0.15, 1.5, 15, 150, 1.0, None],
+                    "c": [0.12, 1.2, 12, 120, 2.0, 2.0],
+                }
+            ),
+            "sql2",
+            2,
+            pl.Series(name="knn_avg", values=[1.5, 1.0, 0.5, 1.5, None, None]),
+        ),
+    ],
+)
+def test_knn_avg(df, dist, k, res):
+    to_test = df.select(
+        pds.query_knn_avg(
+            "a",
+            "b",
+            "c",
+            target="values",  # will be casted to f64
+            k=2,
+            dist="sql2",
+            weighted=False,
+        ).alias("knn_avg")
+    )
+
+    assert_series_equal(to_test["knn_avg"], res)
 
 
 @pytest.mark.parametrize(

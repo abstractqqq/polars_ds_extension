@@ -4,7 +4,10 @@
 // use kdtree::KdTree;
 // use crate::utils::get_common_float_dtype;
 use crate::{
-    arkadia::{matrix_to_empty_leaves, matrix_to_leaves, AnyKDT, Leaf, SplitMethod, DIST, KDTQ},
+    arkadia::{
+        matrix_to_empty_leaves, matrix_to_leaves, AnyKDT, KNNMethod, KNNRegressor, Leaf,
+        SplitMethod, DIST, KDTQ,
+    },
     utils::{list_u32_output, series_to_ndarray, split_offsets},
 };
 
@@ -27,7 +30,21 @@ pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new("knn_dist", DataType::Struct(v)))
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
+pub(crate) struct KNNAvgKwargs {
+    // pub(crate) leaf_size: usize,
+    pub(crate) k: usize,
+    pub(crate) metric: String,
+    #[serde(default)]
+    pub(crate) weighted: bool,
+    #[serde(default)]
+    pub(crate) parallel: bool,
+    pub(crate) min_bound: f64,
+    #[serde(default = "_max_bound")]
+    pub(crate) max_bound: f64,
+}
+
+#[derive(Deserialize)]
 pub(crate) struct KDTKwargs {
     // pub(crate) leaf_size: usize,
     pub(crate) k: usize,
@@ -36,8 +53,6 @@ pub(crate) struct KDTKwargs {
     pub(crate) parallel: bool,
     #[serde(default)]
     pub(crate) skip_eval: bool,
-    #[serde(default)]
-    pub(crate) skip_data: bool,
     #[serde(default = "_max_bound")]
     pub(crate) max_bound: f64,
     #[serde(default)]
@@ -82,6 +97,76 @@ pub fn dist_from_str<T: Float + 'static>(dist_str: &str) -> Result<DIST<T>, Stri
     }
 }
 
+/// KNN Regression
+/// Always do k + 1 because this operation is in-dataframe, and this means
+/// that the point itself is always a neighbor to itself.
+#[polars_expr(output_type=Float64)]
+fn pl_knn_avg(
+    inputs: &[Series],
+    context: CallerContext,
+    kwargs: KNNAvgKwargs,
+) -> PolarsResult<Series> {
+    // Set up params
+
+    // let leaf_size = kwargs.leaf_size;
+    let k = kwargs.k;
+    let can_parallel = kwargs.parallel && !context.parallel();
+    let max_bound = kwargs.max_bound;
+    let min_bound = kwargs.min_bound;
+    let method = KNNMethod::new(kwargs.weighted, min_bound);
+
+    let id = inputs[0].f64().unwrap();
+    let id = id.cont_slice()?;
+    let null_mask = inputs[1].bool().unwrap();
+    let nrows = null_mask.len();
+
+    let data = series_to_ndarray(&inputs[2..], IndexOrder::C)?;
+    let binding = data.view();
+    let mut leaves = matrix_to_leaves_filtered(&binding, id, &null_mask);
+
+    let tree = match dist_from_str::<f64>(kwargs.metric.as_str()) {
+        Ok(d) => AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d),
+        Err(e) => Err(e),
+    }
+    .map_err(|err| PolarsError::ComputeError(err.into()))?;
+
+    let ca = if can_parallel {
+        POOL.install(|| {
+            let n_threads = POOL.current_num_threads();
+            let splits = split_offsets(nrows, n_threads);
+            let chunks: Vec<_> = splits
+                .into_par_iter()
+                .map(|(offset, len)| {
+                    let slice = binding.slice(s![offset..offset + len, ..]);
+                    let out = Float64Chunked::from_iter_options(
+                        "",
+                        slice.rows().into_iter().map(|row| {
+                            let sl = row.as_slice().unwrap();
+                            tree.knn_regress(k + 1, sl, min_bound, max_bound, method)
+                        }),
+                    );
+                    out.downcast_iter().cloned().collect::<Vec<_>>()
+                })
+                .collect();
+
+            Float64Chunked::from_chunk_iter("", chunks.into_iter().flatten())
+        })
+    } else {
+        Float64Chunked::from_iter_options(
+            "",
+            data.rows().into_iter().map(|row| {
+                let sl = row.as_slice().unwrap();
+                tree.knn_regress(k + 1, sl, min_bound, max_bound, method)
+            }),
+        )
+    };
+
+    Ok(ca.into_series())
+}
+
+/// KNN Point-wise
+/// Always do k + 1 because this operation is in-dataframe, and this means
+/// that the point itself is always a neighbor to itself.
 pub fn knn_ptwise<'a, Kdt>(
     tree: Kdt,
     eval_mask: Vec<bool>,
@@ -157,16 +242,18 @@ fn pl_knn_ptwise(
     // let leaf_size = kwargs.leaf_size;
     let can_parallel = kwargs.parallel && !context.parallel();
     let skip_eval = kwargs.skip_eval;
-    let skip_data = kwargs.skip_data;
 
-    let mut inputs_offset = 0;
-    let id = inputs[inputs_offset].u32().unwrap();
+    let id = inputs[0].u32().unwrap();
     let id = id.cont_slice()?;
     let nrows = id.len();
 
+    // True means no nulls, keep
+    let null_mask = inputs[1].bool().unwrap();
+
+    let mut inputs_offset = 2;
     let eval_mask = if skip_eval {
-        inputs_offset += 1; // True means we need a new eval list
-        let eval_mask = inputs[inputs_offset].bool().unwrap();
+        let eval_mask = inputs[2].bool().unwrap();
+        inputs_offset = 3;
         eval_mask
             .iter()
             .map(|b| b.unwrap_or(false))
@@ -175,18 +262,12 @@ fn pl_knn_ptwise(
         vec![true; nrows]
     };
 
-    inputs_offset += skip_data as usize;
-    let data = series_to_ndarray(&inputs[inputs_offset + 1..], IndexOrder::C)?;
+    let data = series_to_ndarray(&inputs[inputs_offset..], IndexOrder::C)?;
     let binding = data.view();
 
     let ca = match dist_from_str::<f64>(kwargs.metric.as_str()) {
         Ok(d) => {
-            let mut leaves = if skip_data {
-                let data_mask = inputs[inputs_offset].bool().unwrap();
-                matrix_to_leaves_filtered(&binding, id, data_mask)
-            } else {
-                matrix_to_leaves(&binding, id)
-            };
+            let mut leaves = matrix_to_leaves_filtered(&binding, id, null_mask);
             AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d).map(|tree| {
                 knn_ptwise(
                     tree,
@@ -326,16 +407,17 @@ fn pl_knn_ptwise_w_dist(
     // let leaf_size = kwargs.leaf_size;
     let can_parallel = kwargs.parallel && !context.parallel();
     let skip_eval = kwargs.skip_eval;
-    let skip_data = kwargs.skip_data;
 
-    let mut inputs_offset = 0;
-    let id = inputs[inputs_offset].u32().unwrap();
+    let id = inputs[0].u32().unwrap();
     let id = id.cont_slice()?;
     let nrows = id.len();
 
+    let null_mask = inputs[1].bool().unwrap();
+
+    let mut inputs_offset = 2;
     let eval_mask = if skip_eval {
-        inputs_offset += 1; // True means we need a new eval list
-        let eval_mask = inputs[inputs_offset].bool().unwrap();
+        let eval_mask = inputs[2].bool().unwrap();
+        inputs_offset = 3;
         eval_mask
             .iter()
             .map(|b| b.unwrap_or(false))
@@ -344,18 +426,12 @@ fn pl_knn_ptwise_w_dist(
         vec![true; nrows]
     };
 
-    inputs_offset += skip_data as usize;
-    let data = series_to_ndarray(&inputs[inputs_offset + 1..], IndexOrder::C)?;
+    let data = series_to_ndarray(&inputs[inputs_offset..], IndexOrder::C)?;
     let binding = data.view();
 
     let (ca_nb, ca_dist) = match dist_from_str::<f64>(kwargs.metric.as_str()) {
         Ok(d) => {
-            let mut leaves = if skip_data {
-                let data_mask = inputs[inputs_offset].bool().unwrap();
-                matrix_to_leaves_filtered(&binding, id, data_mask)
-            } else {
-                matrix_to_leaves(&binding, id)
-            };
+            let mut leaves = matrix_to_leaves_filtered(&binding, id, null_mask);
             AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d).map(|tree| {
                 knn_ptwise_w_dist(
                     tree,

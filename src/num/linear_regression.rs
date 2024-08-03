@@ -1,5 +1,6 @@
 use crate::linalg::lstsq::{
-    faer_cholskey_ridge_regression, faer_lasso_regression, faer_qr_lstsq, faer_recursive_lstsq, faer_rolling_lstsq, LRMethods
+    faer_cholskey_ridge_regression, faer_lasso_regression, faer_qr_lstsq, faer_recursive_lstsq,
+    faer_rolling_lstsq, LRMethods,
 };
 /// Least Squares using Faer and ndarray.
 use crate::utils::{to_frame, NullPolicy};
@@ -160,14 +161,14 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
 #[polars_expr(output_type_func=coeff_pred_output)]
 fn pl_recursive_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> PolarsResult<Series> {
     let n = kwargs.n; // Gauranteed n >= 1
-    
+
     // Gauranteed in Python that this won't be SKIP. SKIP doesn't work now.
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
     if inputs[0].has_validity() {
         return Err(PolarsError::ComputeError(
-            "Target column must not have nulls".into(), 
+            "Target column must not have nulls".into(),
         ));
     }
 
@@ -177,9 +178,11 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> Polars
             if mat.nrows() < n {
                 return Err(PolarsError::ComputeError(
                     format!(
-                        "Number of rows in feature matrix ({}) must be >= {}.", 
-                        mat.nrows(), n
-                    ).into()
+                        "Number of rows in feature matrix ({}) must be >= {}.",
+                        mat.nrows(),
+                        n
+                    )
+                    .into(),
                 ));
             }
             // Solving Least Square
@@ -211,16 +214,12 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> Polars
             }
             let coef_out = builder.finish();
             let pred_out = pred_builder.finish();
-            let ca = StructChunked::new(
-                "",
-                &[coef_out.into_series(), pred_out.into_series()],
-            )?;
+            let ca = StructChunked::new("", &[coef_out.into_series(), pred_out.into_series()])?;
             Ok(ca.into_series())
         }
         Err(e) => Err(e),
     }
 }
-
 
 #[polars_expr(output_type_func=coeff_pred_output)] // They share the same output type
 fn pl_rolling_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> PolarsResult<Series> {
@@ -232,7 +231,7 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> PolarsRe
 
     if inputs[0].has_validity() {
         return Err(PolarsError::ComputeError(
-            "Target column must not have nulls".into(), 
+            "Target column must not have nulls".into(),
         ));
     }
 
@@ -242,9 +241,11 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> PolarsRe
             if mat.nrows() < n {
                 return Err(PolarsError::ComputeError(
                     format!(
-                        "Number of rows in feature matrix ({}) must be >= {}.", 
-                        mat.nrows(), n
-                    ).into()
+                        "Number of rows in feature matrix ({}) must be >= {}.",
+                        mat.nrows(),
+                        n
+                    )
+                    .into(),
                 ));
             }
             // Solving Least Square
@@ -276,10 +277,7 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: RecursiveLstsqKwargs) -> PolarsRe
             }
             let coef_out = builder.finish();
             let pred_out = pred_builder.finish();
-            let ca = StructChunked::new(
-                "",
-                &[coef_out.into_series(), pred_out.into_series()],
-            )?;
+            let ca = StructChunked::new("", &[coef_out.into_series(), pred_out.into_series()])?;
             Ok(ca.into_series())
         }
         Err(e) => Err(e),
