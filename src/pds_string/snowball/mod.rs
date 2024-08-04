@@ -21,5 +21,5 @@ mod among;
 mod snowball_env;
 
 // TODO: why do we need this `crate::`?
-pub use crate::str2::snowball::among::Among;
-pub use crate::str2::snowball::snowball_env::SnowballEnv;
+pub use crate::pds_string::snowball::among::Among;
+pub use crate::pds_string::snowball::snowball_env::SnowballEnv;

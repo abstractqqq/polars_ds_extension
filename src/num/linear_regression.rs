@@ -143,7 +143,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
             let x = mat.slice(s![.., 1..]).into_faer();
             let y = mat.slice(s![.., 0..1]).into_faer();
             let coeffs = match method {
-                LRMethods::Normal => faer_qr_lstsq(x, y, add_bias),
+                LRMethods::Normal => faer_qr_lstsq(x, y),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
                 LRMethods::L2 => faer_cholskey_ridge_regression(x, y, kwargs.l2_reg, add_bias),
             };
@@ -297,7 +297,7 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let y = mat.slice(s![.., 0..1]).into_faer();
             let x = mat.slice(s![.., 1..]).into_faer();
             let coeffs = match method {
-                LRMethods::Normal => faer_qr_lstsq(x, y, add_bias),
+                LRMethods::Normal => faer_qr_lstsq(x, y),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
                 LRMethods::L2 => faer_cholskey_ridge_regression(x, y, kwargs.l2_reg, add_bias),
             };

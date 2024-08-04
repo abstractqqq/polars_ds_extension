@@ -28,12 +28,8 @@ fn soft_threshold_l1(rho: f64, lambda: f64) -> f64 {
 /// Column Pivot QR is chosen to deal with rank deficient cases. It is also slightly
 /// faster compared to other methods.
 #[inline(always)]
-pub fn faer_qr_lstsq(x: MatRef<f64>, y: MatRef<f64>, has_bias: bool) -> Mat<f64> {
-    if x.nrows() <= x.ncols() {
-        faer_cholskey_ridge_regression(x, y, 1e-3, has_bias)
-    } else {
-        x.col_piv_qr().solve_lstsq(y)
-    }
+pub fn faer_qr_lstsq(x: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
+    x.col_piv_qr().solve_lstsq(y)
 }
 
 /// Computes Lasso Regression coefficients by the use of Coordinate Descent.
@@ -150,8 +146,7 @@ pub fn faer_recursive_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat
     let x0t = x0.transpose();
     let qr = (x0t * x0).qr();
     let mut inv = qr.inverse();
-    // The y part of the update (The non Sherman-Morrison part)
-    let mut weights = &inv * x0t * y0;
+    let mut weights = qr.solve(x0t * y0); // use native solver for numeric reasons
     coefficients.push(weights.to_owned());
     for j in n..xn {
         let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
@@ -180,7 +175,6 @@ pub fn faer_rolling_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat<f
     let x0t = x0.transpose();
     let qr = (x0t * x0).qr();
     let mut inv = qr.inverse();
-    // The y part of the update (The non Sherman-Morrison part)
     let mut weights = &inv * x0t * y0;
     coefficients.push(weights.to_owned());
     for j in n..xn {

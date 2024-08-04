@@ -376,7 +376,7 @@ def query_recursive_lstsq(
     else:
         raise ValueError("You must start at >=1 for recursive lstsq.")
 
-    kwargs = {"null_policy": "raise", "n": start}
+    kwargs = {"null_policy": null_policy, "n": start}
     t = str_to_expr(target).cast(pl.Float64)
     cols = [t]
     cols.extend(features)
@@ -431,7 +431,7 @@ def query_rolling_lstsq(
     else:
         raise ValueError("You must window_size >=1 for rolling lstsq.")
 
-    kwargs = {"null_policy": "raise", "n": start}
+    kwargs = {"null_policy": null_policy, "n": start}
     t = str_to_expr(target).cast(pl.Float64)
     cols = [t]
     cols.extend(features)

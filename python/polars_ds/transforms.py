@@ -245,7 +245,7 @@ def one_hot_encode(
 ) -> ExprTransform:
     """
     Find the unique values in the string/categorical columns and one-hot encode them. This will NOT
-    consider nulls as one of the unique values.
+    consider nulls as one of the unique values. Append a one-hot null indicator if you want to encode nulls.
 
     Parameters
     ----------
@@ -277,16 +277,55 @@ def one_hot_encode(
     for t in temp.collect().get_columns():
         u: pl.Series = t[0]  # t is a Series which contains a single series, so u is a series
         if len(u) > 1:
+            # Need to take care of the case where null == 1 is null. Need only True and False, not null
             exprs.extend(
-                pl.col(t.name)
-                .eq(u[i])
-                .fill_null(False)  # In the EQ comparison, None will result in None
-                .cast(pl.UInt8)
-                .alias(t.name + separator + u[i])
+                pl.col(t.name).eq_missing(u[i]).cast(pl.UInt8).alias(t.name + separator + u[i])
                 for i in range(int(drop_first), len(u))
             )
 
+    if len(exprs) == 0:
+        raise ValueError(
+            "Provided columns either do not exist or are not string/categorical types."
+        )
+
     return exprs
+
+
+def rank_hot_encode(
+    col: str,
+    ranking: List[str],
+) -> ExprTransform:
+    """
+    Given a ranking, e.g. ["bad", "neutral", "good"], where "bad", "neutral" and "good" are values coming
+    from the column `col`, this will create 2 additional columns, where a row of [0, 0] will represent
+    "bad", and a row of [1, 0] will represent "neutral", and a row of [1,1] will represent "good". The meaning
+    of each rows is that the value is at least this rank. This currently only works on string columns.
+
+    Values not in the provided ranking will have -1 in all the new columns.
+
+    Parameters
+    ----------
+    col
+        The name of a single column
+    ranking
+        A list of string representing the ranking of the values
+    """
+
+    n_ranks = len(ranking)
+    if n_ranks <= 1:
+        raise ValueError("Rank hot encoding does not work with single value ranking.")
+
+    if not _IS_POLARS_V1:
+        raise ValueError("Unavailable for Polars < v1.")
+
+    number_rank = list(range(n_ranks))
+    ranked_expr = pl.col(col).replace_strict(
+        old=ranking, new=number_rank, default=None, return_dtype=pl.Int32
+    )
+    return [
+        (ranked_expr >= i).cast(pl.Int8).fill_null(-1).alias(f"{col}>={c}")
+        for i, c in zip(range(1, n_ranks), ranking[1:])
+    ]
 
 
 def target_encode(
@@ -330,6 +369,11 @@ def target_encode(
 
     else:
         valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
+
+    if len(valid_cols) == 0:
+        raise ValueError(
+            "The provided columns are either not string/categorical type, or are not in df."
+        )
 
     temp = temp.select(
         pds_num.target_encode(
@@ -394,6 +438,11 @@ def woe_encode(
     else:
         valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
 
+    if len(valid_cols) == 0:
+        raise ValueError(
+            "The provided columns are either not string/categorical type, or are not in df."
+        )
+
     temp = temp.select(
         pds_num.query_woe_discrete(c, target).implode() for c in valid_cols
     ).collect()  # add collect config..
@@ -454,6 +503,12 @@ def iv_encode(
         )
     else:
         valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
+
+    if len(valid_cols) == 0:
+        raise ValueError(
+            "The provided columns are either not string/categorical type, or are not in df."
+        )
+
     temp = temp.select(
         pds_num.query_iv_discrete(c, target, return_sum=False).implode() for c in valid_cols
     ).collect()  # add collect config..
