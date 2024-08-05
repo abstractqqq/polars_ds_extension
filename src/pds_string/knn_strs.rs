@@ -19,7 +19,7 @@ pub(crate) struct KnnStrKwargs {
     pub(crate) parallel: bool,
 }
 
-// Can we improve performance by removing the function pointers?
+// REFACTOR
 
 fn levenshtein_nearest<'a>(s: &str, cutoff: usize, vocab: &'a StringChunked) -> Option<&'a str> {
     let batched = levenshtein::BatchComparator::new(s.chars());

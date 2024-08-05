@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import polars as pl
 import json
 import sys
@@ -598,7 +600,11 @@ class Blueprint:
         return self
 
     def one_hot_encode(
-        self, cols: IntoExprColumn, separator: str = "_", drop_first: bool = False
+        self,
+        cols: IntoExprColumn,
+        separator: str = "_",
+        drop_first: bool = False,
+        drop_cols: bool = True,
     ) -> Self:
         """
         Find the unique values in the string/categorical columns and one-hot encode them. This will NOT
@@ -615,6 +621,8 @@ class Blueprint:
         drop_first
             Whether to drop the first distinct value (in terms of str/categorical order). This helps with reducing
             dimension and prevents some issues from linear dependency.
+        drop_cols
+            Whether to drop the original columns after the transform
         """
         self._steps.append(
             FitStep(
@@ -623,7 +631,34 @@ class Blueprint:
                 self.exclude,
             )
         )
-        return self.drop(cols)
+        if drop_cols:
+            return self.drop(cols)
+        return self
+
+    def rank_hot_encode(
+        self, col: str | pl.Expr, ranking: List[str], drop_cols: bool = True
+    ) -> Self:
+        """
+        Given a ranking, e.g. ["bad", "neutral", "good"], where "bad", "neutral" and "good" are values coming
+        from the column `col`, this will create 2 additional columns, where a row of [0, 0] will represent
+        "bad", and a row of [1, 0] will represent "neutral", and a row of [1,1] will represent "good". The meaning
+        of each rows is that the value is at least this rank. This currently only works on string columns.
+
+        Values not in the provided ranking will have -1 in all the new columns.
+
+        Parameters
+        ----------
+        col
+            The name of a single column
+        ranking
+            A list of string representing the ranking of the values
+        drop_cols
+            Whether to drop the original column after the transform
+        """
+        self._steps.append(WithColumnsStep(t.rank_hot_encode(col=col, ranking=ranking)))
+        if drop_cols:
+            return self.drop(cols=[col])
+        return self
 
     def target_encode(
         self,

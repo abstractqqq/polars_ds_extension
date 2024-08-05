@@ -1,6 +1,5 @@
 import polars as pl
 import logging
-from typing import Optional
 from .type_alias import str_to_expr, StrOrExpr
 
 from polars_ds.num import *  # noqa: F403
@@ -12,7 +11,7 @@ from polars_ds.knn_queries import *  # noqa: F403
 
 logging.basicConfig(level=logging.INFO)
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 
 def l_inf_horizontal(*v: StrOrExpr, normalize: bool = False) -> pl.Expr:
@@ -99,39 +98,16 @@ def eval_series(*series: pl.Series, expr: str, **kwargs) -> pl.DataFrame:
     return pl.select(func(*inputs, **kwargs).alias(expr.replace("query_", "")))
 
 
-def random_data(
-    size: int = 2_000, n_cols: int = 3, null_pct: Optional[float] = None
-) -> pl.DataFrame:
+def frame(size: int = 2_000, index_name: str = "row_num") -> pl.DataFrame:
     """
-    Generates a random eager Polars Dataframe with 1 column as row_num, and `n_cols` columns
-    random features. Random features will be uniformly generated.
+    Generates a frame with only an index (row number) column.
+    This is a convenience function to be chained with pds.random(...) when running simulations and tests.
 
     Parameters
     ----------
     size
         The total number of rows in this dataframe
-    n_cols
-        The total number of uniformly (range = [0, 1)) generated features
-    null_pct
-        If none, no null values will be present. If it is a float, then each feature column
-        will have this much percentage of nulls.
+    index_name
+        The name of the index column
     """
-    base = pl.DataFrame({"row_num": range(size)})
-    if n_cols <= 0:
-        return base
-
-    if null_pct is None:
-        rand_cols = (
-            random(0.0, 1.0).alias(f"feature_{i+1}")  # noqa: F405
-            for i in range(n_cols)
-        )
-    else:
-        rand_cols = (
-            random_null(  # noqa: F405
-                random(0.0, 1.0),  # noqa: F405
-                pct=null_pct,
-            ).alias(f"feature_{i+1}")
-            for i in range(n_cols)
-        )
-
-    return base.with_columns(*rand_cols)
+    return pl.DataFrame({index_name: range(size)})

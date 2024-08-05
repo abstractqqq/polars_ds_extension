@@ -10,7 +10,7 @@ from polars.testing import assert_frame_equal, assert_series_equal
 def test_pca():
     from sklearn.decomposition import PCA
 
-    df = pds.random_data(size=2000, n_cols=0).select(
+    df = pds.frame(size=2000).select(
         pds.random(0.0, 1.0).alias("x1"),
         pds.random(0.0, 1.0).alias("x2"),
         pds.random(0.0, 1.0).alias("x3"),
@@ -63,7 +63,7 @@ def test_copula_entropy():
 def test_cond_indep_and_transfer():
     from copent import ci, transent
 
-    df = pds.random_data(size=2_000, n_cols=0).select(
+    df = pds.frame(size=2_000).select(
         pds.random(0.0, 1.0).alias("x1"),
         pds.random(0.0, 1.0).alias("x2"),
         pds.random(0.0, 1.0).alias("x3"),
@@ -81,7 +81,7 @@ def test_cond_indep_and_transfer():
 
 
 def test_xi_corr():
-    df = pds.random_data(size=2_000, n_cols=0).select(
+    df = pds.frame(size=2_000).select(
         pds.random(0.0, 12.0).alias("x"),
         pds.random(0.0, 1.0).alias("y"),
     )
@@ -98,7 +98,7 @@ def test_xi_corr():
 
 
 def test_bicor():
-    df = pds.random_data(size=2_000, n_cols=0).select(
+    df = pds.frame(size=2_000).select(
         pds.random(0.0, 1.0).alias("x"),
         pds.random(0.0, 1.0).alias("y"),
     )
@@ -116,7 +116,7 @@ def test_bicor():
 def test_kendall_tau():
     from scipy.stats import kendalltau
 
-    df = pds.random_data(size=2000, n_cols=0).select(
+    df = pds.frame(size=2000).select(
         pds.random_int(0, 200).alias("x"),
         pds.random_int(0, 200).alias("y"),
     )
@@ -497,7 +497,7 @@ def test_lstsq():
 def test_lstsq_against_sklearn():
     # Random data + noise
     df = (
-        pds.random_data(size=5_000, n_cols=0)
+        pds.frame(size=5_000)
         .select(
             pds.random(0.0, 1.0).alias("x1"),
             pds.random(0.0, 1.0).alias("x2"),
@@ -563,7 +563,7 @@ def test_lasso_regression():
     from sklearn import linear_model
 
     df = (
-        pds.random_data(size=5_000, n_cols=0)
+        pds.frame(size=5_000)
         .select(
             pds.random(0.0, 1.0).alias("x1"),
             pds.random(0.0, 1.0).alias("x2"),
@@ -610,20 +610,10 @@ def test_lasso_regression():
 
 
 def test_recursive_lstsq():
-    # Use sklearn as the reference for truth. Test multiple steps of recursive
-    # linear regression against results from LinearRegression of scikit learn.
-    # A bigger tolerence should be used because of (1) potentially different methods used
-    # to evaluate the coefficients (Sklearn is most likely using SVD, while pds is using column
-    # pivot QR decomp for first fit and Sherman-William Update for subsequent updates, etc.),
-    # and (2) Some precision error will inevitably propagate when we do recursive linear regression.
-    # In the tests, sklearn LinearRegression is fitted on all available data and is not recursive.
-    # And (3) inherent precision issues in any linear algebra algorithms
-
-    from sklearn.linear_model import LinearRegression
-
+    # Test against the lstsq method with a fit whenver a new row is in the data
     size = 1_000
     df = (
-        pds.random_data(size=size, n_cols=0)
+        pds.frame(size=size)
         .select(
             pds.random(0.0, 1.0).alias("x1"),
             pds.random(0.0, 1.0).alias("x2"),
@@ -654,14 +644,19 @@ def test_recursive_lstsq():
     ).unnest("result")
 
     for i in range(start_at, 30):
-        df_test = df.limit(i)
-        x_test = df_test.select("x1", "x2", "x3").to_numpy()
-        y_test = df_test.select("y").to_numpy()
-        lr = LinearRegression(fit_intercept=False)
-        lr.fit(x_test, y_test)
-        sklearn_result = lr.coef_.flatten()
-        pds_result = df_recursive_lr["coeffs"][i].to_numpy()
-        assert np.all(np.abs(sklearn_result - pds_result) < 5e-4)  # a bigger tolerance
+        coefficients = df.limit(i).select(
+            pds.query_lstsq(
+                "x1",
+                "x2",
+                "x3",
+                target="y",
+            ).alias("coeffs")
+        )["coeffs"]  # One element series
+
+        normal_result = coefficients[0].to_numpy()
+        # i - 1. E.g. use 3 rows of data to train, the data will be at row 2.
+        recursive_result = df_recursive_lr["coeffs"][i - 1].to_numpy()
+        assert np.all(np.abs(normal_result - recursive_result) < 1e-5)
 
 
 def test_rolling_lstsq():
@@ -669,7 +664,7 @@ def test_rolling_lstsq():
     # Test on multiple window sizes
     size = 500
     df = (
-        pds.random_data(size=size, n_cols=0)
+        pds.frame(size=size)
         .select(
             pds.random(0.0, 1.0).alias("x1"),
             pds.random(0.0, 1.0).alias("x2"),

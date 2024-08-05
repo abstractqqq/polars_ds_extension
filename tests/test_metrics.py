@@ -124,7 +124,7 @@ def test_confusion_matrix(y_true, y_score):
 def test_roc_auc():
     from sklearn.metrics import roc_auc_score
 
-    df = pds.random_data(size=2000, n_cols=0).select(
+    df = pds.frame(size=2000).select(
         pds.random(0.0, 1.0).alias("predictions"),
         pds.random(0.0, 1.0).round().cast(pl.Int32).alias("target"),
         pl.lit(0).alias("zero_target"),
@@ -146,11 +146,7 @@ def test_multiclass_roc_auc():
     from sklearn.metrics import roc_auc_score
 
     def roc_auc_random_data(size: int = N_ROWS) -> pl.DataFrame:
-        df = pl.DataFrame(
-            {
-                "id": range(size),
-            }
-        ).with_columns(
+        df = pds.frame(size=N_ROWS, index_name="id").with_columns(
             pl.col("id").cast(pl.UInt64),
             pds.random().alias("val1"),
             pds.random().alias("val2"),
