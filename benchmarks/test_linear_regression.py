@@ -7,7 +7,7 @@ SEED = 208
 
 SIZE = 100_000
 DF = (
-    pds.random_data(size=SIZE, n_cols=0)
+    pds.frame(size=SIZE)
     .select(
         pds.random(0.0, 1.0).alias("x1"),
         pds.random(0.0, 1.0).alias("x2"),
@@ -76,9 +76,7 @@ def test_lasso(benchmark, n):
     @benchmark
     def func():
         df.select(
-            pds.query_lstsq(
-                "x1", "x2", "x3", "x4", "x5", target="y", method="l1", l1_reg=0.1
-            )
+            pds.query_lstsq("x1", "x2", "x3", "x4", "x5", target="y", method="l1", l1_reg=0.1)
         )
 
 
@@ -101,9 +99,7 @@ def test_ridge(benchmark, n):
     @benchmark
     def func():
         df.select(
-            pds.query_lstsq(
-                "x1", "x2", "x3", "x4", "x5", target="y", method="l2", l2_reg=0.1
-            )
+            pds.query_lstsq("x1", "x2", "x3", "x4", "x5", target="y", method="l2", l2_reg=0.1)
         )
 
 
