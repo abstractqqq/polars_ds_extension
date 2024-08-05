@@ -3,9 +3,9 @@
 mod arkadia;
 mod linalg;
 mod num;
+mod pds_string;
 mod stats;
 mod stats_utils;
-mod pds_string;
 mod utils;
 
 use faer_ext::{IntoFaer, IntoNdarray};
