@@ -27,7 +27,7 @@ if sys.version_info >= (3, 11):
 else:  # 3.10, 3.9, 3.8
     from typing_extensions import Self
 
-__all__ = ["Pipeline", "Blueprint"]
+__all__ = ["Pipeline", "Blueprint", "FitStep"]
 
 
 @dataclass
@@ -79,6 +79,35 @@ class FitStep:  # Not a FittedStep
 
 Step: TypeAlias = Union[FitStep, SelectStep, WithColumnsStep, FilterStep]
 FittedStep: TypeAlias = Union[SelectStep, WithColumnsStep, FilterStep]
+
+
+@dataclass
+class StepRepr:
+    """
+    A representation of a step
+    """
+
+    name: str
+    args: List[Any]
+    kwargs: Dict[str, Any]
+
+    @staticmethod
+    def from_dict(dictionary: Dict[str, Any]) -> Self:
+        try:
+            name: str = dictionary["name"]
+            args: List[Any] = dictionary.get("args", [])
+            kwargs: Dict[str, Any] = dictionary.get("kwargs", {})
+            if not isinstance(name, str):
+                raise ValueError("Value of `name` must be a string.")
+            if not isinstance(args, list):
+                raise ValueError("Value of `args` must be a list.")
+            if not isinstance(kwargs, dict):
+                raise ValueError("Value of `kwargs` must be a dict.")
+            if not all(isinstance(s, str) for s in kwargs.keys()):
+                raise ValueError("All keys in `kwargs` must be strings.")
+            return StepRepr(name=name, args=args, kwargs=kwargs)
+        except Exception as e:
+            raise ValueError(f"Keys missing or data type is not expected. Original error: \n{e}")
 
 
 def _to_json_dict(step: FittedStep) -> Dict:
@@ -887,6 +916,18 @@ class Blueprint:
             )
         )
         return self
+
+    def append_step_from_dict(self, dictionary: Dict[str, Any]) -> Self:
+        """
+        Append a step to the blueprint by taking in a dictionary with keys `name`, `args`, and `kwargs`, where
+        the value of args must be a List[Any] and the value of kwargs must be a dict[str, Any].
+        """
+        step_repr: StepRepr = StepRepr.from_dict(dictionary)
+        func = getattr(self, step_repr.name, None)  # Default is None
+        if func is None or step_repr.name.startswith("_"):
+            raise ValueError("Unknown / invalid method name.")
+
+        return func(*step_repr.args, **step_repr.kwargs)  # self is already part of func
 
     def materialize(self) -> Pipeline:
         """
