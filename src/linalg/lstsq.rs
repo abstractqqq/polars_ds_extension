@@ -138,17 +138,65 @@ pub fn faer_recursive_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat
     // x: size xn x m
     // y: size xn x 1
     // Vector of matrix of size m x 1
-    let mut coefficients = Vec::with_capacity(xn - n); // xn >= n is checked in Python
+    let mut coefficients = Vec::with_capacity(xn - n * ((n > 1) as usize));
 
-    let x0 = x.get(..n, ..);
-    let y0 = y.get(..n, ..);
+    let nn = n.max(1); // if n = 0, start with first row of data, which is the same as n = 1.
+    let x0 = x.get(..nn, ..);
+    let y0 = y.get(..nn, ..);
+    let x0t = x0.transpose();
+
+    let qr = (x0t * x0).col_piv_qr();
+    let mut inv = qr.inverse();
+    let mut weights = qr.solve(x0t * y0); //
+
+    coefficients.push(weights.to_owned());
+    for j in nn..xn {
+        let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
+        let next_y = y.get(j..j + 1, ..); // 1 by 1
+        woodbury_step(inv.as_mut(), weights.as_mut(), next_x, next_y, 1.0);
+        coefficients.push(weights.to_owned());
+    }
+    coefficients
+}
+
+/// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
+/// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
+pub fn faer_recursive_ridge(
+    x: MatRef<f64>,
+    y: MatRef<f64>,
+    n: usize,
+    lambda: f64,
+    has_bias: bool,
+) -> Vec<Mat<f64>> {
+    let xn = x.nrows();
+    // x: size xn x m
+    // y: size xn x 1
+    // Vector of matrix of size m x 1
+    let mut coefficients = Vec::with_capacity(xn - n * ((n > 1) as usize));
+
+    let nn = n.max(1); // if n = 0, start with first row of data, which is the same as n = 1.
+    let x0 = x.get(..nn, ..);
+    let y0 = y.get(..nn, ..);
 
     let x0t = x0.transpose();
-    let qr = (x0t * x0).qr();
-    let mut inv = qr.inverse();
-    let mut weights = qr.solve(x0t * y0); // use native solver for numeric reasons
+    let mut x0tx0_plus = x0t * x0;
+
+    let n1 = x.ncols().abs_diff(has_bias as usize);
+    // No bias at this moment
+    for i in 0..n1 {
+        *unsafe { x0tx0_plus.get_mut_unchecked(i, i) } += lambda;
+    }
+
+    let (mut inv, mut weights) = match x0tx0_plus.cholesky(Side::Lower) {
+        Ok(cho) => (cho.inverse(), cho.solve(x0t * y0)),
+        Err(_) => {
+            let svd = x0tx0_plus.thin_svd();
+            (svd.inverse(), svd.solve(x0t * y0))
+        }
+    };
+
     coefficients.push(weights.to_owned());
-    for j in n..xn {
+    for j in nn..xn {
         let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
         let next_y = y.get(j..j + 1, ..); // 1 by 1
         woodbury_step(inv.as_mut(), weights.as_mut(), next_x, next_y, 1.0);
@@ -171,11 +219,59 @@ pub fn faer_rolling_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat<f
 
     let x0 = x.get(..n, ..);
     let y0 = y.get(..n, ..);
+    let x0t = x0.transpose();
+    let qr = (x0t * x0).col_piv_qr();
+    let mut inv = qr.inverse();
+    let mut weights = qr.solve(x0t * y0); //
+    coefficients.push(weights.to_owned());
+    for j in n..xn {
+        let remove_x = x.get(j - n..j - n + 1, ..);
+        let remove_y = y.get(j - n..j - n + 1, ..);
+        woodbury_step(inv.as_mut(), weights.as_mut(), remove_x, remove_y, -1.0);
+
+        let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
+        let next_y = y.get(j..j + 1, ..); // 1 by 1
+        woodbury_step(inv.as_mut(), weights.as_mut(), next_x, next_y, 1.0);
+        coefficients.push(weights.to_owned());
+    }
+    coefficients
+}
+
+/// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
+/// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
+pub fn faer_rolling_ridge(
+    x: MatRef<f64>,
+    y: MatRef<f64>,
+    n: usize,
+    lambda: f64,
+    has_bias: bool,
+) -> Vec<Mat<f64>> {
+    let xn = x.nrows();
+    // x: size xn x m
+    // y: size xn x 1
+    // Vector of matrix of size m x 1
+    let mut coefficients = Vec::with_capacity(xn - n); // n >= 2 guaranteed in Python
+
+    let x0 = x.get(..n, ..);
+    let y0 = y.get(..n, ..);
 
     let x0t = x0.transpose();
-    let qr = (x0t * x0).qr();
-    let mut inv = qr.inverse();
-    let mut weights = &inv * x0t * y0;
+    let mut x0tx0_plus = x0t * x0;
+
+    let n1 = x.ncols().abs_diff(has_bias as usize);
+    // No bias at this moment
+    for i in 0..n1 {
+        *unsafe { x0tx0_plus.get_mut_unchecked(i, i) } += lambda;
+    }
+
+    let (mut inv, mut weights) = match x0tx0_plus.cholesky(Side::Lower) {
+        Ok(cho) => (cho.inverse(), cho.solve(x0t * y0)),
+        Err(_) => {
+            let svd = x0tx0_plus.thin_svd();
+            (svd.inverse(), svd.solve(x0t * y0))
+        }
+    };
+
     coefficients.push(weights.to_owned());
     for j in n..xn {
         let remove_x = x.get(j - n..j - n + 1, ..);

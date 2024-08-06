@@ -331,7 +331,13 @@ def query_lstsq(
 
 
 def query_recursive_lstsq(
-    *x: str | pl.Expr, target: str | pl.Expr, start_at: int, null_policy: NullPolicy = "raise"
+    *x: str | pl.Expr,
+    target: str | pl.Expr,
+    start_at: int,
+    add_bias: bool = False,
+    method: LinearRegressionMethod = "normal",
+    lambda_: float = 0.1,
+    null_policy: NullPolicy = "raise",
 ):
     """
     Using the first `start_at` rows of data as basis, start computing the least square solutions
@@ -353,33 +359,44 @@ def query_recursive_lstsq(
     target : str | pl.Expr
         The target variable
     start_at: int
-        Must be >= 1. Rows before start_at will be used as the first initial fit on the data.
+        Must be >= 1. You start at row `start_at` to train the first linear regression. If `start_at` > 1,
+        the rows before that will be null. If you start at N < # features, result will be numerically very
+        unstable and potentially wrong.
+    add_bias
+        Whether to add a bias term
+    method
+        Linear Regression method. One of "normal" (normal equation), "l2" (l2 regularized, Ridge). "l1" does
+        not work for now.
+    lambda_
+        The L2 regularization factor
     null_policy: Literal['raise', 'skip', 'zero', 'one']
         Currently, this only supports raise and any kind of direct fill strategy. `skip` doesn't work.
         This won't fill target, and if target has null, an error will be thrown.
     """
 
-    if null_policy == "skip":
+    if null_policy == "skip" or method == "l1":
         raise NotImplementedError
 
+    if start_at < 1:
+        raise ValueError("You must start at >= 1 for recursive lstsq.")
+
+    cols = [str_to_expr(target).cast(pl.Float64)]
     features = [str_to_expr(z) for z in x]
-    if start_at >= 1:
-        if start_at < len(features):
-            import warnings
+    if len(features) > start_at:
+        import warnings
 
-            warnings.warn(
-                f"Input `start_at` must be >= the number of features. It is reset to {len(features)}",
-                stacklevel=2,
-            )
+        warnings.warn(
+            "# features > number of rows for the initial fit. Outputs may be off.", stacklevel=2
+        )
 
-        start = max(start_at, len(features))
-    else:
-        raise ValueError("You must start at >=1 for recursive lstsq.")
-
-    kwargs = {"null_policy": null_policy, "n": start}
-    t = str_to_expr(target).cast(pl.Float64)
-    cols = [t]
     cols.extend(features)
+    kwargs = {
+        "null_policy": null_policy,
+        "n": start_at,
+        "bias": add_bias,
+        "method": method,
+        "lambda": lambda_,
+    }
     return pl_plugin(
         symbol="pl_recursive_lstsq",
         args=cols,
@@ -390,7 +407,13 @@ def query_recursive_lstsq(
 
 
 def query_rolling_lstsq(
-    *x: str | pl.Expr, target: str | pl.Expr, window_size: int, null_policy: NullPolicy = "raise"
+    *x: str | pl.Expr,
+    target: str | pl.Expr,
+    window_size: int,
+    add_bias: bool = False,
+    method: LinearRegressionMethod = "normal",
+    lambda_: float = 0.1,
+    null_policy: NullPolicy = "raise",
 ):
     """
     Using every `window_size` rows of data as feature matrix, and computes least square solutions
@@ -408,33 +431,40 @@ def query_rolling_lstsq(
     target : str | pl.Expr
         The target variable
     window_size: int
-        Must be >= 1. Rows before start_at will be used as the first initial fit on the data.
+        Must be >= 2. Window size for the rolling regression
+    add_bias
+        Whether to add a bias term
+    method
+        Linear Regression method. One of "normal" (normal equation), "l2" (l2 regularized, Ridge). "l1" does
+        not work for now.
+    lambda_
+        The L2 regularization factor
     null_policy: Literal['raise', 'skip', 'zero', 'one']
         Currently, this only supports raise and any kind of direct fill strategy. `skip` doesn't work.
         This won't fill target, and if target has null, an error will be thrown.
     """
 
-    if null_policy == "skip":
+    if null_policy == "skip" or method == "l1":
         raise NotImplementedError
 
+    if window_size < 2:
+        raise ValueError("`window_size` must be >= 2.")
+
+    cols = [str_to_expr(target).cast(pl.Float64)]
     features = [str_to_expr(z) for z in x]
-    if window_size >= 1:
-        if window_size < len(features):
-            import warnings
+    if len(features) > window_size:
+        import warnings
 
-            warnings.warn(
-                f"Input `window_size` must be >= the number of features. It is reset to {len(features)}",
-                stacklevel=2,
-            )
+        warnings.warn("# features > window size. Outputs may be off.", stacklevel=2)
 
-        start = max(window_size, len(features))
-    else:
-        raise ValueError("You must window_size >=1 for rolling lstsq.")
-
-    kwargs = {"null_policy": null_policy, "n": start}
-    t = str_to_expr(target).cast(pl.Float64)
-    cols = [t]
     cols.extend(features)
+    kwargs = {
+        "null_policy": null_policy,
+        "n": window_size,
+        "bias": add_bias,
+        "method": method,
+        "lambda": lambda_,
+    }
     return pl_plugin(
         symbol="pl_rolling_lstsq",
         args=cols,
