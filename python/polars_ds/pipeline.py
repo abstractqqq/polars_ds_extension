@@ -27,7 +27,7 @@ if sys.version_info >= (3, 11):
 else:  # 3.10, 3.9, 3.8
     from typing_extensions import Self
 
-__all__ = ["Pipeline", "Blueprint"]
+__all__ = ["Pipeline", "Blueprint", "FitStep"]
 
 
 @dataclass
