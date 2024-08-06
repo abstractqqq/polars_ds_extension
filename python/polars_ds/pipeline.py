@@ -31,7 +31,7 @@ __all__ = ["Pipeline", "Blueprint"]
 
 
 @dataclass
-class SelectStep:
+class SelectStep:  # FittedStep
     exprs: ExprTransform
 
     def __iter__(self):
@@ -39,7 +39,7 @@ class SelectStep:
 
 
 @dataclass
-class WithColumnsStep:
+class WithColumnsStep:  # FittedStep
     exprs: ExprTransform
 
     def __iter__(self):
@@ -47,7 +47,15 @@ class WithColumnsStep:
 
 
 @dataclass
-class FitStep:
+class FilterStep:  # FittedStep
+    exprs: ExprTransform
+
+    def __iter__(self):
+        return [self.exprs].__iter__() if isinstance(self.exprs, pl.Expr) else self.exprs.__iter__()
+
+
+@dataclass
+class FitStep:  # Not a FittedStep
     func: FitTransformFunc
     cols: IntoExprColumn
     exclude: List[str]
@@ -69,8 +77,8 @@ class FitStep:
         return self.func(df, real_cols)
 
 
-Step: TypeAlias = Union[FitStep, SelectStep, WithColumnsStep]
-FittedStep: TypeAlias = Union[SelectStep, WithColumnsStep]
+Step: TypeAlias = Union[FitStep, SelectStep, WithColumnsStep, FilterStep]
+FittedStep: TypeAlias = Union[SelectStep, WithColumnsStep, FilterStep]
 
 
 def _to_json_dict(step: FittedStep) -> Dict:
@@ -78,35 +86,22 @@ def _to_json_dict(step: FittedStep) -> Dict:
     Turns a fitted step into a JSON dict.
     """
     if _IS_POLARS_V1:
-        exprs = []
-        if isinstance(step.exprs, pl.Expr):
-            exprs.append(step.exprs.meta.serialize(format="json"))
-        elif isinstance(step.exprs, list):
-            for e in step.exprs:
-                if isinstance(e, pl.Expr):
-                    exprs.append(e.meta.serialize(format="json"))
-                else:
-                    raise ValueError("Non-expression detected. This object is ill-defined.")
-
-        if isinstance(step, SelectStep):
-            return {"SelectStep": exprs}
-        else:
-            return {"WithColumnsStep": exprs}
+        try:
+            exprs = [e.meta.serialize(format="json") for e in step]
+        except Exception as e:
+            raise ValueError(f"The `FittedStep` is ill-defined. Original error: \n{e}")
     else:
-        exprs = []
-        if isinstance(step.exprs, pl.Expr):  # For < v1, it is json format by default
-            exprs.append(step.exprs.meta.serialize())
-        elif isinstance(step.exprs, list):
-            for e in step.exprs:
-                if isinstance(e, pl.Expr):
-                    exprs.append(e.meta.serialize())
-                else:
-                    raise ValueError("Non-expression detected. This object is ill-defined.")
+        try:
+            exprs = [e.meta.serialize() for e in step]
+        except Exception as e:
+            raise ValueError(f"The `FittedStep` is ill-defined. Original error: \n{e}")
 
-        if isinstance(step, SelectStep):
-            return {"SelectStep": exprs}
-        else:
-            return {"WithColumnsStep": exprs}
+    if isinstance(step, SelectStep):
+        return {"SelectStep": exprs}
+    elif isinstance(step, FilterStep):
+        return {"FilterStep": exprs}
+    else:
+        return {"WithColumnsStep": exprs}
 
 
 @dataclass
@@ -152,6 +147,8 @@ class Pipeline:
                 plan = plan.with_columns(step.exprs)
             elif isinstance(step, SelectStep):
                 plan = plan.select(step.exprs)
+            elif isinstance(step, FilterStep):
+                plan = plan.filter(step.exprs)
             else:
                 raise ValueError(f"Transform is not a valid FittedStep: {str(step)}")
 
@@ -207,7 +204,17 @@ class Pipeline:
 
         from io import StringIO
 
-        transforms = pipeline_dict["transforms"]
+        try:
+            name = pipeline_dict["name"]
+            transforms = pipeline_dict["transforms"]
+            target = pipeline_dict["target"]
+            feature_names_in_ = pipeline_dict["feature_names_in_"]
+            feature_names_out_ = pipeline_dict["feature_names_out_"]
+            ensure_features_in = pipeline_dict["ensure_features_in"]
+            ensure_features_out = pipeline_dict["ensure_features_out"]
+        except Exception as e:
+            raise ValueError(f"Input dictionary is missing keywords. Original error: \n{e}")
+
         transform_steps = []
         step: Dict[str, List[str]]
         # each step is a dict like {'SelectStep': [jsonified str expressions..]}
@@ -235,15 +242,19 @@ class Pipeline:
                     json_exprs = step.pop("WithColumnsStep")
                     actual_exprs = [pl.Expr.deserialize(StringIO(e)) for e in json_exprs]
                     transform_steps.append(WithColumnsStep(actual_exprs))
+            elif "FilterStep" in step:
+                if _IS_POLARS_V1:
+                    json_exprs = step.pop("FilterStep")
+                    actual_exprs = [
+                        pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs
+                    ]
+                    transform_steps.append(FilterStep(actual_exprs))
+                else:
+                    json_exprs = step.pop("FilterStep")
+                    actual_exprs = [pl.Expr.deserialize(StringIO(e)) for e in json_exprs]
+                    transform_steps.append(FilterStep(actual_exprs))
             else:
                 raise ValueError(f"Invalid step {step}")
-
-        name = pipeline_dict["name"]
-        target = pipeline_dict["target"]
-        feature_names_in_ = pipeline_dict["feature_names_in_"]
-        feature_names_out_ = pipeline_dict["feature_names_out_"]
-        ensure_features_in = pipeline_dict["ensure_features_in"]
-        ensure_features_out = pipeline_dict["ensure_features_out"]
 
         return Pipeline(
             name=name,
@@ -385,24 +396,53 @@ class Blueprint:
         else:
             return target
 
-    def reset_df(self, df: PolarsFrame) -> Self:
+    # def reset_df(self, df: PolarsFrame) -> Self:
+    #     """
+    #     Resets the underlying dataset to learn from. This will keep all the existing
+    #     steps in the blueprint.
+
+    #     Parameters
+    #     ----------
+    #     df
+    #         The new dataframe to use when materializing.
+    #     """
+    #     from copy import deepcopy
+
+    #     self._df = df.lazy()
+    #     self.name = str(self.name)
+    #     self.feature_names_in_ = (
+    #         self._df.collect_schema().names() if _IS_POLARS_V1 else list(df.columns)
+    #     )
+    #     self._steps = [deepcopy(s) for s in self._steps]
+    #     return self
+
+    def filter(self, *by: str | pl.Expr, all_true: bool = True) -> Self:
         """
-        Resets the underlying dataset to learn from. This will keep all the existing
-        steps in the blueprint.
+        Filters on the dataframe using native polars expressions or SQL strings (the part after where).
+        Note, elements in `by` must either all be strings or all be polars expressions.
 
         Parameters
         ----------
-        df
-            The new dataframe to use when materializing.
+        by
+            Native polars boolean expression or SQL strings
+        all_true
+            Whether all conditions should be met, or any.
         """
-        from copy import deepcopy
+        inputs = list(by)
+        is_all_string = all(isinstance(b, str) for b in inputs)
+        is_all_expr = all(isinstance(b, pl.Expr) for b in inputs)
+        if (is_all_string or is_all_expr) is False:  # if both are false
+            raise ValueError("Filters must either all be strings or all be polars expressions.")
 
-        self._df = df.lazy()
-        self.name = str(self.name)
-        self.feature_names_in_ = (
-            self._df.collect_schema().names() if _IS_POLARS_V1 else list(df.columns)
-        )
-        self._steps = [deepcopy(s) for s in self._steps]
+        if is_all_string:
+            exprs = [pl.sql_expr(s) for s in inputs]
+        else:  # is_all_expr
+            exprs = list(inputs)
+
+        if all_true:
+            self._steps.append(FilterStep(pl.all_horizontal(exprs)))
+        else:
+            self._steps.append(FilterStep(pl.any_horizontal(exprs)))
         return self
 
     def impute(self, cols: IntoExprColumn, method: SimpleImputeMethod = "mean") -> Self:
@@ -820,7 +860,7 @@ class Blueprint:
         Parameters
         ----------
         func
-            A callable with signature (pl.DataFrame, pl.LazyFrame], cols: List[str], ...) -> ExprTransform,
+            A callable with signature (pl.DataFrame | pl.LazyFrame, cols: List[str], ...) -> ExprTransform,
         cols
             The columns to be fed into the func. Note that in func's signature, a list of strings
             should be expected. But here, cols can be any polars selector expression. The reason is that
@@ -834,6 +874,10 @@ class Blueprint:
         if "target" in inspect.signature(func).parameters:  # func has "target" as input
             if "target" not in kwargs:  # if target is not explicitly given
                 keywords["target"] = self._get_target()
+                if keywords["target"] is None:
+                    raise ValueError(
+                        "Target is not explicitly given and is required by the custom function."
+                    )
 
         self._steps.append(
             FitStep(
@@ -864,6 +908,9 @@ class Blueprint:
             elif isinstance(step, SelectStep):
                 transforms.append(step)
                 df_lazy = df_lazy.select(step.exprs)
+            elif isinstance(step, FilterStep):
+                transforms.append(step)
+                df_lazy = df_lazy.filter(step.exprs)
             else:
                 raise ValueError("Not a valid step.")
 
