@@ -1,5 +1,6 @@
 from __future__ import annotations
 import math
+import warnings
 import polars as pl
 from typing import Union, List, Iterable
 from .type_alias import (
@@ -280,15 +281,13 @@ def query_lstsq(
         When method = l1, if maximum coordinate update is < tol, the algorithm is considered to have
         converged. If not, it will run for at most 2000 iterations. This stopping criterion is not as
         good as the dual gap.
-    null_policy: Literal['raise', 'skip', 'zero', 'one']
+    null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
         One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
         the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
         columns.
     """
     if skip_null:
-        import warnings
-
         warnings.warn(
             "`skip_null` is deprecated. Please use null_policy = 'skip'.",
             DeprecationWarning,
@@ -333,20 +332,18 @@ def query_lstsq(
 def query_recursive_lstsq(
     *x: str | pl.Expr,
     target: str | pl.Expr,
-    start_at: int,
+    start_with: int,
     add_bias: bool = False,
     method: LinearRegressionMethod = "normal",
-    lambda_: float = 0.1,
+    l2_reg: float = 0.1,
     null_policy: NullPolicy = "raise",
 ):
     """
-    Using the first `start_at` rows of data as basis, start computing the least square solutions
+    Using the first `start_with` rows of data as basis, start computing the least square solutions
     by updating the betas per row. A prediction for that row will also be included in the output.
     This uses the famous Sherman-Morrison-Woodbury Formula under the hood.
 
-    Note: Currently this requires all input data to have no nulls.
-
-    Note: Recursive L2 regularized lstsq is on the roadmap and will come in later versions.
+    Note: It is not recommended to use this in .over() or .agg() contexts.
 
     In the author's opinion, this should be called "cumulative" instead of resursive because of
     its similarity with other cumulative operations on sequences of data. However, I will go with
@@ -358,33 +355,35 @@ def query_recursive_lstsq(
         The variables used to predict target
     target : str | pl.Expr
         The target variable
-    start_at: int
-        Must be >= 1. You start at row `start_at` to train the first linear regression. If `start_at` > 1,
-        the rows before that will be null. If you start at N < # features, result will be numerically very
+    start_with: int
+        Must be >= 1. You `start_with` n rows of data to train the first linear regression. If `start_with` = 2,
+        the first row will be null, etc. If you start with N < # features, result will be numerically very
         unstable and potentially wrong.
     add_bias
         Whether to add a bias term
-    method
+    method : Literal['normal', 'l2']
         Linear Regression method. One of "normal" (normal equation), "l2" (l2 regularized, Ridge). "l1" does
         not work for now.
-    lambda_
+    l2_reg
         The L2 regularization factor
-    null_policy: Literal['raise', 'skip', 'zero', 'one']
-        Currently, this only supports raise and any kind of direct fill strategy. `skip` doesn't work.
-        This won't fill target, and if target has null, an error will be thrown.
+    null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
+        One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
+        fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
+        the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
+        columns. If null_policy is `skip` or `fill`, and nulls actually exist, it will keep skipping until we have
+        scanned `start_at` many valid rows. And if subsequently we get a row with null values, then null will
+        be returned for that row.
     """
 
-    if null_policy == "skip" or method == "l1":
+    if method == "l1":
         raise NotImplementedError
 
-    if start_at < 1:
-        raise ValueError("You must start at >= 1 for recursive lstsq.")
+    if start_with < 1:
+        raise ValueError("You must start with >= 1 rows for recursive lstsq.")
 
-    cols = [str_to_expr(target).cast(pl.Float64)]
+    cols = [str_to_expr(target)]
     features = [str_to_expr(z) for z in x]
-    if len(features) > start_at:
-        import warnings
-
+    if len(features) > start_with:
         warnings.warn(
             "# features > number of rows for the initial fit. Outputs may be off.", stacklevel=2
         )
@@ -392,10 +391,11 @@ def query_recursive_lstsq(
     cols.extend(features)
     kwargs = {
         "null_policy": null_policy,
-        "n": start_at,
+        "n": start_with,
         "bias": add_bias,
         "method": method,
-        "lambda": lambda_,
+        "lambda": abs(l2_reg),
+        "min_size": 0,  # Not used for recursive
     }
     return pl_plugin(
         symbol="pl_recursive_lstsq",
@@ -412,7 +412,8 @@ def query_rolling_lstsq(
     window_size: int,
     add_bias: bool = False,
     method: LinearRegressionMethod = "normal",
-    lambda_: float = 0.1,
+    l2_reg: float = 0.1,
+    min_valid_rows: int | None = None,
     null_policy: NullPolicy = "raise",
 ):
     """
@@ -420,9 +421,7 @@ def query_rolling_lstsq(
     by rolling the window. A prediction for that row will also be included in the output.
     This uses the famous Sherman-Morrison-Woodbury Formula under the hood.
 
-    Note: Currently this requires all input data to have no nulls.
-
-    Note: Recursive L2 regularized lstsq is on the roadmap and will come in later versions.
+    Note: This doesn't work in .over() or .agg() context.
 
     Parameters
     ----------
@@ -434,28 +433,42 @@ def query_rolling_lstsq(
         Must be >= 2. Window size for the rolling regression
     add_bias
         Whether to add a bias term
-    method
+    method : Literal['normal', 'l2']
         Linear Regression method. One of "normal" (normal equation), "l2" (l2 regularized, Ridge). "l1" does
         not work for now.
-    lambda_
+    l2_reg
         The L2 regularization factor
-    null_policy: Literal['raise', 'skip', 'zero', 'one']
-        Currently, this only supports raise and any kind of direct fill strategy. `skip` doesn't work.
-        This won't fill target, and if target has null, an error will be thrown.
+    min_valid_rows
+        Minimum number of valid rows to evaluate the model. This is only used when null policy is `skip`. E.g.
+        if there are nulls in the windows, the window must have at least `min_valid_rows` valid rows in order to
+        produce a result. Otherwise, null will be returned.
+    null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
+        One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
+        fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: For
+        rolling lstsq, null-fill only works when target doesn't have nulls, and WILL NOT drop rows where the
+        target is null.
     """
 
-    if null_policy == "skip" or method == "l1":
+    if method == "l1":
         raise NotImplementedError
 
     if window_size < 2:
         raise ValueError("`window_size` must be >= 2.")
 
-    cols = [str_to_expr(target).cast(pl.Float64)]
+    cols = [str_to_expr(target)]
     features = [str_to_expr(z) for z in x]
     if len(features) > window_size:
-        import warnings
+        raise ValueError("# features > window size. Linear regression is not well-defined.")
 
-        warnings.warn("# features > window size. Outputs may be off.", stacklevel=2)
+    if min_valid_rows is None:
+        min_size = min(len(features), window_size)
+    else:
+        if min_valid_rows < len(features):
+            warnings.warn(
+                "# features > min_window_size. Linear regression may not always be well-defined.",
+                stacklevel=2,
+            )
+        min_size = min_valid_rows
 
     cols.extend(features)
     kwargs = {
@@ -463,7 +476,8 @@ def query_rolling_lstsq(
         "n": window_size,
         "bias": add_bias,
         "method": method,
-        "lambda": lambda_,
+        "lambda": abs(l2_reg),
+        "min_size": min_size,
     }
     return pl_plugin(
         symbol="pl_rolling_lstsq",
@@ -504,7 +518,7 @@ def query_lstsq_report(
         Whether to add a bias term. If bias is added, it is always the last feature.
     skip_null
         Deprecated. Use null_policy = 'skip'. Whether to skip a row if there is a null value in row
-    null_policy: Literal['raise', 'skip', 'zero', 'one']
+    null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
         One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
         the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target

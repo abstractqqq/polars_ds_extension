@@ -1,4 +1,5 @@
 use faer::{prelude::*, scale, Side};
+use polars::prelude::len;
 use std::ops::Neg;
 
 // add elastic net
@@ -114,6 +115,8 @@ pub fn faer_cholskey_ridge_regression(
     lambda: f64,
     has_bias: bool,
 ) -> Mat<f64> {
+    // Add ridge SVD with rconditional number later.
+
     let n1 = x.ncols().abs_diff(has_bias as usize);
 
     let xt = x.transpose();
@@ -143,8 +146,8 @@ pub fn faer_recursive_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat
     let nn = n.max(1); // if n = 0, start with first row of data, which is the same as n = 1.
     let x0 = x.get(..nn, ..);
     let y0 = y.get(..nn, ..);
-    let x0t = x0.transpose();
 
+    let x0t = x0.transpose();
     let qr = (x0t * x0).col_piv_qr();
     let mut inv = qr.inverse();
     let mut weights = qr.solve(x0t * y0); //
@@ -215,7 +218,7 @@ pub fn faer_rolling_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat<f
     // x: size xn x m
     // y: size xn x 1
     // Vector of matrix of size m x 1
-    let mut coefficients = Vec::with_capacity(xn - n); // xn >= n is checked in Python
+    let mut coefficients = Vec::with_capacity(xn - n + 1); // xn >= n is checked in Python
 
     let x0 = x.get(..n, ..);
     let y0 = y.get(..n, ..);
@@ -224,6 +227,7 @@ pub fn faer_rolling_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat<f
     let mut inv = qr.inverse();
     let mut weights = qr.solve(x0t * y0); //
     coefficients.push(weights.to_owned());
+
     for j in n..xn {
         let remove_x = x.get(j - n..j - n + 1, ..);
         let remove_y = y.get(j - n..j - n + 1, ..);
@@ -233,6 +237,90 @@ pub fn faer_rolling_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat<f
         let next_y = y.get(j..j + 1, ..); // 1 by 1
         woodbury_step(inv.as_mut(), weights.as_mut(), next_x, next_y, 1.0);
         coefficients.push(weights.to_owned());
+    }
+    coefficients
+}
+
+/// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
+/// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
+/// If # of non-null rows in the window is < m, a Matrix with size (0, 0) will be returned.
+pub fn faer_rolling_skipping_lstsq(
+    x: MatRef<f64>,
+    y: MatRef<f64>,
+    n: usize,
+    m: usize,
+) -> Vec<Mat<f64>> {
+    let xn = x.nrows();
+    let ncols = x.ncols();
+    // x: size xn x m
+    // y: size xn x 1
+    // n is window size. m is min_window_size after skipping null rows. n >= m > 0.
+    // Vector of matrix of size m x 1
+    let mut coefficients = Vec::with_capacity(xn - n + 1); // xn >= n is checked in Python
+
+    // Initialize the problem.
+    let mut non_null_cnt_in_window = 0;
+    let mut left = 0;
+    let mut right = n;
+    let mut x_slice: Vec<f64> = Vec::with_capacity(n * ncols);
+    let mut y_slice: Vec<f64> = Vec::with_capacity(n);
+    let mut inv = Mat::with_capacity(ncols, ncols);
+    let mut weights = Mat::with_capacity(ncols, 1);
+
+    while right <= xn {
+        // Somewhat redundant here.
+        non_null_cnt_in_window = 0;
+        x_slice.clear();
+        y_slice.clear();
+        for i in left..right {
+            let x_i = x.get(i, ..);
+            let y_i = y.get(i, ..);
+            if !(x_i.has_nan() | y_i.has_nan()) {
+                non_null_cnt_in_window += 1;
+                x_slice.extend(x_i.iter());
+                y_slice.extend(y_i.iter());
+            }
+        }
+        if non_null_cnt_in_window >= m {
+            let x0 = faer::mat::from_row_major_slice(&x_slice, y_slice.len(), ncols);
+            let y0 = faer::mat::from_row_major_slice(&y_slice, y_slice.len(), 1);
+            let x0t = x0.transpose();
+            let qr = (x0t * x0).col_piv_qr();
+            inv = qr.inverse();
+            weights = qr.solve(x0t * y0); //
+            coefficients.push(weights.to_owned());
+            break;
+        } else {
+            left += 1;
+            right += 1;
+            coefficients.push(Mat::with_capacity(0, 0));
+        }
+    }
+
+    if right >= xn {
+        return coefficients;
+    }
+    // right < xn, the problem must have been initialized (inv and weights are defined.)
+    for j in right..xn {
+        let remove_x = x.get(j - n..j - n + 1, ..);
+        let remove_y = y.get(j - n..j - n + 1, ..);
+        if !(remove_x.has_nan() | remove_y.has_nan()) {
+            non_null_cnt_in_window -= 1; // removed one non-null column
+            woodbury_step(inv.as_mut(), weights.as_mut(), remove_x, remove_y, -1.0);
+        }
+
+        let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
+        let next_y = y.get(j..j + 1, ..); // 1 by 1
+        if !(next_x.has_nan() | next_y.has_nan()) {
+            non_null_cnt_in_window += 1;
+            woodbury_step(inv.as_mut(), weights.as_mut(), next_x, next_y, 1.0);
+        }
+
+        if non_null_cnt_in_window >= m {
+            coefficients.push(weights.to_owned());
+        } else {
+            coefficients.push(Mat::with_capacity(0, 0));
+        }
     }
     coefficients
 }
@@ -282,6 +370,104 @@ pub fn faer_rolling_ridge(
         let next_y = y.get(j..j + 1, ..); // 1 by 1
         woodbury_step(inv.as_mut(), weights.as_mut(), next_x, next_y, 1.0);
         coefficients.push(weights.to_owned());
+    }
+    coefficients
+}
+
+/// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
+/// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
+/// If # of non-null rows in the window is < m, a Matrix with size (0, 0) will be returned.
+pub fn faer_rolling_skipping_ridge(
+    x: MatRef<f64>,
+    y: MatRef<f64>,
+    n: usize,
+    m: usize,
+    lambda: f64,
+    has_bias: bool,
+) -> Vec<Mat<f64>> {
+    let xn = x.nrows();
+    let ncols = x.ncols();
+    // x: size xn x m
+    // y: size xn x 1
+    // n is window size. m is min_window_size after skipping null rows. n >= m > 0.
+    // Vector of matrix of size m x 1
+    let mut coefficients = Vec::with_capacity(xn - n + 1); // xn >= n is checked in Python
+
+    // Refactor and make some parts common :)
+
+    // Initialize the problem.
+    let mut non_null_cnt_in_window = 0;
+    let mut left = 0;
+    let mut right = n;
+    let mut x_slice: Vec<f64> = Vec::with_capacity(n * ncols);
+    let mut y_slice: Vec<f64> = Vec::with_capacity(n);
+    let mut inv = Mat::with_capacity(ncols, ncols);
+    let mut weights = Mat::with_capacity(ncols, 1);
+
+    while right <= xn {
+        // Somewhat redundant here.
+        non_null_cnt_in_window = 0;
+        x_slice.clear();
+        y_slice.clear();
+        for i in left..right {
+            let x_i = x.get(i, ..);
+            let y_i = y.get(i, ..);
+            if !(x_i.has_nan() | y_i.has_nan()) {
+                non_null_cnt_in_window += 1;
+                x_slice.extend(x_i.iter());
+                y_slice.extend(y_i.iter());
+            }
+        }
+        if non_null_cnt_in_window >= m {
+            let x0 = faer::mat::from_row_major_slice(&x_slice, y_slice.len(), ncols);
+            let y0 = faer::mat::from_row_major_slice(&y_slice, y_slice.len(), 1);
+            let x0t = x0.transpose();
+            let mut x0tx0_plus = x0t * x0;
+            let n1 = x.ncols().abs_diff(has_bias as usize);
+            // No bias at this moment
+            for i in 0..n1 {
+                *unsafe { x0tx0_plus.get_mut_unchecked(i, i) } += lambda;
+            }
+            (inv, weights) = match x0tx0_plus.cholesky(Side::Lower) {
+                Ok(cho) => (cho.inverse(), cho.solve(x0t * y0)),
+                Err(_) => {
+                    let svd = x0tx0_plus.thin_svd();
+                    (svd.inverse(), svd.solve(x0t * y0))
+                }
+            };
+            coefficients.push(weights.to_owned());
+            break;
+        } else {
+            left += 1;
+            right += 1;
+            coefficients.push(Mat::with_capacity(0, 0));
+        }
+    }
+
+    if right >= xn {
+        return coefficients;
+    }
+    // right < xn, the problem must have been initialized (inv and weights are defined.)
+    for j in right..xn {
+        let remove_x = x.get(j - n..j - n + 1, ..);
+        let remove_y = y.get(j - n..j - n + 1, ..);
+        if !(remove_x.has_nan() | remove_y.has_nan()) {
+            non_null_cnt_in_window -= 1; // removed one non-null column
+            woodbury_step(inv.as_mut(), weights.as_mut(), remove_x, remove_y, -1.0);
+        }
+
+        let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
+        let next_y = y.get(j..j + 1, ..); // 1 by 1
+        if !(next_x.has_nan() | next_y.has_nan()) {
+            non_null_cnt_in_window += 1;
+            woodbury_step(inv.as_mut(), weights.as_mut(), next_x, next_y, 1.0);
+        }
+
+        if non_null_cnt_in_window >= m {
+            coefficients.push(weights.to_owned());
+        } else {
+            coefficients.push(Mat::with_capacity(0, 0));
+        }
     }
     coefficients
 }

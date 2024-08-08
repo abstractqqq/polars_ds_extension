@@ -1,6 +1,7 @@
 use crate::linalg::lstsq::{
     faer_cholskey_ridge_regression, faer_lasso_regression, faer_qr_lstsq, faer_recursive_lstsq,
-    faer_recursive_ridge, faer_rolling_lstsq, faer_rolling_ridge, LRMethods,
+    faer_recursive_ridge, faer_rolling_lstsq, faer_rolling_ridge, faer_rolling_skipping_lstsq,
+    faer_rolling_skipping_ridge, LRMethods,
 };
 /// Least Squares using Faer and ndarray.
 use crate::utils::{to_frame, NullPolicy};
@@ -23,7 +24,7 @@ pub(crate) struct LstsqKwargs {
     pub(crate) tol: f64,
 }
 
-// Sherman-William-Woodbury
+// Sherman-William-Woodbury (Update, online versions) LstsqKwargs
 #[derive(Deserialize, Debug)]
 pub(crate) struct SWWLstsqKwargs {
     pub(crate) null_policy: String,
@@ -31,6 +32,7 @@ pub(crate) struct SWWLstsqKwargs {
     pub(crate) n: usize,
     pub(crate) bias: bool,
     pub(crate) lambda: f64,
+    pub(crate) min_size: usize,
 }
 
 fn report_output(_: &[Field]) -> PolarsResult<Field> {
@@ -64,7 +66,7 @@ fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
     ))
 }
 
-/// Returns a Array2 ready for linear regression, and a mask, where true means the row has null
+/// Returns a Array2 ready for linear regression, and a mask, where true means the row doesn't contain null
 #[inline(always)]
 fn series_to_mat_for_lstsq(
     inputs: &[Series],
@@ -91,6 +93,12 @@ fn series_to_mat_for_lstsq(
     let init_mask = inputs[0].is_not_null(); //0 always exist
     let (df, mask) = if has_null {
         match null_policy {
+            // Like ignore, skip_window takes the raw data. The actual skip is done in the underlying function in linalg.
+            NullPolicy::IGNORE | NullPolicy::SKIP_WINDOW => {
+                // false, because it has nulls
+                let mask = BooleanChunked::from_slice("", &[false]);
+                Ok((df, mask))
+            }
             NullPolicy::RAISE => Err(PolarsError::ComputeError(
                 "Lstsq: nulls found in data".into(),
             )),
@@ -125,7 +133,7 @@ fn series_to_mat_for_lstsq(
 
     if df.height() < n_features {
         Err(PolarsError::ComputeError(
-            "Lstsq: #Data < #features. No conclusive result.".into(),
+            "#Data < #features. No conclusive result.".into(),
         ))
     } else {
         let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
@@ -172,15 +180,9 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
-    if inputs[0].has_validity() {
-        return Err(PolarsError::ComputeError(
-            "Target column must not have nulls".into(),
-        ));
-    }
-
     // Target y is at index 0
     match series_to_mat_for_lstsq(inputs, has_bias, null_policy) {
-        Ok((mat, _)) => {
+        Ok((mat, mask)) => {
             // Solving Least Square
             let x = mat.slice(s![.., 1..]).into_faer();
             let y = mat.slice(s![.., 0..1]).into_faer();
@@ -203,19 +205,59 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult
             let mut pred_builder: PrimitiveChunkedBuilder<Float64Type> =
                 PrimitiveChunkedBuilder::new("pred", mat.nrows());
 
-            // n = 0 or 1 mean the same
-            let m = ((n > 1) as usize) * n.abs_diff(1);
-            for _ in 0..m {
-                builder.append_null();
-                pred_builder.append_null();
+            // Note, if has_null is true, and null policy is raise, then we won't reach here.
+            // So in the has_null branch, only possibility is that null_policy != Raise
+
+            // Fill or Skip strategy can drop nulls. Fill will drop null when y has nulls.
+            // Skip will drop nulls whenever there is a null in the row.
+            // Mask true means the row is good
+            let has_nulls = (!&mask).any();
+            if has_nulls {
+                // Find the first index where we get n non-nulls.
+                let mut new_n = 0;
+                let mut m = 0;
+                for v in mask.into_no_null_iter() {
+                    new_n += v as usize;
+                    if new_n >= n {
+                        break;
+                    }
+                    m += 1;
+                }
+                for _ in 0..m {
+                    builder.append_null();
+                    pred_builder.append_null();
+                }
+                let mut i = 0;
+                for should_keep in mask.into_no_null_iter().skip(m) {
+                    if should_keep {
+                        let coefficients = &coeffs[i];
+                        let row = x.get(i..i + 1, ..);
+                        let pred = (row * coefficients).read(0, 0);
+                        let coef = coefficients.col_as_slice(0);
+                        builder.append_slice(coef);
+                        pred_builder.append_value(pred);
+                        i += 1;
+                    } else {
+                        builder.append_null();
+                        pred_builder.append_null();
+                    }
+                }
+            } else {
+                // n = 0 or 1 mean the same
+                let m = ((n > 1) as usize) * n.abs_diff(1);
+                for _ in 0..m {
+                    builder.append_null();
+                    pred_builder.append_null();
+                }
+                for (i, coefficients) in coeffs.into_iter().enumerate() {
+                    let row = x.get(m + i..m + i + 1, ..);
+                    let pred = (row * &coefficients).read(0, 0);
+                    let coef = coefficients.col_as_slice(0);
+                    builder.append_slice(coef);
+                    pred_builder.append_value(pred);
+                }
             }
-            for (i, coefficients) in coeffs.into_iter().enumerate() {
-                let row = x.get(m + i..m + i + 1, ..);
-                let pred = (row * &coefficients).read(0, 0);
-                let coef = coefficients.col_as_slice(0);
-                builder.append_slice(coef);
-                pred_builder.append_value(pred);
-            }
+
             let coef_out = builder.finish();
             let pred_out = pred_builder.finish();
             let ca = StructChunked::new("", &[coef_out.into_series(), pred_out.into_series()])?;
@@ -231,30 +273,49 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
     let has_bias = kwargs.bias;
     let method = LRMethods::from(kwargs.method);
 
-    // Gauranteed in Python that this won't be SKIP. SKIP doesn't work now.
-    let null_policy = NullPolicy::try_from(kwargs.null_policy)
+    // Gauranteed in Python that this won't be SKIP, nor FILL. SKIP doesn't work now.
+    let mut null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
-    if inputs[0].has_validity() {
-        return Err(PolarsError::ComputeError(
-            "Target column must not have nulls".into(),
-        ));
-    }
+    // For SKIP, we use SKIP_WINDOW
+    null_policy = match null_policy {
+        NullPolicy::SKIP => NullPolicy::SKIP_WINDOW,
+        NullPolicy::FILL(x) => {
+            if inputs[0].has_validity() {
+                return Err(PolarsError::ComputeError(
+                    "Fill is not available in rolling when target has nulls".into(),
+                ));
+            } else {
+                NullPolicy::FILL(x)
+            }
+        }
+        _ => null_policy,
+    };
 
     // Target y is at index 0
     match series_to_mat_for_lstsq(inputs, has_bias, null_policy) {
-        Ok((mat, _)) => {
+        Ok((mat, mask)) => {
+            let should_skip = match null_policy {
+                NullPolicy::SKIP_WINDOW => (!&mask).any(), // this means we actually have nulls.
+                _ => false,
+            };
+
             // Solving Least Square
             let x = mat.slice(s![.., 1..]).into_faer();
             let y = mat.slice(s![.., 0..1]).into_faer();
 
-            let coeffs = match method {
-                LRMethods::Normal => faer_rolling_lstsq(x, y, n),
-                LRMethods::L1 => {
-                    return Err(PolarsError::ComputeError("NotImplemented".into()));
+            let coeffs = match (method, should_skip) {
+                (LRMethods::Normal, true) => faer_rolling_skipping_lstsq(x, y, n, kwargs.min_size),
+                (LRMethods::Normal, false) => faer_rolling_lstsq(x, y, n),
+                (LRMethods::L1, _) => {
+                    return Err(PolarsError::ComputeError("NotImplemented".into()))
                 }
-                LRMethods::L2 => faer_rolling_ridge(x, y, n, kwargs.lambda, has_bias),
+                (LRMethods::L2, true) => {
+                    faer_rolling_skipping_ridge(x, y, n, kwargs.min_size, kwargs.lambda, has_bias)
+                }
+                (LRMethods::L2, false) => faer_rolling_ridge(x, y, n, kwargs.lambda, has_bias),
             };
+
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(
                     "coeffs",
@@ -265,18 +326,37 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
             let mut pred_builder: PrimitiveChunkedBuilder<Float64Type> =
                 PrimitiveChunkedBuilder::new("pred", mat.nrows());
 
-            let m = n.abs_diff(1); // n >= 2 guaranteed in Python
+            let m = n - 1; // n >= 2 guaranteed in Python
             for _ in 0..m {
                 builder.append_null();
                 pred_builder.append_null();
             }
-            for (i, coefficients) in coeffs.into_iter().enumerate() {
-                let row = x.get(m + i..m + i + 1, ..);
-                let pred = (row * &coefficients).read(0, 0);
-                let coef = coefficients.col_as_slice(0);
-                builder.append_slice(coef);
-                pred_builder.append_value(pred);
+
+            if should_skip {
+                // Skipped rows will have coeffs with shape (0, 0)
+                for (i, coefficients) in coeffs.into_iter().enumerate() {
+                    if coefficients.shape() == (0, 0) {
+                        builder.append_null();
+                        pred_builder.append_null();
+                    } else {
+                        let row = x.get(m + i..m + i + 1, ..);
+                        let pred = (row * &coefficients).read(0, 0);
+                        let coef = coefficients.col_as_slice(0);
+                        builder.append_slice(coef);
+                        pred_builder.append_value(pred);
+                    }
+                }
+            } else {
+                // nothing is skipped. All coeffs must be valid.
+                for (i, coefficients) in coeffs.into_iter().enumerate() {
+                    let row = x.get(m + i..m + i + 1, ..);
+                    let pred = (row * &coefficients).read(0, 0);
+                    let coef = coefficients.col_as_slice(0);
+                    builder.append_slice(coef);
+                    pred_builder.append_value(pred);
+                }
             }
+
             let coef_out = builder.finish();
             let pred_out = pred_builder.finish();
             let ca = StructChunked::new("", &[coef_out.into_series(), pred_out.into_series()])?;
@@ -285,6 +365,82 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
         Err(e) => Err(e),
     }
 }
+
+// #[polars_expr(output_type_func=coeff_pred_output)] // They share the same output type
+// fn pl_rolling_skipping_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<Series> {
+//     let n = kwargs.n; // Gauranteed n >= 2
+//     let has_bias = kwargs.bias;
+//     let method = LRMethods::from(kwargs.method);
+
+//     // Gauranteed in Python that the null policy is SKIP
+
+//     // Target y is at index 0. Use Ignore to get raw data with NaNs
+//     match series_to_mat_for_lstsq(inputs, has_bias, NullPolicy::IGNORE) {
+//         Ok((mat, _)) => {
+
+//             // Solving Least Square
+//             let x = mat.slice(s![.., 1..]).into_faer();
+//             let y = mat.slice(s![.., 0..1]).into_faer();
+
+//             let coeffs = match method {
+//                 LRMethods::Normal => todo!(),
+//                 LRMethods::L1 => todo!(),
+//                 LRMethods::L2 => todo!(),
+//             }};
+
+//             // let coeffs = match method {
+//             //     LRMethods::Normal => faer_rolling_lstsq(x, y, n),
+//             //     LRMethods::L1 => {
+//             //         return Err(PolarsError::ComputeError("NotImplemented".into()));
+//             //     }
+//             //     LRMethods::L2 => faer_rolling_ridge(x, y, n, kwargs.lambda, has_bias),
+//             // };
+//             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
+//                 ListPrimitiveChunkedBuilder::new(
+//                     "coeffs",
+//                     mat.nrows(),
+//                     mat.ncols(),
+//                     DataType::Float64,
+//                 );
+//             let mut pred_builder: PrimitiveChunkedBuilder<Float64Type> =
+//                 PrimitiveChunkedBuilder::new("pred", mat.nrows());
+
+//             let m = n-1; // n >= 2 guaranteed in Python
+//             for _ in 0..m {
+//                 builder.append_null();
+//                 pred_builder.append_null();
+//             }
+//             if should_skip {
+//                 for (i, coefficients) in coeffs.into_iter().enumerate() {
+//                     if coefficients.shape() == (0, 0) {
+//                         builder.append_null();
+//                         pred_builder.append_null();
+//                     } else {
+//                         let row = x.get(m + i..m + i + 1, ..);
+//                         let pred = (row * &coefficients).read(0, 0);
+//                         let coef = coefficients.col_as_slice(0);
+//                         builder.append_slice(coef);
+//                         pred_builder.append_value(pred);
+//                     }
+//                 }
+//             } else {
+//                 for (i, coefficients) in coeffs.into_iter().enumerate() {
+//                     let row = x.get(m + i..m + i + 1, ..);
+//                     let pred = (row * &coefficients).read(0, 0);
+//                     let coef = coefficients.col_as_slice(0);
+//                     builder.append_slice(coef);
+//                     pred_builder.append_value(pred);
+//                 }
+//             }
+
+//             let coef_out = builder.finish();
+//             let pred_out = pred_builder.finish();
+//             let ca = StructChunked::new("", &[coef_out.into_series(), pred_out.into_series()])?;
+//             Ok(ca.into_series())
+//         }
+//         Err(e) => Err(e),
+//     }
+// }
 
 #[polars_expr(output_type_func=pred_residue_output)]
 fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {

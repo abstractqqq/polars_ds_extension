@@ -109,14 +109,14 @@ def query_knn_ptwise(
             symbol="pl_knn_ptwise_w_dist",
             args=cols,
             kwargs=kwargs,
-            is_elementwise=True,
+            pass_name_to_apply=True,
         )
     else:
         return pl_plugin(
             symbol="pl_knn_ptwise",
             args=cols,
             kwargs=kwargs,
-            is_elementwise=True,
+            pass_name_to_apply=True,
         )
 
 
@@ -186,7 +186,6 @@ def query_knn_avg(
         symbol="pl_knn_avg",
         args=cols,
         kwargs=kwargs,
-        is_elementwise=True,
     )
 
 
@@ -370,7 +369,6 @@ def query_radius_ptwise(
         symbol="pl_query_radius_ptwise",
         args=cols,
         kwargs={"r": r, "metric": metric, "parallel": parallel, "sort": sort},
-        is_elementwise=True,
     )
 
 
@@ -418,5 +416,4 @@ def query_nb_cnt(
             "skip_eval": False,
             "skip_data": False,
         },
-        is_elementwise=True,
     )
