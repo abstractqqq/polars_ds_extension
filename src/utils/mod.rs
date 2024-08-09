@@ -124,9 +124,10 @@ pub fn float_output(fields: &[Field]) -> PolarsResult<Field> {
 pub enum NullPolicy {
     RAISE,
     SKIP,
-    SKIP_WINDOW, // Only in rolling
+    SKIP_WINDOW, // `SKIP` in rolling. Skip, but doesn't really drop data. A specialized algorithm will handle this.
     IGNORE,
     FILL(f64),
+    FILL_WINDOW(f64), // `FILL`` rolling. Doesn't really drop data. A specialized algorithm will handle this.
 }
 
 impl TryFrom<String> for NullPolicy {

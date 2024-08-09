@@ -1,7 +1,6 @@
 use crate::linalg::lstsq::{
-    faer_cholskey_ridge_regression, faer_lasso_regression, faer_qr_lstsq, faer_recursive_lstsq,
-    faer_recursive_ridge, faer_rolling_lstsq, faer_rolling_ridge, faer_rolling_skipping_lstsq,
-    faer_rolling_skipping_ridge, LRMethods,
+    faer_cholskey_ridge, faer_lasso_regression, faer_qr_lstsq, faer_recursive_lstsq,
+    faer_recursive_ridge, faer_rolling_lstsq, faer_rolling_skipping_lstsq, LRMethods,
 };
 /// Least Squares using Faer and ndarray.
 use crate::utils::{to_frame, NullPolicy};
@@ -90,14 +89,13 @@ fn series_to_mat_for_lstsq(
 
     // In mask, true means not null.
     let y_name = inputs[0].name();
-    let init_mask = inputs[0].is_not_null(); //0 always exist
+    let init_mask = inputs[0].is_not_null();
     let (df, mask) = if has_null {
         match null_policy {
             // Like ignore, skip_window takes the raw data. The actual skip is done in the underlying function in linalg.
             NullPolicy::IGNORE | NullPolicy::SKIP_WINDOW => {
                 // false, because it has nulls
-                let mask = BooleanChunked::from_slice("", &[false]);
-                Ok((df, mask))
+                Ok((df, BooleanChunked::from_slice("", &[false])))
             }
             NullPolicy::RAISE => Err(PolarsError::ComputeError(
                 "Lstsq: nulls found in data".into(),
@@ -112,9 +110,6 @@ fn series_to_mat_for_lstsq(
                 Ok((df, mask))
             }
             NullPolicy::FILL(x) => {
-                if y_has_null {
-                    df = df.filter(&init_mask).unwrap();
-                }
                 df = df
                     .lazy()
                     .with_columns([pl::col("*")
@@ -122,7 +117,31 @@ fn series_to_mat_for_lstsq(
                         .cast(DataType::Float64)
                         .fill_null(lit(x))])
                     .collect()?;
-                Ok((df, init_mask))
+
+                if y_has_null {
+                    df = df.filter(&init_mask).unwrap();
+                    Ok((df, init_mask))
+                } else { // all filled, no nulls
+                    let mask = BooleanChunked::from_slice("", &[true]);
+                    Ok((df, mask))
+                }
+            }
+            NullPolicy::FILL_WINDOW(x) => {
+                df = df
+                    .lazy()
+                    .with_columns([pl::col("*")
+                        .exclude([y_name])
+                        .cast(DataType::Float64)
+                        .fill_null(lit(x))])
+                    .collect()?;
+
+                if y_has_null {
+                    // Unlike fill, this doesn't drop y's nulls
+                    Ok((df, BooleanChunked::from_slice("", &[false])))
+                } else { // all filled, no nulls
+                    let mask = BooleanChunked::from_slice("", &[true]);
+                    Ok((df, mask))
+                }
             }
         }
     } else {
@@ -157,7 +176,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
             let coeffs = match method {
                 LRMethods::Normal => faer_qr_lstsq(x, y),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
-                LRMethods::L2 => faer_cholskey_ridge_regression(x, y, kwargs.l2_reg, add_bias),
+                LRMethods::L2 => faer_cholskey_ridge(x, y, kwargs.l2_reg, add_bias),
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new("coeffs", 1, coeffs.nrows(), DataType::Float64);
@@ -273,22 +292,13 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
     let has_bias = kwargs.bias;
     let method = LRMethods::from(kwargs.method);
 
-    // Gauranteed in Python that this won't be SKIP, nor FILL. SKIP doesn't work now.
     let mut null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
-    // For SKIP, we use SKIP_WINDOW
+    // For SKIP, we use SKIP_WINDOW. For FILL(x), use FILL_WINDOW
     null_policy = match null_policy {
         NullPolicy::SKIP => NullPolicy::SKIP_WINDOW,
-        NullPolicy::FILL(x) => {
-            if inputs[0].has_validity() {
-                return Err(PolarsError::ComputeError(
-                    "Fill is not available in rolling when target has nulls".into(),
-                ));
-            } else {
-                NullPolicy::FILL(x)
-            }
-        }
+        NullPolicy::FILL(x) => NullPolicy::FILL_WINDOW(x),
         _ => null_policy,
     };
 
@@ -296,25 +306,15 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
     match series_to_mat_for_lstsq(inputs, has_bias, null_policy) {
         Ok((mat, mask)) => {
             let should_skip = match null_policy {
-                NullPolicy::SKIP_WINDOW => (!&mask).any(), // this means we actually have nulls.
-                _ => false,
+                NullPolicy::SKIP_WINDOW | NullPolicy::FILL_WINDOW(_) => (!&mask).any(), 
+                _ => false, // raise, ignore
             };
-
-            // Solving Least Square
             let x = mat.slice(s![.., 1..]).into_faer();
             let y = mat.slice(s![.., 0..1]).into_faer();
-
-            let coeffs = match (method, should_skip) {
-                (LRMethods::Normal, true) => faer_rolling_skipping_lstsq(x, y, n, kwargs.min_size),
-                (LRMethods::Normal, false) => faer_rolling_lstsq(x, y, n),
-                (LRMethods::L1, _) => {
-                    return Err(PolarsError::ComputeError("NotImplemented".into()))
-                }
-                (LRMethods::L2, true) => {
-                    faer_rolling_skipping_ridge(x, y, n, kwargs.min_size, kwargs.lambda, has_bias)
-                }
-                (LRMethods::L2, false) => faer_rolling_ridge(x, y, n, kwargs.lambda, has_bias),
-            };
+            let coeffs = match should_skip {
+                true => faer_rolling_skipping_lstsq(x, y, n, kwargs.min_size, kwargs.lambda, has_bias, method),
+                false => faer_rolling_lstsq(x, y, n, kwargs.lambda, has_bias, method),
+            }.map_err(|e| PolarsError::ComputeError(e.into()))?;
 
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(
@@ -331,7 +331,8 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
                 builder.append_null();
                 pred_builder.append_null();
             }
-
+            
+            // Strictly speaking I don't need this branch
             if should_skip {
                 // Skipped rows will have coeffs with shape (0, 0)
                 for (i, coefficients) in coeffs.into_iter().enumerate() {
@@ -366,82 +367,6 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
     }
 }
 
-// #[polars_expr(output_type_func=coeff_pred_output)] // They share the same output type
-// fn pl_rolling_skipping_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<Series> {
-//     let n = kwargs.n; // Gauranteed n >= 2
-//     let has_bias = kwargs.bias;
-//     let method = LRMethods::from(kwargs.method);
-
-//     // Gauranteed in Python that the null policy is SKIP
-
-//     // Target y is at index 0. Use Ignore to get raw data with NaNs
-//     match series_to_mat_for_lstsq(inputs, has_bias, NullPolicy::IGNORE) {
-//         Ok((mat, _)) => {
-
-//             // Solving Least Square
-//             let x = mat.slice(s![.., 1..]).into_faer();
-//             let y = mat.slice(s![.., 0..1]).into_faer();
-
-//             let coeffs = match method {
-//                 LRMethods::Normal => todo!(),
-//                 LRMethods::L1 => todo!(),
-//                 LRMethods::L2 => todo!(),
-//             }};
-
-//             // let coeffs = match method {
-//             //     LRMethods::Normal => faer_rolling_lstsq(x, y, n),
-//             //     LRMethods::L1 => {
-//             //         return Err(PolarsError::ComputeError("NotImplemented".into()));
-//             //     }
-//             //     LRMethods::L2 => faer_rolling_ridge(x, y, n, kwargs.lambda, has_bias),
-//             // };
-//             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-//                 ListPrimitiveChunkedBuilder::new(
-//                     "coeffs",
-//                     mat.nrows(),
-//                     mat.ncols(),
-//                     DataType::Float64,
-//                 );
-//             let mut pred_builder: PrimitiveChunkedBuilder<Float64Type> =
-//                 PrimitiveChunkedBuilder::new("pred", mat.nrows());
-
-//             let m = n-1; // n >= 2 guaranteed in Python
-//             for _ in 0..m {
-//                 builder.append_null();
-//                 pred_builder.append_null();
-//             }
-//             if should_skip {
-//                 for (i, coefficients) in coeffs.into_iter().enumerate() {
-//                     if coefficients.shape() == (0, 0) {
-//                         builder.append_null();
-//                         pred_builder.append_null();
-//                     } else {
-//                         let row = x.get(m + i..m + i + 1, ..);
-//                         let pred = (row * &coefficients).read(0, 0);
-//                         let coef = coefficients.col_as_slice(0);
-//                         builder.append_slice(coef);
-//                         pred_builder.append_value(pred);
-//                     }
-//                 }
-//             } else {
-//                 for (i, coefficients) in coeffs.into_iter().enumerate() {
-//                     let row = x.get(m + i..m + i + 1, ..);
-//                     let pred = (row * &coefficients).read(0, 0);
-//                     let coef = coefficients.col_as_slice(0);
-//                     builder.append_slice(coef);
-//                     pred_builder.append_value(pred);
-//                 }
-//             }
-
-//             let coef_out = builder.finish();
-//             let pred_out = pred_builder.finish();
-//             let ca = StructChunked::new("", &[coef_out.into_series(), pred_out.into_series()])?;
-//             Ok(ca.into_series())
-//         }
-//         Err(e) => Err(e),
-//     }
-// }
-
 #[polars_expr(output_type_func=pred_residue_output)]
 fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
@@ -457,7 +382,7 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let coeffs = match method {
                 LRMethods::Normal => faer_qr_lstsq(x, y),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
-                LRMethods::L2 => faer_cholskey_ridge_regression(x, y, kwargs.l2_reg, add_bias),
+                LRMethods::L2 => faer_cholskey_ridge(x, y, kwargs.l2_reg, add_bias),
             };
 
             let pred = x * &coeffs;
