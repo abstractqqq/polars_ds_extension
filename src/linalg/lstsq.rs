@@ -1,7 +1,8 @@
-use faer::{prelude::*, scale, Side};
+use faer::{prelude::*, Side};
 use std::ops::Neg;
 
 // add elastic net
+#[derive(Clone, Copy)]
 pub enum LRMethods {
     Normal, // Normal. Normal Equation
     L1,     // Lasso, L1 regularized
@@ -18,6 +19,7 @@ impl From<String> for LRMethods {
     }
 }
 
+
 #[inline(always)]
 fn soft_threshold_l1(rho: f64, lambda: f64) -> f64 {
     rho.signum() * (rho.abs() - lambda).max(0f64)
@@ -30,6 +32,20 @@ fn soft_threshold_l1(rho: f64, lambda: f64) -> f64 {
 #[inline(always)]
 pub fn faer_qr_lstsq(x: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
     x.col_piv_qr().solve_lstsq(y)
+}
+
+
+/// Returns the coefficients for lstsq as a nrows x 1 matrix together with the inverse of XtX
+/// The uses QR (column pivot) decomposition as default method to compute inverse,
+/// Column Pivot QR is chosen to deal with rank deficient cases. It is also slightly
+/// faster compared to other methods.
+#[inline(always)]
+pub fn faer_qr_lstsq_with_inv(x: MatRef<f64>, y: MatRef<f64>) -> (Mat<f64>, Mat<f64>) {
+    let xt = x.transpose();
+    let qr = (xt * x).col_piv_qr();
+    let inv = qr.inverse();
+    let weights = qr.solve(xt * y);
+    (inv, weights)
 }
 
 /// Computes Lasso Regression coefficients by the use of Coordinate Descent.
@@ -108,12 +124,14 @@ pub fn faer_lasso_regression(
 /// By default this uses Choleskey to solve the system, and in case the matrix is not positive
 /// definite, it falls back to SVD. (I suspect the matrix in this case is always positive definite!)
 #[inline(always)]
-pub fn faer_cholskey_ridge_regression(
+pub fn faer_cholskey_ridge(
     x: MatRef<f64>,
     y: MatRef<f64>,
     lambda: f64,
     has_bias: bool,
 ) -> Mat<f64> {
+    // Add ridge SVD with rconditional number later.
+
     let n1 = x.ncols().abs_diff(has_bias as usize);
 
     let xt = x.transpose();
@@ -131,6 +149,41 @@ pub fn faer_cholskey_ridge_regression(
     }
 }
 
+/// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
+/// By default this uses Choleskey to solve the system, and in case the matrix is not positive
+/// definite, it falls back to SVD. (I suspect the matrix in this case is always positive definite!)
+#[inline(always)]
+pub fn faer_cholskey_ridge_with_inv(
+    x: MatRef<f64>,
+    y: MatRef<f64>,
+    lambda: f64,
+    has_bias: bool,
+) -> (Mat<f64>, Mat<f64>) {
+    // Add ridge SVD with rconditional number later.
+
+    let n1 = x.ncols().abs_diff(has_bias as usize);
+
+    let xt = x.transpose();
+    let mut xtx_plus = xt * x;
+
+    // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
+    // Safe. Index is valid and value is initialized.
+    for i in 0..n1 {
+        *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
+    }
+
+    match xtx_plus.cholesky(Side::Lower) {
+        Ok(cho) => {
+            let inv = cho.inverse();
+            (inv, cho.solve(xt * y))
+        },
+        Err(_) => {
+            let svd = xtx_plus.thin_svd();
+            (svd.inverse(), svd.solve(xt * y))
+        },
+    }
+}
+
 /// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
 pub fn faer_recursive_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat<f64>> {
@@ -143,11 +196,8 @@ pub fn faer_recursive_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat
     let nn = n.max(1); // if n = 0, start with first row of data, which is the same as n = 1.
     let x0 = x.get(..nn, ..);
     let y0 = y.get(..nn, ..);
-    let x0t = x0.transpose();
 
-    let qr = (x0t * x0).col_piv_qr();
-    let mut inv = qr.inverse();
-    let mut weights = qr.solve(x0t * y0); //
+    let (mut inv, mut weights) = faer_qr_lstsq_with_inv(x0, y0);
 
     coefficients.push(weights.to_owned());
     for j in nn..xn {
@@ -210,20 +260,32 @@ pub fn faer_recursive_ridge(
 
 /// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
-pub fn faer_rolling_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat<f64>> {
+/// This supports Normal or Ridge regression
+pub fn faer_rolling_lstsq(
+    x: MatRef<f64>, 
+    y: MatRef<f64>, 
+    n: usize,
+    lambda: f64,
+    has_bias: bool,
+    method: LRMethods
+) -> Result<Vec<Mat<f64>>, String> {
     let xn = x.nrows();
     // x: size xn x m
     // y: size xn x 1
     // Vector of matrix of size m x 1
-    let mut coefficients = Vec::with_capacity(xn - n); // xn >= n is checked in Python
+    let mut coefficients = Vec::with_capacity(xn - n + 1); // xn >= n is checked in Python
 
     let x0 = x.get(..n, ..);
     let y0 = y.get(..n, ..);
-    let x0t = x0.transpose();
-    let qr = (x0t * x0).col_piv_qr();
-    let mut inv = qr.inverse();
-    let mut weights = qr.solve(x0t * y0); //
+
+    let (mut inv, mut weights) = match method {
+        LRMethods::Normal => faer_qr_lstsq_with_inv(x0, y0),
+        LRMethods::L1 => return Err("NotImplemented".into()),
+        LRMethods::L2 => faer_cholskey_ridge_with_inv(x0, y0, lambda, has_bias),
+    };
+    
     coefficients.push(weights.to_owned());
+
     for j in n..xn {
         let remove_x = x.get(j - n..j - n + 1, ..);
         let remove_y = y.get(j - n..j - n + 1, ..);
@@ -234,56 +296,96 @@ pub fn faer_rolling_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize) -> Vec<Mat<f
         woodbury_step(inv.as_mut(), weights.as_mut(), next_x, next_y, 1.0);
         coefficients.push(weights.to_owned());
     }
-    coefficients
+    Ok(coefficients)
 }
 
 /// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
-pub fn faer_rolling_ridge(
+/// If # of non-null rows in the window is < m, a Matrix with size (0, 0) will be returned.
+/// This supports Normal or Ridge regression
+pub fn faer_rolling_skipping_lstsq(
     x: MatRef<f64>,
     y: MatRef<f64>,
     n: usize,
+    m: usize,
     lambda: f64,
     has_bias: bool,
-) -> Vec<Mat<f64>> {
+    method: LRMethods
+) -> Result<Vec<Mat<f64>>, String> {
     let xn = x.nrows();
+    let ncols = x.ncols();
     // x: size xn x m
     // y: size xn x 1
+    // n is window size. m is min_window_size after skipping null rows. n >= m > 0.
     // Vector of matrix of size m x 1
-    let mut coefficients = Vec::with_capacity(xn - n); // n >= 2 guaranteed in Python
+    let mut coefficients = Vec::with_capacity(xn - n + 1); // xn >= n is checked in Python
 
-    let x0 = x.get(..n, ..);
-    let y0 = y.get(..n, ..);
+    // Initialize the problem.
+    let mut non_null_cnt_in_window = 0;
+    let mut left = 0;
+    let mut right = n;
+    let mut x_slice: Vec<f64> = Vec::with_capacity(n * ncols);
+    let mut y_slice: Vec<f64> = Vec::with_capacity(n);
+    let mut inv = Mat::with_capacity(ncols, ncols);
+    let mut weights = Mat::with_capacity(ncols, 1);
 
-    let x0t = x0.transpose();
-    let mut x0tx0_plus = x0t * x0;
-
-    let n1 = x.ncols().abs_diff(has_bias as usize);
-    // No bias at this moment
-    for i in 0..n1 {
-        *unsafe { x0tx0_plus.get_mut_unchecked(i, i) } += lambda;
+    while right <= xn {
+        // Somewhat redundant here.
+        non_null_cnt_in_window = 0;
+        x_slice.clear();
+        y_slice.clear();
+        for i in left..right {
+            let x_i = x.get(i, ..);
+            let y_i = y.get(i, ..);
+            if !(x_i.has_nan() | y_i.has_nan()) {
+                non_null_cnt_in_window += 1;
+                x_slice.extend(x_i.iter());
+                y_slice.extend(y_i.iter());
+            }
+        }
+        if non_null_cnt_in_window >= m {
+            let x0 = faer::mat::from_row_major_slice(&x_slice, y_slice.len(), ncols);
+            let y0 = faer::mat::from_row_major_slice(&y_slice, y_slice.len(), 1);
+            (inv, weights) = match method {
+                LRMethods::Normal => faer_qr_lstsq_with_inv(x0, y0),
+                LRMethods::L1 => return Err("NotImplemented".into()),
+                LRMethods::L2 => faer_cholskey_ridge_with_inv(x0, y0, lambda, has_bias),
+            };
+            coefficients.push(weights.to_owned());
+            break;
+        } else {
+            left += 1;
+            right += 1;
+            coefficients.push(Mat::with_capacity(0, 0));
+        }
     }
 
-    let (mut inv, mut weights) = match x0tx0_plus.cholesky(Side::Lower) {
-        Ok(cho) => (cho.inverse(), cho.solve(x0t * y0)),
-        Err(_) => {
-            let svd = x0tx0_plus.thin_svd();
-            (svd.inverse(), svd.solve(x0t * y0))
-        }
-    };
-
-    coefficients.push(weights.to_owned());
-    for j in n..xn {
+    if right >= xn {
+        return Ok(coefficients)
+    }
+    // right < xn, the problem must have been initialized (inv and weights are defined.)
+    for j in right..xn {
         let remove_x = x.get(j - n..j - n + 1, ..);
         let remove_y = y.get(j - n..j - n + 1, ..);
-        woodbury_step(inv.as_mut(), weights.as_mut(), remove_x, remove_y, -1.0);
+        if !(remove_x.has_nan() | remove_y.has_nan()) {
+            non_null_cnt_in_window -= 1; // removed one non-null column
+            woodbury_step(inv.as_mut(), weights.as_mut(), remove_x, remove_y, -1.0);
+        }
 
         let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
         let next_y = y.get(j..j + 1, ..); // 1 by 1
-        woodbury_step(inv.as_mut(), weights.as_mut(), next_x, next_y, 1.0);
-        coefficients.push(weights.to_owned());
+        if !(next_x.has_nan() | next_y.has_nan()) {
+            non_null_cnt_in_window += 1;
+            woodbury_step(inv.as_mut(), weights.as_mut(), next_x, next_y, 1.0);
+        }
+
+        if non_null_cnt_in_window >= m {
+            coefficients.push(weights.to_owned());
+        } else {
+            coefficients.push(Mat::with_capacity(0, 0));
+        }
     }
-    coefficients
+    Ok(coefficients)
 }
 
 /// Update the inverse and the weights for one step in a Woodbury update.

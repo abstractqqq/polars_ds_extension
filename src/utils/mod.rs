@@ -120,11 +120,14 @@ pub fn float_output(fields: &[Field]) -> PolarsResult<Field> {
 // -------------------------------------------------------------------------------
 // Common, Structures
 // -------------------------------------------------------------------------------
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum NullPolicy {
     RAISE,
     SKIP,
+    SKIP_WINDOW, // `SKIP` in rolling. Skip, but doesn't really drop data. A specialized algorithm will handle this.
+    IGNORE,
     FILL(f64),
+    FILL_WINDOW(f64), // `FILL`` rolling. Doesn't really drop data. A specialized algorithm will handle this.
 }
 
 impl TryFrom<String> for NullPolicy {
@@ -138,6 +141,8 @@ impl TryFrom<String> for NullPolicy {
             "skip" => Ok(Self::SKIP),
             "zero" => Ok(Self::FILL(0.)),
             "one" => Ok(Self::FILL(1.)),
+            "ignore" => Ok(Self::IGNORE),
+            "skip_window" => Ok(Self::SKIP_WINDOW),
             _ => match test.parse::<f64>() {
                 Ok(x) => Ok(Self::FILL(x)),
                 Err(_) => Err("Invalid NullPolicy.".into()),

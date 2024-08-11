@@ -627,7 +627,7 @@ def test_recursive_lstsq():
         )
     )
 
-    start_at = 3
+    start_with = 3
 
     df_recursive_lr = df.select(
         "y",
@@ -636,11 +636,11 @@ def test_recursive_lstsq():
             "x2",
             "x3",
             target="y",
-            start_at=start_at,
+            start_with=start_with,
         ).alias("result"),
     ).unnest("result")
 
-    for i in range(start_at, 30):
+    for i in range(start_with, 30):
         coefficients = df.limit(i).select(
             pds.query_lstsq(
                 "x1",
@@ -674,7 +674,7 @@ def test_recursive_ridge():
         )
     )
 
-    start_at = 3
+    start_with = 3
 
     df_recursive_lr = df.select(
         "y",
@@ -684,12 +684,12 @@ def test_recursive_ridge():
             "x3",
             target="y",
             method="l2",
-            lambda_=0.1,
-            start_at=start_at,
+            l2_reg=0.1,
+            start_with=start_with,
         ).alias("result"),
     ).unnest("result")
 
-    for i in range(start_at, 30):
+    for i in range(start_with, 30):
         coefficients = df.limit(i).select(
             pds.query_lstsq(
                 "x1",
@@ -752,6 +752,60 @@ def test_rolling_lstsq():
         assert_frame_equal(df_to_test, df_answer)
 
 
+# This only tests that nulls are correctly skipped.
+def test_rolling_null_skips():
+    size = 1000
+    # Data with random nulls
+    df = (
+        pds.frame(size=size)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_columns(
+            pl.when(pds.random() < 0.15).then(None).otherwise(pl.col("x1")).alias("x1"),
+            pl.when(pds.random() < 0.15).then(None).otherwise(pl.col("x2")).alias("x2"),
+            pl.when(pds.random() < 0.15).then(None).otherwise(pl.col("x3")).alias("x3"),
+        )
+        .with_columns(
+            null_ref=pl.any_horizontal(
+                pl.col("x1").is_null(), pl.col("x2").is_null(), pl.col("x3").is_null()
+            ),
+            y=pl.col("x1") * 0.15 + pl.col("x2") * 0.3 - pl.col("x3") * 1.5 + pds.random() * 0.0001,
+        )
+    )
+
+    window_size = 6
+    min_valid_rows = 5
+
+    result = df.with_columns(
+        pds.query_rolling_lstsq(
+            "x1",
+            "x2",
+            "x3",
+            target="y",
+            window_size=window_size,
+            min_valid_rows=min_valid_rows,
+            null_policy="skip",
+        ).alias("test")
+    ).with_columns(
+        pl.col("test").struct.field("coeffs").alias("coeffs"),
+        pl.col("test").struct.field("coeffs").is_null().alias("is_null"),
+    )
+
+    nulls = df["null_ref"].to_list()  # list of bools
+    rolling_should_be_null = [True] * (window_size - 1)
+    for i in range(0, len(nulls) - window_size + 1):
+        lower = i
+        upper = i + window_size
+        window_valid_count = window_size - np.sum(nulls[lower:upper])  # size - null count
+        rolling_should_be_null.append((window_valid_count < min_valid_rows))
+
+    answer = pl.Series(name="is_null", values=rolling_should_be_null)
+    assert_series_equal(result["is_null"], answer)
+
+
 def test_rolling_ridge():
     # Test rolling lstsq by comparing it with a manually rolled lstsq result.
     # Test on multiple window sizes
@@ -782,7 +836,7 @@ def test_rolling_ridge():
                 "x3",
                 target="y",
                 method="l2",
-                lambda_=0.1,
+                l2_reg=0.1,
                 window_size=window_size,
             ).alias("result"),
         ).unnest("result")  # .limit(10)

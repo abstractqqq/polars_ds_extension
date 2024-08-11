@@ -35,7 +35,7 @@ fn _polars_ds(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
         let coeffs = match lstsq::LRMethods::from(method) {
             lstsq::LRMethods::Normal => lstsq::faer_qr_lstsq(x, y),
             lstsq::LRMethods::L1 => lstsq::faer_lasso_regression(x, y, lambda, has_bias, tol),
-            lstsq::LRMethods::L2 => lstsq::faer_cholskey_ridge_regression(x, y, lambda, has_bias),
+            lstsq::LRMethods::L2 => lstsq::faer_cholskey_ridge(x, y, lambda, has_bias),
         };
 
         let coeffs = coeffs.col_as_slice(0).to_vec();
