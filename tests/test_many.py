@@ -752,9 +752,10 @@ def test_rolling_lstsq():
         assert_frame_equal(df_to_test, df_answer)
 
 
-# The test is ok but not great
+# This only tests that nulls are correctly skipped.
 def test_rolling_null_skips():
     size = 1000
+    # Data with random nulls
     df = (
         pds.frame(size=size)
         .select(
@@ -763,9 +764,9 @@ def test_rolling_null_skips():
             pds.random(0.0, 1.0).alias("x3"),
         )
         .with_columns(
-            pl.when(pds.random() < 0.2).then(None).otherwise(pl.col("x1")).alias("x1"),
-            pl.when(pds.random() < 0.2).then(None).otherwise(pl.col("x2")).alias("x2"),
-            pl.when(pds.random() < 0.2).then(None).otherwise(pl.col("x3")).alias("x3"),
+            pl.when(pds.random() < 0.15).then(None).otherwise(pl.col("x1")).alias("x1"),
+            pl.when(pds.random() < 0.15).then(None).otherwise(pl.col("x2")).alias("x2"),
+            pl.when(pds.random() < 0.15).then(None).otherwise(pl.col("x3")).alias("x3"),
         )
         .with_columns(
             null_ref=pl.any_horizontal(
@@ -788,7 +789,10 @@ def test_rolling_null_skips():
             min_valid_rows=min_valid_rows,
             null_policy="skip",
         ).alias("test")
-    ).with_columns(pl.col("test").struct.field("coeffs").is_null().alias("is_null"))
+    ).with_columns(
+        pl.col("test").struct.field("coeffs").alias("coeffs"),
+        pl.col("test").struct.field("coeffs").is_null().alias("is_null"),
+    )
 
     nulls = df["null_ref"].to_list()  # list of bools
     rolling_should_be_null = [True] * (window_size - 1)
@@ -799,7 +803,6 @@ def test_rolling_null_skips():
         rolling_should_be_null.append((window_valid_count < min_valid_rows))
 
     answer = pl.Series(name="is_null", values=rolling_should_be_null)
-
     assert_series_equal(result["is_null"], answer)
 
 
