@@ -86,8 +86,8 @@ pub fn matrix_to_leaves_filtered<'a, T: Float + 'static, A: Copy>(
 }
 
 // used in all cases but squared l2 (multiple queries)
-pub fn dist_from_str<T: Float + 'static>(dist_str: &str) -> Result<DIST<T>, String> {
-    match dist_str {
+pub fn dist_from_str<T: Float + 'static>(dist_str: String) -> Result<DIST<T>, String> {
+    match dist_str.as_ref() {
         "l1" => Ok(DIST::L1),
         "l2" => Ok(DIST::L2),
         "sql2" => Ok(DIST::SQL2),
@@ -124,7 +124,7 @@ fn pl_knn_avg(
     let binding = data.view();
     let mut leaves = matrix_to_leaves_filtered(&binding, id, &null_mask);
 
-    let tree = match dist_from_str::<f64>(kwargs.metric.as_str()) {
+    let tree = match dist_from_str::<f64>(kwargs.metric) {
         Ok(d) => AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d),
         Err(e) => Err(e),
     }
@@ -265,7 +265,7 @@ fn pl_knn_ptwise(
     let data = series_to_ndarray(&inputs[inputs_offset..], IndexOrder::C)?;
     let binding = data.view();
 
-    let ca = match dist_from_str::<f64>(kwargs.metric.as_str()) {
+    let ca = match dist_from_str::<f64>(kwargs.metric) {
         Ok(d) => {
             let mut leaves = matrix_to_leaves_filtered(&binding, id, null_mask);
             AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d).map(|tree| {
@@ -429,7 +429,7 @@ fn pl_knn_ptwise_w_dist(
     let data = series_to_ndarray(&inputs[inputs_offset..], IndexOrder::C)?;
     let binding = data.view();
 
-    let (ca_nb, ca_dist) = match dist_from_str::<f64>(kwargs.metric.as_str()) {
+    let (ca_nb, ca_dist) = match dist_from_str::<f64>(kwargs.metric) {
         Ok(d) => {
             let mut leaves = matrix_to_leaves_filtered(&binding, id, null_mask);
             AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d).map(|tree| {
@@ -519,7 +519,7 @@ fn pl_query_radius_ptwise(
     let binding = data.view();
     // Building output
 
-    let ca = match dist_from_str::<f64>(kwargs.metric.as_str()) {
+    let ca = match dist_from_str::<f64>(kwargs.metric) {
         Ok(d) => {
             let mut leaves = matrix_to_leaves(&binding, id);
             AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
@@ -620,9 +620,6 @@ where
 /// The point itself is always considered as a neighbor to itself.
 #[polars_expr(output_type=UInt32)]
 fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> PolarsResult<Series> {
-    // Set up params
-    // let leaf_size = kwargs.leaf_size;
-    // Set up radius
 
     let radius = inputs[0].f64()?;
     let can_parallel = kwargs.parallel && !context.parallel();
@@ -633,7 +630,7 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
     let binding = data.view();
     if radius.len() == 1 {
         let r = radius.get(0).unwrap();
-        let ca = match dist_from_str::<f64>(kwargs.metric.as_str()) {
+        let ca = match dist_from_str::<f64>(kwargs.metric) {
             Ok(d) => {
                 let mut leaves = matrix_to_empty_leaves(&binding);
                 AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
@@ -644,7 +641,7 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
         .map_err(|err| PolarsError::ComputeError(err.into()))?;
         Ok(ca.with_name("cnt").into_series())
     } else if radius.len() == nrows {
-        let ca = match dist_from_str::<f64>(kwargs.metric.as_str()) {
+        let ca = match dist_from_str::<f64>(kwargs.metric) {
             Ok(d) => {
                 let mut leaves = matrix_to_empty_leaves(&binding);
                 AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
@@ -660,3 +657,4 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
         ))
     }
 }
+

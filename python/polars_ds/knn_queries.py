@@ -10,11 +10,13 @@ from ._utils import pl_plugin
 
 __all__ = [
     "query_knn_ptwise",
+    "query_knn_freq_cnt",
     "query_knn_avg",
+    "query_radius_ptwise",
+    "query_radius_freq_cnt",
+    "query_nb_cnt",
     "is_knn_from",
     "within_dist_from",
-    "query_radius_ptwise",
-    "query_nb_cnt",
 ]
 
 
@@ -60,13 +62,13 @@ def query_knn_ptwise(
         Note `sql2` stands for squared l2.
     parallel : bool
         Whether to run the k-nearest neighbor query in parallel. This is recommended when you
-        are running only this expression, and not in group_by context.
+        are running only this expression, and not in group_by() or over() context.
     return_dist
         If true, return a struct with indices and distances.
     eval_mask
         Either None or a boolean expression or the name of a boolean column. If not none, this will
-        only evaluate KNN for rows where this is true. This can speed up computation with K is large
-        and when only results on a subset are nedded.
+        only evaluate KNN for rows where this is true. This can speed up computation when only results on a
+        subset are nedded.
     data_mask
         Either None or a boolean expression or the name of a boolean column. If none, all rows can be
         neighbors. If not None, the pool of possible neighbors will be rows where this is true.
@@ -85,7 +87,7 @@ def query_knn_ptwise(
     feats: List[pl.Expr] = [str_to_expr(e) for e in features]
 
     skip_data = data_mask is not None
-    if skip_data:
+    if skip_data:  # true means keep
         keep_mask = pl.all_horizontal(str_to_expr(data_mask), *(f.is_not_null() for f in feats))
     else:
         keep_mask = pl.all_horizontal(f.is_not_null() for f in feats)
@@ -120,9 +122,71 @@ def query_knn_ptwise(
         )
 
 
-def query_knn_avg(
+def query_knn_freq_cnt(
     *features: StrOrExpr,
-    target: StrOrExpr,
+    index: StrOrExpr,
+    k: int,
+    dist: Distance = "sql2",
+    parallel: bool = False,
+    eval_mask: str | pl.Expr | None = None,
+    data_mask: str | pl.Expr | None = None,
+    epsilon: float = 0.0,
+    max_bound: float = 99999.0,
+) -> pl.Expr:
+    """
+    Takes the index column, and uses feature columns to determine the k nearest neighbors
+    to each row, and finally returns the number of times a row is a KNN of some other point.
+
+    This calls `query_knn_ptwise` internally. See the docstring of `query_knn_ptwise` for more info.
+
+    Parameters
+    ----------
+    *features : str | pl.Expr
+        Other columns used as features
+    index : str | pl.Expr
+        The column used as index, must be castable to u32
+    k : int
+        Number of neighbors to query
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+        Note `sql2` stands for squared l2.
+    parallel : bool
+        Whether to run the k-nearest neighbor query in parallel. This is recommended when you
+        are running only this expression, and not in group_by() or over() context.
+    return_dist
+        If true, return a struct with indices and distances.
+    eval_mask
+        Either None or a boolean expression or the name of a boolean column. If not none, this will
+        only evaluate KNN for rows where this is true. This can speed up computation when only results on a
+        subset are nedded.
+    data_mask
+        Either None or a boolean expression or the name of a boolean column. If none, all rows can be
+        neighbors. If not None, the pool of possible neighbors will be rows where this is true.
+    epsilon
+        If > 0, then it is possible to miss a neighbor within epsilon distance away. This parameter
+        should increase as the dimension of the vector space increases because higher dimensions
+        allow for errors from more directions.
+    max_bound
+        Max distance the neighbors must be within
+    """
+
+    knn_expr: pl.Expr = query_knn_ptwise(
+        *features,
+        index=index,
+        k=k,
+        dist=dist,
+        parallel=parallel,
+        return_dist=False,
+        eval_mask=eval_mask,
+        data_mask=data_mask,
+        epsilon=epsilon,
+        max_bound=max_bound,
+    )
+    return knn_expr.explode().drop_nulls().value_counts(sort=True, parallel=parallel)
+
+
+def query_knn_avg(
+    *features: str | pl.Expr,
+    target: str | pl.Expr,
     k: int,
     dist: Distance = "sql2",
     weighted: bool = False,
@@ -156,7 +220,7 @@ def query_knn_avg(
         an extremely small value, this will default to 1/(1+distance) as weights to avoid division by 0.
     parallel : bool
         Whether to run the k-nearest neighbor query in parallel. This is recommended when you
-        are running only this expression, and not in group_by context.
+        are running only this expression, and not in group_by() or over() context.
     min_bound
         Min distance (>=) for a neighbor to be part of the average calculation. This prevents "identical"
         points from being part of the average and prevents division by 0. Note that this filter is applied
@@ -257,7 +321,7 @@ def within_dist_from(
 
 
 def is_knn_from(
-    *features: StrOrExpr,
+    *features: str | pl.Expr,
     pt: Iterable[float],
     k: int,
     dist: Distance = "sql2",
@@ -320,8 +384,8 @@ def is_knn_from(
 
 
 def query_radius_ptwise(
-    *features: StrOrExpr,
-    index: StrOrExpr,
+    *features: str | pl.Expr,
+    index: str | pl.Expr,
     r: float,
     dist: Distance = "sql2",
     sort: bool = True,
@@ -329,8 +393,8 @@ def query_radius_ptwise(
 ) -> pl.Expr:
     """
     Takes the index column, and uses features columns to determine distance, and finds all neighbors
-    within distance r from each id in the index column. If you only care about neighbor count, you
-    should use query_nb_cnt, which supports expression for radius.
+    within distance r from each id. If you only care about neighbor count, you should use
+    `query_nb_cnt`, which supports expression for radius and is way faster.
 
     Note that the index column must be convertible to u32. If you do not have a u32 ID column,
     you can generate one using pl.int_range(..), which should be a step before this.
@@ -354,8 +418,9 @@ def query_radius_ptwise(
         improve performance by 10-20%.
     parallel : bool
         Whether to run the k-nearest neighbor query in parallel. This is recommended when you
-        are running only this expression, and not in group_by context.
+        are running only this expression, and not in group_by() or over() context.
     """
+
     if r <= 0.0:
         raise ValueError("Input `r` must be > 0.")
     elif isinstance(r, pl.Expr):
@@ -372,9 +437,44 @@ def query_radius_ptwise(
     )
 
 
+def query_radius_freq_cnt(
+    *features: str | pl.Expr,
+    index: str | pl.Expr,
+    r: float,
+    dist: Distance = "sql2",
+    parallel: bool = False,
+) -> pl.Expr:
+    """
+    Takes the index column, and uses features columns to determine distance, finds all neighbors
+    within distance r from each index, and finally finds the count of the number of times the point is
+    within distance r from other points.
+
+    This calls `query_radius_ptwise` internally. See the docstring of `query_radius_ptwise` for more info.
+
+    Parameters
+    ----------
+    *features : str | pl.Expr
+        Other columns used as features
+    index : str | pl.Expr
+        The column used as index, must be castable to u32
+    r : float
+        The radius. Must be a scalar value now.
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+        Note `sql2` stands for squared l2.
+    parallel : bool
+        Whether to run the k-nearest neighbor query in parallel. This is recommended when you
+        are running only this expression, and not in group_by() or over() context.
+    """
+    within_radius = query_radius_ptwise(
+        *features, index=index, r=r, dist=dist, sort=False, parallel=parallel
+    )
+
+    return within_radius.explode().drop_nulls().value_counts(sort=True, parallel=parallel)
+
+
 def query_nb_cnt(
-    r: Union[float, str, pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
-    *features: StrOrExpr,
+    r: float | str | pl.Expr | Iterable[float],
+    *features: str | pl.Expr,
     dist: Distance = "sql2",
     parallel: bool = False,
 ) -> pl.Expr:
@@ -395,7 +495,7 @@ def query_nb_cnt(
         Note `sql2` stands for squared l2.
     parallel : bool
         Whether to run the distance query in parallel. This is recommended when you
-        are running only this expression, and not in group_by context.
+        are running only this expression, and not in group_by() or over() context.
     """
     if isinstance(r, (float, int)):
         rad = pl.lit(pl.Series(values=[r], dtype=pl.Float64))
