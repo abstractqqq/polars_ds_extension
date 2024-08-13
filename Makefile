@@ -27,3 +27,7 @@ dev-release: .venv
 pre-commit: .venv
 	cargo fmt
 	pre-commit run --all-files
+
+clean:
+	rm examples/*.json
+	rm examples/*.pickle
