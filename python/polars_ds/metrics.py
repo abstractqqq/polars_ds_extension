@@ -3,7 +3,7 @@ from __future__ import annotations
 import polars as pl
 
 from ._utils import pl_plugin
-from .type_alias import ROCAUCStrategy, str_to_expr
+from .type_alias import MultiAUCStrategy, str_to_expr
 
 
 __all__ = [
@@ -11,12 +11,14 @@ __all__ = [
     "query_adj_r2",
     "query_log_cosh",
     "query_hubor_loss",
-    "query_l2",
     "query_l1",
+    "query_l2",
     "query_l_inf",
     "query_log_loss",
     "query_mape",
     "query_smape",
+    "query_mase",
+    "query_mase2",
     "query_msle",
     "query_mad",
     "query_roc_auc",
@@ -27,12 +29,22 @@ __all__ = [
 ]
 
 
-def query_mad(x: str | pl.Expr) -> pl.Expr:
+def query_mad(x: str | pl.Expr, use_mean: bool = True) -> pl.Expr:
     """
-    Computes the Median Absolute Deviation. Shorthand for (x - x.median()).abs().median().
+    Computes the Mean/median Absolute Deviation.
+
+    Parameters
+    ----------
+    x
+        An expression represeting the actual
+    use_mean
+        If true, computes mean absolute deviation. If false, use median instead of mean.
     """
     xx = str_to_expr(x)
-    return (xx - xx.median()).abs().median()
+    if use_mean:
+        return (xx - xx.mean()).abs().mean()
+    else:
+        return (xx - xx.median()).abs().median()
 
 
 def query_r2(actual: str | pl.Expr, pred: str | pl.Expr) -> pl.Expr:
@@ -110,7 +122,7 @@ def query_hubor_loss(actual: str | pl.Expr, pred: str | pl.Expr, delta: float) -
 
 def query_l2(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = True) -> pl.Expr:
     """
-    Returns squared L2 loss.
+    Returns squared L2 loss, aka. mean squared error.
 
     Parameters
     ----------
@@ -131,7 +143,7 @@ def query_l2(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = True)
 
 def query_l1(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = True) -> pl.Expr:
     """
-    Returns L1 loss.
+    Returns L1 loss, aka. mean absolute error.
 
     Parameters
     ----------
@@ -230,6 +242,66 @@ def query_smape(actual: str | pl.Expr, pred: str | pl.Expr) -> pl.Expr:
     numerator = (a - p).abs()
     denominator = a.abs() + p.abs()
     return (numerator / denominator).sum() / a.count()
+
+
+def query_mase(
+    actual: str | pl.Expr, pred: str | pl.Expr, freq: int = 1, use_mean: bool = True
+) -> pl.Expr:
+    """
+    Computes the Mean/Median Absolute Scaled Error. This is the time series version in the reference article.
+
+    Parameters
+    ----------
+    actual
+        An expression represeting the actual
+    pred
+        A Polars expression representing predictions
+    freq
+        Defaults to 1 which applies to non-seasonal data, and you may set it to m (>0)
+        which indicates the length of the season. How frequent does the period repeat itself? Every `freq`
+        records.
+    use_mean
+        If true, this will compute Mean Absolute Scaled Error. If false, this uses median instead of mean.
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Mean_absolute_scaled_error
+    """
+    if freq < 1:
+        raise ValueError("Input `freq` must be >= 1.")
+
+    a: pl.Expr = str_to_expr(actual)
+    p: pl.Expr = str_to_expr(pred)
+
+    if use_mean:
+        numerator = (a - p).abs().mean()
+        denom = a.diff(n=freq).abs().mean()
+    else:
+        numerator = (a - p).abs().median()
+        denom = a.diff(n=freq).abs().median()
+    return numerator / denom
+
+
+def query_mase2(actual: str | pl.Expr, pred: str | pl.Expr) -> pl.Expr:
+    """
+    Computes the Mean Absolute Scaled Error for a non-time series.
+
+    Parameters
+    ----------
+    actual
+        An expression represeting the actual
+    pred
+        A Polars expression representing predictions
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Mean_absolute_scaled_error
+    """
+    a: pl.Expr = str_to_expr(actual)
+    p: pl.Expr = str_to_expr(pred)
+    numerator = (a - p).abs().sum()
+    denominator = (a - a.mean()).abs().sum()
+    return numerator / denominator
 
 
 def query_msle(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = True) -> pl.Expr:
@@ -415,7 +487,7 @@ def query_multi_roc_auc(
     actual: str | pl.Expr,
     pred: str | pl.Expr,
     n_classes: int,
-    strategy: ROCAUCStrategy = "weighted",
+    strategy: MultiAUCStrategy = "weighted",
 ) -> pl.Expr:
     """
     Computes multiclass ROC AUC. Self (actuals) must be labels represented by integer values

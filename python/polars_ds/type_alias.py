@@ -11,7 +11,6 @@ else:  # 3.9, 3.8
 # Custom "Enum" Types
 DetrendMethod: TypeAlias = Literal["linear", "mean"]
 Alternative: TypeAlias = Literal["two-sided", "less", "greater"]
-ROCAUCStrategy: TypeAlias = Literal["macro", "weighted"]
 Distance: TypeAlias = Literal["l1", "l2", "inf", "h", "cosine", "haversine"]
 ConvMode: TypeAlias = Literal["same", "left", "right", "full", "valid"]
 ConvMethod: TypeAlias = Literal["fft", "direct"]
@@ -21,6 +20,7 @@ SimpleScaleMethod: TypeAlias = Literal["min_max", "standard", "abs_max"]
 Noise: TypeAlias = Literal["gaussian", "uniform"]
 LRMethods: TypeAlias = Literal["normal", "l2", "l1"]
 NullPolicy: TypeAlias = Literal["raise", "skip", "one", "zero", "ignore"]
+MultiAUCStrategy: TypeAlias = Literal["weighted", "macro"]
 # Copy of Polars
 QuantileMethod: TypeAlias = Literal["nearest", "higher", "lower", "midpoint", "linear"]
 
