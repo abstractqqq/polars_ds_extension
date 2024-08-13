@@ -10,7 +10,8 @@ nav:
 - Sample: sample.md
 - Linear Models: linear_models.md
 - Time Series Features: features.md
-- KNN Queries: knn_queries.md
+- KNN Queries: query_knn.md
+- Lstsq Queries: query_linear.md
 - Numerical Extension: num.md
 - Stats Extension: stats.md
 - String Extension: string.md

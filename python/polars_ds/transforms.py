@@ -15,6 +15,7 @@ from .type_alias import (
     QuantileMethod,
 )
 from . import num as pds_num
+from . import query_linear as pds_linear
 from ._utils import _IS_POLARS_V1
 from typing import List
 
@@ -76,7 +77,7 @@ def linear_impute(
     temp = (
         df.lazy()
         .select(
-            pds_num.query_lstsq(*features, target=target, add_bias=add_bias, null_policy="skip")
+            pds_linear.query_lstsq(*features, target=target, add_bias=add_bias, null_policy="skip")
         )
         .collect()
     )  # Add streaming config
