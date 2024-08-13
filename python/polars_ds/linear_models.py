@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import polars as pl
 import numpy as np
-from .type_alias import LinearRegressionMethod
+from .type_alias import LRMethods
 from typing import List
 from .type_alias import PolarsFrame
 from ._polars_ds import pds_faer_lr
@@ -65,7 +65,7 @@ class LR:
         X: np.ndarray | None = None,
         y: np.ndarray | None = None,
         add_bias: bool = False,
-        method: LinearRegressionMethod = "normal",
+        method: LRMethods = "normal",
         lambda_: float = 0.0,
         tol: float = 1e-5,
     ):
@@ -87,7 +87,7 @@ class LR:
 
         _VALID_METHODS = ["normal", "l1", "l2"]
         if method in _VALID_METHODS:
-            self.method: LinearRegressionMethod = method
+            self.method: LRMethods = method
         else:
             raise ValueError(f"Input `method` is not valid. Valid values are {_VALID_METHODS}.")
 
@@ -209,43 +209,3 @@ class LR:
             pred = pred + self.bias
 
         return df.with_columns(pred.alias(name))
-
-
-# class RecursiveLR:
-
-#     def __init__(
-#         self,
-#         X: np.ndarray | None = None,
-#         y: np.ndarray | None = None,
-#         add_bias: bool = False,
-#         # method: LinearRegressionMethod = "normal",
-#         # lambda_: float = 0.0,
-#         # tol: float = 1e-5,
-#     ):
-
-#         self.coeffs: np.ndarray = np.array([])
-#         self.inv: np.ndarray = np.empty()
-#         self.weights: np.ndarray = np.empty()
-#         self.add_bias:bool = add_bias
-
-#         # Updated at least once
-#         self._initialized:bool = False
-
-#     def update(self, X:np.ndarray, y:np.ndarray) -> Self:
-
-#         new_y = y.reshape((-1, 1))
-#         if X.shape[0] != y.shape[0]:
-#             raise ValueError("Number of rows do not match.")
-
-#         n_features = X.shape[0]  # no bias
-#         if self.add_bias:
-#             new_x = np.hstack((X, np.ones((n_features, 1))))
-#         else:
-#             new_x = X
-
-
-#         if self._initialized:
-#             pass
-#         else:
-#             # initialize
-#             pass

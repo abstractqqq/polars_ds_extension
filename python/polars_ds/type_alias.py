@@ -19,7 +19,7 @@ CorrMethod: TypeAlias = Literal["pearson", "spearman", "xi", "kendall", "bicor"]
 SimpleImputeMethod: TypeAlias = Literal["mean", "median", "mode"]
 SimpleScaleMethod: TypeAlias = Literal["min_max", "standard", "abs_max"]
 Noise: TypeAlias = Literal["gaussian", "uniform"]
-LinearRegressionMethod: TypeAlias = Literal["normal", "l2"]
+LRMethods: TypeAlias = Literal["normal", "l2", "l1"]
 NullPolicy: TypeAlias = Literal["raise", "skip", "one", "zero", "ignore"]
 # Copy of Polars
 QuantileMethod: TypeAlias = Literal["nearest", "higher", "lower", "midpoint", "linear"]
