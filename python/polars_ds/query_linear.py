@@ -9,6 +9,7 @@ __all__ = [
     "query_lstsq_report",
     "query_rolling_lstsq",
     "query_recursive_lstsq",
+    "query_wls_ww",
 ]
 
 
@@ -112,6 +113,78 @@ def query_lstsq(
     else:
         return pl_plugin(
             symbol="pl_lstsq",
+            args=cols,
+            kwargs=lr_kwargs,
+            returns_scalar=True,
+            pass_name_to_apply=True,
+        )
+
+
+def query_wls_ww(
+    *x: str | pl.Expr,
+    target: str | pl.Expr,
+    weights: str | pl.Expr,
+    add_bias: bool = False,
+    return_pred: bool = False,
+    null_policy: NullPolicy = "raise",
+) -> pl.Expr:
+    """
+    Computes weighted least squares with weights given by the user (ww stands for with weights). This
+    only supports ordinary weighted least squares. The weights are presumed to be (proportional to) the
+    inverse of the variance of the observations (See page 4 of reference).
+
+    Memory hint: if data takes 100MB of memory, you need to have at least 200MB of memory to run this.
+
+    Parameters
+    ----------
+    x : str | pl.Expr
+        The variables used to predict target
+    target : str | pl.Expr
+        The target variable
+    weights : str | pl.Expr
+        The column representing weights
+    add_bias
+        Whether to add a bias term
+    return_pred
+        If true, return prediction and residue. If false, return coefficients. Note that
+        for coefficients, it reduces to one output (like max/min), but for predictions and
+        residue, it will return the same number of rows as in input.
+    null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
+        One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
+        fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
+        the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
+        columns.
+
+    Reference
+    ---------
+    https://www.stat.uchicago.edu/~yibi/teaching/stat224/L14.pdf
+    """
+
+    w = linear_formula(weights)
+    cols = [
+        w.cast(pl.Float64).rechunk(),
+        linear_formula(target),
+    ]  # weights are at index 0, then target
+    cols.extend(linear_formula(z) for z in x)
+
+    lr_kwargs = {
+        "bias": add_bias,
+        "null_policy": null_policy,
+        "method": "",
+        "l1_reg": 0.0,
+        "l2_reg": 0.0,
+        "tol": 0.0,
+    }
+    if return_pred:
+        return pl_plugin(
+            symbol="pl_wls_ww_pred",
+            args=cols,
+            kwargs=lr_kwargs,
+            pass_name_to_apply=True,
+        )
+    else:
+        return pl_plugin(
+            symbol="pl_wls_ww",
             args=cols,
             kwargs=lr_kwargs,
             returns_scalar=True,
@@ -279,6 +352,7 @@ def query_rolling_lstsq(
 def query_lstsq_report(
     *x: str | pl.Expr,
     target: str | pl.Expr,
+    weights: str | pl.Expr | None = None,
     add_bias: bool = False,
     skip_null: bool = False,
     null_policy: NullPolicy = "raise",
@@ -295,6 +369,8 @@ def query_lstsq_report(
         The variables used to predict target
     target : str | pl.Expr
         The target variable
+    weights : str | pl.Expr | None
+        If not None, this will then compute the stats for a weights least square.
     add_bias
         Whether to add a bias term. If bias is added, it is always the last feature.
     skip_null
@@ -315,9 +391,6 @@ def query_lstsq_report(
         )
         null_policy = "skip"
 
-    t = linear_formula(target)
-    cols = [t]
-    cols.extend(linear_formula(z) for z in x)
     lr_kwargs = {
         "bias": add_bias,
         "null_policy": null_policy,
@@ -326,10 +399,26 @@ def query_lstsq_report(
         "l2_reg": 0.0,
         "tol": 0.0,
     }
-    return pl_plugin(
-        symbol="pl_lstsq_report",
-        args=cols,
-        kwargs=lr_kwargs,
-        changes_length=True,
-        pass_name_to_apply=True,
-    )
+
+    t = linear_formula(target)
+    if weights is None:
+        cols = [t]
+        cols.extend(linear_formula(z) for z in x)
+        return pl_plugin(
+            symbol="pl_lstsq_report",
+            args=cols,
+            kwargs=lr_kwargs,
+            changes_length=True,
+            pass_name_to_apply=True,
+        )
+    else:
+        w = linear_formula(weights)
+        cols = [w.cast(pl.Float64).rechunk(), t]
+        cols.extend(linear_formula(z) for z in x)
+        return pl_plugin(
+            symbol="pl_wls_report",
+            args=cols,
+            kwargs=lr_kwargs,
+            changes_length=True,
+            pass_name_to_apply=True,
+        )
