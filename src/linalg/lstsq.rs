@@ -48,6 +48,17 @@ pub fn faer_qr_lstsq_with_inv(x: MatRef<f64>, y: MatRef<f64>) -> (Mat<f64>, Mat<
     (inv, weights)
 }
 
+/// Solves the weighted least square with weights given by the user
+#[inline(always)]
+pub fn faer_weighted_lstsq(x: MatRef<f64>, y:MatRef<f64>, w:&[f64]) -> Mat<f64> {
+    let weights = faer::mat::from_row_major_slice(w, x.nrows(), 1);
+    let w = weights.column_vector_as_diagonal();
+    let xt = x.transpose();
+    let xtw = xt * w;
+    let qr = (&xtw * x).col_piv_qr();
+    qr.solve(xtw * y)
+}
+
 /// Computes Lasso Regression coefficients by the use of Coordinate Descent.
 /// The current stopping criterion is based on L Inf norm of the changes in the
 /// coordinates. A better alternative might be the dual gap.

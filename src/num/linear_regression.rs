@@ -1,6 +1,7 @@
 use crate::linalg::lstsq::{
     faer_cholskey_ridge, faer_lasso_regression, faer_qr_lstsq, faer_recursive_lstsq,
-    faer_recursive_ridge, faer_rolling_lstsq, faer_rolling_skipping_lstsq, LRMethods,
+    faer_recursive_ridge, faer_rolling_lstsq, faer_rolling_skipping_lstsq, 
+    faer_weighted_lstsq, LRMethods,
 };
 /// Least Squares using Faer and ndarray.
 use crate::utils::{to_frame, NullPolicy};
@@ -40,7 +41,9 @@ fn report_output(_: &[Field]) -> PolarsResult<Field> {
     let stderr = Field::new("std_err", DataType::Float64); // Std Err for this coefficient
     let t = Field::new("t", DataType::Float64); // t value for this coefficient
     let p = Field::new("p>|t|", DataType::Float64); // p value for this coefficient
-    let v: Vec<Field> = vec![features, beta, stderr, t, p];
+    let ci_lower = Field::new("0.025", DataType::Float64); // CI lower bound at 0.025
+    let ci_upper = Field::new("0.975", DataType::Float64); // CI upper bound at 0.975
+    let v: Vec<Field> = vec![features, beta, stderr, t, p, ci_lower, ci_upper]; //  ci_lower, ci_upper
     Ok(Field::new("lstsq_report", DataType::Struct(v)))
 }
 
@@ -188,6 +191,372 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
         Err(e) => Err(e),
     }
 }
+
+#[polars_expr(output_type_func=coeff_output)]
+fn pl_wls_ww(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+    let add_bias = kwargs.bias;
+    let null_policy = NullPolicy::try_from(kwargs.null_policy)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+
+    let weights = inputs[0].f64().unwrap();
+    let weights = weights.cont_slice().unwrap();
+
+    // Target y is at index 1, weights are at index 0
+    match series_to_mat_for_lstsq(&inputs[1..], add_bias, null_policy) {
+        Ok((mat, _)) => {
+            // Solving Least Square
+            if weights.len() != mat.nrows() {
+                return Err(PolarsError::ComputeError(
+                    "Length of weights and data in X must be the same.".into(),
+                ))
+            }
+            let x = mat.slice(s![.., 1..]).into_faer();
+            let y = mat.slice(s![.., 0..1]).into_faer();
+            let coeffs = faer_weighted_lstsq(x, y, weights);
+            let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
+                ListPrimitiveChunkedBuilder::new("coeffs", 1, coeffs.nrows(), DataType::Float64);
+
+            builder.append_slice(&coeffs.col_as_slice(0));
+            let out = builder.finish();
+            Ok(out.into_series())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+#[polars_expr(output_type_func=pred_residue_output)]
+fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+    let add_bias = kwargs.bias;
+    let null_policy = NullPolicy::try_from(kwargs.null_policy)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+    let method = LRMethods::from(kwargs.method);
+    // Copy data
+    // Target y is at index 0
+    match series_to_mat_for_lstsq(inputs, add_bias, null_policy.clone()) {
+        Ok((mat, mask)) => {
+            let y = mat.slice(s![.., 0..1]).into_faer();
+            let x = mat.slice(s![.., 1..]).into_faer();
+            let coeffs = match method {
+                LRMethods::Normal => faer_qr_lstsq(x, y),
+                LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
+                LRMethods::L2 => faer_cholskey_ridge(x, y, kwargs.l2_reg, add_bias),
+            };
+
+            let pred = x * &coeffs;
+            let resid = y - &pred;
+            let pred = pred.col_as_slice(0);
+            let resid = resid.col_as_slice(0);
+            // If null policy is raise and we have nulls, we won't reach here
+            // If null policy is raise and we are here, then (!&mask).any() will be false.
+            // No need to check null policy here.
+            let (p, r) = if (!&mask).any() {
+                let mut p_builder: PrimitiveChunkedBuilder<Float64Type> =
+                    PrimitiveChunkedBuilder::new("pred", mask.len());
+                let mut r_builder: PrimitiveChunkedBuilder<Float64Type> =
+                    PrimitiveChunkedBuilder::new("resid", mask.len());
+                let mut i: usize = 0;
+                for mm in mask.into_no_null_iter() {
+                    // mask is always non-null, mm = true means it is not null
+                    if mm {
+                        p_builder.append_value(pred[i]);
+                        r_builder.append_value(resid[i]);
+                        i += 1;
+                    } else {
+                        p_builder.append_value(f64::NAN);
+                        r_builder.append_value(f64::NAN);
+                    }
+                }
+                (p_builder.finish(), r_builder.finish())
+            } else {
+                let pred = Float64Chunked::from_slice("pred", pred);
+                let residue = Float64Chunked::from_slice("resid", resid);
+                (pred, residue)
+            };
+            let p = p.into_series();
+            let r = r.into_series();
+            let out = StructChunked::new("", &[p, r])?;
+            Ok(out.into_series())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+#[polars_expr(output_type_func=pred_residue_output)]
+fn pl_wls_ww_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+    let add_bias = kwargs.bias;
+    let null_policy = NullPolicy::try_from(kwargs.null_policy)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+
+    let weights = inputs[0].f64().unwrap();
+    let weights = weights.cont_slice().unwrap();
+
+    // Target y is at index 1, weights at 0
+    match series_to_mat_for_lstsq(&inputs[1..], add_bias, null_policy) {
+        Ok((mat, mask)) => {
+            let y = mat.slice(s![.., 0..1]).into_faer();
+            let x = mat.slice(s![.., 1..]).into_faer();
+            let coeffs = faer_weighted_lstsq(x, y, weights);
+
+            let pred = x * &coeffs;
+            let resid = y - &pred;
+            let pred = pred.col_as_slice(0);
+            let resid = resid.col_as_slice(0);
+            // If null policy is raise and we have nulls, we won't reach here
+            // If null policy is raise and we are here, then (!&mask).any() will be false.
+            // No need to check null policy here.
+            let (p, r) = if (!&mask).any() {
+                let mut p_builder: PrimitiveChunkedBuilder<Float64Type> =
+                    PrimitiveChunkedBuilder::new("pred", mask.len());
+                let mut r_builder: PrimitiveChunkedBuilder<Float64Type> =
+                    PrimitiveChunkedBuilder::new("resid", mask.len());
+                let mut i: usize = 0;
+                for mm in mask.into_no_null_iter() {
+                    // mask is always non-null, mm = true means it is not null
+                    if mm {
+                        p_builder.append_value(pred[i]);
+                        r_builder.append_value(resid[i]);
+                        i += 1;
+                    } else {
+                        p_builder.append_value(f64::NAN);
+                        r_builder.append_value(f64::NAN);
+                    }
+                }
+                (p_builder.finish(), r_builder.finish())
+            } else {
+                let pred = Float64Chunked::from_slice("pred", pred);
+                let residue = Float64Chunked::from_slice("resid", resid);
+                (pred, residue)
+            };
+            let p = p.into_series();
+            let r = r.into_series();
+            let out = StructChunked::new("", &[p, r])?;
+            Ok(out.into_series())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+#[polars_expr(output_type_func=report_output)]
+fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+    let add_bias = kwargs.bias;
+    let null_policy = NullPolicy::try_from(kwargs.null_policy)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+    // index 0 is target y. Skip
+    let mut name_builder =
+        StringChunkedBuilder::new("features", inputs.len() + (add_bias) as usize);
+    for s in inputs[1..].iter().map(|s| s.name()) {
+        name_builder.append_value(s);
+    }
+    if add_bias {
+        name_builder.append_value("__bias__");
+    }
+    // Copy data
+    // Target y is at index 0
+    match series_to_mat_for_lstsq(inputs, add_bias, null_policy) {
+        Ok((mat, _)) => {
+            let ncols = mat.ncols() - 1;
+            let nrows = mat.nrows();
+
+            let x = mat.slice(s![0..nrows, 1..]).into_faer();
+            let y = mat.slice(s![0..nrows, 0..1]).into_faer();
+            // Solving Least Square
+            let xtx = x.transpose() * &x;
+            let xtx_qr = xtx.col_piv_qr();
+            let xtx_inv = xtx_qr.inverse();
+            let coeffs = &xtx_inv * x.transpose() * y;
+            let betas = coeffs.col_as_slice(0);
+            // Degree of Freedom
+            let dof = nrows as f64 - ncols as f64;
+            // Residue
+            let res = y - x * &coeffs;
+            // total residue, sum of squares
+            let mse = (res.transpose() * &res).read(0, 0) / dof;
+            // std err
+            let std_err = (0..ncols)
+                .map(|i| (mse * xtx_inv.read(i, i)).sqrt())
+                .collect_vec();
+            // T values
+            let t_values = betas
+                .iter()
+                .zip(std_err.iter())
+                .map(|(b, se)| b / se)
+                .collect_vec();
+            // P values
+            let p_values = t_values
+                .iter()
+                .map(
+                    |t| match crate::stats_utils::beta::student_t_sf(t.abs(), dof) {
+                        Ok(p) => 2.0 * p,
+                        Err(_) => f64::NAN,
+                    },
+                )
+                .collect_vec();
+
+            let t_alpha = crate::stats_utils::beta::student_t_ppf(0.975, dof);
+            let ci_lower = betas
+                .iter()
+                .zip(std_err.iter())
+                .map(
+                    |(b, se)| b - t_alpha * se
+                )
+                .collect_vec();
+            let ci_upper = betas
+                .iter()
+                .zip(std_err.iter())
+                .map(
+                    |(b, se)| b + t_alpha * se
+                )
+                .collect_vec();
+
+            // Finalize
+            let names_ca = name_builder.finish();
+            let names_series = names_ca.into_series();
+            let coeffs_series = Float64Chunked::from_slice("beta", betas);
+            let coeffs_series = coeffs_series.into_series();
+            let stderr_series = Float64Chunked::from_vec("std_err", std_err);
+            let stderr_series = stderr_series.into_series();
+            let t_series = Float64Chunked::from_vec("t", t_values);
+            let t_series = t_series.into_series();
+            let p_series = Float64Chunked::from_vec("p>|t|", p_values);
+            let p_series = p_series.into_series();
+            let lower = Float64Chunked::from_vec("0.025", ci_lower);
+            let lower = lower.into_series();
+            let upper = Float64Chunked::from_vec("0.975", ci_upper);
+            let upper = upper.into_series();
+            let out = StructChunked::new(
+                "lstsq_report",
+                &[
+                    names_series,
+                    coeffs_series,
+                    stderr_series,
+                    t_series,
+                    p_series,
+                    lower,
+                    upper
+                ],
+            )?;
+            Ok(out.into_series())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+
+#[polars_expr(output_type_func=report_output)]
+fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+    let add_bias = kwargs.bias;
+    let null_policy = NullPolicy::try_from(kwargs.null_policy)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+
+    let weights = inputs[0].f64().unwrap();
+    let weights = weights.cont_slice().unwrap();
+    // index 0 is weights, 1 is target y. Skip them
+    let mut name_builder =
+        StringChunkedBuilder::new("features", inputs.len() + (add_bias) as usize);
+    for s in inputs[2..].iter().map(|s| s.name()) {
+        name_builder.append_value(s);
+    }
+    if add_bias {
+        name_builder.append_value("__bias__");
+    }
+    // Copy data
+    // Target y is at index 1, weights 0
+    match series_to_mat_for_lstsq(&inputs[1..], add_bias, null_policy) {
+        Ok((mat, _)) => {
+            let ncols = mat.ncols() - 1;
+            let nrows = mat.nrows();
+
+            let x = mat.slice(s![0..nrows, 1..]).into_faer();
+            let y = mat.slice(s![0..nrows, 0..1]).into_faer();
+
+            let w = faer::mat::from_row_major_slice(weights, x.nrows(), 1);
+            let w = w.column_vector_as_diagonal();
+            let xt = x.transpose();
+            
+            let xtwx = xt * w * x;
+            let xtwy = xt * w * y;
+            let qr = xtwx.col_piv_qr();
+            let xtwx_inv = qr.inverse();
+            let coeffs = qr.solve(xtwy);
+            let betas = coeffs.col_as_slice(0);
+
+            // Degree of Freedom
+            let dof = nrows as f64 - ncols as f64;
+            // Residue
+            let res = y - x * &coeffs;
+            let mse = (0..y.nrows())
+                .fold(0., |acc, i| acc + weights[i] * res.read(i, 0).powi(2))
+                / dof;
+            // std err
+            let std_err = (0..ncols)
+                .map(|i| (mse * xtwx_inv.read(i, i)).sqrt())
+                .collect_vec();
+            // T values
+            let t_values = betas
+                .iter()
+                .zip(std_err.iter())
+                .map(|(b, se)| b / se)
+                .collect_vec();
+            // P values
+            let p_values = t_values
+                .iter()
+                .map(
+                    |t| match crate::stats_utils::beta::student_t_sf(t.abs(), dof) {
+                        Ok(p) => 2.0 * p,
+                        Err(_) => f64::NAN,
+                    },
+                )
+                .collect_vec();
+
+            let t_alpha = crate::stats_utils::beta::student_t_ppf(0.975, dof);
+            let ci_lower = betas
+                .iter()
+                .zip(std_err.iter())
+                .map(
+                    |(b, se)| b - t_alpha * se
+                )
+                .collect_vec();
+            let ci_upper = betas
+                .iter()
+                .zip(std_err.iter())
+                .map(
+                    |(b, se)| b + t_alpha * se
+                )
+                .collect_vec();
+            // Finalize
+            let names_ca = name_builder.finish();
+            let names_series = names_ca.into_series();
+            let coeffs_series = Float64Chunked::from_slice("beta", betas);
+            let coeffs_series = coeffs_series.into_series();
+            let stderr_series = Float64Chunked::from_vec("std_err", std_err);
+            let stderr_series = stderr_series.into_series();
+            let t_series = Float64Chunked::from_vec("t", t_values);
+            let t_series = t_series.into_series();
+            let p_series = Float64Chunked::from_vec("p>|t|", p_values);
+            let p_series = p_series.into_series();
+            let lower = Float64Chunked::from_vec("0.025", ci_lower);
+            let lower = lower.into_series();
+            let upper = Float64Chunked::from_vec("0.975", ci_upper);
+            let upper = upper.into_series();
+            let out = StructChunked::new(
+                "lstsq_report",
+                &[
+                    names_series,
+                    coeffs_series,
+                    stderr_series,
+                    t_series,
+                    p_series,
+                    lower, 
+                    upper
+                ],
+            )?;
+            Ok(out.into_series())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+// --- Rolling and Recursive
 
 #[polars_expr(output_type_func=coeff_pred_output)]
 fn pl_recursive_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<Series> {
@@ -362,145 +731,6 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
             let pred_out = pred_builder.finish();
             let ca = StructChunked::new("", &[coef_out.into_series(), pred_out.into_series()])?;
             Ok(ca.into_series())
-        }
-        Err(e) => Err(e),
-    }
-}
-
-#[polars_expr(output_type_func=pred_residue_output)]
-fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
-    let add_bias = kwargs.bias;
-    let null_policy = NullPolicy::try_from(kwargs.null_policy)
-        .map_err(|e| PolarsError::ComputeError(e.into()))?;
-    let method = LRMethods::from(kwargs.method);
-    // Copy data
-    // Target y is at index 0
-    match series_to_mat_for_lstsq(inputs, add_bias, null_policy.clone()) {
-        Ok((mat, mask)) => {
-            let y = mat.slice(s![.., 0..1]).into_faer();
-            let x = mat.slice(s![.., 1..]).into_faer();
-            let coeffs = match method {
-                LRMethods::Normal => faer_qr_lstsq(x, y),
-                LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
-                LRMethods::L2 => faer_cholskey_ridge(x, y, kwargs.l2_reg, add_bias),
-            };
-
-            let pred = x * &coeffs;
-            let resid = y - &pred;
-            let pred = pred.col_as_slice(0);
-            let resid = resid.col_as_slice(0);
-            // If null policy is raise and we have nulls, we won't reach here
-            // If null policy is raise and we are here, then (!&mask).any() will be false.
-            // No need to check null policy here.
-            let (p, r) = if (!&mask).any() {
-                let mut p_builder: PrimitiveChunkedBuilder<Float64Type> =
-                    PrimitiveChunkedBuilder::new("pred", mask.len());
-                let mut r_builder: PrimitiveChunkedBuilder<Float64Type> =
-                    PrimitiveChunkedBuilder::new("resid", mask.len());
-                let mut i: usize = 0;
-                for mm in mask.into_no_null_iter() {
-                    // mask is always non-null, mm = true means it is not null
-                    if mm {
-                        p_builder.append_value(pred[i]);
-                        r_builder.append_value(resid[i]);
-                        i += 1;
-                    } else {
-                        p_builder.append_value(f64::NAN);
-                        r_builder.append_value(f64::NAN);
-                    }
-                }
-                (p_builder.finish(), r_builder.finish())
-            } else {
-                let pred = Float64Chunked::from_slice("pred", pred);
-                let residue = Float64Chunked::from_slice("resid", resid);
-                (pred, residue)
-            };
-            let p = p.into_series();
-            let r = r.into_series();
-            let out = StructChunked::new("", &[p, r])?;
-            Ok(out.into_series())
-        }
-        Err(e) => Err(e),
-    }
-}
-
-#[polars_expr(output_type_func=report_output)]
-fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
-    let add_bias = kwargs.bias;
-    let null_policy = NullPolicy::try_from(kwargs.null_policy)
-        .map_err(|e| PolarsError::ComputeError(e.into()))?;
-    // index 0 is target y. Skip
-    let mut name_builder =
-        StringChunkedBuilder::new("features", inputs.len() + (add_bias) as usize);
-    for s in inputs[1..].iter().map(|s| s.name()) {
-        name_builder.append_value(s);
-    }
-    if add_bias {
-        name_builder.append_value("__bias__");
-    }
-    // Copy data
-    // Target y is at index 0
-    match series_to_mat_for_lstsq(inputs, add_bias, null_policy) {
-        Ok((mat, _)) => {
-            let ncols = mat.ncols() - 1;
-            let nrows = mat.nrows();
-
-            let y = mat.slice(s![0..nrows, 0..1]).into_faer();
-            let x = mat.slice(s![0..nrows, 1..]).into_faer();
-            // Solving Least Square
-            let xtx = x.transpose() * &x;
-            let xtx_qr = xtx.col_piv_qr();
-            let xtx_inv = xtx_qr.inverse();
-            let coeffs = &xtx_inv * x.transpose() * y;
-            let betas = coeffs.col_as_slice(0);
-            // Degree of Freedom
-            let dof = nrows as f64 - ncols as f64;
-            // Residue
-            let res = y - x * &coeffs;
-            let res2 = res.transpose() * &res; // total residue, sum of squares
-            let res2 = res2.read(0, 0) / dof;
-            // std err
-            let std_err = (0..ncols)
-                .map(|i| (res2 * xtx_inv.read(i, i)).sqrt())
-                .collect_vec();
-            // T values
-            let t_values = betas
-                .iter()
-                .zip(std_err.iter())
-                .map(|(b, se)| b / se)
-                .collect_vec();
-            // P values
-            let p_values = t_values
-                .iter()
-                .map(
-                    |t| match crate::stats_utils::beta::student_t_sf(t.abs(), dof) {
-                        Ok(p) => 2.0 * p,
-                        Err(_) => f64::NAN,
-                    },
-                )
-                .collect_vec();
-            // Finalize
-            let names_ca = name_builder.finish();
-            let names_series = names_ca.into_series();
-            let coeffs_series = Float64Chunked::from_slice("beta", betas);
-            let coeffs_series = coeffs_series.into_series();
-            let stderr_series = Float64Chunked::from_vec("std_err", std_err);
-            let stderr_series = stderr_series.into_series();
-            let t_series = Float64Chunked::from_vec("t", t_values);
-            let t_series = t_series.into_series();
-            let p_series = Float64Chunked::from_vec("p>|t|", p_values);
-            let p_series = p_series.into_series();
-            let out = StructChunked::new(
-                "lstsq_report",
-                &[
-                    names_series,
-                    coeffs_series,
-                    stderr_series,
-                    t_series,
-                    p_series,
-                ],
-            )?;
-            Ok(out.into_series())
         }
         Err(e) => Err(e),
     }
