@@ -41,9 +41,9 @@ fn report_output(_: &[Field]) -> PolarsResult<Field> {
     let stderr = Field::new("std_err", DataType::Float64); // Std Err for this coefficient
     let t = Field::new("t", DataType::Float64); // t value for this coefficient
     let p = Field::new("p>|t|", DataType::Float64); // p value for this coefficient
-    // let ci_lower = Field::new("0.025", DataType::Float64); // CI lower bound at 0.025
-    // let ci_upper = Field::new("0.975", DataType::Float64); // CI upper bound at 0.975
-    let v: Vec<Field> = vec![features, beta, stderr, t, p]; //  ci_lower, ci_upper
+    let ci_lower = Field::new("0.025", DataType::Float64); // CI lower bound at 0.025
+    let ci_upper = Field::new("0.975", DataType::Float64); // CI upper bound at 0.975
+    let v: Vec<Field> = vec![features, beta, stderr, t, p, ci_lower, ci_upper]; //  ci_lower, ci_upper
     Ok(Field::new("lstsq_report", DataType::Struct(v)))
 }
 
@@ -392,6 +392,22 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
                 )
                 .collect_vec();
 
+            let t_alpha = crate::stats_utils::beta::student_t_ppf(0.975, dof);
+            let ci_lower = betas
+                .iter()
+                .zip(std_err.iter())
+                .map(
+                    |(b, se)| b - t_alpha * se
+                )
+                .collect_vec();
+            let ci_upper = betas
+                .iter()
+                .zip(std_err.iter())
+                .map(
+                    |(b, se)| b + t_alpha * se
+                )
+                .collect_vec();
+
             // Finalize
             let names_ca = name_builder.finish();
             let names_series = names_ca.into_series();
@@ -403,6 +419,10 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
             let t_series = t_series.into_series();
             let p_series = Float64Chunked::from_vec("p>|t|", p_values);
             let p_series = p_series.into_series();
+            let lower = Float64Chunked::from_vec("0.025", ci_lower);
+            let lower = lower.into_series();
+            let upper = Float64Chunked::from_vec("0.975", ci_upper);
+            let upper = upper.into_series();
             let out = StructChunked::new(
                 "lstsq_report",
                 &[
@@ -411,6 +431,8 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
                     stderr_series,
                     t_series,
                     p_series,
+                    lower,
+                    upper
                 ],
             )?;
             Ok(out.into_series())
@@ -486,22 +508,21 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
                 )
                 .collect_vec();
 
-            // We need PPF here, not CDF (inverse of CDF)
-            // let t_alpha = crate::stats_utils::beta::student_t_sf(0.0025, dof).unwrap_or(f64::NAN);
-            // let ci_lower = betas
-            //     .iter()
-            //     .zip(std_err.iter())
-            //     .map(
-            //         |(b, se)| b - t_alpha * se
-            //     )
-            //     .collect_vec();
-            // let ci_upper = betas
-            //     .iter()
-            //     .zip(std_err.iter())
-            //     .map(
-            //         |(b, se)| b + t_alpha * se
-            //     )
-            //     .collect_vec();
+            let t_alpha = crate::stats_utils::beta::student_t_ppf(0.975, dof);
+            let ci_lower = betas
+                .iter()
+                .zip(std_err.iter())
+                .map(
+                    |(b, se)| b - t_alpha * se
+                )
+                .collect_vec();
+            let ci_upper = betas
+                .iter()
+                .zip(std_err.iter())
+                .map(
+                    |(b, se)| b + t_alpha * se
+                )
+                .collect_vec();
             // Finalize
             let names_ca = name_builder.finish();
             let names_series = names_ca.into_series();
@@ -513,10 +534,10 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let t_series = t_series.into_series();
             let p_series = Float64Chunked::from_vec("p>|t|", p_values);
             let p_series = p_series.into_series();
-            // let lower = Float64Chunked::from_vec("0.025", ci_lower);
-            // let lower = lower.into_series();
-            // let upper = Float64Chunked::from_vec("0.975", ci_upper);
-            // let upper = upper.into_series();
+            let lower = Float64Chunked::from_vec("0.025", ci_lower);
+            let lower = lower.into_series();
+            let upper = Float64Chunked::from_vec("0.975", ci_upper);
+            let upper = upper.into_series();
             let out = StructChunked::new(
                 "lstsq_report",
                 &[
@@ -525,6 +546,8 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
                     stderr_series,
                     t_series,
                     p_series,
+                    lower, 
+                    upper
                 ],
             )?;
             Ok(out.into_series())

@@ -1,8 +1,20 @@
 /// This submodule is mostly taken from the project statrs. See credit section in README.md
-/// The reason I do not want to add it as a dependency is that it has a nalgebra dependency for
-/// multi-variate distributions, which is something that I think will not be needed in this
-/// package. Another reason is that if I want to do linear algebra, I would use Faer since Faer
-/// performs better and nalgebra is too much of a dependency for this package right now.
+/// I do not want to add it as a dependency because a lot of what it offers won't fit.
+/// 
+/// MIT License
+/// Copyright (c) 2016 Michael Ma
+/// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated 
+/// documentation files (the "Software"), to deal in the Software without restriction, including without limitation 
+/// the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, 
+/// and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+/// The above copyright notice and this permission notice shall be included in all copies or substantial portions 
+/// of the Software.
+/// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO 
+/// THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. 
+/// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+/// WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR 
+/// THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 pub mod beta;
 pub mod gamma;
 pub mod normal;
