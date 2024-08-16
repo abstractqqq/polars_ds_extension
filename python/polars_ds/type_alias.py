@@ -11,7 +11,9 @@ else:  # 3.9, 3.8
 # Custom "Enum" Types
 DetrendMethod: TypeAlias = Literal["linear", "mean"]
 Alternative: TypeAlias = Literal["two-sided", "less", "greater"]
-Distance: TypeAlias = Literal["l1", "l2", "inf", "h", "cosine", "haversine"]
+Distance: TypeAlias = Literal[
+    "l1", "l2", "sql2", "inf", "cosine", "haversine"
+]  #  "h", "cosine", "haversine"]
 ConvMode: TypeAlias = Literal["same", "left", "right", "full", "valid"]
 ConvMethod: TypeAlias = Literal["fft", "direct"]
 CorrMethod: TypeAlias = Literal["pearson", "spearman", "xi", "kendall", "bicor"]

@@ -3,9 +3,9 @@ from __future__ import annotations
 import polars.selectors as cs
 import polars as pl
 import graphviz
-import logging
 import plotly.express as px
 import plotly.graph_objects as go
+import warnings
 from typing import List, Iterable
 from functools import lru_cache
 from itertools import combinations
@@ -21,8 +21,6 @@ if _IS_POLARS_V1:
     from polars._typing import IntoExpr
 else:
     from polars.type_aliases import IntoExpr
-
-logger = logging.getLogger(__name__)
 
 
 # DIA = Data Inspection Assistant / DIAgonsis
@@ -633,8 +631,9 @@ class DIA:
 
         check = list(frame["column"])
         if len(check) <= 1:
-            logger.info(
-                f"Not enough valid columns to detect dependency on. Valid column count: {len(check)}."
+            warnings.warn(
+                f"Not enough valid columns to detect dependency on. Valid column count: {len(check)}. Empty dataframe returned.",
+                stacklevel=2,
             )
             return pl.DataFrame(
                 {"column": [], "by": [], "cond_entropy": []},
@@ -642,7 +641,7 @@ class DIA:
             )
 
         # Compute conditional entropy on the rest of the columns
-        logger.info(f"Running dependency for columns: {check}.")
+        print(f"Checking dependency for columns: {check}.")
 
         ce = (
             self._frame.select(
@@ -756,7 +755,9 @@ class DIA:
 
         coeffs = (
             temp.select(
-                query_lstsq_report(x_name, target=y_name, add_bias=add_bias).alias("report")
+                query_lstsq_report(pl.col(x_name), target=pl.col(y_name), add_bias=add_bias).alias(
+                    "report"
+                )
             )
             .unnest("report")
             .select(

@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::usize;
 
 /// A Kdtree
 use crate::arkadia::{leaf::KdLeaf, suggest_capacity, Leaf, SplitMethod, KDTQ, NB};
@@ -17,7 +17,7 @@ pub enum DIST<T: Float + 'static> {
 
 impl<T: Float + 'static> DIST<T> {
     #[inline(always)]
-    fn dist(&self, a1: &[T], a2: &[T]) -> T {
+    pub fn dist(&self, a1: &[T], a2: &[T]) -> T {
         match self {
             DIST::L1 => a1
                 .iter()
@@ -55,18 +55,33 @@ pub struct AnyKDT<'a, T: Float + 'static + std::fmt::Debug, A> {
     left: Option<Box<AnyKDT<'a, T, A>>>,
     right: Option<Box<AnyKDT<'a, T, A>>>,
     // Is a leaf node if this has values
-    split_axis: Option<usize>,
-    split_axis_value: Option<T>,
+    split_axis: usize,
+    split_axis_value: T,
     min_bounds: Vec<T>,
     max_bounds: Vec<T>,
     // Data
-    data: Option<&'a [Leaf<'a, T, A>]>, // Not none when this is a leaf
+    data: &'a [Leaf<'a, T, A>], // Not empty when this is a leaf
     //
     d: DIST<T>,
 }
 
+
 impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a, T, A> {
     // Add method to create the tree by adding leaf elements one by one
+
+    // Helper function that finds the bounding box for each (sub)kdtree
+    fn find_bounds(data: &[impl KdLeaf<'a, T>], dim: usize) -> (Vec<T>, Vec<T>) {
+        let mut min_bounds = vec![T::max_value(); dim];
+        let mut max_bounds = vec![T::min_value(); dim];
+
+        for elem in data.iter() {
+            for i in 0..dim {
+                min_bounds[i] = min_bounds[i].min(elem.value_at(i));
+                max_bounds[i] = max_bounds[i].max(elem.value_at(i));
+            }
+        }
+        (min_bounds, max_bounds)
+    }
 
     pub fn from_leaves(
         data: &'a mut [Leaf<'a, T, A>],
@@ -118,11 +133,11 @@ impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a, T, A> {
                 dim: dim,
                 left: None,
                 right: None,
-                split_axis: None,
-                split_axis_value: None,
+                split_axis: usize::MAX, // This should never be used, because this is a leaf
+                split_axis_value: T::nan(), // This should never be used, because this is a leaf
                 min_bounds: min_bounds,
                 max_bounds: max_bounds,
-                data: Some(data),
+                data: data,
                 d: d,
             }
         } else {
@@ -178,11 +193,11 @@ impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a, T, A> {
                     dim: dim,
                     left: None,
                     right: None,
-                    split_axis: None,
-                    split_axis_value: None,
+                    split_axis: usize::MAX, // This should never be used, because this is a leaf
+                    split_axis_value: T::nan(), // This should never be used, because this is a leaf
                     min_bounds: min_bounds,
                     max_bounds: max_bounds,
-                    data: Some(right),
+                    data: right,
                     d: d,
                 }
             } else {
@@ -204,11 +219,11 @@ impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a, T, A> {
                         how,
                         d.clone(),
                     ))),
-                    split_axis: Some(axis),
-                    split_axis_value: Some(split_axis_value),
+                    split_axis: axis,
+                    split_axis_value: split_axis_value,
                     min_bounds: min_bounds,
                     max_bounds: max_bounds,
-                    data: None,
+                    data: &[],
                     d: d,
                 }
             }
@@ -216,7 +231,7 @@ impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a, T, A> {
     }
 
     fn is_leaf(&self) -> bool {
-        self.data.is_some()
+        !self.data.is_empty()
     }
 
     #[inline(always)]
@@ -285,7 +300,7 @@ impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a, T, A> {
     fn update_top_k(&self, top_k: &mut Vec<NB<T, A>>, k: usize, point: &[T], max_dist_bound: T) {
         let max_permissible_dist = max_dist_bound;
         // This is only called if is_leaf. Safe to unwrap.
-        for element in self.data.unwrap().iter() {
+        for element in self.data.iter() {
             let cur_max_dist = top_k.last().map(|nb| nb.dist).unwrap_or(max_dist_bound);
             let y = element.row_vec;
             let dist = self.d.dist(y, point);
@@ -311,7 +326,7 @@ impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a, T, A> {
     #[inline(always)]
     fn update_nb_within(&self, neighbors: &mut Vec<NB<T, A>>, point: &[T], radius: T) {
         // This is only called if is_leaf. Safe to unwrap.
-        for element in self.data.unwrap().iter() {
+        for element in self.data.iter() {
             let y = element.row_vec;
             let dist = self.d.dist(y, point);
             if dist <= radius {
@@ -351,8 +366,8 @@ impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> KDTQ<'a, T, A> for AnyKD
         }
         let mut current = tree;
         while !current.is_leaf() {
-            let split_axis = current.split_axis.unwrap();
-            let axis_value = current.split_axis_value.unwrap();
+            let split_axis = current.split_axis;
+            let axis_value = current.split_axis_value;
             let next = if point[split_axis] < axis_value {
                 let next = current.right.as_ref().unwrap().as_ref();
                 current = current.left.as_ref().unwrap().as_ref();
@@ -386,8 +401,8 @@ impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> KDTQ<'a, T, A> for AnyKD
         }
         let mut current = tree;
         while !current.is_leaf() {
-            let split_axis = current.split_axis.unwrap();
-            let axis_value = current.split_axis_value.unwrap();
+            let split_axis = current.split_axis;
+            let axis_value = current.split_axis_value;
             let next = if point[split_axis] < axis_value {
                 let next = current.right.as_ref().unwrap().as_ref();
                 current = current.left.as_ref().unwrap().as_ref();
@@ -419,8 +434,8 @@ impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> KDTQ<'a, T, A> for AnyKD
         } else {
             let mut current = tree;
             while !current.is_leaf() {
-                let split_axis = current.split_axis.unwrap();
-                let axis_value = current.split_axis_value.unwrap();
+                let split_axis = current.split_axis;
+                let axis_value = current.split_axis_value;
                 let next = if point[split_axis] < axis_value {
                     let next = current.right.as_ref().unwrap().as_ref();
                     current = current.left.as_ref().unwrap().as_ref();
@@ -441,7 +456,7 @@ impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> KDTQ<'a, T, A> for AnyKD
                 }
             }
             // Return the count in current
-            current.data.unwrap().iter().fold(0u32, |acc, element| {
+            current.data.iter().fold(0u32, |acc, element| {
                 let y = element.vec();
                 let dist = self.d.dist(y, point);
                 acc + (dist <= radius) as u32
@@ -452,8 +467,7 @@ impl<'a, T: Float + 'static + std::fmt::Debug, A: Copy> KDTQ<'a, T, A> for AnyKD
 
 impl<'a, T: Float + 'static + std::fmt::Debug + Into<f64>, A: Float + Into<f64>>
     KNNRegressor<'a, T, A> for AnyKDT<'a, T, A>
-{
-}
+{}
 
 #[cfg(test)]
 mod tests {
