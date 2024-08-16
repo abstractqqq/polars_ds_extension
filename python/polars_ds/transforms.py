@@ -74,22 +74,27 @@ def linear_impute(
         target_name = df.lazy().select(target).collect_schema().names()[0]
     else:
         target_name = df.select(target).columns[0]
+
+    features_as_expr = [pl.col(f) for f in features]
+    target_as_expr = pl.col(target_name)
     temp = (
         df.lazy()
         .select(
-            pds_linear.query_lstsq(*features, target=target, add_bias=add_bias, null_policy="skip")
+            pds_linear.query_lstsq(
+                *features_as_expr, target=target_as_expr, add_bias=add_bias, null_policy="skip"
+            )
         )
         .collect()
     )  # Add streaming config
     coeffs = temp.item(0, 0)
-    linear_eq = [pl.col(f) * coeffs[i] for i, f in enumerate(features)]
+    linear_eq = [f * coeffs[i] for i, f in enumerate(features_as_expr)]
     if add_bias:
         linear_eq.append(pl.lit(coeffs[-1], dtype=pl.Float64))
 
     return [
-        pl.when(pl.col(target_name).is_null())
+        pl.when(target_as_expr.is_null())
         .then(pl.sum_horizontal(linear_eq))
-        .otherwise(pl.col(target_name).cast(pl.Float64))
+        .otherwise(target_as_expr.cast(pl.Float64))
         .alias(target_name)
     ]
 

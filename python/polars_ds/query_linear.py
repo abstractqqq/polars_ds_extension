@@ -13,7 +13,7 @@ __all__ = [
 ]
 
 
-def linear_formula(s: str | pl.Expr) -> pl.Expr:
+def lr_formula(s: str | pl.Expr) -> pl.Expr:
     if isinstance(s, str):
         return pl.sql_expr(s).alias(s)
     elif isinstance(s, pl.Expr):
@@ -86,9 +86,9 @@ def query_lstsq(
         )
         null_policy = "skip"
 
-    t = linear_formula(target)
+    t = lr_formula(target)
     cols = [t]
-    cols.extend(linear_formula(z) for z in x)
+    cols.extend(lr_formula(z) for z in x)
 
     if method == "l1" and l1_reg <= 0.0:
         raise ValueError("For Lasso regression, `l1_reg` must be positive.")
@@ -160,12 +160,12 @@ def query_wls_ww(
     https://www.stat.uchicago.edu/~yibi/teaching/stat224/L14.pdf
     """
 
-    w = linear_formula(weights)
+    w = lr_formula(weights)
     cols = [
         w.cast(pl.Float64).rechunk(),
-        linear_formula(target),
+        lr_formula(target),
     ]  # weights are at index 0, then target
-    cols.extend(linear_formula(z) for z in x)
+    cols.extend(lr_formula(z) for z in x)
 
     lr_kwargs = {
         "bias": add_bias,
@@ -244,8 +244,8 @@ def query_recursive_lstsq(
     if start_with < 1:
         raise ValueError("You must start with >= 1 rows for recursive lstsq.")
 
-    cols = [linear_formula(target)]
-    features = [linear_formula(z) for z in x]
+    cols = [lr_formula(target)]
+    features = [lr_formula(z) for z in x]
     if len(features) > start_with:
         warnings.warn(
             "# features > number of rows for the initial fit. Outputs may be off.", stacklevel=2
@@ -317,8 +317,8 @@ def query_rolling_lstsq(
     if window_size < 2:
         raise ValueError("`window_size` must be >= 2.")
 
-    cols = [linear_formula(target)]
-    features = [linear_formula(z) for z in x]
+    cols = [lr_formula(target)]
+    features = [lr_formula(z) for z in x]
     if len(features) > window_size:
         raise ValueError("# features > window size. Linear regression is not well-defined.")
 
@@ -400,10 +400,10 @@ def query_lstsq_report(
         "tol": 0.0,
     }
 
-    t = linear_formula(target)
+    t = lr_formula(target)
     if weights is None:
         cols = [t]
-        cols.extend(linear_formula(z) for z in x)
+        cols.extend(lr_formula(z) for z in x)
         return pl_plugin(
             symbol="pl_lstsq_report",
             args=cols,
@@ -412,9 +412,9 @@ def query_lstsq_report(
             pass_name_to_apply=True,
         )
     else:
-        w = linear_formula(weights)
+        w = lr_formula(weights)
         cols = [w.cast(pl.Float64).rechunk(), t]
-        cols.extend(linear_formula(z) for z in x)
+        cols.extend(lr_formula(z) for z in x)
         return pl_plugin(
             symbol="pl_wls_report",
             args=cols,

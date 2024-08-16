@@ -58,7 +58,7 @@ def query_knn_ptwise(
         The column used as index, must be castable to u32
     k : int
         Number of neighbors to query
-    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`]
         Note `sql2` stands for squared l2.
     parallel : bool
         Whether to run the k-nearest neighbor query in parallel. This is recommended when you
@@ -81,6 +81,9 @@ def query_knn_ptwise(
     """
     if k < 1:
         raise ValueError("Input `k` must be >= 1.")
+
+    if dist in ("cosine", "h", "haversine"):
+        raise ValueError(f"Distance {dist} doesn't work with current implementation.")
 
     idx = str_to_expr(index).cast(pl.UInt32).rechunk()
     cols = [idx]
@@ -147,7 +150,7 @@ def query_knn_freq_cnt(
         The column used as index, must be castable to u32
     k : int
         Number of neighbors to query
-    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`]
         Note `sql2` stands for squared l2.
     parallel : bool
         Whether to run the k-nearest neighbor query in parallel. This is recommended when you
@@ -213,7 +216,7 @@ def query_knn_avg(
         Float, must be castable to f64. This should not contain null.
     k : int
         Number of neighbors to query
-    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`]
         Note `sql2` stands for squared l2.
     weighted : bool
         If weighted, it will use 1/distance as weights to compute the KNN average. If min_bound is
@@ -230,6 +233,9 @@ def query_knn_avg(
     """
     if k < 1:
         raise ValueError("Input `k` must be >= 1.")
+
+    if dist in ("cosine", "h", "haversine"):
+        raise ValueError(f"Distance {dist} doesn't work with current implementation.")
 
     idx = str_to_expr(target).cast(pl.Float64).rechunk()
     feats = [str_to_expr(f) for f in features]
@@ -270,7 +276,7 @@ def within_dist_from(
         The point
     r : either a float or an expression
         The radius to query with. If this is an expression, the radius will be applied row-wise.
-    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`, `haversine`]
         Note `sql2` stands for squared l2.
     """
     # For a single point, it is faster to just do it in native polars
@@ -337,7 +343,7 @@ def is_knn_from(
         The point
     k : int
         k nearest neighbor
-    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`]
         Note `sql2` stands for squared l2.
     """
     # For a single point, it is faster to just do it in native polars
@@ -411,7 +417,7 @@ def query_radius_ptwise(
         The column used as index, must be castable to u32
     r : float
         The radius. Must be a scalar value now.
-    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`]
         Note `sql2` stands for squared l2.
     sort
         Whether the neighbors returned should be sorted by the distance. Setting this to False can
@@ -425,6 +431,9 @@ def query_radius_ptwise(
         raise ValueError("Input `r` must be > 0.")
     elif isinstance(r, pl.Expr):
         raise ValueError("Input `r` must be a scalar now. Expression input is not implemented.")
+
+    if dist in ("cosine", "h", "haversine"):
+        raise ValueError(f"Distance {dist} doesn't work with current implementation.")
 
     idx = str_to_expr(index).cast(pl.UInt32).rechunk()
     metric = str(dist).lower()
@@ -459,7 +468,7 @@ def query_radius_freq_cnt(
         The column used as index, must be castable to u32
     r : float
         The radius. Must be a scalar value now.
-    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`]
         Note `sql2` stands for squared l2.
     parallel : bool
         Whether to run the k-nearest neighbor query in parallel. This is recommended when you
@@ -491,12 +500,15 @@ def query_nb_cnt(
         it must be the name of a column
     *features : str | pl.Expr
         Other columns used as features
-    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`]
         Note `sql2` stands for squared l2.
     parallel : bool
         Whether to run the distance query in parallel. This is recommended when you
         are running only this expression, and not in group_by() or over() context.
     """
+    if dist in ("cosine", "h", "haversine"):
+        raise ValueError(f"Distance {dist} doesn't work with current implementation.")
+
     if isinstance(r, (float, int)):
         rad = pl.lit(pl.Series(values=[r], dtype=pl.Float64))
     elif isinstance(r, pl.Expr):
