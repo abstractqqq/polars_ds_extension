@@ -1,6 +1,5 @@
 /// All things true positive, false positive related.
 /// ROC AUC, Average Precision, precision, recall, etc. m
-use ndarray::ArrayView1;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
@@ -114,8 +113,8 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     let y = tpr.f64().unwrap();
     let x = fpr.f64().unwrap();
 
-    let y: ArrayView1<f64> = y.to_ndarray()?; // Zero copy
-    let x: ArrayView1<f64> = x.to_ndarray()?; // Zero copy
+    let y = y.cont_slice()?; // Zero copy
+    let x = x.cont_slice()?; // Zero copy
 
     let roc_auc: f64 = -super::trapz::trapz(y, x);
     let roc_auc: Series = Series::from_vec("roc_auc", vec![roc_auc]);
@@ -175,8 +174,8 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
     let y = tpr.f64().unwrap();
     let x = fpr.f64().unwrap();
 
-    let y: ArrayView1<f64> = y.to_ndarray()?;
-    let x: ArrayView1<f64> = x.to_ndarray()?;
+    let y = y.cont_slice()?;
+    let x = x.cont_slice()?;
 
     let out: f64 = -super::trapz::trapz(y, x);
 
