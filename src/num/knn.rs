@@ -4,7 +4,7 @@
 use crate::{
     arkadia::{
         matrix_to_empty_leaves, matrix_to_leaves, AnyKDT, KNNMethod, KNNRegressor, Leaf,
-        SplitMethod, DIST, KDTQ,
+        SplitMethod, DIST, SpacialQueries,
     },
     utils::{list_u32_output, series_to_ndarray, split_offsets},
 };
@@ -175,7 +175,7 @@ pub fn knn_ptwise<'a, Kdt>(
     epsilon: f64,
 ) -> ListChunked
 where
-    Kdt: KDTQ<'a, f64, u32> + std::marker::Sync,
+    Kdt: SpacialQueries<'a, f64, u32> + std::marker::Sync,
 {
     let nrows = data.nrows();
     if can_parallel {
@@ -295,7 +295,7 @@ pub fn knn_ptwise_w_dist<'a, Kdt>(
     epsilon: f64,
 ) -> (ListChunked, ListChunked)
 where
-    Kdt: KDTQ<'a, f64, u32> + std::marker::Sync,
+    Kdt: SpacialQueries<'a, f64, u32> + std::marker::Sync,
 {
     let nrows = data.nrows();
     if can_parallel {
@@ -458,7 +458,7 @@ pub fn query_radius_ptwise<'a, Kdt>(
     sort: bool,
 ) -> ListChunked
 where
-    Kdt: KDTQ<'a, f64, u32> + std::marker::Sync,
+    Kdt: SpacialQueries<'a, f64, u32> + std::marker::Sync,
 {
     if can_parallel {
         let nrows = data.nrows();
@@ -537,7 +537,7 @@ pub fn query_nb_cnt<'a, Kdt>(
     can_parallel: bool,
 ) -> UInt32Chunked
 where
-    Kdt: KDTQ<'a, f64, ()> + std::marker::Sync,
+    Kdt: SpacialQueries<'a, f64, ()> + std::marker::Sync,
 {
     // as_slice.unwrap() is safe because when we create the matrices, we specified C order.
     let nrows = data.nrows();
@@ -575,7 +575,7 @@ pub fn query_nb_cnt_w_radius<'a, Kdt>(
     can_parallel: bool,
 ) -> UInt32Chunked
 where
-    Kdt: KDTQ<'a, f64, ()> + std::marker::Sync,
+    Kdt: SpacialQueries<'a, f64, ()> + std::marker::Sync,
 {
     if can_parallel {
         let radius = radius.to_vec();
