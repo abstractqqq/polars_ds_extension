@@ -18,15 +18,13 @@ pub fn suggest_capacity(dim: usize) -> usize {
     if dim < 5 {
         8
     } else if dim < 10 {
-        16
+        20
     } else if dim < 15 {
-        32
+        40
     } else if dim < 20 {
-        64
-    } else if dim < 30 {
-        128
+        100
     } else {
-        256
+        4098
     }
 }
 
