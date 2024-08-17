@@ -25,7 +25,10 @@ pub fn trapz_dx(y: &[f64], dx: f64) -> f64 {
 fn pl_trapz(inputs: &[Series]) -> PolarsResult<Series> {
     let y = inputs[0].f64()?;
     let x = inputs[1].f64()?;
-    if x.has_validity() | y.has_validity() {
+    if y.len() < 2 {
+        return Ok(Series::from_iter([f64::NAN]))
+    }
+    if x.has_validity() || y.has_validity() {
         return Err(PolarsError::ComputeError(
             "For trapezoidal integration to work, x and y must not contain nulls.".into(),
         ));

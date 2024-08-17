@@ -1,4 +1,4 @@
-use ndarray::{Array1, ArrayView1};
+use ndarray::Array1;
 use polars::prelude::*;
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
@@ -167,7 +167,6 @@ fn convolve(
             Ok(out.into_iter().skip(filter.len() - 1).collect())
         }
         ConvMode::VALID => {
-            // let kernel = ArrayView1::from(filter);
             if parallel {
                 let mut out = vec![0f64; input.len() - filter.len() + 1];
                 input
@@ -178,9 +177,7 @@ fn convolve(
             } else {
                 Ok(input
                     .windows(filter.len())
-                    .map(|sl| {
-                        cfavml::dot(filter, sl) 
-                    })
+                    .map(|sl| cfavml::dot(filter, sl))
                     .collect())
             }
         }

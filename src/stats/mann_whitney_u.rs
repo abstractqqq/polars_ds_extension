@@ -1,6 +1,6 @@
 /// Mann-Whitney U Statistics
 use super::{simple_stats_output, Alternative};
-use crate::stats_utils::{is_zero, normal};
+use crate::stats_utils::normal;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
@@ -51,7 +51,7 @@ fn pl_mann_whitney_u(inputs: &[Series]) -> PolarsResult<Series> {
         Alternative::Greater => (u1, 1.0),
     };
 
-    let p = if is_zero(std_) {
+    let p = if std_ == 0. {
         0.
     } else {
         // -0.5 is some continuity adjustment. See Scipy's impl

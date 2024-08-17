@@ -1,4 +1,4 @@
-use ndarray::ArrayView1;
+use cfavml::safe_trait_distance_ops::DistanceOps;
 use num::Float;
 
 mod benford;
@@ -23,19 +23,8 @@ mod woe_iv;
 // Collection of other distances
 
 #[inline]
-pub fn cosine_dist<T: Float + 'static>(a: &[T], b: &[T]) -> T {
-    debug_assert_eq!(a.len(), b.len());
-
-    let a = ArrayView1::from(a);
-    let b = ArrayView1::from(b);
-
-    let a_norm = a.dot(&a);
-    let b_norm = b.dot(&b);
-    T::one() - (a.dot(&b)) / (a_norm * b_norm).sqrt()
-}
-
-#[inline]
 fn haversine_elementwise<T: Float>(start_lat: T, start_long: T, end_lat: T, end_long: T) -> T {
+
     let r_in_km = T::from(6371.0).unwrap();
     let two = T::from(2.0).unwrap();
     let one = T::one();
@@ -49,9 +38,4 @@ fn haversine_elementwise<T: Float>(start_lat: T, start_long: T, end_lat: T, end_
         + ((d_lon / two).sin()) * ((d_lon / two).sin()) * (lat1.cos()) * (lat2.cos());
     let c = two * ((a.sqrt()).atan2((one - a).sqrt()));
     r_in_km * c
-}
-
-#[inline]
-pub fn haversine<T: Float>(start: &[T], end: &[T]) -> T {
-    haversine_elementwise(start[0], start[1], end[0], end[1])
 }
