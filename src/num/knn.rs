@@ -1,12 +1,10 @@
 /// Performs KNN related search queries, classification and regression, and
 /// other features/entropies that require KNN to be efficiently computed.
-// use super::which_distance;
-// use kdtree::KdTree;
-// use crate::utils::get_common_float_dtype;
+
 use crate::{
     arkadia::{
         matrix_to_empty_leaves, matrix_to_leaves, AnyKDT, KNNMethod, KNNRegressor, Leaf,
-        SplitMethod, DIST, KDTQ,
+        SplitMethod, DIST, SpacialQueries,
     },
     utils::{list_u32_output, series_to_ndarray, split_offsets},
 };
@@ -86,13 +84,13 @@ pub fn matrix_to_leaves_filtered<'a, T: Float + 'static, A: Copy>(
 }
 
 // used in all cases but squared l2 (multiple queries)
-pub fn dist_from_str<T: Float + 'static>(dist_str: String) -> Result<DIST<T>, String> {
+pub fn dist_from_str<T: Float + cfavml::safe_trait_distance_ops::DistanceOps + 'static>(dist_str: String) -> Result<DIST<T>, String> {
     match dist_str.as_ref() {
         "l1" => Ok(DIST::L1),
         "l2" => Ok(DIST::L2),
         "sql2" => Ok(DIST::SQL2),
         "linf" | "inf" => Ok(DIST::LINF),
-        "cosine" => Ok(DIST::ANY(super::cosine_dist)),
+        "cosine" => Ok(DIST::ANY(cfavml::cosine)),
         _ => Err("Unknown distance metric.".into()),
     }
 }
@@ -177,7 +175,7 @@ pub fn knn_ptwise<'a, Kdt>(
     epsilon: f64,
 ) -> ListChunked
 where
-    Kdt: KDTQ<'a, f64, u32> + std::marker::Sync,
+    Kdt: SpacialQueries<'a, f64, u32> + std::marker::Sync,
 {
     let nrows = data.nrows();
     if can_parallel {
@@ -297,7 +295,7 @@ pub fn knn_ptwise_w_dist<'a, Kdt>(
     epsilon: f64,
 ) -> (ListChunked, ListChunked)
 where
-    Kdt: KDTQ<'a, f64, u32> + std::marker::Sync,
+    Kdt: SpacialQueries<'a, f64, u32> + std::marker::Sync,
 {
     let nrows = data.nrows();
     if can_parallel {
@@ -460,7 +458,7 @@ pub fn query_radius_ptwise<'a, Kdt>(
     sort: bool,
 ) -> ListChunked
 where
-    Kdt: KDTQ<'a, f64, u32> + std::marker::Sync,
+    Kdt: SpacialQueries<'a, f64, u32> + std::marker::Sync,
 {
     if can_parallel {
         let nrows = data.nrows();
@@ -539,7 +537,7 @@ pub fn query_nb_cnt<'a, Kdt>(
     can_parallel: bool,
 ) -> UInt32Chunked
 where
-    Kdt: KDTQ<'a, f64, ()> + std::marker::Sync,
+    Kdt: SpacialQueries<'a, f64, ()> + std::marker::Sync,
 {
     // as_slice.unwrap() is safe because when we create the matrices, we specified C order.
     let nrows = data.nrows();
@@ -577,7 +575,7 @@ pub fn query_nb_cnt_w_radius<'a, Kdt>(
     can_parallel: bool,
 ) -> UInt32Chunked
 where
-    Kdt: KDTQ<'a, f64, ()> + std::marker::Sync,
+    Kdt: SpacialQueries<'a, f64, ()> + std::marker::Sync,
 {
     if can_parallel {
         let radius = radius.to_vec();

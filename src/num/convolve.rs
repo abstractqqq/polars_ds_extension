@@ -1,4 +1,4 @@
-use ndarray::{Array1, ArrayView1};
+use ndarray::Array1;
 use polars::prelude::*;
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
@@ -8,6 +8,7 @@ use pyo3_polars::{
     },
 };
 use realfft::RealFftPlanner;
+use cfavml;
 use serde::Deserialize;
 
 // Pending: small vec optimizations? Fixed sized allocation for <= 4096?
@@ -166,24 +167,17 @@ fn convolve(
             Ok(out.into_iter().skip(filter.len() - 1).collect())
         }
         ConvMode::VALID => {
-            let kernel = ArrayView1::from(filter);
             if parallel {
-                let mut out = vec![0f64; input.len() - kernel.len() + 1];
+                let mut out = vec![0f64; input.len() - filter.len() + 1];
                 input
                     .par_windows(filter.len())
-                    .map(|sl| {
-                        let slice = ArrayView1::from(sl);
-                        kernel.dot(&slice)
-                    })
+                    .map(|sl| cfavml::dot(filter, sl))
                     .collect_into_vec(&mut out);
                 Ok(out)
             } else {
                 Ok(input
                     .windows(filter.len())
-                    .map(|sl| {
-                        let slice = ArrayView1::from(sl);
-                        kernel.dot(&slice)
-                    })
+                    .map(|sl| cfavml::dot(filter, sl))
                     .collect())
             }
         }

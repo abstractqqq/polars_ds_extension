@@ -12,10 +12,10 @@ nav:
 - Time Series Features: features.md
 - KNN Queries: query_knn.md
 - Lstsq Queries: query_linear.md
-- Numerical Extension: num.md
-- Stats Extension: stats.md
-- String Extension: string.md
-- ML Metrics/Loss Extension: metrics.md
+- Numerical Functions: num.md
+- Statistics: stats.md
+- String Related: string.md
+- ML Metrics/Loss: metrics.md
 - Miscellaneous: polars_ds.md
 
 theme:

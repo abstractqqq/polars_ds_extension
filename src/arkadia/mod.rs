@@ -22,7 +22,7 @@ pub use leaf::{KdLeaf, Leaf};
 pub use neighbor::NB;
 use serde::Deserialize;
 pub use utils::{
-    matrix_to_empty_leaves, matrix_to_leaves, matrix_to_leaves_w_row_num, suggest_capacity,
+    matrix_to_empty_leaves, matrix_to_leaves, suggest_capacity,
     SplitMethod,
 };
 
@@ -52,7 +52,7 @@ impl KNNMethod {
 }
 
 /// K Dimensional Tree Queries. Should be the same for ball trees, etc.
-pub trait KDTQ<'a, T: Float + 'static, A> {
+pub trait SpacialQueries<'a, T: Float + 'static, A> {
     fn dim(&self) -> usize;
 
     fn knn_one_step(
@@ -151,8 +151,7 @@ pub trait KDTQ<'a, T: Float + 'static, A> {
 
 }
 
-pub trait KNNRegressor<'a, T: Float + Into<f64> + 'static, A: Float + Into<f64>>:
-    KDTQ<'a, T, A>
+pub trait KNNRegressor<'a, T: Float + Into<f64> + 'static, A: Float + Into<f64>>: SpacialQueries<'a, T, A>
 {
     fn knn_regress(
         &self,
@@ -224,60 +223,9 @@ pub trait KNNRegressor<'a, T: Float + Into<f64> + 'static, A: Float + Into<f64>>
     }
 }
 
-pub trait KNNClassifier<'a, T: Float + 'static>: KDTQ<'a, T, u32> {
+pub trait KNNClassifier<'a, T: Float + 'static>: SpacialQueries<'a, T, u32> {
     fn knn_classif(&self, k: usize, point: &[T], max_dist_bound: T, how: KNNMethod) -> Option<u32> {
         let knn = self.knn_bounded(k, point, max_dist_bound, T::zero());
         todo!()
     }
 }
-
-// pub enum KDT<'a, T:Float + 'static, A:Copy> {
-//     L2(Kdtree<'a, T, A>),
-//     LP(LpKdtree<'a, T, A>),
-// }
-
-// impl <'a, T: Float + 'static, A: Copy> KDTQ<'a, T, A> for KDT<'a, T, A> {
-//     fn dim(&self) -> usize {
-//         match self {
-//             KDT::L2(t) => t.dim(),
-//             KDT::LP(t) => t.dim(),
-//         }
-//     }
-
-//     fn knn_one_step(
-//         &self,
-//         pending: &mut Vec<(T, &Self)>,
-//         top_k: &mut Vec<NB<T, A>>,
-//         k: usize,
-//         point: &[T],
-//         point_norm_cache: T,
-//         max_dist_bound: T,
-//         epsilon: T,
-//     ) {
-//         match self {
-//             KDT::L2(t) => t.knn_one_step(pending, top_k, k, point, point_norm_cache, max_dist_bound, epsilon),
-//             KDT::LP(t) => t.knn_one_step(pending, top_k, k, point, point_norm_cache, max_dist_bound, epsilon),
-//         }
-//     }
-
-//     fn within_one_step(
-//         &self,
-//         pending: &mut Vec<(T, &Self)>,
-//         neighbors: &mut Vec<NB<T, A>>,
-//         point: &[T],
-//         point_norm_cache: T,
-//         radius: T,
-//     ) {
-//         todo!()
-//     }
-
-//     fn within_count_one_step(
-//         &self,
-//         pending: &mut Vec<(T, &Self)>,
-//         point: &[T],
-//         point_norm_cache: T,
-//         radius: T,
-//     ) -> u32 {
-//         todo!()
-//     }
-// }
