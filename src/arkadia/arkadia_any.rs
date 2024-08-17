@@ -25,9 +25,24 @@ impl<T: Float + DistanceOps + 'static> DIST<T> {
                 .zip(a2.iter().copied())
                 .fold(T::zero(), |acc, (x, y)| acc + ((x - y).abs())),
 
-            DIST::L2 => cfavml::squared_euclidean(a1, a2).sqrt(),
-            DIST::SQL2 => cfavml::squared_euclidean(a1, a2),
-            
+            DIST::L2 => {
+                if a1.len() < 16 {
+                    a1.iter().copied().zip(
+                        a2.iter().copied()
+                    ).fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y)).sqrt()
+                } else {
+                    cfavml::squared_euclidean(a1, a2).sqrt()
+                }
+            }
+            DIST::SQL2 => {
+                if a1.len() < 16 {
+                    a1.iter().copied().zip(
+                        a2.iter().copied()
+                    ).fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y))
+                } else {
+                    cfavml::squared_euclidean(a1, a2)
+                }
+            }
             DIST::LINF => a1
                 .iter()
                 .copied()
