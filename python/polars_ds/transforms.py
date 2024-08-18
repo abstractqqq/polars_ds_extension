@@ -536,3 +536,33 @@ def iv_encode(
             for c in temp.get_columns()
         ]
     return exprs
+
+
+def polynomial_features(
+    cols: List[str],
+    /,
+    degree: int,
+    interaction_only: bool = False,
+) -> ExprTransform:
+    """
+    Generates polynomial combinations out of the features given, at the given degree.
+
+    Parameters
+    ----------
+    cols
+        A list of strings representing column names.
+    degree
+        The degree of the polynomial combination
+    interaction_only
+        It true, only combinations that involve 2 or more variables will be used.
+    """
+    from itertools import combinations_with_replacement
+
+    if degree <= 1:
+        raise ValueError("Degree should be > 1.")
+
+    return list(
+        pl.reduce(function=lambda acc, x: acc * x, exprs=list(comb)).alias("*".join(comb))
+        for comb in combinations_with_replacement(cols, degree)
+        if ((not interaction_only) or len(set(comb)) > 1)
+    )
