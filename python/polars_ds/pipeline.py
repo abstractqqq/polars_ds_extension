@@ -599,6 +599,31 @@ class Blueprint:
 
         return self
 
+    def polynomial_features(self, cols: List[str], degree: int, interaction_only: bool = True):
+        """
+        Generates polynomial combinations out of the features given, at the given degree.
+
+        Parameters
+        ----------
+        cols
+            A list of strings representing column names. Input to this function cannot be Polars expressions.
+        degree
+            The degree of the polynomial combination
+        interaction_only
+            It true, only combinations that involve 2 or more variables will be used.
+        """
+        if not all(isinstance(s, str) for s in cols):
+            raise ValueError(
+                "Input columns to `polynomial_features` must all be strings represeting column names."
+            )
+
+        self._steps.append(
+            WithColumnsStep(
+                t.polynomial_features(cols, degree=degree, interaction_only=interaction_only)
+            )
+        )
+        return self
+
     def winsorize(
         self,
         cols: IntoExprColumn,
