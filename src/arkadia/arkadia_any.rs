@@ -77,7 +77,7 @@ pub struct AnyKDT<'a, T: Float + DistanceOps + 'static + std::fmt::Debug, A> {
 impl<'a, T: Float + DistanceOps + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a, T, A> {
 
     // Helper function that finds the bounding box for each (sub)kdtree
-    fn find_bounds(data: &[impl KdLeaf<'a, T>], dim: usize) -> (Vec<T>, Vec<T>) {
+    fn find_bounds(data: &[Leaf<'a, T, A>], dim: usize) -> (Vec<T>, Vec<T>) {
         let mut min_bounds = vec![T::max_value(); dim];
         let mut max_bounds = vec![T::min_value(); dim];
 
@@ -207,7 +207,6 @@ impl<'a, T: Float + DistanceOps + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a,
                 // The bounds are updated. New leaf is pushed to self.data
                 // this is a copy of all content in self.data, which, by now, should contain the new leaf
                 let mut new_data = self.data.split_off(0);
-                // self.data.split_off(0);
 
                 let axis = depth % self.dim;
                 let midpoint = self.min_bounds[axis]

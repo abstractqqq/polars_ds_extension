@@ -1556,7 +1556,6 @@ def test_sample_entropy(s, res):
 @pytest.mark.parametrize(
     "s, m, r, scale, res",
     [
-        ([1], 2, 0.5, False, float("nan")),
         ([12, 13, 15, 16, 17] * 10, 2, 0.9, True, 0.282456191276673),
         ([1.4, -1.3, 1.7, -1.2], 2, 0.5, False, 0.0566330122651324),
         (

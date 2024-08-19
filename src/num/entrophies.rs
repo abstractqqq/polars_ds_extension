@@ -24,15 +24,15 @@ fn pl_approximate_entropy(
     // inputs[0] is radius, the rest are the shifted columns
     // Set up radius. r is a scalar and set up at Python side.
 
-    let radius = inputs[0].f64()?;
     let name = inputs[1].name();
-    if radius.get(0).is_none() {
-        return Ok(Series::from_vec(name, vec![f64::NAN]));
+    let data = series_to_ndarray(&inputs[1..], IndexOrder::C)?;
+    let radius = inputs[0].f64()?;
+    if radius.len() != 1 {
+        return Err(PolarsError::ComputeError("Radius must be a scalar.".into()))
     }
+
     let r = radius.get(0).unwrap();
     let dim = inputs[1..].len();
-
-    let data = series_to_ndarray(&inputs[1..], IndexOrder::C)?;
     let n1 = data.nrows(); // This is equal to original length - m + 1
                            // Here, dim equals to run_length + 1, or m + 1
                            // + 1 because I am intentionally generating one more, so that we do to_ndarray only once.
@@ -77,8 +77,12 @@ fn pl_sample_entropy(
     // inputs[0] is radius, the rest are the shifted columns
     // Set up radius. r is a scalar and set up at Python side.
     let radius = inputs[0].f64()?;
-    let name = inputs[1].name();
+    if radius.len() != 1 {
+        return Err(PolarsError::ComputeError("Radius must be a scalar.".into()))
+    }
+
     let r = radius.get(0).unwrap_or(-1f64); // see return below
+    let name = inputs[1].name();
     let dim = inputs[1..].len();
     let data = series_to_ndarray(&inputs[1..], IndexOrder::C)?;
     let n1 = data.nrows();
@@ -179,13 +183,11 @@ fn pl_knn_entropy(
         let mut leaves = matrix_to_empty_leaves(&data_view);
         let tree = AnyKDT::from_leaves_unchecked(&mut leaves, DIST::L2);
 
-
         (cd, _knn_entropy_helper(tree, data_view, k, can_parallel))
     } else if metric_str == "inf" {
         let cd = 1.0;
         let mut leaves = matrix_to_empty_leaves(&data_view);
         let tree = AnyKDT::from_leaves_unchecked(&mut leaves, DIST::LINF);
-
 
         (cd, _knn_entropy_helper(tree, data_view, k, can_parallel))
     } else {
