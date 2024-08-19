@@ -4,7 +4,7 @@
 use crate::{
     arkadia::{
         matrix_to_empty_leaves, matrix_to_leaves, AnyKDT, KNNMethod, KNNRegressor, Leaf,
-        SplitMethod, DIST, SpacialQueries,
+        DIST, SpacialQueries,
     },
     utils::{list_u32_output, series_to_ndarray, split_offsets},
 };
@@ -123,7 +123,7 @@ fn pl_knn_avg(
     let mut leaves = matrix_to_leaves_filtered(&binding, id, &null_mask);
 
     let tree = match dist_from_str::<f64>(kwargs.metric) {
-        Ok(d) => AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d),
+        Ok(d) => Ok(AnyKDT::from_leaves_unchecked(&mut leaves, d)),
         Err(e) => Err(e),
     }
     .map_err(|err| PolarsError::ComputeError(err.into()))?;
@@ -266,17 +266,16 @@ fn pl_knn_ptwise(
     let ca = match dist_from_str::<f64>(kwargs.metric) {
         Ok(d) => {
             let mut leaves = matrix_to_leaves_filtered(&binding, id, null_mask);
-            AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d).map(|tree| {
-                knn_ptwise(
-                    tree,
-                    eval_mask,
-                    binding,
-                    k,
-                    can_parallel,
-                    kwargs.max_bound,
-                    kwargs.epsilon,
-                )
-            })
+            let tree = AnyKDT::from_leaves_unchecked(&mut leaves, d);
+            Ok(knn_ptwise(
+                tree,
+                eval_mask,
+                binding,
+                k,
+                can_parallel,
+                kwargs.max_bound,
+                kwargs.epsilon,
+            ))
         }
         Err(e) => Err(e),
     }
@@ -430,17 +429,16 @@ fn pl_knn_ptwise_w_dist(
     let (ca_nb, ca_dist) = match dist_from_str::<f64>(kwargs.metric) {
         Ok(d) => {
             let mut leaves = matrix_to_leaves_filtered(&binding, id, null_mask);
-            AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d).map(|tree| {
-                knn_ptwise_w_dist(
-                    tree,
-                    eval_mask,
-                    binding,
-                    k,
-                    can_parallel,
-                    kwargs.max_bound,
-                    kwargs.epsilon,
-                )
-            })
+            let tree = AnyKDT::from_leaves_unchecked(&mut leaves, d);
+            Ok(knn_ptwise_w_dist(
+                tree,
+                eval_mask,
+                binding,
+                k,
+                can_parallel,
+                kwargs.max_bound,
+                kwargs.epsilon,
+            ))
         }
         Err(e) => Err(e),
     }
@@ -520,8 +518,8 @@ fn pl_query_radius_ptwise(
     let ca = match dist_from_str::<f64>(kwargs.metric) {
         Ok(d) => {
             let mut leaves = matrix_to_leaves(&binding, id);
-            AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
-                .map(|tree| query_radius_ptwise(tree, binding, radius, can_parallel, sort))
+            let tree = AnyKDT::from_leaves_unchecked(&mut leaves, d);
+            Ok(query_radius_ptwise(tree, binding, radius, can_parallel, sort))
         }
         Err(e) => Err(e),
     }
@@ -631,8 +629,8 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
         let ca = match dist_from_str::<f64>(kwargs.metric) {
             Ok(d) => {
                 let mut leaves = matrix_to_empty_leaves(&binding);
-                AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
-                    .map(|tree| query_nb_cnt(tree, data.view(), r, can_parallel))
+                let tree = AnyKDT::from_leaves_unchecked(&mut leaves, d);
+                Ok(query_nb_cnt(tree, data.view(), r, can_parallel))
             }
             Err(e) => Err(e),
         }
@@ -642,8 +640,8 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
         let ca = match dist_from_str::<f64>(kwargs.metric) {
             Ok(d) => {
                 let mut leaves = matrix_to_empty_leaves(&binding);
-                AnyKDT::from_leaves(&mut leaves, SplitMethod::MIDPOINT, d)
-                    .map(|tree| query_nb_cnt_w_radius(tree, data.view(), radius, can_parallel))
+                let tree = AnyKDT::from_leaves_unchecked(&mut leaves, d);
+                Ok(query_nb_cnt_w_radius(tree, data.view(), radius, can_parallel))
             }
             Err(e) => Err(e),
         }

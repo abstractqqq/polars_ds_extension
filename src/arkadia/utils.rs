@@ -4,13 +4,13 @@ use num::Float;
 
 // ---
 
-#[derive(Clone, Default)]
-pub enum SplitMethod {
-    #[default]
-    MIDPOINT, // min + (max - min) / 2
-    MEAN,
-    MEDIAN,
-}
+// #[derive(Clone, Default)]
+// pub enum SplitMethod {
+//     #[default]
+//     MIDPOINT, // min + (max - min) / 2
+//     MEAN,
+//     MEDIAN,
+// }
 
 // ---
 

@@ -22,8 +22,7 @@ pub use leaf::{KdLeaf, Leaf};
 pub use neighbor::NB;
 use serde::Deserialize;
 pub use utils::{
-    matrix_to_empty_leaves, matrix_to_leaves, suggest_capacity,
-    SplitMethod,
+    matrix_to_empty_leaves, matrix_to_leaves, suggest_capacity, // SplitMethod,
 };
 
 // ---------------------------------------------------------------------------------------------------------

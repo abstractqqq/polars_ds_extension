@@ -29,7 +29,11 @@ pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
 #[inline(always)]
 pub fn series_to_ndarray(inputs: &[Series], order: IndexOrder) -> PolarsResult<Array2<f64>> {
     let df = DataFrame::new(inputs.to_vec())?;
-    df.to_ndarray::<Float64Type>(order)
+    if df.is_empty() {
+        Err(PolarsError::ComputeError("Empty data.".into()))
+    } else {
+        df.to_ndarray::<Float64Type>(order)
+    }
 }
 
 // Shared splitting method

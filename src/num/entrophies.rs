@@ -1,6 +1,6 @@
 use crate::arkadia::{
     arkadia_any::{AnyKDT, DIST},
-    matrix_to_empty_leaves, SplitMethod, SpacialQueries,
+    matrix_to_empty_leaves, SpacialQueries,
 };
 use crate::num::knn::{query_nb_cnt, KDTKwargs};
 use crate::utils::{series_to_ndarray, split_offsets};
@@ -44,8 +44,7 @@ fn pl_approximate_entropy(
     // Step 3, 4, 5 in wiki
     let data_1_view = data.slice(s![..n1, ..dim.abs_diff(1)]);
     let mut leaves = matrix_to_empty_leaves(&data_1_view);
-    let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::default(), DIST::LINF)
-        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+    let tree = AnyKDT::from_leaves_unchecked(&mut leaves, DIST::LINF);
 
     let nb_in_radius = query_nb_cnt(tree, data_1_view, r, can_parallel);
     let phi_m: f64 = nb_in_radius
@@ -57,8 +56,7 @@ fn pl_approximate_entropy(
     let n2 = n1.abs_diff(1);
     let data_2_view = data.slice(s![..n2, ..]);
     let mut leaves2 = matrix_to_empty_leaves(&data_2_view);
-    let tree = AnyKDT::from_leaves(&mut leaves2, SplitMethod::default(), DIST::LINF)
-        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+    let tree = AnyKDT::from_leaves_unchecked(&mut leaves2, DIST::LINF);
 
     let nb_in_radius = query_nb_cnt(tree, data_2_view, r, can_parallel);
     let phi_m1: f64 = nb_in_radius
@@ -95,25 +93,18 @@ fn pl_sample_entropy(
 
     let data_1_view = data.slice(s![..n1, ..dim.abs_diff(1)]);
     let mut leaves = matrix_to_empty_leaves(&data_1_view);
-    let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::default(), DIST::LINF)
-        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+    let tree = AnyKDT::from_leaves_unchecked(&mut leaves, DIST::LINF);
 
     let nb_in_radius = query_nb_cnt(tree, data_1_view, r, can_parallel);
     let b = (nb_in_radius.sum().unwrap_or(0) as f64) - (n1 as f64);
 
-    // Ok(Series::from_vec(name, vec![b]))
-    println!("Here2");
-
     let n2 = n1.abs_diff(1);
     let data_2_view = data.slice(s![..n2, ..]);
     let mut leaves2 = matrix_to_empty_leaves(&data_2_view);
-    let tree = AnyKDT::from_leaves(&mut leaves2, SplitMethod::default(), DIST::LINF)
-        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+    let tree = AnyKDT::from_leaves_unchecked(&mut leaves2, DIST::LINF);
 
     let nb_in_radius = query_nb_cnt(tree, data_2_view, r, can_parallel);
     let a = (nb_in_radius.sum().unwrap_or(0) as f64) - (n2 as f64);
-
-    println!("Here3");
 
     // Output
     Ok(Series::from_vec(name, vec![(b / a).ln()]))
@@ -186,15 +177,15 @@ fn pl_knn_entropy(
         let half_d: f64 = d / 2.0;
         let cd = std::f64::consts::PI.powf(half_d) / (2f64.powf(d)) / (1.0 + half_d).gamma();
         let mut leaves = matrix_to_empty_leaves(&data_view);
-        let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::default(), DIST::L2)
-            .map_err(|e| PolarsError::ComputeError(e.into()))?;
+        let tree = AnyKDT::from_leaves_unchecked(&mut leaves, DIST::L2);
+
 
         (cd, _knn_entropy_helper(tree, data_view, k, can_parallel))
     } else if metric_str == "inf" {
         let cd = 1.0;
         let mut leaves = matrix_to_empty_leaves(&data_view);
-        let tree = AnyKDT::from_leaves(&mut leaves, SplitMethod::default(), DIST::LINF)
-            .map_err(|e| PolarsError::ComputeError(e.into()))?;
+        let tree = AnyKDT::from_leaves_unchecked(&mut leaves, DIST::LINF);
+
 
         (cd, _knn_entropy_helper(tree, data_view, k, can_parallel))
     } else {
