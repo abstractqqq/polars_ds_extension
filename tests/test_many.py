@@ -1556,7 +1556,6 @@ def test_sample_entropy(s, res):
 @pytest.mark.parametrize(
     "s, m, r, scale, res",
     [
-        ([1], 2, 0.5, False, float("nan")),
         ([12, 13, 15, 16, 17] * 10, 2, 0.9, True, 0.282456191276673),
         ([1.4, -1.3, 1.7, -1.2], 2, 0.5, False, 0.0566330122651324),
         (
@@ -1577,12 +1576,20 @@ def test_sample_entropy(s, res):
         ([85, 80, 89] * 17, 2, 3, True, 0.0),
     ],
 )
-def test_apprximate_entropy(s, m, r, scale, res):
+def test_approximate_entropy(s, m, r, scale, res):
     df = pl.Series(name="a", values=s).to_frame()
+
     entropy = df.select(
         pds.query_approx_entropy("a", m=m, filtering_level=r, scale_by_std=scale)
     ).item(0, 0)
     assert np.isclose(entropy, res, atol=1e-12, equal_nan=True)
+
+
+def test_approximate_entropy_edge_cases():
+    df = pl.Series(name="a", values=[1]).to_frame()
+    # Error because after slicing, this becomes empty
+    with pytest.raises(Exception) as _:
+        _ = df.select(pds.query_approx_entropy("a", m=2, filtering_level=0.1, scale_by_std=False))
 
 
 @pytest.mark.parametrize(
