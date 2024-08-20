@@ -344,6 +344,9 @@ def query_sample_entropy(
     ---------
     https://en.wikipedia.org/wiki/Sample_entropy
     """
+    if m <= 1:
+        raise ValueError("Input `m` must be > 1.")
+
     t = str_to_expr(ts)
     r = ratio * t.std(ddof=0)
     rows = t.len() - m + 1
@@ -358,7 +361,6 @@ def query_sample_entropy(
         args=data,
         kwargs={
             "k": 0,
-            "leaf_size": 32,
             "metric": "inf",
             "parallel": parallel,
         },
@@ -402,8 +404,8 @@ def query_approx_entropy(
     https://en.wikipedia.org/wiki/Approximate_entropy
     """
 
-    if filtering_level <= 0:
-        raise ValueError("Filter level must be positive.")
+    if filtering_level <= 0 or m <= 1:
+        raise ValueError("Filter level must be positive and m must be > 1.")
 
     t = str_to_expr(ts)
     if scale_by_std:
@@ -423,7 +425,6 @@ def query_approx_entropy(
         args=data,
         kwargs={
             "k": 0,
-            "leaf_size": 32,
             "metric": "inf",
             "parallel": parallel,
         },
@@ -450,7 +451,7 @@ def query_knn_entropy(
     k
         The number of nearest neighbor to consider. Usually 2 or 3.
     dist : Literal[`l2`, `inf`]
-        Note `l2` is actually squared `l2` for computational efficiency.
+        Note `l2` here has to be `l2` with square root.
     parallel : bool
         Whether to run the distance query in parallel. This is recommended when you
         are running only this expression, and not in group_by context.
@@ -469,7 +470,6 @@ def query_knn_entropy(
         args=[str_to_expr(e).alias(str(i)) for i, e in enumerate(features)],
         kwargs={
             "k": k,
-            "leaf_size": 32,
             "metric": dist,
             "parallel": parallel,
             "skip_eval": False,

@@ -2,7 +2,7 @@
 use crate::arkadia::{leaf::KdLeaf, suggest_capacity, Leaf, SpacialQueries, NB};
 use cfavml::safe_trait_distance_ops::DistanceOps;
 use num::Float;
-use std::usize;
+use std::{usize, fmt::Debug};
 
 use super::KNNRegressor;
 
@@ -57,7 +57,7 @@ impl<T: Float + DistanceOps + 'static> DIST<T> {
     }
 }
 
-pub struct AnyKDT<'a, T: Float + DistanceOps + 'static + std::fmt::Debug, A> {
+pub struct AnyKDT<'a, T: Float + DistanceOps + 'static + Debug, A> {
     dim: usize,
     capacity: usize,
     // Nodes
@@ -74,7 +74,7 @@ pub struct AnyKDT<'a, T: Float + DistanceOps + 'static + std::fmt::Debug, A> {
     d: DIST<T>,
 }
 
-impl<'a, T: Float + DistanceOps + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a, T, A> {
+impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
 
     // Helper function that finds the bounding box for each (sub)kdtree
     fn find_bounds(data: &[Leaf<'a, T, A>], dim: usize) -> (Vec<T>, Vec<T>) {
@@ -154,10 +154,19 @@ impl<'a, T: Float + DistanceOps + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a,
         !(self.left.is_some() || self.right.is_some())
     }
 
-    fn push_and_update(&mut self, leaf: Leaf<'a, T, A>) {
+    /// Updates the bounds according to the new leaf
+    fn update_bounds(&mut self, leaf: &Leaf<'a, T, A>) {
         for i in 0..self.dim {
-            self.max_bounds[i] = self.max_bounds[i].max(leaf.value_at(i));
             self.min_bounds[i] = self.min_bounds[i].min(leaf.value_at(i));
+            self.max_bounds[i] = self.max_bounds[i].max(leaf.value_at(i));
+        }
+    }
+
+    /// Updates the bounds and push to new leaf to the data vec.
+    fn update_and_push(&mut self, leaf: Leaf<'a, T, A>) {
+        for i in 0..self.dim {
+            self.min_bounds[i] = self.min_bounds[i].min(leaf.value_at(i));
+            self.max_bounds[i] = self.max_bounds[i].max(leaf.value_at(i));
         }
         self.data.push(leaf);
     }
@@ -178,7 +187,7 @@ impl<'a, T: Float + DistanceOps + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a,
     #[inline(always)]
     pub fn attach_unchecked(&mut self, leaf: Leaf<'a, T, A>) {
         if self.is_leaf() {
-            self.push_and_update(leaf);
+            self.update_and_push(leaf);
         } else {
             if leaf.value_at(self.split_axis) < self.split_axis_value {
                 self.left.as_mut().unwrap().attach_unchecked(leaf)
@@ -202,7 +211,7 @@ impl<'a, T: Float + DistanceOps + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a,
     pub fn add_unchecked(&mut self, leaf: Leaf<'a, T, A>, depth: usize) {
         if self.is_leaf() {
             // Always update
-            self.push_and_update(leaf);
+            self.update_and_push(leaf);
             if self.data.len() > self.capacity {
                 // The bounds are updated. New leaf is pushed to self.data
                 // this is a copy of all content in self.data, which, by now, should contain the new leaf
@@ -216,7 +225,7 @@ impl<'a, T: Float + DistanceOps + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a,
                 new_data.sort_unstable_by_key(|leaf| leaf.value_at(axis) >= midpoint);
                 let split_idx = new_data.partition_point(|elem| elem.value_at(axis) < midpoint);
 
-                let (left, right) = new_data.split_at_mut(split_idx);
+                let (left, right) = new_data.split_at(split_idx);
 
                 if left.is_empty() {
                     // Left is size 0, right is all, is a very rare case, which happens when all the values at this
@@ -241,13 +250,12 @@ impl<'a, T: Float + DistanceOps + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a,
                     self.split_axis = axis;
                     // empty out self.data's capacity. This should have len 0 and capacity 0 by now.
                     self.data.shrink_to_fit();
-                    let left_subtree = self.grow_new_leaf(left.to_vec());
-                    let right_subtree = self.grow_new_leaf(right.to_vec());
-                    self.left = Some(Box::new(left_subtree));
-                    self.right = Some(Box::new(right_subtree));
+                    self.left = Some(Box::new(self.grow_new_leaf(left.to_vec())));
+                    self.right = Some(Box::new(self.grow_new_leaf(right.to_vec())));
                 }
             }
         } else {
+            self.update_bounds(&leaf);
             if leaf.value_at(self.split_axis) < self.split_axis_value {
                 self.left.as_mut().unwrap().add_unchecked(leaf, depth + 1);
             } else {
@@ -363,7 +371,7 @@ impl<'a, T: Float + DistanceOps + 'static + std::fmt::Debug, A: Copy> AnyKDT<'a,
     }
 }
 
-impl<'a, T: Float + DistanceOps + 'static + std::fmt::Debug, A: Copy> SpacialQueries<'a, T, A>
+impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpacialQueries<'a, T, A>
     for AnyKDT<'a, T, A>
 {
     fn dim(&self) -> usize {
@@ -487,7 +495,7 @@ impl<'a, T: Float + DistanceOps + 'static + std::fmt::Debug, A: Copy> SpacialQue
     }
 }
 
-impl<'a, T: Float + DistanceOps + 'static + std::fmt::Debug + Into<f64>, A: Float + Into<f64>>
+impl<'a, T: Float + DistanceOps + 'static + Debug + Into<f64>, A: Float + Into<f64>>
     KNNRegressor<'a, T, A> for AnyKDT<'a, T, A>
 {
 }
