@@ -13,6 +13,7 @@ from .type_alias import (
     SimpleScaleMethod,
     ExprTransform,
     QuantileMethod,
+    EncoderDefaultStrategy,
 )
 from . import num as pds_num
 from . import query_linear as pds_linear
@@ -334,6 +335,38 @@ def rank_hot_encode(
     ]
 
 
+def _encoder_default_value(
+    temp: PolarsFrame,
+    default: EncoderDefaultStrategy | float | None,
+    target: str | pl.Expr | pl.Series,
+) -> float | None:
+    """
+    Finds the default value for encoders (Target, WOE, IV encoders) for null and unknown values.
+    """
+    if default is None or isinstance(default, (int, float)):
+        return default
+    elif isinstance(default, str):
+        if default == "null":
+            return None
+        elif default == "zero":
+            return 0.0
+        elif default == "mean":
+            if isinstance(target, str):
+                return temp.lazy().select(pl.col(target).mean()).collect().item(0, 0)
+            elif isinstance(target, pl.Expr):
+                return temp.lazy().select(target.mean()).collect().item(0, 0)
+            elif isinstance(target, pl.Series):
+                return target.mean()
+            else:
+                raise ValueError("Target's type is not supported.")
+        else:
+            raise ValueError(
+                "When input `default` is string, it can only be `mean` or `null` or `zero`."
+            )
+    else:
+        raise ValueError("Invalid type for `default`")
+
+
 def target_encode(
     df: PolarsFrame,
     cols: List[str],
@@ -341,12 +374,12 @@ def target_encode(
     target: str | pl.Expr | pl.Series,
     min_samples_leaf: int = 20,
     smoothing: float = 10.0,
-    default: float | None = None,
+    default: EncoderDefaultStrategy | float | None = "null",
 ) -> ExprTransform:
     """
     Target encode the given variables. This will overwrite the columns that will be encoded.
 
-    Note: nulls will be encoded as well.
+    Note: Nulls will always be mapped to the default.
 
     Parameters
     ----------
@@ -361,7 +394,8 @@ def target_encode(
     smoothing
         Smoothing effect to balance categorical average vs prior
     default
-        If new value is encountered during transform, it will be mapped to default
+        If a new value is encountered during transform (unseen in training dataset), it will be mapped to default.
+        If this is a string, it can be `null`, `zero`, or `mean`, where `mean` means map them to the mean of the target.
 
     Reference
     ---------
@@ -381,6 +415,8 @@ def target_encode(
             "The provided columns are either not string/categorical type, or are not in df."
         )
 
+    default_value = _encoder_default_value(temp, default=default, target=target)
+
     temp = temp.select(
         pds_num.target_encode(
             c, target, min_samples_leaf=min_samples_leaf, smoothing=smoothing
@@ -392,7 +428,7 @@ def target_encode(
         exprs = [
             # c[0] will be a series of struct because of the implode above.
             pl.col(c.name).replace_strict(
-                old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default
+                old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default_value
             )
             for c in temp.get_columns()
         ]
@@ -400,7 +436,7 @@ def target_encode(
         exprs = [
             # c[0] will be a series of struct because of the implode above.
             pl.col(c.name).replace(
-                old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default
+                old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default_value
             )
             for c in temp.get_columns()
         ]
@@ -412,14 +448,14 @@ def woe_encode(
     cols: List[str],
     /,
     target: str | pl.Expr | pl.Series,
-    default: float | None = None,
+    default: EncoderDefaultStrategy | float | None = "null",
 ) -> ExprTransform:
     """
     Use Weight of Evidence to encode a discrete variable x with respect to target. This assumes x
     is discrete and castable to String. A value of 1 is added to all events/non-events
     (goods/bads) to smooth the computation. This is -1 * output of the package category_encoder's WOEEncoder.
 
-    Note: nulls will be encoded as well.
+    Note: Nulls will always be mapped to the default.
 
     Parameters
     ----------
@@ -430,7 +466,8 @@ def woe_encode(
     target
         The target column
     default
-        If new value is encountered during transform, it will be mapped to default
+        If a new value is encountered during transform (unseen in training dataset), it will be mapped to default.
+        If this is a string, it can be `null`, `zero`, or `mean`, where `mean` means map them to the mean of the target.
 
     Reference
     ---------
@@ -449,6 +486,8 @@ def woe_encode(
             "The provided columns are either not string/categorical type, or are not in df."
         )
 
+    default_value = _encoder_default_value(temp, default=default, target=target)
+
     temp = temp.select(
         pds_num.query_woe_discrete(c, target).implode() for c in valid_cols
     ).collect()  # add collect config..
@@ -457,7 +496,7 @@ def woe_encode(
         exprs = [
             # c[0] will be a series of struct because of the implode above.
             pl.col(c.name).replace_strict(
-                old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default
+                old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default_value
             )
             for c in temp.get_columns()
         ]
@@ -465,7 +504,7 @@ def woe_encode(
         exprs = [
             # c[0] will be a series of struct because of the implode above.
             pl.col(c.name).replace(
-                old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default
+                old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default_value
             )
             for c in temp.get_columns()
         ]
@@ -478,14 +517,14 @@ def iv_encode(
     cols: List[str],
     /,
     target: str | pl.Expr | pl.Series,
-    default: float | None = None,
+    default: EncoderDefaultStrategy | float | None = "null",
 ) -> ExprTransform:
     """
     Use Information Value to encode a discrete variable x with respect to target. This assumes x
     is discrete and castable to String. A value of 1 is added to all events/non-events
     (goods/bads) to smooth the computation.
 
-    Note: nulls will be encoded as well.
+    Note: Nulls will always be mapped to the default.
 
     Parameters
     ----------
@@ -496,7 +535,8 @@ def iv_encode(
     target
         The target column
     default
-        If new value is encountered during transform, it will be mapped to default
+        If a new value is encountered during transform (unseen in training dataset), it will be mapped to default.
+        If this is a string, it can be `null`, `zero`, or `mean`, where `mean` means map them to the mean of the target.
 
     Reference
     ---------
@@ -515,6 +555,8 @@ def iv_encode(
             "The provided columns are either not string/categorical type, or are not in df."
         )
 
+    default_value = _encoder_default_value(temp, default=default, target=target)
+
     temp = temp.select(
         pds_num.query_iv_discrete(c, target, return_sum=False).implode() for c in valid_cols
     ).collect()  # add collect config..
@@ -523,7 +565,7 @@ def iv_encode(
         exprs = [
             # c[0] will be a series of struct because of the implode above.
             pl.col(c.name).replace_strict(
-                old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default
+                old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default_value
             )
             for c in temp.get_columns()
         ]
@@ -531,7 +573,7 @@ def iv_encode(
         exprs = [
             # c[0] will be a series of struct because of the implode above.
             pl.col(c.name).replace(
-                old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default
+                old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default_value
             )
             for c in temp.get_columns()
         ]
