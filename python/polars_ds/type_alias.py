@@ -21,6 +21,7 @@ Noise: TypeAlias = Literal["gaussian", "uniform"]
 LRMethods: TypeAlias = Literal["normal", "l2", "l1"]
 NullPolicy: TypeAlias = Literal["raise", "skip", "one", "zero", "ignore"]
 MultiAUCStrategy: TypeAlias = Literal["weighted", "macro"]
+EncoderDefaultStrategy: TypeAlias = Literal["mean", "null", "zero"]
 # Copy of Polars
 QuantileMethod: TypeAlias = Literal["nearest", "higher", "lower", "midpoint", "linear"]
 

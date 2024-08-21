@@ -18,6 +18,7 @@ from .type_alias import (
     SimpleScaleMethod,
     StrOrExpr,
     QuantileMethod,
+    EncoderDefaultStrategy,
 )
 
 from ._utils import _POLARS_LEGACY_SUPPORT, _IS_POLARS_V1
@@ -761,7 +762,7 @@ class Blueprint:
         target: str | pl.Expr | None = None,
         min_samples_leaf: int = 20,
         smoothing: float = 10.0,
-        default: float | None = None,
+        default: EncoderDefaultStrategy | float | None = None,
     ) -> Self:
         """
         Target encode the given variables.
@@ -780,7 +781,8 @@ class Blueprint:
         smoothing
             Smoothing effect to balance categorical average vs prior
         default
-            If new value is encountered during transform, it will be mapped to default
+            If a new value is encountered during transform (unseen in training dataset), it will be mapped to default.
+            If this is a string, it can be `null`, `zero`, or `mean`, where `mean` means map them to the mean of the target.
 
         Reference
         ---------
@@ -806,7 +808,7 @@ class Blueprint:
         cols: IntoExprColumn,
         /,
         target: str | pl.Expr | None = None,
-        default: float | None = None,
+        default: EncoderDefaultStrategy | float | None = None,
     ) -> Self:
         """
         Use Weight of Evidence to encode a discrete variable x with respect to target. This assumes x
@@ -823,7 +825,8 @@ class Blueprint:
         target
             The target column
         default
-            If new value is encountered during transform, it will be mapped to default
+            If a new value is encountered during transform (unseen in training dataset), it will be mapped to default.
+            If this is a string, it can be `null`, `zero`, or `mean`, where `mean` means map them to the mean of the target.
 
         Reference
         ---------
@@ -847,7 +850,7 @@ class Blueprint:
         cols: IntoExprColumn,
         /,
         target: str | pl.Expr | None = None,
-        default: float | None = None,
+        default: EncoderDefaultStrategy | float | None = None,
     ) -> Self:
         """
         Use Information Value to encode a discrete variable x with respect to target. This assumes x
@@ -864,7 +867,8 @@ class Blueprint:
         target
             The target column
         default
-            If new value is encountered during transform, it will be mapped to default
+            If a new value is encountered during transform (unseen in training dataset), it will be mapped to default.
+            If this is a string, it can be `null`, `zero`, or `mean`, where `mean` means map them to the mean of the target.
 
         Reference
         ---------
