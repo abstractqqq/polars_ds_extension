@@ -3,7 +3,6 @@ use crate::arkadia::{leaf::KdLeaf, suggest_capacity, Leaf, SpacialQueries, NB};
 use cfavml::safe_trait_distance_ops::DistanceOps;
 use num::Float;
 use std::{usize, fmt::Debug};
-
 use super::KNNRegressor;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -37,6 +36,7 @@ impl<T: Float + DistanceOps + 'static> DIST<T> {
                 }
             }
             DIST::SQL2 => {
+                // Small penalty to use cfavml when len is small
                 if a1.len() < 16 {
                     a1.iter()
                         .copied()
@@ -66,8 +66,8 @@ pub struct AnyKDT<'a, T: Float + DistanceOps + 'static + Debug, A> {
     // Is a leaf node if this has values
     split_axis: usize,
     split_axis_value: T,
-    min_bounds: Vec<T>,
-    max_bounds: Vec<T>,
+    // vec of len 2 * dim. First dim values are mins in each dim, second dim values are maxs
+    bounds: Vec<T>, 
     // Data
     data: Vec<Leaf<'a, T, A>>, // Not empty when this is a leaf
     //
@@ -76,18 +76,17 @@ pub struct AnyKDT<'a, T: Float + DistanceOps + 'static + Debug, A> {
 
 impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
 
-    // Helper function that finds the bounding box for each (sub)kdtree
-    fn find_bounds(data: &[Leaf<'a, T, A>], dim: usize) -> (Vec<T>, Vec<T>) {
-        let mut min_bounds = vec![T::max_value(); dim];
-        let mut max_bounds = vec![T::min_value(); dim];
-
+    // Helper function that finds the bounding box for each (sub)kdtree // (Vec<T>, Vec<T>)
+    fn find_bounds(data: &[Leaf<'a, T, A>], dim: usize) -> Vec<T> {
+        let mut bounds = vec![T::max_value(); dim];
+        bounds.extend(std::iter::repeat(T::min_value()).take(dim));
         for elem in data.iter() {
             for i in 0..dim {
-                min_bounds[i] = min_bounds[i].min(elem.value_at(i));
-                max_bounds[i] = max_bounds[i].max(elem.value_at(i));
+                bounds[i] = bounds[i].min(elem.value_at(i));
+                bounds[dim + i] = bounds[dim + i].max(elem.value_at(i));
             }
         }
-        (min_bounds, max_bounds)
+        bounds
     }
 
 
@@ -117,8 +116,9 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
     }
 
     pub fn new_empty(dim: usize, capacity: usize, d: DIST<T>) -> Self {
-        let min_bounds = vec![T::max_value(); dim];
-        let max_bounds = vec![T::min_value(); dim];
+
+        let mut bounds = vec![T::max_value(); dim];
+        bounds.extend(std::iter::repeat(T::min_value()).take(dim));
         AnyKDT {
             dim: dim,
             capacity: capacity,
@@ -126,8 +126,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
             right: None,
             split_axis: usize::MAX,
             split_axis_value: T::nan(),
-            min_bounds: min_bounds,
-            max_bounds: max_bounds,
+            bounds: bounds,
             data: vec![],
             d: d,
         }
@@ -135,7 +134,8 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
 
     /// Creates a new leaf node out of the data.
     pub fn grow_new_leaf(&self, data: Vec<Leaf<'a, T, A>>) -> Self {
-        let (min_bounds, max_bounds) = Self::find_bounds(&data, self.dim);
+
+        let bounds = Self::find_bounds(&data, self.dim);
         AnyKDT {
             dim: self.dim,
             capacity: self.capacity,
@@ -143,8 +143,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
             right: None,
             split_axis: usize::MAX,
             split_axis_value: T::nan(),
-            min_bounds: min_bounds,
-            max_bounds: max_bounds,
+            bounds: bounds,
             data: data,
             d: self.d,
         }
@@ -157,16 +156,16 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
     /// Updates the bounds according to the new leaf
     fn update_bounds(&mut self, leaf: &Leaf<'a, T, A>) {
         for i in 0..self.dim {
-            self.min_bounds[i] = self.min_bounds[i].min(leaf.value_at(i));
-            self.max_bounds[i] = self.max_bounds[i].max(leaf.value_at(i));
+            self.bounds[i] = self.bounds[i].min(leaf.value_at(i));
+            self.bounds[i + self.dim] = self.bounds[i + self.dim].max(leaf.value_at(i));
         }
     }
 
     /// Updates the bounds and push to new leaf to the data vec.
     fn update_and_push(&mut self, leaf: Leaf<'a, T, A>) {
         for i in 0..self.dim {
-            self.min_bounds[i] = self.min_bounds[i].min(leaf.value_at(i));
-            self.max_bounds[i] = self.max_bounds[i].max(leaf.value_at(i));
+            self.bounds[i] = self.bounds[i].min(leaf.value_at(i));
+            self.bounds[i + self.dim] = self.bounds[i + self.dim].max(leaf.value_at(i));
         }
         self.data.push(leaf);
     }
@@ -218,8 +217,8 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
                 let mut new_data = self.data.split_off(0);
 
                 let axis = depth % self.dim;
-                let midpoint = self.min_bounds[axis]
-                    + (self.max_bounds[axis] - self.min_bounds[axis]) / (T::one() + T::one());
+                let midpoint = self.bounds[axis]
+                    + (self.bounds[axis + self.dim] - self.bounds[axis]) / (T::one() + T::one());
 
                 // True will go right, false go left
                 new_data.sort_unstable_by_key(|leaf| leaf.value_at(axis) >= midpoint);
@@ -266,16 +265,16 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
 
     /// This checks the closest distance from point to the boundaries of the box (subtree),
     /// which can help us skip entire boxes.
-    #[inline(always)]
-    fn closest_dist_to_box(&self, min_bounds: &[T], max_bounds: &[T], point: &[T]) -> T {
+    // #[inline(always)]
+    fn closest_dist_to_box(&self, bounds: &[T], point: &[T]) -> T {
         let mut dist = T::zero();
         match self.d {
             DIST::L1 => {
                 for i in 0..point.len() {
-                    if point[i] > max_bounds[i] {
-                        dist = dist + (point[i] - max_bounds[i]).abs();
-                    } else if point[i] < min_bounds[i] {
-                        dist = dist + (point[i] - min_bounds[i]).abs();
+                    if point[i] > bounds[i + self.dim] {
+                        dist = dist + (point[i] - bounds[i + self.dim]).abs();
+                    } else if point[i] < bounds[i] {
+                        dist = dist + (point[i] - bounds[i]).abs();
                     }
                 }
                 dist
@@ -283,10 +282,10 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
 
             DIST::L2 => {
                 for i in 0..point.len() {
-                    if point[i] > max_bounds[i] {
-                        dist = dist + (point[i] - max_bounds[i]).powi(2);
-                    } else if point[i] < min_bounds[i] {
-                        dist = dist + (point[i] - min_bounds[i]).powi(2);
+                    if point[i] > bounds[i + self.dim] {
+                        dist = dist + (point[i] - bounds[i + self.dim]).powi(2);
+                    } else if point[i] < bounds[i] {
+                        dist = dist + (point[i] - bounds[i]).powi(2);
                     }
                 }
                 dist.sqrt()
@@ -294,10 +293,10 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
 
             DIST::SQL2 => {
                 for i in 0..point.len() {
-                    if point[i] > max_bounds[i] {
-                        dist = dist + (point[i] - max_bounds[i]).powi(2);
-                    } else if point[i] < min_bounds[i] {
-                        dist = dist + (point[i] - min_bounds[i]).powi(2);
+                    if point[i] > bounds[i + self.dim] {
+                        dist = dist + (point[i] - bounds[i + self.dim]).powi(2);
+                    } else if point[i] < bounds[i] {
+                        dist = dist + (point[i] - bounds[i]).powi(2);
                     }
                 }
                 dist
@@ -305,10 +304,10 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
 
             DIST::LINF => {
                 for i in 0..point.len() {
-                    if point[i] > max_bounds[i] {
-                        dist = dist.max((point[i] - max_bounds[i]).abs());
-                    } else if point[i] < min_bounds[i] {
-                        dist = dist.max((point[i] - min_bounds[i]).abs());
+                    if point[i] > bounds[i + self.dim] {
+                        dist = dist.max((point[i] -  bounds[i + self.dim]).abs());
+                    } else if point[i] < bounds[i] {
+                        dist = dist.max((point[i] - bounds[i]).abs());
                     }
                 }
                 dist
@@ -317,10 +316,10 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
             DIST::ANY(func) => {
                 let mut new_point = point.to_vec();
                 for i in 0..point.len() {
-                    if point[i] > max_bounds[i] {
-                        new_point[i] = max_bounds[i];
-                    } else if point[i] < min_bounds[i] {
-                        new_point[i] = min_bounds[i];
+                    if point[i] >  bounds[i + self.dim] {
+                        new_point[i] =  bounds[i + self.dim];
+                    } else if point[i] < bounds[i] {
+                        new_point[i] = bounds[i];
                     }
                 }
                 func(point, &new_point)
@@ -352,10 +351,9 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
                 }
             }
         }
-        // You can find code comments in arkadia.rs
     }
 
-    #[inline(always)]
+    // #[inline(always)]
     fn update_nb_within(&self, neighbors: &mut Vec<NB<T, A>>, point: &[T], radius: T) {
         // This is only called if is_leaf. Safe to unwrap.
         for element in self.data.iter() {
@@ -378,7 +376,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpacialQueries<'a, T
         self.dim
     }
 
-    #[inline(always)]
+    // #[inline(always)]
     fn knn_one_step(
         &self,
         pending: &mut Vec<(T, &AnyKDT<'a, T, A>)>,
@@ -411,7 +409,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpacialQueries<'a, T
             };
 
             let dist_to_box =
-                self.closest_dist_to_box(next.min_bounds.as_ref(), next.max_bounds.as_ref(), point); // (min dist from the box to point, the next Tree)
+                self.closest_dist_to_box(&next.bounds, point); // (min dist from the box to point, the next Tree)
             if dist_to_box + epsilon < current_max {
                 pending.push((dist_to_box, next));
             }
@@ -443,7 +441,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpacialQueries<'a, T
                 next
             };
             let dist_to_box =
-                self.closest_dist_to_box(next.min_bounds.as_ref(), next.max_bounds.as_ref(), point); // (min dist from the box to point, the next Tree)
+                self.closest_dist_to_box(&next.bounds, point); // (min dist from the box to point, the next Tree)
             if dist_to_box <= radius {
                 pending.push((dist_to_box, next));
             }
@@ -477,8 +475,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpacialQueries<'a, T
                 };
 
                 let dist_to_box = self.closest_dist_to_box(
-                    next.min_bounds.as_ref(),
-                    next.max_bounds.as_ref(),
+                    &next.bounds,
                     point,
                 ); // (min dist from the box to point, the next Tree)
                 if dist_to_box <= radius {
@@ -497,13 +494,11 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpacialQueries<'a, T
 
 impl<'a, T: Float + DistanceOps + 'static + Debug + Into<f64>, A: Float + Into<f64>>
     KNNRegressor<'a, T, A> for AnyKDT<'a, T, A>
-{
-}
+{}
 
 #[cfg(test)]
 mod tests {
     use crate::arkadia::utils::matrix_to_leaves_w_row_num;
-
     use super::super::matrix_to_leaves;
     use super::*;
     use ndarray::{arr1, Array2, ArrayView1, ArrayView2};
