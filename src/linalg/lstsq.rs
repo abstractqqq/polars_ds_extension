@@ -19,7 +19,6 @@ impl From<String> for LRMethods {
     }
 }
 
-
 #[inline(always)]
 fn soft_threshold_l1(rho: f64, lambda: f64) -> f64 {
     rho.signum() * (rho.abs() - lambda).max(0f64)
@@ -33,7 +32,6 @@ fn soft_threshold_l1(rho: f64, lambda: f64) -> f64 {
 pub fn faer_qr_lstsq(x: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
     x.col_piv_qr().solve_lstsq(y)
 }
-
 
 /// Returns the coefficients for lstsq as a nrows x 1 matrix together with the inverse of XtX
 /// The uses QR (column pivot) decomposition as default method to compute inverse,
@@ -50,7 +48,7 @@ pub fn faer_qr_lstsq_with_inv(x: MatRef<f64>, y: MatRef<f64>) -> (Mat<f64>, Mat<
 
 /// Solves the weighted least square with weights given by the user
 #[inline(always)]
-pub fn faer_weighted_lstsq(x: MatRef<f64>, y:MatRef<f64>, w:&[f64]) -> Mat<f64> {
+pub fn faer_weighted_lstsq(x: MatRef<f64>, y: MatRef<f64>, w: &[f64]) -> Mat<f64> {
     let weights = faer::mat::from_row_major_slice(w, x.nrows(), 1);
     let w = weights.column_vector_as_diagonal();
     let xt = x.transpose();
@@ -187,11 +185,11 @@ pub fn faer_cholskey_ridge_with_inv(
         Ok(cho) => {
             let inv = cho.inverse();
             (inv, cho.solve(xt * y))
-        },
+        }
         Err(_) => {
             let svd = xtx_plus.thin_svd();
             (svd.inverse(), svd.solve(xt * y))
-        },
+        }
     }
 }
 
@@ -273,12 +271,12 @@ pub fn faer_recursive_ridge(
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
 /// This supports Normal or Ridge regression
 pub fn faer_rolling_lstsq(
-    x: MatRef<f64>, 
-    y: MatRef<f64>, 
+    x: MatRef<f64>,
+    y: MatRef<f64>,
     n: usize,
     lambda: f64,
     has_bias: bool,
-    method: LRMethods
+    method: LRMethods,
 ) -> Result<Vec<Mat<f64>>, String> {
     let xn = x.nrows();
     // x: size xn x m
@@ -294,7 +292,7 @@ pub fn faer_rolling_lstsq(
         LRMethods::L1 => return Err("NotImplemented".into()),
         LRMethods::L2 => faer_cholskey_ridge_with_inv(x0, y0, lambda, has_bias),
     };
-    
+
     coefficients.push(weights.to_owned());
 
     for j in n..xn {
@@ -321,7 +319,7 @@ pub fn faer_rolling_skipping_lstsq(
     m: usize,
     lambda: f64,
     has_bias: bool,
-    method: LRMethods
+    method: LRMethods,
 ) -> Result<Vec<Mat<f64>>, String> {
     let xn = x.nrows();
     let ncols = x.ncols();
@@ -372,7 +370,7 @@ pub fn faer_rolling_skipping_lstsq(
     }
 
     if right >= xn {
-        return Ok(coefficients)
+        return Ok(coefficients);
     }
     // right < xn, the problem must have been initialized (inv and weights are defined.)
     for j in right..xn {

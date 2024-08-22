@@ -1,3 +1,4 @@
+use cfavml;
 use ndarray::Array1;
 use polars::prelude::*;
 use pyo3_polars::{
@@ -8,7 +9,6 @@ use pyo3_polars::{
     },
 };
 use realfft::RealFftPlanner;
-use cfavml;
 use serde::Deserialize;
 
 // Pending: small vec optimizations? Fixed sized allocation for <= 4096?

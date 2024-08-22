@@ -1,7 +1,7 @@
 use crate::linalg::lstsq::{
     faer_cholskey_ridge, faer_lasso_regression, faer_qr_lstsq, faer_recursive_lstsq,
-    faer_recursive_ridge, faer_rolling_lstsq, faer_rolling_skipping_lstsq, 
-    faer_weighted_lstsq, LRMethods,
+    faer_recursive_ridge, faer_rolling_lstsq, faer_rolling_skipping_lstsq, faer_weighted_lstsq,
+    LRMethods,
 };
 /// Least Squares using Faer and ndarray.
 use crate::utils::{to_frame, NullPolicy};
@@ -124,7 +124,8 @@ fn series_to_mat_for_lstsq(
                 if y_has_null {
                     df = df.filter(&init_mask).unwrap();
                     Ok((df, init_mask))
-                } else { // all filled, no nulls
+                } else {
+                    // all filled, no nulls
                     let mask = BooleanChunked::from_slice("", &[true]);
                     Ok((df, mask))
                 }
@@ -141,7 +142,8 @@ fn series_to_mat_for_lstsq(
                 if y_has_null {
                     // Unlike fill, this doesn't drop y's nulls
                     Ok((df, BooleanChunked::from_slice("", &[false])))
-                } else { // all filled, no nulls
+                } else {
+                    // all filled, no nulls
                     let mask = BooleanChunked::from_slice("", &[true]);
                     Ok((df, mask))
                 }
@@ -208,7 +210,7 @@ fn pl_wls_ww(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
             if weights.len() != mat.nrows() {
                 return Err(PolarsError::ComputeError(
                     "Length of weights and data in X must be the same.".into(),
-                ))
+                ));
             }
             let x = mat.slice(s![.., 1..]).into_faer();
             let y = mat.slice(s![.., 0..1]).into_faer();
@@ -396,16 +398,12 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
             let ci_lower = betas
                 .iter()
                 .zip(std_err.iter())
-                .map(
-                    |(b, se)| b - t_alpha * se
-                )
+                .map(|(b, se)| b - t_alpha * se)
                 .collect_vec();
             let ci_upper = betas
                 .iter()
                 .zip(std_err.iter())
-                .map(
-                    |(b, se)| b + t_alpha * se
-                )
+                .map(|(b, se)| b + t_alpha * se)
                 .collect_vec();
 
             // Finalize
@@ -432,7 +430,7 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
                     t_series,
                     p_series,
                     lower,
-                    upper
+                    upper,
                 ],
             )?;
             Ok(out.into_series())
@@ -440,7 +438,6 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
         Err(e) => Err(e),
     }
 }
-
 
 #[polars_expr(output_type_func=report_output)]
 fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
@@ -472,7 +469,7 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let w = faer::mat::from_row_major_slice(weights, x.nrows(), 1);
             let w = w.column_vector_as_diagonal();
             let xt = x.transpose();
-            
+
             let xtwx = xt * w * x;
             let xtwy = xt * w * y;
             let qr = xtwx.col_piv_qr();
@@ -484,9 +481,8 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let dof = nrows as f64 - ncols as f64;
             // Residue
             let res = y - x * &coeffs;
-            let mse = (0..y.nrows())
-                .fold(0., |acc, i| acc + weights[i] * res.read(i, 0).powi(2))
-                / dof;
+            let mse =
+                (0..y.nrows()).fold(0., |acc, i| acc + weights[i] * res.read(i, 0).powi(2)) / dof;
             // std err
             let std_err = (0..ncols)
                 .map(|i| (mse * xtwx_inv.read(i, i)).sqrt())
@@ -512,16 +508,12 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let ci_lower = betas
                 .iter()
                 .zip(std_err.iter())
-                .map(
-                    |(b, se)| b - t_alpha * se
-                )
+                .map(|(b, se)| b - t_alpha * se)
                 .collect_vec();
             let ci_upper = betas
                 .iter()
                 .zip(std_err.iter())
-                .map(
-                    |(b, se)| b + t_alpha * se
-                )
+                .map(|(b, se)| b + t_alpha * se)
                 .collect_vec();
             // Finalize
             let names_ca = name_builder.finish();
@@ -546,8 +538,8 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
                     stderr_series,
                     t_series,
                     p_series,
-                    lower, 
-                    upper
+                    lower,
+                    upper,
                 ],
             )?;
             Ok(out.into_series())
@@ -675,15 +667,24 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
     match series_to_mat_for_lstsq(inputs, has_bias, null_policy) {
         Ok((mat, mask)) => {
             let should_skip = match null_policy {
-                NullPolicy::SKIP_WINDOW | NullPolicy::FILL_WINDOW(_) => (!&mask).any(), 
+                NullPolicy::SKIP_WINDOW | NullPolicy::FILL_WINDOW(_) => (!&mask).any(),
                 _ => false, // raise, ignore
             };
             let x = mat.slice(s![.., 1..]).into_faer();
             let y = mat.slice(s![.., 0..1]).into_faer();
             let coeffs = match should_skip {
-                true => faer_rolling_skipping_lstsq(x, y, n, kwargs.min_size, kwargs.lambda, has_bias, method),
+                true => faer_rolling_skipping_lstsq(
+                    x,
+                    y,
+                    n,
+                    kwargs.min_size,
+                    kwargs.lambda,
+                    has_bias,
+                    method,
+                ),
                 false => faer_rolling_lstsq(x, y, n, kwargs.lambda, has_bias, method),
-            }.map_err(|e| PolarsError::ComputeError(e.into()))?;
+            }
+            .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(
@@ -700,7 +701,7 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
                 builder.append_null();
                 pred_builder.append_null();
             }
-            
+
             // Strictly speaking I don't need this branch
             if should_skip {
                 // Skipped rows will have coeffs with shape (0, 0)

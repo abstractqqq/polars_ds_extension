@@ -1,9 +1,6 @@
-use crate::arkadia::{
-    arkadia_any::{AnyKDT, DIST},
-    matrix_to_empty_leaves, SpacialQueries,
-};
-use crate::num::knn::{query_nb_cnt, KDTKwargs};
-use crate::utils::{series_to_ndarray, split_offsets};
+use crate::arkadia::{arkadia_any::AnyKDT, matrix_to_empty_leaves, SpacialQueries};
+use crate::num_ext::knn::{query_nb_cnt, KDTKwargs};
+use crate::utils::{series_to_ndarray, split_offsets, DIST};
 use ndarray::{s, ArrayView2};
 use polars::prelude::*;
 use polars_core::POOL;
@@ -28,7 +25,7 @@ fn pl_approximate_entropy(
     let data = series_to_ndarray(&inputs[1..], IndexOrder::C)?;
     let radius = inputs[0].f64()?;
     if radius.len() != 1 {
-        return Err(PolarsError::ComputeError("Radius must be a scalar.".into()))
+        return Err(PolarsError::ComputeError("Radius must be a scalar.".into()));
     }
 
     let r = radius.get(0).unwrap();
@@ -78,7 +75,7 @@ fn pl_sample_entropy(
     // Set up radius. r is a scalar and set up at Python side.
     let radius = inputs[0].f64()?;
     if radius.len() != 1 {
-        return Err(PolarsError::ComputeError("Radius must be a scalar.".into()))
+        return Err(PolarsError::ComputeError("Radius must be a scalar.".into()));
     }
 
     let r = radius.get(0).unwrap_or(-1f64); // see return below

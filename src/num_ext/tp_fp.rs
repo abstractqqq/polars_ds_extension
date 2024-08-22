@@ -178,7 +178,6 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
     let x = x.cont_slice()?;
 
     let out: f64 = -super::trapz::trapz(y, x);
-
     Ok(Series::from_iter([out]))
 }
 

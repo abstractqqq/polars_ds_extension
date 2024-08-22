@@ -22,8 +22,6 @@ pub trait KdLeaf<'a, T: Float> {
     fn value_at(&self, idx: usize) -> T;
 
     fn vec(&self) -> &'a [T];
-
-    fn norm(&self) -> T;
 }
 
 impl<'a, T: Float, A> KdLeaf<'a, T> for Leaf<'a, T, A> {
@@ -37,10 +35,5 @@ impl<'a, T: Float, A> KdLeaf<'a, T> for Leaf<'a, T, A> {
 
     fn vec(&self) -> &'a [T] {
         self.row_vec
-    }
-
-    /// Do not use .norm on Leaf. It only exists for LeafWithNorm
-    fn norm(&self) -> T {
-        T::nan()
     }
 }

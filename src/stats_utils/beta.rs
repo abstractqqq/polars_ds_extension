@@ -169,7 +169,6 @@ pub fn ln_beta(a: f64, b: f64) -> f64 {
     }
 }
 
-
 /// Computes the inverse of the regularized incomplete beta function
 // This code is based on the implementation in the ["special"][1] crate,
 // which in turn is based on a [C implementation][2] by John Burkardt. The
@@ -361,10 +360,9 @@ pub fn inv_beta_reg(mut a: f64, mut b: f64, mut x: f64) -> f64 {
     }
 }
 
-
 /// Calculates the inverse cumulative distribution function for the
 /// Student's T-distribution at `x`
-pub fn student_t_ppf(x: f64, df:f64) -> f64 {
+pub fn student_t_ppf(x: f64, df: f64) -> f64 {
     // first calculate inverse_cdf for normal Student's T
     assert!((0.0..=1.0).contains(&x));
     let x1 = if x >= 0.5 { 1.0 - x } else { x };
@@ -372,14 +370,18 @@ pub fn student_t_ppf(x: f64, df:f64) -> f64 {
     let b = 0.5;
     let mut y = inv_beta_reg(a, b, 2.0 * x1);
     y = (df * (1. - y) / y).sqrt();
-    if x >= 0.5 { y } else { -y }
+    if x >= 0.5 {
+        y
+    } else {
+        -y
+    }
     // generalised Student's T is related to normal Student's T by `Y = μ + σ X`
     // where `X` is distributed as Student's T, so this result has to be scaled and shifted back
     // formally: F_Y(t) = P(Y <= t) = P(X <= (t - μ) / σ) = F_X((t - μ) / σ)
     // F_Y^{-1}(p) = inf { t' | F_Y(t') >= p } = inf { t' = μ + σ t | F_X((t' - μ) / σ) >= p }
     // because scale is positive: loc + scale * t is strictly monotonic function
     // = μ + σ inf { t | F_X(t) >= p } = μ + σ F_X^{-1}(p)
-    
+
     // In our case, use location = 0, scale = 1
     // self.location + self.scale * y
 }

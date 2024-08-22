@@ -2,10 +2,10 @@
 
 mod arkadia;
 mod linalg;
-mod num;
-mod pds_string;
+mod num_ext;
 mod stats;
 mod stats_utils;
+mod str_ext;
 mod utils;
 
 use faer_ext::{IntoFaer, IntoNdarray};

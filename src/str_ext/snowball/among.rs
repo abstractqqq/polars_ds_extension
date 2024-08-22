@@ -1,4 +1,4 @@
-use crate::pds_string::snowball::SnowballEnv;
+use crate::str_ext::snowball::SnowballEnv;
 
 pub struct Among<T: 'static>(
     pub &'static str,

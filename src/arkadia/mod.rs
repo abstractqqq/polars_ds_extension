@@ -17,12 +17,14 @@ pub mod leaf;
 pub mod neighbor;
 pub mod utils;
 
-pub use arkadia_any::{AnyKDT, DIST};
+pub use arkadia_any::AnyKDT;
 pub use leaf::{KdLeaf, Leaf};
 pub use neighbor::NB;
 use serde::Deserialize;
 pub use utils::{
-    matrix_to_empty_leaves, matrix_to_leaves, suggest_capacity, //SplitMethod,
+    matrix_to_empty_leaves,
+    matrix_to_leaves,
+    suggest_capacity, //SplitMethod,
 };
 
 // ---------------------------------------------------------------------------------------------------------
@@ -147,10 +149,10 @@ pub trait SpacialQueries<'a, T: Float + 'static, A> {
             Some(cnt)
         }
     }
-
 }
 
-pub trait KNNRegressor<'a, T: Float + Into<f64> + 'static, A: Float + Into<f64>>: SpacialQueries<'a, T, A>
+pub trait KNNRegressor<'a, T: Float + Into<f64> + 'static, A: Float + Into<f64>>:
+    SpacialQueries<'a, T, A>
 {
     fn knn_regress(
         &self,

@@ -1,4 +1,4 @@
-use crate::pds_string::snowball::Among;
+use crate::str_ext::snowball::Among;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone)]

@@ -2,22 +2,12 @@ use core::f64;
 
 /// Student's t test and Welch's t test.
 use super::{simple_stats_output, Alternative, StatsResult};
-use crate::{
-    stats,
-    stats_utils::beta,
-};
+use crate::{stats, stats_utils::beta};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 #[inline]
-fn ttest_ind(
-    m1: f64,
-    m2: f64,
-    v1: f64,
-    v2: f64,
-    n: f64,
-    alt: Alternative,
-) -> StatsResult {
+fn ttest_ind(m1: f64, m2: f64, v1: f64, v2: f64, n: f64, alt: Alternative) -> StatsResult {
     let num = m1 - m2;
     // ((var1 + var2) / 2 ).sqrt() * (2./n).sqrt() can be simplified as below
     let denom = ((v1 + v2) / n).sqrt();
