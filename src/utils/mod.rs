@@ -1,6 +1,8 @@
+use cfavml::safe_trait_distance_ops::DistanceOps;
 use ndarray::Array2;
+use num::Float;
 use polars::{
-    datatypes::{DataType, Field, Float32Type, Float64Type},
+    datatypes::{DataType, Field, Float64Type},
     error::{PolarsError, PolarsResult},
     frame::DataFrame,
     lazy::dsl::FieldsMapper,
@@ -151,6 +153,58 @@ impl TryFrom<String> for NullPolicy {
                 Ok(x) => Ok(Self::FILL(x)),
                 Err(_) => Err("Invalid NullPolicy.".into()),
             },
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum DIST<T: Float + 'static> {
+    L1,
+    L2,
+    SQL2, // Squared L2
+    LINF,
+    ANY(fn(&[T], &[T]) -> T),
+}
+
+impl<T: Float + DistanceOps + 'static> DIST<T> {
+    #[inline(always)]
+    pub fn dist(&self, a1: &[T], a2: &[T]) -> T {
+        match self {
+            DIST::L1 => a1
+                .iter()
+                .copied()
+                .zip(a2.iter().copied())
+                .fold(T::zero(), |acc, (x, y)| acc + ((x - y).abs())),
+
+            DIST::L2 => {
+                if a1.len() < 16 {
+                    a1.iter()
+                        .copied()
+                        .zip(a2.iter().copied())
+                        .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y))
+                        .sqrt()
+                } else {
+                    cfavml::squared_euclidean(a1, a2).sqrt()
+                }
+            }
+            DIST::SQL2 => {
+                // Small penalty to use cfavml when len is small
+                if a1.len() < 16 {
+                    a1.iter()
+                        .copied()
+                        .zip(a2.iter().copied())
+                        .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y))
+                } else {
+                    cfavml::squared_euclidean(a1, a2)
+                }
+            }
+            DIST::LINF => a1
+                .iter()
+                .copied()
+                .zip(a2.iter().copied())
+                .fold(T::zero(), |acc, (x, y)| acc.max((x - y).abs())),
+
+            DIST::ANY(func) => func(a1, a2),
         }
     }
 }

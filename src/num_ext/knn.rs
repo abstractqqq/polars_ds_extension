@@ -1,12 +1,11 @@
 /// Performs KNN related search queries, classification and regression, and
 /// other features/entropies that require KNN to be efficiently computed.
-
 use crate::{
     arkadia::{
         matrix_to_empty_leaves, matrix_to_leaves, AnyKDT, KNNMethod, KNNRegressor, Leaf,
-        DIST, SpacialQueries,
+        SpacialQueries,
     },
-    utils::{list_u32_output, series_to_ndarray, split_offsets},
+    utils::{list_u32_output, series_to_ndarray, split_offsets, DIST},
 };
 
 use ndarray::{s, ArrayView2};
@@ -84,7 +83,9 @@ pub fn matrix_to_leaves_filtered<'a, T: Float + 'static, A: Copy>(
 }
 
 // used in all cases but squared l2 (multiple queries)
-pub fn dist_from_str<T: Float + cfavml::safe_trait_distance_ops::DistanceOps + 'static>(dist_str: String) -> Result<DIST<T>, String> {
+pub fn dist_from_str<T: Float + cfavml::safe_trait_distance_ops::DistanceOps + 'static>(
+    dist_str: String,
+) -> Result<DIST<T>, String> {
     match dist_str.as_ref() {
         "l1" => Ok(DIST::L1),
         "l2" => Ok(DIST::L2),
@@ -519,7 +520,13 @@ fn pl_query_radius_ptwise(
         Ok(d) => {
             let mut leaves = matrix_to_leaves(&binding, id);
             let tree = AnyKDT::from_leaves_unchecked(&mut leaves, d);
-            Ok(query_radius_ptwise(tree, binding, radius, can_parallel, sort))
+            Ok(query_radius_ptwise(
+                tree,
+                binding,
+                radius,
+                can_parallel,
+                sort,
+            ))
         }
         Err(e) => Err(e),
     }
@@ -616,7 +623,6 @@ where
 /// The point itself is always considered as a neighbor to itself.
 #[polars_expr(output_type=UInt32)]
 fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> PolarsResult<Series> {
-
     let radius = inputs[0].f64()?;
     let can_parallel = kwargs.parallel && !context.parallel();
 
@@ -641,7 +647,12 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
             Ok(d) => {
                 let mut leaves = matrix_to_empty_leaves(&binding);
                 let tree = AnyKDT::from_leaves_unchecked(&mut leaves, d);
-                Ok(query_nb_cnt_w_radius(tree, data.view(), radius, can_parallel))
+                Ok(query_nb_cnt_w_radius(
+                    tree,
+                    data.view(),
+                    radius,
+                    can_parallel,
+                ))
             }
             Err(e) => Err(e),
         }
@@ -653,4 +664,3 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
         ))
     }
 }
-

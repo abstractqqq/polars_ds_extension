@@ -151,10 +151,7 @@ pub fn pl_nearest_str(
                 .into_par_iter()
                 .map(|(offset, len)| {
                     let ca = s.slice(offset as i64, len);
-                    let out: StringChunked = ca.apply_generic(|op_s| {
-                        let s = op_s?;
-                        func(s, cutoff, vocab)
-                    });
+                    let out: StringChunked = ca.apply_values_generic(|s| func(s, cutoff, vocab));
                     out.downcast_iter().cloned().collect::<Vec<_>>()
                 })
                 .collect();
@@ -162,10 +159,7 @@ pub fn pl_nearest_str(
         });
         Ok(out.into_series())
     } else {
-        let out: StringChunked = s.apply_generic(|op_s| {
-            let s = op_s?;
-            func(s, cutoff, vocab)
-        });
+        let out: StringChunked = s.apply_values_generic(|s| func(s, cutoff, vocab));
         Ok(out.into_series())
     }
 }
@@ -177,8 +171,7 @@ pub fn pl_knn_str(
     kwargs: KnnStrKwargs,
 ) -> PolarsResult<Series> {
     let s = inputs[0].str()?;
-    let binding = inputs[1].drop_nulls();
-    let vocab = binding.str()?;
+    let vocab = inputs[1].str()?;
 
     let parallel = kwargs.parallel;
     let can_parallel = parallel && !context.parallel();
@@ -201,13 +194,9 @@ pub fn pl_knn_str(
                     let mut builder = ListStringChunkedBuilder::new("", ca.len(), k);
                     for arr in ca.downcast_iter() {
                         for op_s in arr.iter() {
-                            match op_s {
-                                Some(s) => {
-                                    let series = func(s, cutoff, k, vocab);
-                                    let _ = builder.append_series(&series);
-                                }
-                                None => builder.append_null(),
-                            }
+                            builder.append_opt_series(
+                                op_s.map(|w| func(w, cutoff, k, vocab)).as_ref(),
+                            );
                         }
                     }
                     let out = builder.finish();
@@ -220,13 +209,7 @@ pub fn pl_knn_str(
         let mut builder = ListStringChunkedBuilder::new("", s.len(), k);
         for arr in s.downcast_iter() {
             for op_w in arr.iter() {
-                match op_w {
-                    Some(w) => {
-                        let neighbors = func(w, cutoff, k, vocab);
-                        let _ = builder.append_series(&neighbors);
-                    }
-                    None => builder.append_null(),
-                }
+                builder.append_opt_series(op_w.map(|w| func(w, cutoff, k, vocab)).as_ref());
             }
         }
         builder.finish()

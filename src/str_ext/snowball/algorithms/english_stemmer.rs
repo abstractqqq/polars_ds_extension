@@ -5,8 +5,8 @@
 #![allow(unused_mut)]
 #![allow(unused_parens)]
 #![allow(unused_variables)]
-use crate::pds_string::snowball::Among;
-use crate::pds_string::snowball::SnowballEnv;
+use crate::str_ext::snowball::Among;
+use crate::str_ext::snowball::SnowballEnv;
 
 static A_0: &'static [Among<Context>; 3] = &[
     Among("arsen", -1, -1, None),

@@ -1,4 +1,3 @@
-use cfavml::safe_trait_distance_ops::DistanceOps;
 use num::Float;
 
 mod benford;
@@ -24,7 +23,6 @@ mod woe_iv;
 
 #[inline]
 fn haversine_elementwise<T: Float>(start_lat: T, start_long: T, end_lat: T, end_long: T) -> T {
-
     let r_in_km = T::from(6371.0).unwrap();
     let two = T::from(2.0).unwrap();
     let one = T::one();
