@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import polars as pl
 import numpy as np
-from typing import List
-from .type_alias import LRSolverMethods, PolarsFrame
+from typing import List, Tuple
+from .type_alias import LRSolverMethods, NullPolicy, PolarsFrame
 
 from polars_ds._polars_ds import PyLR
 
@@ -56,6 +56,67 @@ class LR:
         """
         self._lr = PyLR(fit_bias=fit_bias, solver=solver, lambda_=lambda_)
         self.feature_names_in_ = [] if feature_names_in_ is None else list(feature_names_in_)
+
+    @staticmethod
+    def _handle_nulls_in_df(
+        df: PolarsFrame, features: List[str], target: str, null_policy: NullPolicy
+    ) -> PolarsFrame:
+        if null_policy == "ignore":
+            return df
+        elif null_policy == "raise":
+            total_null_count = (
+                df.lazy().select(*features, target).null_count().collect().sum_horizontal()[0]
+            )
+            if total_null_count > 0:
+                raise ValueError("Nulls found in Dataframe.")
+            return df
+        elif null_policy == "skip":
+            return df.drop_nulls(subset=features + [target])
+        elif null_policy == "zero":
+            return df.with_columns(pl.col(features).fill_null(0.0)).drop_nulls(subset=target)
+        elif null_policy == "one":
+            return df.with_columns(pl.col(features).fill_null(1.0)).drop_nulls(subset=target)
+        else:
+            try:
+                fill_value = float(null_policy)
+                if np.isfinite(fill_value):
+                    return df.with_columns(pl.col(features).fill_null(fill_value)).drop_nulls(
+                        subset=target
+                    )
+                raise ValueError("When null_policy is a number, it cannot be nan or infinite.")
+            except Exception as e:
+                raise ValueError(f"Unknown null_policy. Error: {e}")
+
+    @staticmethod
+    def _handle_nans_in_np(
+        X: np.ndarray,  # N x M
+        y: np.ndarray,  # N x 1
+        null_policy: NullPolicy,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        if null_policy == "ignore":
+            return (X, y)
+        elif null_policy == "raise":
+            if np.any(np.isnan(X)) | np.any(np.isnan(y)):
+                raise ValueError("Nulls found in X or y.")
+            return (X, y)
+        elif null_policy == "skip":
+            row_has_nan = np.any(np.isnan(X), axis=1) | np.any(np.isnan(y), axis=1)
+            return (X[~row_has_nan], y[~row_has_nan])
+        elif null_policy == "zero":
+            y_nans = np.any(np.isnan(y), axis=1)
+            return (np.nan_to_num(X, nan=0.0)[~y_nans], y[~y_nans])
+        elif null_policy == "one":
+            y_nans = np.any(np.isnan(y), axis=1)
+            return (np.nan_to_num(X, nan=1.0)[~y_nans], y[~y_nans])
+        else:
+            try:
+                fill_value = float(null_policy)
+                if np.isfinite(fill_value):
+                    y_nans = np.any(np.isnan(y), axis=1)
+                    return (np.nan_to_num(X, nan=fill_value)[~y_nans], y[~y_nans])
+                raise ValueError("When null_policy is a number, it cannot be nan or infinite.")
+            except Exception as e:
+                raise ValueError(f"Unknown null_policy. Error: {e}")
 
     @classmethod
     def from_values(
@@ -110,7 +171,7 @@ class LR:
         self.feature_names_in_ = list(features)
         return self
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> Self:
+    def fit(self, X: np.ndarray, y: np.ndarray, null_policy: NullPolicy = "ignore") -> Self:
         """
         Fit the linear regression model on NumPy data.
 
@@ -120,15 +181,27 @@ class LR:
             The feature Matrix. NumPy 2D matrix only.
         y
             The target data. NumPy array. Must be reshape-able to (-1, 1).
+        null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
+            One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
+            fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
+            the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
+            columns. If target has null, then the row will still be dropped.
         """
-        self._lr.fit(X, y.reshape((-1, 1)))
+        self._lr.fit(*LR._handle_nans_in_np(X, y.reshape((-1, 1)), null_policy))
         return self
 
     def fit_df(
-        self, df: PolarsFrame, features: List[str], target: str, show_report: bool = False
+        self,
+        df: PolarsFrame,
+        features: List[str],
+        target: str,
+        null_policy: NullPolicy = "skip",
+        show_report: bool = False,
     ) -> Self:
         """
         Fit the linear regression model on a dataframe. This will overwrite previously set feature names.
+        The null policy only handles null values in df, not NaN values. It is the user's responsibility to handle
+        NaN values if they exist in their pipeline.
 
         Parameters
         ----------
@@ -138,6 +211,11 @@ class LR:
             List of strings of column names.
         target
             The target column's name.
+        null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
+            One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
+            fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
+            the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
+            columns. If target has null, then the row will still be dropped.
         show_report
             Whether to print out a regression report. This will duplicate work and will not work for Ridge
             regression. E.g. Nothing will be printed if lambda_ > 0.
@@ -157,7 +235,11 @@ class LR:
                 .collect()
             )
 
-        df2 = df.lazy().select(*features, target).collect()
+        df2 = (
+            LR._handle_nulls_in_df(df.lazy(), features, target, null_policy)
+            .select(*features, target)
+            .collect()
+        )
         X = df2.select(features).to_numpy()
         y = df2.select(target).to_numpy()
         self.feature_names_in_ = list(features)
