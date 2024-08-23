@@ -194,7 +194,7 @@ pub fn pl_knn_str(
                     let mut builder = ListStringChunkedBuilder::new("", ca.len(), k);
                     for arr in ca.downcast_iter() {
                         for op_s in arr.iter() {
-                            builder.append_opt_series(
+                            let _ = builder.append_opt_series(
                                 op_s.map(|w| func(w, cutoff, k, vocab)).as_ref(),
                             );
                         }
@@ -209,7 +209,7 @@ pub fn pl_knn_str(
         let mut builder = ListStringChunkedBuilder::new("", s.len(), k);
         for arr in s.downcast_iter() {
             for op_w in arr.iter() {
-                builder.append_opt_series(op_w.map(|w| func(w, cutoff, k, vocab)).as_ref());
+                let _ = builder.append_opt_series(op_w.map(|w| func(w, cutoff, k, vocab)).as_ref());
             }
         }
         builder.finish()
