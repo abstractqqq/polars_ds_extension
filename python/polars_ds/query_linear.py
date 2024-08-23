@@ -1,7 +1,7 @@
 from __future__ import annotations
 import polars as pl
 import warnings
-from .type_alias import LRMethods, NullPolicy
+from .type_alias import LRMethods, LRSolverMethods, NullPolicy
 from ._utils import pl_plugin
 
 __all__ = [
@@ -34,6 +34,7 @@ def query_lstsq(
     l1_reg: float = 0.0,
     l2_reg: float = 0.0,
     tol: float = 1e-5,
+    solver: LRSolverMethods = "qr",
     null_policy: NullPolicy = "raise",
 ) -> pl.Expr:
     """
@@ -69,9 +70,13 @@ def query_lstsq(
     l2_reg
         Regularization factor for Ridge. Should be nonzero when method = l2.
     tol
-        When method = l1, if maximum coordinate update is < tol, the algorithm is considered to have
+        When method = 'l1', if maximum coordinate update is < tol, the algorithm is considered to have
         converged. If not, it will run for at most 2000 iterations. This stopping criterion is not as
         good as the dual gap.
+    solver
+        Only applies when method != 'l1'. One of ['svd', 'qr', 'cholesky']. Both 'svd' and 'qr' can handle
+        rank deficient cases relatively well, while cholesky may fail or slow down. When cholesky fails,
+        it falls back to svd.
     null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
         One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
@@ -101,6 +106,7 @@ def query_lstsq(
         "method": str(method).lower(),
         "l1_reg": l1_reg,
         "l2_reg": l2_reg,
+        "solver": solver,
         "tol": tol,
     }
     if return_pred:
@@ -173,6 +179,7 @@ def query_wls_ww(
         "method": "",
         "l1_reg": 0.0,
         "l2_reg": 0.0,
+        "solver": "",
         "tol": 0.0,
     }
     if return_pred:
@@ -397,6 +404,7 @@ def query_lstsq_report(
         "method": "normal",
         "l1_reg": 0.0,
         "l2_reg": 0.0,
+        "solver": "qr",
         "tol": 0.0,
     }
 

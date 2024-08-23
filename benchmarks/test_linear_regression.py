@@ -64,7 +64,7 @@ def test_sklearn_linear_regression(benchmark, n):
 
     @benchmark
     def func():
-        reg = LinearRegression(fit_intercept=False)
+        reg = LinearRegression(fit_intercept=False, n_jobs=-1)
         reg.fit(df[X_VARS], df[Y])
 
 
@@ -92,23 +92,50 @@ def test_sklearn_lasso(benchmark, n):
 
 
 @pytest.mark.parametrize("n", SIZES)
-@pytest.mark.benchmark(group="ridge")
-def test_ridge(benchmark, n):
+@pytest.mark.benchmark(group="ridge_svd")
+def test_ridge_svd(benchmark, n):
     df = DF.sample(n=n, seed=SEED)
 
     @benchmark
     def func():
         df.select(
-            pds.query_lstsq("x1", "x2", "x3", "x4", "x5", target="y", method="l2", l2_reg=0.1)
+            pds.query_lstsq(
+                "x1", "x2", "x3", "x4", "x5", target="y", method="l2", l2_reg=0.1, solver="svd"
+            )
         )
 
 
 @pytest.mark.parametrize("n", SIZES)
-@pytest.mark.benchmark(group="ridge")
-def test_sklearn_ridge(benchmark, n):
+@pytest.mark.benchmark(group="ridge_svd")
+def test_sklearn_ridge_svd(benchmark, n):
     df = PD_DF.sample(n=n, random_state=SEED)
 
     @benchmark
     def func():
-        reg = Ridge(alpha=0.1, fit_intercept=False)
+        reg = Ridge(alpha=0.1, fit_intercept=False, solver="svd")
+        reg.fit(df[X_VARS], df[Y])
+
+
+@pytest.mark.parametrize("n", SIZES)
+@pytest.mark.benchmark(group="ridge_cholesky")
+def test_ridge_cholesky(benchmark, n):
+    df = DF.sample(n=n, seed=SEED)
+
+    @benchmark
+    def func():
+        df.select(
+            pds.query_lstsq(
+                "x1", "x2", "x3", "x4", "x5", target="y", method="l2", l2_reg=0.1, solver="cholesky"
+            )
+        )
+
+
+@pytest.mark.parametrize("n", SIZES)
+@pytest.mark.benchmark(group="ridge_cholesky")
+def test_sklearn_ridge_cholesky(benchmark, n):
+    df = PD_DF.sample(n=n, random_state=SEED)
+
+    @benchmark
+    def func():
+        reg = Ridge(alpha=0.1, fit_intercept=False, solver="cholesky")
         reg.fit(df[X_VARS], df[Y])

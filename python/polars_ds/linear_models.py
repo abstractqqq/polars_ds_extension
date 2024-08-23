@@ -8,17 +8,17 @@ This module requires the NumPy package. PDS only requires Polars, but you can ge
 
 """
 
-# Currently skipping tests for this module because the underlying functi  ons are all tested in one way or
+# Currently skipping tests for this module because the underlying functions are all tested in one way or
 # another.
 
 from __future__ import annotations
 
 import polars as pl
 import numpy as np
-from .type_alias import LRMethods
 from typing import List
-from .type_alias import PolarsFrame
-from ._polars_ds import pds_faer_lr
+from .type_alias import LRSolverMethods, PolarsFrame
+
+from polars_ds._polars_ds import PyLR
 
 import sys
 
@@ -28,89 +28,74 @@ else:  # 3.10, 3.9, 3.8
     from typing_extensions import Self
 
 
-def linear_regression_report(X: np.ndarray, y: np.ndarray) -> pl.DataFrame:
-    """
-    Fits a one-time linear regression model using X and y and returns the regression report as a dataframe.
-
-    This only works with NumPy inputs. If you have a dataframe input, use pds.query_lstsq_report directly.
-
-    Parameters
-    ----------
-    X
-        The feature Matrix. NumPy 2D matrix only.
-    y
-        The target data. NumPy array.
-    """
-
-    from . import query_lstsq_report
-
-    schema = [f"x{i+1}" for i in range(X.shape[1])]
-    df = pl.from_numpy(X, schema=schema).with_columns(
-        pl.Series(name="__target__", values=y.flatten())
-    )
-
-    return df.select(
-        query_lstsq_report(*schema, target="__target__", skip_null=True).alias("report")
-    ).unnest("report")
-
-
 class LR:
 
     """
-    Normal, L1 and L2 regression models.
+    Normal and Ridge Regression.
     """
 
     def __init__(
         self,
-        X: np.ndarray | None = None,
-        y: np.ndarray | None = None,
-        add_bias: bool = False,
-        method: LRMethods = "normal",
+        fit_bias: bool = False,
         lambda_: float = 0.0,
-        tol: float = 1e-5,
+        solver: LRSolverMethods = "qr",
+        feature_names_in_: List[str] | None = None,
     ):
         """
         Parameters
         ----------
-        add_bias
+        fit_bias
             Whether to add a bias term. Also known as intercept in other packages.
-        method
-            One of 'normal' (normal lstsq), 'l1' (Lasso), 'l2' (Ridge).
+        solver
+            Use one of 'svd', 'cholesky' and 'qr' method to solve the least square equation. Default is 'qr'.
         lambda_
-            The regularization parameters for Lasso or Ridge
-        tol
-            The tolerance parameters when method = 'l1'. This controls when coordinate descent will stop.
+            The regularization parameters for ridge. If this is positive, then this class will solve Ridge.
+        feature_names_in_
+            Names for the incoming features, if available. If None, the names will be empty. They will be
+            learned if .fit_df() is run later, or .set_input_features() is set later.
         """
-        self.coeffs: np.ndarray = np.array([])
-        self.add_bias: bool = add_bias
-        self.bias: float = 0.0
+        self._lr = PyLR(fit_bias=fit_bias, solver=solver, lambda_=lambda_)
+        self.feature_names_in_ = [] if feature_names_in_ is None else list(feature_names_in_)
 
-        _VALID_METHODS = ["normal", "l1", "l2"]
-        if method in _VALID_METHODS:
-            self.method: LRMethods = method
-        else:
-            raise ValueError(f"Input `method` is not valid. Valid values are {_VALID_METHODS}.")
+    @classmethod
+    def from_values(
+        cls, coeffs: List[float], bias: float, feature_names_in_: List[str] | None = None
+    ) -> Self:
+        """
+        Constructs a LR class instance from coefficients and bias. This always assumes the coefficients come
+        from a normal linear regression, not Ridge.
 
-        if method != "normal" and lambda_ <= 0.0:
-            raise ValueError("Input `lambda_` must be > 0 when method is `l1` or `l2`.")
+        Parameters
+        ----------
+        coeffs
+            Iterable of numbers representing the coefficients
+        bias
+            Value for the bias term
+        feature_names_in_
+            Names for the incoming features, if available. If None, the names will be empty. They will be
+            learned if .fit_df() is run later, or .set_input_features() is set later.
+        """
+        coefficients = np.ascontiguousarray(coeffs, dtype=np.float64).flatten()
+        lr = cls(
+            fit_bias=(bias != 0.0), lambda_=0.0, solver="qr", feature_names_in_=feature_names_in_
+        )
+        lr._lr.set_coeffs_and_bias(coefficients, bias)
+        return lr
 
-        self.lambda_: float = lambda_
-        self.tol: float = tol
-        self.feature_names_in_: List[str] = []
-
-        if X is not None and y is not None:
-            self.fit(X, y)
+    def is_fit(self) -> bool:
+        return self._lr.is_fit()
 
     def __repr__(self) -> str:
-        output = ""
-        output += f"Coefficients: {list(self.coeffs.flatten())}\n"
-        output += f"Bias/Intercept: {self.bias}\n"
-        output += f"Fit Method: {self.method}\n"
-        if self.method != "normal":
-            output += f"Regularization: {self.lambda_}\n"
-        if self.method == "l1":
-            output += f"Algorithm tolerance: {self.tol}\n"
+        if self._lr.lambda_ > 0.0:
+            output = "Linear Regression (Ridge) Model\n"
+        else:
+            output = "Linear Regression Model\n"
 
+        if self._lr.is_fit():
+            output += f"Coefficients: {list(self._lr.coeffs)}\n"
+            output += f"Bias/Intercept: {self._lr.bias}\n"
+        else:
+            output += "Not fitted yet."
         return output
 
     def set_input_features(self, features: List[str]) -> Self:
@@ -136,26 +121,12 @@ class LR:
         y
             The target data. NumPy array. Must be reshape-able to (-1, 1).
         """
-
-        new_y = y.reshape((-1, 1))
-        if X.shape[0] != y.shape[0]:
-            raise ValueError("Number of rows do not match.")
-
-        n_features = X.shape[0]  # no bias
-        if self.add_bias:
-            new_x = np.hstack((X, np.ones((n_features, 1))))
-        else:
-            new_x = X
-
-        temp = pds_faer_lr(new_x, new_y, self.add_bias, self.method, self.lambda_, self.tol)
-
-        self.coeffs = temp[:n_features].reshape((-1, 1))
-        if self.add_bias:
-            self.bias = temp[-1]
-
+        self._lr.fit(X, y.reshape((-1, 1)))
         return self
 
-    def fit_df(self, df: PolarsFrame, features: List[str], target: str) -> Self:
+    def fit_df(
+        self, df: PolarsFrame, features: List[str], target: str, show_report: bool = False
+    ) -> Self:
         """
         Fit the linear regression model on a dataframe. This will overwrite previously set feature names.
 
@@ -167,11 +138,29 @@ class LR:
             List of strings of column names.
         target
             The target column's name.
+        show_report
+            Whether to print out a regression report. This will duplicate work and will not work for Ridge
+            regression. E.g. Nothing will be printed if lambda_ > 0.
         """
-        df_x = df.lazy().select(features).collect()
-        self.feature_names_in_ = list(df_x.columns)
-        X = df_x.to_numpy()
-        y = df.select(target).to_numpy()
+        if show_report and self._lr.lambda_ == 0.0:
+            from . import query_lstsq_report
+
+            print(
+                df.lazy()
+                .select(
+                    query_lstsq_report(
+                        *features,
+                        target=target,
+                    ).alias("report")
+                )
+                .unnest("report")
+                .collect()
+            )
+
+        df2 = df.lazy().select(*features, target).collect()
+        X = df2.select(features).to_numpy()
+        y = df2.select(target).to_numpy()
+        self.feature_names_in_ = list(features)
         return self.fit(X, y)
 
     def predict(self, X: np.ndarray) -> np.ndarray:
@@ -183,7 +172,7 @@ class LR:
         X
             New feature matrix
         """
-        return X @ self.coeffs + self.bias
+        return self._lr.predict(X)
 
     def predict_df(self, df: PolarsFrame, name: str = "prediction") -> PolarsFrame:
         """
@@ -199,13 +188,15 @@ class LR:
         """
         if len(self.feature_names_in_) <= 0:
             raise ValueError(
-                "The linear model is not fitted on a dataframe, and therefore cannot predict on a dataframe. Hint: try .fit_df() first."
+                "The linear model is not fitted on a dataframe, or no feature names have been given."
+                "Not enough info to predict on a dataframe. Hint: try .fit_df() or .set_input_features()."
             )
 
         pred = pl.sum_horizontal(
-            beta * pl.col(c) for c, beta in zip(self.feature_names_in_, self.coeffs.flatten())
+            beta * pl.col(c) for c, beta in zip(self.feature_names_in_, self._lr.coeffs)
         )
-        if self.add_bias:
-            pred = pred + self.bias
+        bias = self._lr.bias
+        if bias != 0:
+            pred = pred + bias
 
         return df.with_columns(pred.alias(name))

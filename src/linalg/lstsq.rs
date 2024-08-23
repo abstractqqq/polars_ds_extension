@@ -1,23 +1,185 @@
+#![allow(non_snake_case)]
+use col::ColBatch;
 use faer::{prelude::*, Side};
 use std::ops::Neg;
+use super::LinalgErrors;
+
+#[derive(Clone, Copy, Default)]
+pub enum LRSolverMethods {
+    SVD,
+    Choleskey,
+    #[default]
+    QR,
+}
+
+impl From<&str> for LRSolverMethods {
+    fn from(value: &str) -> Self {
+        match value {
+            "qr" => Self::QR,
+            "svd" => Self::SVD,
+            "choleskey" => Self::Choleskey,
+            _ => Self::QR
+        }
+    }
+}
 
 // add elastic net
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default, PartialEq)]
 pub enum LRMethods {
+    #[default]
     Normal, // Normal. Normal Equation
     L1,     // Lasso, L1 regularized
     L2,     // Ridge, L2 regularized
 }
 
-impl From<String> for LRMethods {
-    fn from(value: String) -> Self {
-        match value.as_str() {
-            "l1" | "lasso" => LRMethods::L1,
-            "l2" | "ridge" => LRMethods::L2,
-            _ => LRMethods::Normal,
+impl From<&str> for LRMethods {
+    fn from(value: &str) -> Self {
+        match value {
+            "l1" | "lasso" => Self::L1,
+            "l2" | "ridge" => Self::L2,
+            _ => Self::Normal,
         }
     }
 }
+
+// add elastic net
+#[derive(Clone, Copy, Default, PartialEq)]
+pub enum ClosedFormLRMethods {
+    #[default]
+    Normal, // Normal. Normal Equation
+    L2,     // Ridge, L2 regularized
+}
+
+impl From<&str> for ClosedFormLRMethods {
+    fn from(value: &str) -> Self {
+        match value {
+            "l2" | "ridge" => Self::L2,
+            _ => Self::Normal,
+        }
+    }
+}
+
+impl From<f64> for ClosedFormLRMethods {
+    fn from(value: f64) -> Self {
+        if value > 0. {
+            Self::L2
+        } else {
+            Self::Normal
+        }
+    }
+}
+
+/// A struct that handles regular linear regression and Ridge regression.
+pub struct LR {
+    pub solver: LRSolverMethods,
+    pub method: ClosedFormLRMethods,
+    pub lambda: f64,
+    pub coefficients: Mat<f64>, // n_features x 1 matrix, doesn't contain bias
+    pub fit_bias: bool,
+    pub bias: f64,
+}
+
+impl LR {
+
+    pub fn new(solver:&str, lambda:f64, fit_bias:bool) -> Self {
+        LR {
+            solver: solver.into(),
+            method: lambda.into(),
+            lambda: lambda,
+            coefficients: Mat::new(),
+            fit_bias: fit_bias,
+            bias: 0.,
+        }
+    }
+
+    pub fn from_values(coeffs:&[f64], bias:f64) -> Self {
+        LR {
+            solver: LRSolverMethods::default(),
+            method: ClosedFormLRMethods::default(),
+            lambda: 0.,
+            coefficients: faer::mat::from_row_major_slice(coeffs, coeffs.len(), 1).to_owned(),
+            fit_bias: (bias > 0.),
+            bias: bias,
+        }
+    }
+
+    pub fn set_coeffs_and_bias(&mut self, coeffs:&[f64], bias:f64) {
+        self.coefficients = (faer::mat::from_row_major_slice(coeffs, coeffs.len(), 1)).to_owned();
+        self.bias = bias;
+    }
+
+    pub fn is_fit(&self) -> bool {
+        !(self.coefficients.shape() == (0, 0))
+    }
+
+    pub fn check_is_fit(&self) -> Result<(), LinalgErrors> {
+        if self.is_fit() {
+            Ok(())
+        } else {
+            Err(LinalgErrors::Other("Coefficients not fit.".into()))
+        }
+    }
+
+    pub fn coeffs_as_vec(&self) -> Result<Vec<f64>, LinalgErrors> {
+        match self.check_is_fit() {
+            Ok(_) => Ok(self.coefficients.col_as_slice(0).to_vec()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Fits the linear regression. Input X is any m x n matrix. Input y must be a m x 1 matrix.
+    /// Note, if there is a bias term in the data, then it must be in the matrix X as the last
+    /// column and has_bias must be true. This will not append a bias column to X.
+    /// This doesn't check dimensions.
+    pub fn fit(&mut self, X:MatRef<f64>, y: MatRef<f64>) -> Result<(), LinalgErrors> {
+
+        if X.nrows() != y.nrows() {
+            return Err(LinalgErrors::DimensionMismatch)
+        }
+        let all_coefficients = if self.fit_bias {
+            let ones = Mat::full(X.nrows(), 1, 1.0);
+            let new = faer::concat![[X, ones]];
+            match self.method {
+                ClosedFormLRMethods::Normal => faer_solve_lstsq(new.as_ref(), y, self.solver),
+                ClosedFormLRMethods::L2 => faer_solve_ridge(new.as_ref(), y, self.lambda, self.fit_bias, self.solver)
+            }
+        } else {
+            match self.method {
+                ClosedFormLRMethods::Normal => faer_solve_lstsq(X, y, self.solver),
+                ClosedFormLRMethods::L2 => faer_solve_ridge(X, y, self.lambda, self.fit_bias, self.solver)
+            }
+        };
+        if self.fit_bias {
+            let n = all_coefficients.nrows();
+            let slice = all_coefficients.col_as_slice(0);
+            self.coefficients = faer::mat::from_row_major_slice(&slice[..n-1], n-1, 1).to_owned();
+            self.bias = slice[n-1];
+        } else {
+            self.coefficients = all_coefficients;
+        }
+
+        Ok(())
+    }
+
+    /// Predicts the with coefficients learned.
+    pub fn predict(&self, x: MatRef<f64>) -> Result<Mat<f64>, LinalgErrors> {
+
+        if x.ncols() != self.coefficients.nrows() {
+            Err(LinalgErrors::DimensionMismatch)
+        } else if !self.is_fit() {
+            Err(LinalgErrors::Other("Coefficients not fit.".into()))
+        } else {
+            if self.fit_bias {
+                let temp = Mat::full(x.nrows(), 1, self.bias);
+                Ok(x * &self.coefficients + temp) 
+            } else {
+                Ok(x * &self.coefficients)
+            }
+        }
+    }
+
+
+} 
 
 #[inline(always)]
 fn soft_threshold_l1(rho: f64, lambda: f64) -> f64 {
@@ -25,12 +187,46 @@ fn soft_threshold_l1(rho: f64, lambda: f64) -> f64 {
 }
 
 /// Returns the coefficients for lstsq as a nrows x 1 matrix
-/// The uses QR (column pivot) decomposition as default method to compute inverse,
-/// Column Pivot QR is chosen to deal with rank deficient cases. It is also slightly
-/// faster compared to other methods.
 #[inline(always)]
-pub fn faer_qr_lstsq(x: MatRef<f64>, y: MatRef<f64>) -> Mat<f64> {
-    x.col_piv_qr().solve_lstsq(y)
+pub fn faer_solve_lstsq(x: MatRef<f64>, y: MatRef<f64>, how:LRSolverMethods) -> Mat<f64> {
+    match how {
+        LRSolverMethods::SVD => (x.transpose() * x).thin_svd().solve(x.transpose() * y),
+        LRSolverMethods::QR => x.col_piv_qr().solve_lstsq(y),
+        LRSolverMethods::Choleskey => match (x.transpose() * x).cholesky(Side::Lower) {
+            Ok(cho) => cho.solve(x.transpose() * y),
+            Err(_) => x.col_piv_qr().solve_lstsq(y),
+        },
+    }
+}
+
+/// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
+#[inline(always)]
+pub fn faer_solve_ridge(
+    x: MatRef<f64>,
+    y: MatRef<f64>,
+    lambda: f64,
+    has_bias: bool,
+    how: LRSolverMethods
+) -> Mat<f64> {
+    // Add ridge SVD with rconditional number later.
+
+    let n1 = x.ncols().abs_diff(has_bias as usize);
+    let xt = x.transpose();
+    let mut xtx_plus = xt * x;
+    // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
+    // Safe. Index is valid and value is initialized.
+    for i in 0..n1 {
+        *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
+    }
+
+    match how {
+        LRSolverMethods::Choleskey => match xtx_plus.cholesky(Side::Lower) {
+            Ok(cho) => cho.solve(xt * y),
+            Err(_) => xtx_plus.thin_svd().solve(xt * y),
+        },
+        LRSolverMethods::SVD => xtx_plus.thin_svd().solve(xt * y),
+        LRSolverMethods::QR => xtx_plus.col_piv_qr().solve(xt * y),
+    }
 }
 
 /// Returns the coefficients for lstsq as a nrows x 1 matrix together with the inverse of XtX
@@ -44,6 +240,39 @@ pub fn faer_qr_lstsq_with_inv(x: MatRef<f64>, y: MatRef<f64>) -> (Mat<f64>, Mat<
     let inv = qr.inverse();
     let weights = qr.solve(xt * y);
     (inv, weights)
+}
+
+/// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
+/// By default this uses Choleskey to solve the system, and in case the matrix is not positive
+/// definite, it falls back to SVD. (I suspect the matrix in this case is always positive definite!)
+#[inline(always)]
+pub fn faer_cholesky_ridge_with_inv(
+    x: MatRef<f64>,
+    y: MatRef<f64>,
+    lambda: f64,
+    has_bias: bool,
+) -> (Mat<f64>, Mat<f64>) {
+
+    let n1 = x.ncols().abs_diff(has_bias as usize);
+
+    let xt = x.transpose();
+    let mut xtx_plus = xt * x;
+    // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
+    // Safe. Index is valid and value is initialized.
+    for i in 0..n1 {
+        *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
+    }
+
+    match xtx_plus.cholesky(Side::Lower) {
+        Ok(cho) => {
+            let inv = cho.inverse();
+            (inv, cho.solve(xt * y))
+        }
+        Err(_) => {
+            let svd = xtx_plus.thin_svd();
+            (svd.inverse(), svd.solve(xt * y))
+        }
+    }
 }
 
 /// Solves the weighted least square with weights given by the user
@@ -129,69 +358,6 @@ pub fn faer_lasso_regression(
     beta
 }
 
-/// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
-/// By default this uses Choleskey to solve the system, and in case the matrix is not positive
-/// definite, it falls back to SVD. (I suspect the matrix in this case is always positive definite!)
-#[inline(always)]
-pub fn faer_cholskey_ridge(
-    x: MatRef<f64>,
-    y: MatRef<f64>,
-    lambda: f64,
-    has_bias: bool,
-) -> Mat<f64> {
-    // Add ridge SVD with rconditional number later.
-
-    let n1 = x.ncols().abs_diff(has_bias as usize);
-
-    let xt = x.transpose();
-    let mut xtx_plus = xt * x;
-
-    // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
-    // Safe. Index is valid and value is initialized.
-    for i in 0..n1 {
-        *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
-    }
-
-    match xtx_plus.cholesky(Side::Lower) {
-        Ok(cho) => cho.solve(xt * y),
-        Err(_) => xtx_plus.thin_svd().solve(xt * y),
-    }
-}
-
-/// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
-/// By default this uses Choleskey to solve the system, and in case the matrix is not positive
-/// definite, it falls back to SVD. (I suspect the matrix in this case is always positive definite!)
-#[inline(always)]
-pub fn faer_cholskey_ridge_with_inv(
-    x: MatRef<f64>,
-    y: MatRef<f64>,
-    lambda: f64,
-    has_bias: bool,
-) -> (Mat<f64>, Mat<f64>) {
-    // Add ridge SVD with rconditional number later.
-
-    let n1 = x.ncols().abs_diff(has_bias as usize);
-
-    let xt = x.transpose();
-    let mut xtx_plus = xt * x;
-
-    // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
-    // Safe. Index is valid and value is initialized.
-    for i in 0..n1 {
-        *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
-    }
-
-    match xtx_plus.cholesky(Side::Lower) {
-        Ok(cho) => {
-            let inv = cho.inverse();
-            (inv, cho.solve(xt * y))
-        }
-        Err(_) => {
-            let svd = xtx_plus.thin_svd();
-            (svd.inverse(), svd.solve(xt * y))
-        }
-    }
-}
 
 /// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
@@ -290,7 +456,7 @@ pub fn faer_rolling_lstsq(
     let (mut inv, mut weights) = match method {
         LRMethods::Normal => faer_qr_lstsq_with_inv(x0, y0),
         LRMethods::L1 => return Err("NotImplemented".into()),
-        LRMethods::L2 => faer_cholskey_ridge_with_inv(x0, y0, lambda, has_bias),
+        LRMethods::L2 => faer_cholesky_ridge_with_inv(x0, y0, lambda, has_bias),
     };
 
     coefficients.push(weights.to_owned());
@@ -358,7 +524,7 @@ pub fn faer_rolling_skipping_lstsq(
             (inv, weights) = match method {
                 LRMethods::Normal => faer_qr_lstsq_with_inv(x0, y0),
                 LRMethods::L1 => return Err("NotImplemented".into()),
-                LRMethods::L2 => faer_cholskey_ridge_with_inv(x0, y0, lambda, has_bias),
+                LRMethods::L2 => faer_cholesky_ridge_with_inv(x0, y0, lambda, has_bias),
             };
             coefficients.push(weights.to_owned());
             break;
