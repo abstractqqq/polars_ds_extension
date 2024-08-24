@@ -11,7 +11,8 @@ use pyo3_polars::{
 use realfft::RealFftPlanner;
 use serde::Deserialize;
 
-// Pending: small vec optimizations? Fixed sized allocation for <= 4096?
+// Small vec optimizations? Fixed sized allocation for <= 4096?
+
 #[derive(Deserialize, Debug)]
 pub(crate) struct ConvolveKwargs {
     pub(crate) mode: String,

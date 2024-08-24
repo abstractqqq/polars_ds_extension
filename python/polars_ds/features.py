@@ -7,6 +7,7 @@ import math
 import polars as pl
 from .type_alias import str_to_expr, Distance
 from ._utils import pl_plugin
+from typing import Iterable, Literal
 
 __all__ = [
     "query_abs_energy",
@@ -33,6 +34,7 @@ __all__ = [
     "query_cond_indep",
     "query_transfer_entropy",
     "query_permute_entropy",
+    "query_similar_count",
 ]
 
 #################################################
@@ -212,6 +214,57 @@ def query_first_digit_cnt(var: str | pl.Expr) -> pl.Expr:
         args=[str_to_expr(var)],
         returns_scalar=True,
     )
+
+
+def query_similar_count(
+    query: Iterable[float],
+    target: str | pl.Expr,
+    threshold: float,
+    metric: Literal["sql2", "sqzl2"] = "sqzl2",
+    parallel: bool = False,
+    return_ratio: bool = False,
+) -> pl.Expr:
+    """
+    Given a query subsequence, find the number of same-sized subsequences (windows) in target
+    series that have distance < threshold from it.
+
+    Parameters
+    ----------
+    query
+        The query subsequence. Must not contain nulls.
+    target
+        The target time series.
+    threshold
+        The distance threshold
+    metric
+        Either 'sql2' or 'sqzl2', which stands for squared l2 and squared z-normalized l2.
+    parallel
+        Only applies when method is `direct`. Whether to compute the convulotion in parallel. Note that this may not
+        have the expected performance when you are in group_by or other parallel context already. It is recommended
+        to use this in select/with_columns context, when few expressions are being run at the same time.
+    return_ratio
+        If true, return # of similar subseuqnces / total number of subsequences.
+    """
+    if metric == "sqzl2":
+        raise NotImplementedError
+
+    q = pl.Series(name="", values=query, dtype=pl.Float64)
+    if q.null_count() > 0:
+        raise ValueError("Nulls found in the query subsequence.")
+
+    t = str_to_expr(target)
+    kwargs = {"threshold": threshold, "parallel": parallel}
+
+    result = pl_plugin(
+        symbol="pl_subseq_sim_cnt_l2",
+        args=[t, q],
+        kwargs=kwargs,
+        returns_scalar=True,
+    )
+    if return_ratio:
+        return result / (t.len() - len(q) + 1)
+
+    return result
 
 
 def query_lempel_ziv(b: str | pl.Expr, as_ratio: bool = True) -> pl.Expr:
