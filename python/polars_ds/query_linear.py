@@ -35,7 +35,7 @@ def query_lstsq(
     l2_reg: float = 0.0,
     tol: float = 1e-5,
     solver: LRSolverMethods = "qr",
-    null_policy: NullPolicy = "raise",
+    null_policy: NullPolicy = "skip",
 ) -> pl.Expr:
     """
     Computes least squares solution to the equation Ax = y where y is the target.
@@ -207,7 +207,7 @@ def query_recursive_lstsq(
     method: LRMethods = "normal",
     l2_reg: float = 0.1,
     null_policy: NullPolicy = "raise",
-):
+) -> pl.Expr:
     """
     Using the first `start_with` rows of data as basis, start computing the least square solutions
     by updating the betas per row. A prediction for that row will also be included in the output.
@@ -284,7 +284,7 @@ def query_rolling_lstsq(
     l2_reg: float = 0.1,
     min_valid_rows: int | None = None,
     null_policy: NullPolicy = "raise",
-):
+) -> pl.Expr:
     """
     Using every `window_size` rows of data as feature matrix, and computes least square solutions
     by rolling the window. A prediction for that row will also be included in the output.

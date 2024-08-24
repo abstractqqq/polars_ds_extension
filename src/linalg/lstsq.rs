@@ -69,6 +69,49 @@ impl From<f64> for ClosedFormLRMethods {
     }
 }
 
+/// Returns the coefficients for lstsq as a nrows x 1 matrix
+#[inline(always)]
+pub fn faer_solve_lstsq(x: MatRef<f64>, y: MatRef<f64>, how:LRSolverMethods) -> Mat<f64> {
+    match how {
+        LRSolverMethods::SVD => (x.transpose() * x).thin_svd().solve(x.transpose() * y),
+        LRSolverMethods::QR => x.col_piv_qr().solve_lstsq(y),
+        LRSolverMethods::Choleskey => match (x.transpose() * x).cholesky(Side::Lower) {
+            Ok(cho) => cho.solve(x.transpose() * y),
+            Err(_) => x.col_piv_qr().solve_lstsq(y),
+        },
+    }
+}
+
+/// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
+#[inline(always)]
+pub fn faer_solve_ridge(
+    x: MatRef<f64>,
+    y: MatRef<f64>,
+    lambda: f64,
+    has_bias: bool,
+    how: LRSolverMethods
+) -> Mat<f64> {
+    // Add ridge SVD with rconditional number later.
+
+    let n1 = x.ncols().abs_diff(has_bias as usize);
+    let xt = x.transpose();
+    let mut xtx_plus = xt * x;
+    // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
+    // Safe. Index is valid and value is initialized.
+    for i in 0..n1 {
+        *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
+    }
+
+    match how {
+        LRSolverMethods::Choleskey => match xtx_plus.cholesky(Side::Lower) {
+            Ok(cho) => cho.solve(xt * y),
+            Err(_) => xtx_plus.thin_svd().solve(xt * y),
+        },
+        LRSolverMethods::SVD => xtx_plus.thin_svd().solve(xt * y),
+        LRSolverMethods::QR => xtx_plus.col_piv_qr().solve(xt * y),
+    }
+}
+
 /// A struct that handles regular linear regression and Ridge regression.
 pub struct LR {
     pub solver: LRSolverMethods,
@@ -184,49 +227,6 @@ impl LR {
 #[inline(always)]
 fn soft_threshold_l1(rho: f64, lambda: f64) -> f64 {
     rho.signum() * (rho.abs() - lambda).max(0f64)
-}
-
-/// Returns the coefficients for lstsq as a nrows x 1 matrix
-#[inline(always)]
-pub fn faer_solve_lstsq(x: MatRef<f64>, y: MatRef<f64>, how:LRSolverMethods) -> Mat<f64> {
-    match how {
-        LRSolverMethods::SVD => (x.transpose() * x).thin_svd().solve(x.transpose() * y),
-        LRSolverMethods::QR => x.col_piv_qr().solve_lstsq(y),
-        LRSolverMethods::Choleskey => match (x.transpose() * x).cholesky(Side::Lower) {
-            Ok(cho) => cho.solve(x.transpose() * y),
-            Err(_) => x.col_piv_qr().solve_lstsq(y),
-        },
-    }
-}
-
-/// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
-#[inline(always)]
-pub fn faer_solve_ridge(
-    x: MatRef<f64>,
-    y: MatRef<f64>,
-    lambda: f64,
-    has_bias: bool,
-    how: LRSolverMethods
-) -> Mat<f64> {
-    // Add ridge SVD with rconditional number later.
-
-    let n1 = x.ncols().abs_diff(has_bias as usize);
-    let xt = x.transpose();
-    let mut xtx_plus = xt * x;
-    // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
-    // Safe. Index is valid and value is initialized.
-    for i in 0..n1 {
-        *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
-    }
-
-    match how {
-        LRSolverMethods::Choleskey => match xtx_plus.cholesky(Side::Lower) {
-            Ok(cho) => cho.solve(xt * y),
-            Err(_) => xtx_plus.thin_svd().solve(xt * y),
-        },
-        LRSolverMethods::SVD => xtx_plus.thin_svd().solve(xt * y),
-        LRSolverMethods::QR => xtx_plus.col_piv_qr().solve(xt * y),
-    }
 }
 
 /// Returns the coefficients for lstsq as a nrows x 1 matrix together with the inverse of XtX

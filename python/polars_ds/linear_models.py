@@ -282,3 +282,7 @@ class LR:
             pred = pred + bias
 
         return df.with_columns(pred.alias(name))
+
+
+class OnlineLR:
+    pass
