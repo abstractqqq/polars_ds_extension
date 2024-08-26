@@ -7,6 +7,7 @@ import math
 import polars as pl
 from .type_alias import str_to_expr, Distance
 from ._utils import pl_plugin
+from typing import Iterable, Literal
 
 __all__ = [
     "query_abs_energy",
@@ -33,6 +34,7 @@ __all__ = [
     "query_cond_indep",
     "query_transfer_entropy",
     "query_permute_entropy",
+    "query_similar_count",
 ]
 
 #################################################
@@ -212,6 +214,81 @@ def query_first_digit_cnt(var: str | pl.Expr) -> pl.Expr:
         args=[str_to_expr(var)],
         returns_scalar=True,
     )
+
+
+def query_similar_count(
+    query: Iterable[float],
+    target: str | pl.Expr,
+    threshold: float,
+    metric: Literal["sql2", "sqzl2"] = "sqzl2",
+    parallel: bool = False,
+    return_ratio: bool = False,
+) -> pl.Expr:
+    """
+    Given a query subsequence, find the number of same-sized subsequences (windows) in target
+    series that have distance < threshold from it.
+
+    Note: If target is largely null, errors may occur. If metric is sqzl2, a mininum variance
+    of 1e-10 is applied to all variance calculations to avoid division by 0.
+
+    Parameters
+    ----------
+    query
+        The query subsequence. Must not contain nulls.
+    target
+        The target time series.
+    threshold
+        The distance threshold
+    metric
+        Either 'sql2' or 'sqzl2', which stands for squared l2 and squared z-normalized l2.
+    parallel
+        Only applies when method is `direct`. Whether to compute the convulotion in parallel. Note that this may not
+        have the expected performance when you are in group_by or other parallel context already. It is recommended
+        to use this in select/with_columns context, when few expressions are being run at the same time.
+    return_ratio
+        If true, return # of similar subseuqnces / total number of subsequences.
+    """
+
+    q = pl.Series(name="", values=query, dtype=pl.Float64)
+    if q.null_count() > 0:
+        raise ValueError("Nulls found in the query subsequence.")
+    if len(q) <= 1:
+        raise ValueError("Length of the query should be > 1.")
+
+    t = str_to_expr(target)
+    kwargs = {"threshold": threshold, "parallel": parallel}
+    if metric == "sql2":
+        result = pl_plugin(
+            symbol="pl_subseq_sim_cnt_l2",
+            args=[t.cast(pl.Float64).rechunk(), q],
+            kwargs=kwargs,
+            returns_scalar=True,
+        )
+    elif metric == "sqzl2":  # pl_subseq_sim_cnt_zl2
+        rolling_mean = t.rolling_mean(window_size=len(q)).slice(len(q) - 1, None)
+        rolling_var = pl.max_horizontal(
+            t.rolling_var(window_size=len(q)).slice(len(q) - 1, None).fill_nan(1e-10),
+            pl.lit(1e-10, dtype=pl.Float64),
+        )
+        qq = pl.lit(q)
+        args = [
+            t.cast(pl.Float64).rechunk(),
+            (qq - qq.mean()) / qq.std(),
+            rolling_mean,
+            rolling_var,
+        ]
+        result = pl_plugin(
+            symbol="pl_subseq_sim_cnt_zl2",
+            args=args,
+            kwargs=kwargs,
+            returns_scalar=True,
+        )
+    else:
+        raise ValueError(f"Unsupported metric {metric}.")
+
+    if return_ratio:
+        return result / (t.len() - len(q) + 1)
+    return result
 
 
 def query_lempel_ziv(b: str | pl.Expr, as_ratio: bool = True) -> pl.Expr:

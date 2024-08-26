@@ -1635,37 +1635,40 @@ def test_psi_discrete(df, res):
     assert np.isclose(ans, res)
 
 
-# @pytest.mark.parametrize(
-#     "df, target, path, cost",
-#     [
-#         # It is easier to provide a frame that needs to be exploded by
-#         (
-#             pl.DataFrame(
-#                 {
-#                     "id": range(5),
-#                     "conn": [[1, 2, 3, 4], [2, 3], [4], [0, 1, 2], [1]],
-#                     "cost": [[0.4, 0.3, 0.2, 0.1], [0.1, 1.0], [0.5], [0.1, 0.1, 0.1], [0.1]],
-#                 }
-#             ).with_columns(
-#                 pl.col("id").cast(pl.UInt32), pl.col("conn").list.eval(pl.element().cast(pl.UInt32))
-#             ),
-#             1,
-#             [[4, 1], [], [4, 1], [1], [1]],
-#             [0.2, 0.0, 0.6, 0.1, 0.1],
-#         ),
-#     ],
-# )
-# def test_shortest_dist(df, target, path, cost):
-#     df = df.explode([pl.col("conn"), pl.col("cost")])
+def test_query_similar_count():
+    def square_l2_distance(a: np.ndarray, b: np.ndarray):
+        diff = a - b
+        return diff.dot(diff)
 
-#     res = (
-#         df.select(pds.query_shortest_path("id", "conn", target=target, cost="cost").alias("path"))
-#         .unnest("path")
-#         .sort("id")
-#     )
+    size = 1000
+    df = pds.frame(size=size).select(
+        pds.random(0.0, 1.0).alias("x1"),
+    )
 
-#     for p, ans in zip(res["path"], path):
-#         assert list(p) == ans
+    query = np.random.random(size=3)
 
-#     for c, ans in zip(res["cost"], cost):
-#         assert c == ans
+    cnt = df.select(
+        pds.query_similar_count(query=query, target="x1", metric="sqzl2", threshold=0.1)
+    ).item(0, 0)
+
+    x1 = df["x1"].to_numpy()
+    actual_cnt = 0
+    z_normed_query = (query - np.mean(query)) / np.std(query, ddof=1)
+    for i in range(0, len(x1) - len(query) + 1):
+        sl = x1[i : i + len(query)]
+        znormed = (sl - np.mean(sl)) / np.std(sl, ddof=1)
+        actual_cnt += int((square_l2_distance(znormed, z_normed_query) < 0.1))
+
+    assert cnt == actual_cnt
+
+    cnt = df.select(
+        pds.query_similar_count(query=query, target="x1", metric="sql2", threshold=0.1)
+    ).item(0, 0)
+
+    x1 = df["x1"].to_numpy()
+    actual_cnt = 0
+    for i in range(0, len(x1) - len(query) + 1):
+        sl = x1[i : i + len(query)]
+        actual_cnt += int((square_l2_distance(sl, query) < 0.1))
+
+    assert cnt == actual_cnt
