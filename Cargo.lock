@@ -266,9 +266,9 @@ dependencies = [
 
 [[package]]
 name = "cfavml"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9fc281d80f4fc2daaadf865ec1201286f94e2b0767cf9837963926e7fa0f587"
+checksum = "7f17fed3f25ab174007bfafd41dcbfc7981da0163477b8a716f82ad808b1d2ed"
 
 [[package]]
 name = "cfg-if"

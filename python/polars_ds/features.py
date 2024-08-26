@@ -228,6 +228,9 @@ def query_similar_count(
     Given a query subsequence, find the number of same-sized subsequences (windows) in target
     series that have distance < threshold from it.
 
+    Note: If target is largely null, errors may occur. If metric is sqzl2, a mininum variance
+    of 1e-10 is applied to all variance calculations to avoid division by 0.
+
     Parameters
     ----------
     query
@@ -245,25 +248,46 @@ def query_similar_count(
     return_ratio
         If true, return # of similar subseuqnces / total number of subsequences.
     """
-    if metric == "sqzl2":
-        raise NotImplementedError
 
     q = pl.Series(name="", values=query, dtype=pl.Float64)
     if q.null_count() > 0:
         raise ValueError("Nulls found in the query subsequence.")
+    if len(q) <= 1:
+        raise ValueError("Length of the query should be > 1.")
 
     t = str_to_expr(target)
     kwargs = {"threshold": threshold, "parallel": parallel}
+    if metric == "sql2":
+        result = pl_plugin(
+            symbol="pl_subseq_sim_cnt_l2",
+            args=[t.cast(pl.Float64).rechunk(), q],
+            kwargs=kwargs,
+            returns_scalar=True,
+        )
+    elif metric == "sqzl2":  # pl_subseq_sim_cnt_zl2
+        rolling_mean = t.rolling_mean(window_size=len(q)).slice(len(q) - 1, None)
+        rolling_var = pl.max_horizontal(
+            t.rolling_var(window_size=len(q)).slice(len(q) - 1, None).fill_nan(1e-10),
+            pl.lit(1e-10, dtype=pl.Float64),
+        )
+        qq = pl.lit(q)
+        args = [
+            t.cast(pl.Float64).rechunk(),
+            (qq - qq.mean()) / qq.std(),
+            rolling_mean,
+            rolling_var,
+        ]
+        result = pl_plugin(
+            symbol="pl_subseq_sim_cnt_zl2",
+            args=args,
+            kwargs=kwargs,
+            returns_scalar=True,
+        )
+    else:
+        raise ValueError(f"Unsupported metric {metric}.")
 
-    result = pl_plugin(
-        symbol="pl_subseq_sim_cnt_l2",
-        args=[t, q],
-        kwargs=kwargs,
-        returns_scalar=True,
-    )
     if return_ratio:
         return result / (t.len() - len(q) + 1)
-
     return result
 
 
