@@ -14,7 +14,6 @@ use polars::{
 // Common, Resuable Functions
 // -------------------------------------------------------------------------------
 
-// Rechunk series, rename then by the order, and return a PolarsResult<DataFrame>
 #[inline(always)]
 pub fn rechunk_to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
     let mut df = DataFrame::new(inputs.to_vec())?;
@@ -22,7 +21,6 @@ pub fn rechunk_to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
     Ok(df)
 }
 
-// Rechunk series, rename then by the order, and return a PolarsResult<DataFrame>
 #[inline(always)]
 pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
     DataFrame::new(inputs.to_vec())

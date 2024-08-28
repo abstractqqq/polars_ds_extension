@@ -18,7 +18,7 @@ import numpy as np
 from typing import List, Tuple
 from .type_alias import LRSolverMethods, NullPolicy, PolarsFrame
 
-from polars_ds._polars_ds import PyLR
+from polars_ds._polars_ds import PyOnlineLR
 
 import sys
 
@@ -46,16 +46,15 @@ class LR:
         ----------
         fit_bias
             Whether to add a bias term. Also known as intercept in other packages.
-        solver
-            Use one of 'svd', 'cholesky' and 'qr' method to solve the least square equation. Default is 'qr'.
         lambda_
             The regularization parameters for ridge. If this is positive, then this class will solve Ridge.
+        solver
+            Use one of 'svd', 'cholesky' and 'qr' method to solve the least square equation. Default is 'qr'.
         feature_names_in_
             Names for the incoming features, if available. If None, the names will be empty. They will be
             learned if .fit_df() is run later, or .set_input_features() is set later.
         """
-        self._lr = PyLR(fit_bias=fit_bias, solver=solver, lambda_=lambda_)
-        self.feature_names_in_ = [] if feature_names_in_ is None else list(feature_names_in_)
+        self._lr = PyOnlineLR()
 
     @staticmethod
     def _handle_nulls_in_df(
@@ -119,8 +118,8 @@ class LR:
                 raise ValueError(f"Unknown null_policy. Error: {e}")
 
     @classmethod
-    def from_values(
-        cls, coeffs: List[float], bias: float, feature_names_in_: List[str] | None = None
+    def from_coeffs(
+        cls, coeffs: List[float], bias: float = 0.0, feature_names_in_: List[str] | None = None
     ) -> Self:
         """
         Constructs a LR class instance from coefficients and bias. This always assumes the coefficients come
@@ -153,7 +152,7 @@ class LR:
             output = "Linear Regression Model\n"
 
         if self._lr.is_fit():
-            output += f"Coefficients: {list(self._lr.coeffs)}\n"
+            output += f"Coefficients: {list(round(x, 5) for x in self._lr.coeffs)}\n"
             output += f"Bias/Intercept: {self._lr.bias}\n"
         else:
             output += "Not fitted yet."
@@ -170,6 +169,12 @@ class LR:
         """
         self.feature_names_in_ = list(features)
         return self
+
+    def coeffs(self) -> np.ndarray:
+        """
+        Returns a copy of the coefficients.
+        """
+        return self._lr.coeffs
 
     def fit(self, X: np.ndarray, y: np.ndarray, null_policy: NullPolicy = "ignore") -> Self:
         """
@@ -254,7 +259,12 @@ class LR:
         X
             New feature matrix
         """
-        return self._lr.predict(X)
+        if X.ndim == 1:
+            return self._lr.predict(X.reshape((1, -1)))
+        elif X.ndim == 2:
+            return self._lr.predict(X)
+        else:
+            return ValueError("Dimension not supported.")
 
     def predict_df(self, df: PolarsFrame, name: str = "prediction") -> PolarsFrame:
         """
@@ -285,4 +295,128 @@ class LR:
 
 
 class OnlineLR:
-    pass
+    """
+    Normal or Ridge Online Regression. Currently doesn't support dataframe inputs.
+    """
+
+    def __init__(
+        self,
+        fit_bias: bool = False,
+        lambda_: float = 0.0,
+    ):
+        """
+        Parameters
+        ----------
+        fit_bias
+            Whether to add a bias term. Also known as intercept in other packages.
+        lambda_
+            The regularization parameters for ridge. If this is positive, then this class will solve Ridge.
+        """
+        self._lr = PyOnlineLR(fit_bias=fit_bias, lambda_=lambda_)
+
+    @classmethod
+    def from_coeffs_and_inv(cls, coeffs: List[float], inv: np.ndarray, bias: float = 0.0) -> Self:
+        """
+        Constructs an online linear regression instance from coefficients, inverse and bias.
+
+        Parameters
+        ----------
+        coeffs
+            Iterable of numbers representing the coefficients
+        inv
+            2D NumPy matrix representing the inverse of XtX in a regression problem.
+        bias
+            Value for the bias term
+        """
+        coefficients = np.ascontiguousarray(coeffs, dtype=np.float64).flatten()
+        lr = cls(fit_bias=(bias != 0.0), lambda_=0.0)
+        lr._lr.set_coeffs_bias_inverse(coefficients, inv, bias)
+        return lr
+
+    def is_fit(self) -> bool:
+        return self._lr.is_fit()
+
+    def __repr__(self) -> str:
+        if self._lr.lambda_ > 0.0:
+            output = "Online Linear Regression (Ridge) Model\n"
+        else:
+            output = "Online Linear Regression Model\n"
+
+        if self._lr.is_fit():
+            output += f"Coefficients: {list(round(x, 5) for x in self._lr.coeffs)}\n"
+            output += f"Bias/Intercept: {self._lr.bias}\n"
+        else:
+            output += "Not fitted yet."
+        return output
+
+    def coeffs(self) -> np.ndarray:
+        """
+        Returns a copy of the current coefficients.
+        """
+        return self._lr.coeffs
+
+    def inv(self) -> np.ndarray:
+        """
+        Returns a copy of the current inverse matrix (inverse of XtX in a linear regression).
+        """
+        return self._lr.inv
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> Self:
+        """
+        Initial Fit for the online linear regression model on NumPy data.
+
+        Parameters
+        ----------
+        X
+            The feature Matrix. NumPy 2D matrix only.
+        y
+            The target data. NumPy array. Must be reshape-able to (-1, 1).
+        """
+        if np.any(np.isnan(X)) | np.any(np.isnan(y)):
+            raise ValueError(
+                "Online regression currently must fit with data without null for the initial fit."
+            )
+
+        self._lr.fit(X, y)
+        return self
+
+    def update(self, X: np.ndarray, y: np.ndarray | float, c: float = 1.0) -> Self:
+        """
+        Updates the online linear regression model with one row of data. If the row contains np.nan,
+        it will be ignored.
+
+        Parameters
+        ----------
+        X
+            Either a a 1d array or a 2d array with 1 row. Must be reshapeable to a matrix with 1 row.
+        y
+            Either a scalar, or a 1d array with 1 element, or a 2d array of size 1x1.
+        c
+            The middle term (C) in the woodbury matrix identity. A value of 1.0 means we add
+            the impact of the new data, and a value of -1.0 means we remove the impact of the
+            data. Any other value will `scale` the impact of the data.
+        """
+        x_2d = X.reshape((1, -1))
+        if isinstance(y, float):
+            y_2d = np.array([[y]])
+        else:
+            y_2d = y.reshape((1, 1))
+
+        self._lr.update(x_2d, y_2d, c)
+        return self
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """
+        Returns the prediction of this online linear model.
+
+        Parameters
+        ----------
+        X
+            New feature matrix
+        """
+        if X.ndim == 1:
+            return self._lr.predict(X.reshape((1, -1)))
+        elif X.ndim == 2:
+            return self._lr.predict(X)
+        else:
+            return ValueError("Dimension not supported.")

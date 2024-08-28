@@ -2,7 +2,7 @@ import polars as pl
 import polars_ds as pds
 import pytest
 import numpy as np
-from polars_ds.linear_models import LR
+from polars_ds.linear_models import LR, OnlineLR
 
 
 def test_lr_null_policies_for_np():
@@ -44,3 +44,41 @@ def test_lr_null_policies_for_np():
     assert np.all(
         x_one[nulls][:, 0] == 1.0
     )  # checking out the first column because only that has nulls
+
+
+def test_online_lr():
+    from sklearn.linear_model import LinearRegression
+
+    size = 5000
+    df = (
+        pds.frame(size=size)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_row_index()
+        .with_columns(
+            y=pl.col("x1") + pl.col("x2") * 0.2 - 0.3 * pl.col("x3") + pds.random() * 0.0001
+        )
+    )
+    X = df.select("x1", "x2", "x3").to_numpy()
+    y = df.select("y").to_numpy()
+
+    olr = OnlineLR()  # no bias, normal
+    sk_lr = LinearRegression(fit_intercept=False)
+
+    olr.fit(X[:10], y[:10])
+    coeffs = olr.coeffs()
+    sk_lr.fit(X[:10], y[:10])
+    sklearn_coeffs = sk_lr.coef_
+
+    assert np.all(np.abs(coeffs - sklearn_coeffs) < 1e-5)
+
+    for i in range(10, 20):
+        olr.update(X[i], y[i])
+        coeffs = olr.coeffs()
+        sk_lr = LinearRegression(fit_intercept=False)
+        sk_lr.fit(X[: i + 1], y[: i + 1])
+        sklearn_coeffs = sk_lr.coef_
+        assert np.all(np.abs(coeffs - sklearn_coeffs) < 1e-5)

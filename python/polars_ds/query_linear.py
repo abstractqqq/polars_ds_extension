@@ -226,8 +226,8 @@ def query_recursive_lstsq(
     target : str | pl.Expr
         The target variable
     start_with: int
-        Must be >= 1. You `start_with` n rows of data to train the first linear regression. If `start_with` = 2,
-        the first row will be null, etc. If you start with N < # features, result will be numerically very
+        Must be >= 1. You `start_with` n rows of data to train the first linear regression. If `start_with` = N,
+        the first N-1 rows will be null. If you start with N < # features, result will be numerically very
         unstable and potentially wrong.
     add_bias
         Whether to add a bias term
@@ -291,6 +291,7 @@ def query_rolling_lstsq(
     This uses the famous Sherman-Morrison-Woodbury Formula under the hood.
 
     Note: You have to be careful about the order of data when using this in aggregation contexts.
+    Rows with null will not contribute to the update.
 
     Parameters
     ----------

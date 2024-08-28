@@ -1,15 +1,6 @@
 use crate::linalg::lstsq::{
-    faer_lasso_regression, 
-    faer_recursive_lstsq, 
-    faer_recursive_ridge, 
-    faer_rolling_lstsq, 
-    faer_rolling_skipping_lstsq, 
-    faer_solve_lstsq, 
-    faer_solve_ridge, 
-    faer_weighted_lstsq, 
-    LR,
-    LRMethods, 
-    LRSolverMethods
+    faer_lasso_regression, faer_recursive_lstsq, faer_rolling_lstsq, faer_rolling_skipping_lstsq,
+    faer_solve_lstsq, faer_solve_ridge, faer_weighted_lstsq, LRMethods, LRSolverMethods, LR,
 };
 /// Least Squares using Faer and ndarray.
 use crate::utils::{to_frame, NullPolicy};
@@ -190,7 +181,9 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
             let coeffs = match method {
                 LRMethods::Normal => faer_solve_lstsq(x, y, kwargs.solver.as_str().into()),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
-                LRMethods::L2 => faer_solve_ridge(x, y, kwargs.l2_reg, add_bias, kwargs.solver.as_str().into()),
+                LRMethods::L2 => {
+                    faer_solve_ridge(x, y, kwargs.l2_reg, add_bias, kwargs.solver.as_str().into())
+                }
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new("coeffs", 1, coeffs.nrows(), DataType::Float64);
@@ -250,7 +243,9 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let coeffs = match method {
                 LRMethods::Normal => faer_solve_lstsq(x, y, kwargs.solver.as_str().into()),
                 LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
-                LRMethods::L2 => faer_solve_ridge(x, y, kwargs.l2_reg, add_bias, kwargs.solver.as_str().into()),
+                LRMethods::L2 => {
+                    faer_solve_ridge(x, y, kwargs.l2_reg, add_bias, kwargs.solver.as_str().into())
+                }
             };
 
             let pred = x * &coeffs;
@@ -577,11 +572,12 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult
             let y = mat.slice(s![.., 0..1]).into_faer();
 
             let coeffs = match method {
-                LRMethods::Normal => faer_recursive_lstsq(x, y, n),
+                // Whether it is normal or L2 will be decide by lambda
+                LRMethods::Normal => faer_recursive_lstsq(x, y, n, 0., has_bias),
+                LRMethods::L2 => faer_recursive_lstsq(x, y, n, kwargs.lambda, has_bias),
                 LRMethods::L1 => {
                     return Err(PolarsError::ComputeError("NotImplemented".into()));
                 }
-                LRMethods::L2 => faer_recursive_ridge(x, y, n, kwargs.lambda, has_bias),
             };
 
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
@@ -632,8 +628,8 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult
                     }
                 }
             } else {
-                // n = 0 or 1 mean the same
-                let m = ((n > 1) as usize) * n.abs_diff(1);
+                // n always > 1, guaranteed in Python
+                let m = n.abs_diff(1);
                 for _ in 0..m {
                     builder.append_null();
                     pred_builder.append_null();
@@ -660,7 +656,13 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult
 fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<Series> {
     let n = kwargs.n; // Gauranteed n >= 2
     let has_bias = kwargs.bias;
+    // Guaranteed in Python to be not L1.
     let method = LRMethods::from(kwargs.method.as_str());
+    let lambda = if method == LRMethods::L2 {
+        kwargs.lambda
+    } else {
+        0.
+    };
 
     let mut null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
@@ -682,18 +684,9 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
             let x = mat.slice(s![.., 1..]).into_faer();
             let y = mat.slice(s![.., 0..1]).into_faer();
             let coeffs = match should_skip {
-                true => faer_rolling_skipping_lstsq(
-                    x,
-                    y,
-                    n,
-                    kwargs.min_size,
-                    kwargs.lambda,
-                    has_bias,
-                    method,
-                ),
-                false => faer_rolling_lstsq(x, y, n, kwargs.lambda, has_bias, method),
-            }
-            .map_err(|e| PolarsError::ComputeError(e.into()))?;
+                true => faer_rolling_skipping_lstsq(x, y, n, kwargs.min_size, lambda, has_bias),
+                false => faer_rolling_lstsq(x, y, n, lambda, has_bias),
+            };
 
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(
