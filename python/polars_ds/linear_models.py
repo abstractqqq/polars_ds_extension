@@ -257,7 +257,7 @@ class LR:
         Parameters
         ----------
         X
-            New feature matrix
+            Data to predict on, as a matrix
         """
         if X.ndim == 1:
             return self._lr.predict(X.reshape((1, -1)))
@@ -412,7 +412,7 @@ class OnlineLR:
         Parameters
         ----------
         X
-            New feature matrix
+            Data to predict on, as a matrix
         """
         if X.ndim == 1:
             return self._lr.predict(X.reshape((1, -1)))
