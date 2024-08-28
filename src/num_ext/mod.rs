@@ -14,11 +14,11 @@ mod lempel_ziv;
 mod linear_regression;
 mod pca;
 mod psi;
+mod subseq_sim;
 mod target_encode;
 mod tp_fp;
 mod trapz;
 mod woe_iv;
-mod subseq_sim;
 
 // Collection of other distances
 

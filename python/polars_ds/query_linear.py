@@ -35,7 +35,7 @@ def query_lstsq(
     l2_reg: float = 0.0,
     tol: float = 1e-5,
     solver: LRSolverMethods = "qr",
-    null_policy: NullPolicy = "raise",
+    null_policy: NullPolicy = "skip",
 ) -> pl.Expr:
     """
     Computes least squares solution to the equation Ax = y where y is the target.
@@ -207,7 +207,7 @@ def query_recursive_lstsq(
     method: LRMethods = "normal",
     l2_reg: float = 0.1,
     null_policy: NullPolicy = "raise",
-):
+) -> pl.Expr:
     """
     Using the first `start_with` rows of data as basis, start computing the least square solutions
     by updating the betas per row. A prediction for that row will also be included in the output.
@@ -226,8 +226,8 @@ def query_recursive_lstsq(
     target : str | pl.Expr
         The target variable
     start_with: int
-        Must be >= 1. You `start_with` n rows of data to train the first linear regression. If `start_with` = 2,
-        the first row will be null, etc. If you start with N < # features, result will be numerically very
+        Must be >= 1. You `start_with` n rows of data to train the first linear regression. If `start_with` = N,
+        the first N-1 rows will be null. If you start with N < # features, result will be numerically very
         unstable and potentially wrong.
     add_bias
         Whether to add a bias term
@@ -284,13 +284,14 @@ def query_rolling_lstsq(
     l2_reg: float = 0.1,
     min_valid_rows: int | None = None,
     null_policy: NullPolicy = "raise",
-):
+) -> pl.Expr:
     """
     Using every `window_size` rows of data as feature matrix, and computes least square solutions
     by rolling the window. A prediction for that row will also be included in the output.
     This uses the famous Sherman-Morrison-Woodbury Formula under the hood.
 
     Note: You have to be careful about the order of data when using this in aggregation contexts.
+    Rows with null will not contribute to the update.
 
     Parameters
     ----------
