@@ -9,7 +9,7 @@ __all__ = [
     "query_lstsq_report",
     "query_rolling_lstsq",
     "query_recursive_lstsq",
-    "query_wls_ww",
+    "query_lstsq_w_rcond",
 ]
 
 
@@ -28,6 +28,7 @@ def query_lstsq(
     *x: str | pl.Expr,
     target: str | pl.Expr,
     add_bias: bool = False,
+    weights: str | pl.Expr | None = None,
     skip_null: bool = False,
     return_pred: bool = False,
     method: LRMethods = "normal",
@@ -56,6 +57,9 @@ def query_lstsq(
         The target variable
     add_bias
         Whether to add a bias term
+    weights
+        Whether to perform a weighted least squares or not. Weighted least squares only works with
+        method = 'normal'.
     skip_null
         Deprecated. Use null_policy = 'skip'. Whether to skip a row if there is a null value in row
     return_pred
@@ -91,14 +95,7 @@ def query_lstsq(
         )
         null_policy = "skip"
 
-    t = lr_formula(target)
-    cols = [t]
-    cols.extend(lr_formula(z) for z in x)
-
-    if method == "l1" and l1_reg <= 0.0:
-        raise ValueError("For Lasso regression, `l1_reg` must be positive.")
-    if method == "l2" and l2_reg <= 0.0:
-        raise ValueError("For Ridge regression, `l2_reg` must be positive.")
+    weighted = weights is not None
 
     lr_kwargs = {
         "bias": add_bias,
@@ -108,7 +105,22 @@ def query_lstsq(
         "l2_reg": l2_reg,
         "solver": solver,
         "tol": tol,
+        "weighted": weighted,
     }
+
+    if weighted:
+        cols = [lr_formula(weights).cast(pl.Float64).rechunk(), lr_formula(target)]
+    else:
+        cols = [lr_formula(target)]
+
+    cols.extend(lr_formula(z) for z in x)
+
+    if not weighted:
+        if method == "l1" and l1_reg <= 0.0:
+            raise ValueError("For Lasso regression, `l1_reg` must be positive.")
+        if method == "l2" and l2_reg <= 0.0:
+            raise ValueError("For Ridge regression, `l2_reg` must be positive.")
+
     if return_pred:
         return pl_plugin(
             symbol="pl_lstsq_pred",
@@ -126,20 +138,20 @@ def query_lstsq(
         )
 
 
-def query_wls_ww(
+def query_lstsq_w_rcond(
     *x: str | pl.Expr,
     target: str | pl.Expr,
-    weights: str | pl.Expr,
     add_bias: bool = False,
-    return_pred: bool = False,
+    rcond: float = 0.0,
+    method: LRMethods = "normal",
     null_policy: NullPolicy = "raise",
 ) -> pl.Expr:
     """
-    Computes weighted least squares with weights given by the user (ww stands for with weights). This
-    only supports ordinary weighted least squares. The weights are presumed to be (proportional to) the
-    inverse of the variance of the observations (See page 4 of reference).
+    Uses SVD to compute least squares. During the process, singular values will be set to 0
+    if it is smaller than rcond * max singular value (of X). This will return the coefficients as well
+    as singular values of X as the output. The number of nonzero singular values is the rank of X.
 
-    Memory hint: if data takes 100MB of memory, you need to have at least 200MB of memory to run this.
+    Note: the singular values return will be the values before applying the rcond cut off.
 
     Parameters
     ----------
@@ -147,32 +159,24 @@ def query_wls_ww(
         The variables used to predict target
     target : str | pl.Expr
         The target variable
-    weights : str | pl.Expr
-        The column representing weights
     add_bias
         Whether to add a bias term
-    return_pred
-        If true, return prediction and residue. If false, return coefficients. Note that
-        for coefficients, it reduces to one output (like max/min), but for predictions and
-        residue, it will return the same number of rows as in input.
+    rcond
+        Cut-off ratio for small singular values. If rcond < machine precision * MAX(M,N),
+        it will be set to machine precision * MAX(M,N).
+    method
+        Either 'normal' or 'l2'.
     null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
         One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
         the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
         columns.
-
-    Reference
-    ---------
-    https://www.stat.uchicago.edu/~yibi/teaching/stat224/L14.pdf
     """
+    if method != "normal":
+        raise NotImplementedError
 
-    w = lr_formula(weights)
-    cols = [
-        w.cast(pl.Float64).rechunk(),
-        lr_formula(target),
-    ]  # weights are at index 0, then target
+    cols = [lr_formula(target)]
     cols.extend(lr_formula(z) for z in x)
-
     lr_kwargs = {
         "bias": add_bias,
         "null_policy": null_policy,
@@ -180,23 +184,15 @@ def query_wls_ww(
         "l1_reg": 0.0,
         "l2_reg": 0.0,
         "solver": "",
-        "tol": 0.0,
+        "tol": abs(rcond),
+        "weighted": False,
     }
-    if return_pred:
-        return pl_plugin(
-            symbol="pl_wls_ww_pred",
-            args=cols,
-            kwargs=lr_kwargs,
-            pass_name_to_apply=True,
-        )
-    else:
-        return pl_plugin(
-            symbol="pl_wls_ww",
-            args=cols,
-            kwargs=lr_kwargs,
-            returns_scalar=True,
-            pass_name_to_apply=True,
-        )
+    return pl_plugin(
+        symbol="pl_lstsq_w_rcond",
+        args=cols,
+        kwargs=lr_kwargs,
+        pass_name_to_apply=True,
+    )
 
 
 def query_recursive_lstsq(

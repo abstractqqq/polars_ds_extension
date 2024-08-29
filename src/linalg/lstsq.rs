@@ -344,6 +344,40 @@ pub fn faer_solve_lstsq(x: MatRef<f64>, y: MatRef<f64>, how: LRSolverMethods) ->
     }
 }
 
+/// Least square that sets all singular values below threshold to 0.
+/// Returns the coefficients and the singular values
+#[inline(always)]
+pub fn faer_solve_lstsq_rcond(x: MatRef<f64>, y: MatRef<f64>, rcond:f64) -> (Mat<f64>, Vec<f64>) {
+
+    let xt = x.transpose();
+    let svd = (xt * x).thin_svd();
+
+    let singular_values = svd
+        .s_diagonal()
+        .iter()
+        .copied()
+        .map(f64::sqrt)
+        .collect::<Vec<_>>();
+
+    let max_singular_value = singular_values.iter().copied().fold(f64::MIN, f64::max);
+    let threshold = rcond * max_singular_value;
+
+    let s_inv = svd
+        .s_diagonal()
+        .iter()
+        .copied()
+        .map(|x| if x >= threshold { x.recip() } else { 0. } )
+        .collect::<Vec<_>>();
+
+    let s_inv = faer::mat::from_row_major_slice(&s_inv, s_inv.len(), 1);
+    let s_inv = s_inv.column_vector_as_diagonal();
+
+    let weights = svd.v() * s_inv * svd.u().transpose() * xt * y;
+    (weights, singular_values)    
+
+}
+
+
 /// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
 #[inline(always)]
 pub fn faer_solve_ridge(
@@ -421,13 +455,28 @@ pub fn faer_cholesky_ridge_with_inv(
 
 /// Solves the weighted least square with weights given by the user
 #[inline(always)]
-pub fn faer_weighted_lstsq(x: MatRef<f64>, y: MatRef<f64>, w: &[f64]) -> Mat<f64> {
+pub fn faer_weighted_lstsq(x: MatRef<f64>, y: MatRef<f64>, w: &[f64], how:LRSolverMethods) -> Mat<f64> {
     let weights = faer::mat::from_row_major_slice(w, x.nrows(), 1);
     let w = weights.column_vector_as_diagonal();
     let xt = x.transpose();
     let xtw = xt * w;
-    let qr = (&xtw * x).col_piv_qr();
-    qr.solve(xtw * y)
+    match how {
+        LRSolverMethods::SVD => {
+            let svd = (&xtw * x).thin_svd();
+            svd.solve(xtw * y)
+        },
+        LRSolverMethods::QR => {
+            let qr = (&xtw * x).col_piv_qr();
+            qr.solve(xtw * y)
+        },
+        LRSolverMethods::Choleskey => match (&xtw * x).cholesky(Side::Lower) {
+            Ok(cho) => cho.solve(xtw * y),
+            Err(_) => {
+                let svd = (&xtw * x).thin_svd();
+                svd.solve(xtw * y)
+            },
+        },
+    }
 }
 
 #[inline(always)]
@@ -536,9 +585,6 @@ pub fn faer_recursive_lstsq(
     }
     coefficients
 }
-
-// Need to Re-think the structure if I want to expose this to Python and NumPy. The biggest difficulty, however,
-// is more about Faer interop with NumPy at this moment.
 
 /// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.

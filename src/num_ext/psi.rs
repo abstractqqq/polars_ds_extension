@@ -10,7 +10,7 @@ fn psi_report_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new("psi_report", DataType::Struct(v)))
 }
 
-/// Computs counts in each bucket given by the breakpoints in
+/// Computes counts in each bucket given by the breakpoints in
 /// a PSI computation. This returns the count for the first series
 /// and the count for the second series.
 /// This assumes the breakpoints (bp)'s last value is always INF
