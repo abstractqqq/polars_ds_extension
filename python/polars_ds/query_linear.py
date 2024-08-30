@@ -1,7 +1,7 @@
 from __future__ import annotations
 import polars as pl
 import warnings
-from .type_alias import LRMethods, LRSolverMethods, NullPolicy
+from .type_alias import LRSolverMethods, NullPolicy
 from ._utils import pl_plugin
 
 __all__ = [
@@ -9,7 +9,7 @@ __all__ = [
     "query_lstsq_report",
     "query_rolling_lstsq",
     "query_recursive_lstsq",
-    "query_wls_ww",
+    "query_lstsq_w_rcond",
 ]
 
 
@@ -28,9 +28,9 @@ def query_lstsq(
     *x: str | pl.Expr,
     target: str | pl.Expr,
     add_bias: bool = False,
+    weights: str | pl.Expr | None = None,
     skip_null: bool = False,
     return_pred: bool = False,
-    method: LRMethods = "normal",
     l1_reg: float = 0.0,
     l2_reg: float = 0.0,
     tol: float = 1e-5,
@@ -38,13 +38,16 @@ def query_lstsq(
     null_policy: NullPolicy = "skip",
 ) -> pl.Expr:
     """
-    Computes least squares solution to the equation Ax = y where y is the target.
+    Computes least squares solution to the equation Ax = y where y is the target. If l1_reg is > 0,
+    then this performs Lasso regression. If l2_reg is > 0, this performs Ridge regression. Only
+    one of l1_reg or l2_reg can be greater than 0 and any other case will result in normal regression. (This
+    is because Elastic net hasn't been implemented.)
 
     All positional arguments should be expressions representing predictive variables. This
     does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
 
     If add_bias is true, it will be the last coefficient in the output
-    and output will have len(variables) + 1. Bias term will not be regularized if method is l1 or l2.
+    and output will have len(variables) + 1.
 
     Memory hint: if data takes 100MB of memory, you need to have at least 200MB of memory to run this.
 
@@ -56,15 +59,15 @@ def query_lstsq(
         The target variable
     add_bias
         Whether to add a bias term
+    weights
+        Whether to perform a weighted least squares or not. If this is weighted, then it will ignore
+        l1_reg or l2_reg parameters.
     skip_null
         Deprecated. Use null_policy = 'skip'. Whether to skip a row if there is a null value in row
     return_pred
         If true, return prediction and residue. If false, return coefficients. Note that
         for coefficients, it reduces to one output (like max/min), but for predictions and
         residue, it will return the same number of rows as in input.
-    method
-        Linear Regression method. One of "normal" (normal equation), "l2" or "ridge" (l2 regularized, Ridge),
-        "l1" or "lasso" (l1 regularized, Lasso).
     l1_reg
         Regularization factor for Lasso. Should be nonzero when method = l1.
     l2_reg
@@ -74,9 +77,9 @@ def query_lstsq(
         converged. If not, it will run for at most 2000 iterations. This stopping criterion is not as
         good as the dual gap.
     solver
-        Only applies when method != 'l1'. One of ['svd', 'qr', 'cholesky']. Both 'svd' and 'qr' can handle
-        rank deficient cases relatively well, while cholesky may fail or slow down. When cholesky fails,
-        it falls back to svd.
+        Only applies when this is normal or l2 regression. One of ['svd', 'qr', 'cholesky'].
+        Both 'svd' and 'qr' can handle rank deficient cases relatively well, while cholesky may fail or
+        slow down. When cholesky fails, it falls back to svd.
     null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
         One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
@@ -91,24 +94,25 @@ def query_lstsq(
         )
         null_policy = "skip"
 
-    t = lr_formula(target)
-    cols = [t]
-    cols.extend(lr_formula(z) for z in x)
-
-    if method == "l1" and l1_reg <= 0.0:
-        raise ValueError("For Lasso regression, `l1_reg` must be positive.")
-    if method == "l2" and l2_reg <= 0.0:
-        raise ValueError("For Ridge regression, `l2_reg` must be positive.")
+    weighted = weights is not None
 
     lr_kwargs = {
         "bias": add_bias,
         "null_policy": null_policy,
-        "method": str(method).lower(),
         "l1_reg": l1_reg,
         "l2_reg": l2_reg,
         "solver": solver,
         "tol": tol,
+        "weighted": weighted,
     }
+
+    if weighted:
+        cols = [lr_formula(weights).cast(pl.Float64).rechunk(), lr_formula(target)]
+    else:
+        cols = [lr_formula(target)]
+
+    cols.extend(lr_formula(z) for z in x)
+
     if return_pred:
         return pl_plugin(
             symbol="pl_lstsq_pred",
@@ -126,20 +130,20 @@ def query_lstsq(
         )
 
 
-def query_wls_ww(
+def query_lstsq_w_rcond(
     *x: str | pl.Expr,
     target: str | pl.Expr,
-    weights: str | pl.Expr,
     add_bias: bool = False,
-    return_pred: bool = False,
+    rcond: float = 0.0,
+    l2_reg: float = 0.0,
     null_policy: NullPolicy = "raise",
 ) -> pl.Expr:
     """
-    Computes weighted least squares with weights given by the user (ww stands for with weights). This
-    only supports ordinary weighted least squares. The weights are presumed to be (proportional to) the
-    inverse of the variance of the observations (See page 4 of reference).
+    Uses SVD to compute least squares. During the process, singular values will be set to 0
+    if it is smaller than rcond * max singular value (of X). This will return the coefficients as well
+    as singular values of X as the output. The number of nonzero singular values is the rank of X.
 
-    Memory hint: if data takes 100MB of memory, you need to have at least 200MB of memory to run this.
+    Note: the singular values return will be the values before applying the rcond cut off.
 
     Parameters
     ----------
@@ -147,56 +151,37 @@ def query_wls_ww(
         The variables used to predict target
     target : str | pl.Expr
         The target variable
-    weights : str | pl.Expr
-        The column representing weights
     add_bias
         Whether to add a bias term
-    return_pred
-        If true, return prediction and residue. If false, return coefficients. Note that
-        for coefficients, it reduces to one output (like max/min), but for predictions and
-        residue, it will return the same number of rows as in input.
+    rcond
+        Cut-off ratio for small singular values. If rcond < machine precision * MAX(M,N),
+        it will be set to machine precision * MAX(M,N).
+    l2_reg
+        Regularization factor for Ridge. Should be nonzero when method = l2.
     null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
         One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
         the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
         columns.
-
-    Reference
-    ---------
-    https://www.stat.uchicago.edu/~yibi/teaching/stat224/L14.pdf
     """
 
-    w = lr_formula(weights)
-    cols = [
-        w.cast(pl.Float64).rechunk(),
-        lr_formula(target),
-    ]  # weights are at index 0, then target
+    cols = [lr_formula(target)]
     cols.extend(lr_formula(z) for z in x)
-
     lr_kwargs = {
         "bias": add_bias,
         "null_policy": null_policy,
-        "method": "",
         "l1_reg": 0.0,
-        "l2_reg": 0.0,
+        "l2_reg": l2_reg,
         "solver": "",
-        "tol": 0.0,
+        "tol": abs(rcond),
+        "weighted": False,
     }
-    if return_pred:
-        return pl_plugin(
-            symbol="pl_wls_ww_pred",
-            args=cols,
-            kwargs=lr_kwargs,
-            pass_name_to_apply=True,
-        )
-    else:
-        return pl_plugin(
-            symbol="pl_wls_ww",
-            args=cols,
-            kwargs=lr_kwargs,
-            returns_scalar=True,
-            pass_name_to_apply=True,
-        )
+    return pl_plugin(
+        symbol="pl_lstsq_w_rcond",
+        args=cols,
+        kwargs=lr_kwargs,
+        pass_name_to_apply=True,
+    )
 
 
 def query_recursive_lstsq(
@@ -204,8 +189,7 @@ def query_recursive_lstsq(
     target: str | pl.Expr,
     start_with: int,
     add_bias: bool = False,
-    method: LRMethods = "normal",
-    l2_reg: float = 0.1,
+    l2_reg: float = 0.0,
     null_policy: NullPolicy = "raise",
 ) -> pl.Expr:
     """
@@ -231,11 +215,8 @@ def query_recursive_lstsq(
         unstable and potentially wrong.
     add_bias
         Whether to add a bias term
-    method : Literal['normal', 'l2']
-        Linear Regression method. One of "normal" (normal equation), "l2" (l2 regularized, Ridge). "l1" does
-        not work for now.
     l2_reg
-        The L2 regularization factor
+        The L2 regularization factor. This performs Ridge regression if this is > 0.
     null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
         One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
@@ -244,9 +225,6 @@ def query_recursive_lstsq(
         scanned `start_at` many valid rows. And if subsequently we get a row with null values, then null will
         be returned for that row.
     """
-
-    if method == "l1":
-        raise NotImplementedError
 
     if start_with < 1:
         raise ValueError("You must start with >= 1 rows for recursive lstsq.")
@@ -263,7 +241,6 @@ def query_recursive_lstsq(
         "null_policy": null_policy,
         "n": start_with,
         "bias": add_bias,
-        "method": method,
         "lambda": abs(l2_reg),
         "min_size": 0,  # Not used for recursive
     }
@@ -280,8 +257,7 @@ def query_rolling_lstsq(
     target: str | pl.Expr,
     window_size: int,
     add_bias: bool = False,
-    method: LRMethods = "normal",
-    l2_reg: float = 0.1,
+    l2_reg: float = 0.0,
     min_valid_rows: int | None = None,
     null_policy: NullPolicy = "raise",
 ) -> pl.Expr:
@@ -303,11 +279,8 @@ def query_rolling_lstsq(
         Must be >= 2. Window size for the rolling regression
     add_bias
         Whether to add a bias term
-    method : Literal['normal', 'l2']
-        Linear Regression method. One of "normal" (normal equation), "l2" (l2 regularized, Ridge). "l1" does
-        not work for now.
     l2_reg
-        The L2 regularization factor
+        The L2 regularization factor. This performs rolling Ridge if this is > 0.
     min_valid_rows
         Minimum number of valid rows to evaluate the model. This is only used when null policy is `skip`. E.g.
         if there are nulls in the windows, the window must have at least `min_valid_rows` valid rows in order to
@@ -318,9 +291,6 @@ def query_rolling_lstsq(
         rolling lstsq, null-fill only works when target doesn't have nulls, and WILL NOT drop rows where the
         target is null.
     """
-
-    if method == "l1":
-        raise NotImplementedError
 
     if window_size < 2:
         raise ValueError("`window_size` must be >= 2.")
@@ -345,7 +315,6 @@ def query_rolling_lstsq(
         "null_policy": null_policy,
         "n": window_size,
         "bias": add_bias,
-        "method": method,
         "lambda": abs(l2_reg),
         "min_size": min_size,
     }
@@ -402,7 +371,6 @@ def query_lstsq_report(
     lr_kwargs = {
         "bias": add_bias,
         "null_policy": null_policy,
-        "method": "normal",
         "l1_reg": 0.0,
         "l2_reg": 0.0,
         "solver": "qr",

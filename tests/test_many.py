@@ -544,7 +544,6 @@ def test_lstsq_against_sklearn():
             "x2",
             "x3",
             target="y",
-            method="l2",
             l2_reg=0.1,
             add_bias=True,
         ).alias("pred")
@@ -579,9 +578,9 @@ def test_lasso_regression():
 
     for lambda_ in [0.01, 0.05, 0.1, 0.2]:
         df_res = df.select(
-            pds.query_lstsq(
-                "x1", "x2", "x3", target="y", method="l1", l1_reg=lambda_, add_bias=False
-            ).alias("coeffs")
+            pds.query_lstsq("x1", "x2", "x3", target="y", l1_reg=lambda_, add_bias=False).alias(
+                "coeffs"
+            )
         ).explode("coeffs")
 
         res = df_res["coeffs"].to_numpy()
@@ -593,9 +592,9 @@ def test_lasso_regression():
 
     for lambda_ in [0.01, 0.05, 0.1, 0.2]:
         df_res = df.select(
-            pds.query_lstsq(
-                "x1", "x2", "x3", target="y", method="l1", l1_reg=lambda_, add_bias=True
-            ).alias("coeffs")
+            pds.query_lstsq("x1", "x2", "x3", target="y", l1_reg=lambda_, add_bias=True).alias(
+                "coeffs"
+            )
         ).explode("coeffs")
 
         res = df_res["coeffs"].to_numpy()
@@ -683,7 +682,6 @@ def test_recursive_ridge():
             "x2",
             "x3",
             target="y",
-            method="l2",
             l2_reg=0.1,
             start_with=start_with,
         ).alias("result"),
@@ -696,7 +694,6 @@ def test_recursive_ridge():
                 "x2",
                 "x3",
                 target="y",
-                method="l2",
                 l2_reg=0.1,
             ).alias("coeffs")
         )["coeffs"]  # One element series
@@ -835,7 +832,6 @@ def test_rolling_ridge():
                 "x2",
                 "x3",
                 target="y",
-                method="l2",
                 l2_reg=0.1,
                 window_size=window_size,
             ).alias("result"),
@@ -847,9 +843,7 @@ def test_rolling_ridge():
             temp = df.slice(i, length=window_size)
             results.append(
                 temp.select(
-                    pds.query_lstsq("x1", "x2", "x3", method="l2", l2_reg=0.1, target="y").alias(
-                        "coeffs"
-                    )
+                    pds.query_lstsq("x1", "x2", "x3", l2_reg=0.1, target="y").alias("coeffs")
                 )
             )
 
@@ -921,6 +915,44 @@ def test_lstsq_in_group_by():
 
     assert_frame_equal(first, test_first)
     assert_frame_equal(second, test_second)
+
+
+def test_lstsq_with_rcond():
+    import numpy as np
+
+    size = 5000
+    df = (
+        pds.frame(size=size)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_row_index()
+        .with_columns(
+            y=pl.col("x1") + pl.col("x2") * 0.2 - 0.3 * pl.col("x3"),
+        )
+    )
+
+    x = df.select("x1", "x2", "x3").to_numpy()
+    y = df.select("y").to_numpy()
+    np_coeffs, _, _, np_svs = np.linalg.lstsq(x, y, rcond=0.3)  # default rcond
+    np_coeffs = np_coeffs.flatten()
+
+    res = df.select(
+        pds.query_lstsq_w_rcond(
+            "x1",
+            "x2",
+            "x3",
+            target="y",
+            rcond=0.3,
+        ).alias("result")
+    ).unnest("result")
+    coeffs = res["coeffs"][0].to_numpy()
+    svs = res["singular_values"][0].to_numpy()
+
+    assert np.all(np.abs(coeffs - np_coeffs) < 1e-10)
+    assert np.all(np.abs(svs - np_svs) < 1e-10)
 
 
 @pytest.mark.parametrize(
