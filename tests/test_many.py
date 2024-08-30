@@ -544,7 +544,6 @@ def test_lstsq_against_sklearn():
             "x2",
             "x3",
             target="y",
-            method="l2",
             l2_reg=0.1,
             add_bias=True,
         ).alias("pred")
@@ -579,9 +578,9 @@ def test_lasso_regression():
 
     for lambda_ in [0.01, 0.05, 0.1, 0.2]:
         df_res = df.select(
-            pds.query_lstsq(
-                "x1", "x2", "x3", target="y", method="l1", l1_reg=lambda_, add_bias=False
-            ).alias("coeffs")
+            pds.query_lstsq("x1", "x2", "x3", target="y", l1_reg=lambda_, add_bias=False).alias(
+                "coeffs"
+            )
         ).explode("coeffs")
 
         res = df_res["coeffs"].to_numpy()
@@ -593,9 +592,9 @@ def test_lasso_regression():
 
     for lambda_ in [0.01, 0.05, 0.1, 0.2]:
         df_res = df.select(
-            pds.query_lstsq(
-                "x1", "x2", "x3", target="y", method="l1", l1_reg=lambda_, add_bias=True
-            ).alias("coeffs")
+            pds.query_lstsq("x1", "x2", "x3", target="y", l1_reg=lambda_, add_bias=True).alias(
+                "coeffs"
+            )
         ).explode("coeffs")
 
         res = df_res["coeffs"].to_numpy()
@@ -683,7 +682,6 @@ def test_recursive_ridge():
             "x2",
             "x3",
             target="y",
-            method="l2",
             l2_reg=0.1,
             start_with=start_with,
         ).alias("result"),
@@ -696,7 +694,6 @@ def test_recursive_ridge():
                 "x2",
                 "x3",
                 target="y",
-                method="l2",
                 l2_reg=0.1,
             ).alias("coeffs")
         )["coeffs"]  # One element series
@@ -835,7 +832,6 @@ def test_rolling_ridge():
                 "x2",
                 "x3",
                 target="y",
-                method="l2",
                 l2_reg=0.1,
                 window_size=window_size,
             ).alias("result"),
@@ -847,9 +843,7 @@ def test_rolling_ridge():
             temp = df.slice(i, length=window_size)
             results.append(
                 temp.select(
-                    pds.query_lstsq("x1", "x2", "x3", method="l2", l2_reg=0.1, target="y").alias(
-                        "coeffs"
-                    )
+                    pds.query_lstsq("x1", "x2", "x3", l2_reg=0.1, target="y").alias("coeffs")
                 )
             )
 

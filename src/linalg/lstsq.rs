@@ -377,6 +377,54 @@ pub fn faer_solve_lstsq_rcond(x: MatRef<f64>, y: MatRef<f64>, rcond:f64) -> (Mat
 
 }
 
+/// Least square that sets all singular values below threshold to 0.
+/// Returns the coefficients and the singular values
+#[inline(always)]
+pub fn faer_solve_ridge_rcond(
+    x: MatRef<f64>, 
+    y: MatRef<f64>, 
+    lambda: f64,
+    has_bias: bool,
+    rcond:f64
+) -> (Mat<f64>, Vec<f64>) {
+
+
+    let n1 = x.ncols().abs_diff(has_bias as usize);
+    let xt = x.transpose();
+    let mut xtx_plus = xt * x;
+    // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
+    // Safe. Index is valid and value is initialized.
+    for i in 0..n1 {
+        *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
+    }
+
+    let svd = xtx_plus.thin_svd();
+    let singular_values = svd
+        .s_diagonal()
+        .iter()
+        .copied()
+        .map(f64::sqrt)
+        .collect::<Vec<_>>();
+
+    let max_singular_value = singular_values.iter().copied().fold(f64::MIN, f64::max);
+    let threshold = rcond * max_singular_value;
+
+    let s_inv = svd
+        .s_diagonal()
+        .iter()
+        .copied()
+        .map(|x| if x >= threshold { x.recip() } else { 0. } )
+        .collect::<Vec<_>>();
+
+    let s_inv = faer::mat::from_row_major_slice(&s_inv, s_inv.len(), 1);
+    let s_inv = s_inv.column_vector_as_diagonal();
+
+    let weights = svd.v() * s_inv * svd.u().transpose() * xt * y;
+    (weights, singular_values)    
+
+}
+
+
 
 /// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
 #[inline(always)]
