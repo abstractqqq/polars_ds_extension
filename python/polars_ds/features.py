@@ -25,6 +25,7 @@ __all__ = [
     "query_c3_stats",
     "query_cid_ce",
     "query_time_reversal_asymmetry_stats",
+    "query_entropy",
     "query_approx_entropy",
     "query_sample_entropy",
     "query_knn_entropy",
@@ -373,6 +374,22 @@ def query_time_reversal_asymmetry_stats(x: str | pl.Expr, n_lags: int) -> pl.Exp
 #################################################
 # Entropies | Entropy related features          #
 #################################################
+
+
+def query_entropy(x: str | pl.Expr, base: float = math.e, normalize: bool = True) -> pl.Expr:
+    """
+    Computes the entropy of any discrete column. This is shorthand for x.unique_counts().entropy()
+
+    Parameters
+    ----------
+    x
+        Either a string or a polars expression
+    base
+        Base for the log in the entropy computation
+    normalize
+        Normalize if the probabilities don't sum to 1.
+    """
+    return str_to_expr(x).unique_counts().entropy(base=base, normalize=normalize)
 
 
 def query_cond_entropy(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
