@@ -585,9 +585,9 @@ def test_lasso_regression():
 
         res = df_res["coeffs"].to_numpy()
 
-        reg = linear_model.Lasso(alpha=lambda_, fit_intercept=False)
-        reg.fit(x, y)
-        res_sklearn = np.asarray(reg.coef_)
+        sklearn = linear_model.Lasso(alpha=lambda_, fit_intercept=False)
+        sklearn.fit(x, y)
+        res_sklearn = np.asarray(sklearn.coef_)
         assert np.all(np.abs(res_sklearn - res) < 1e-4)
 
     for lambda_ in [0.01, 0.05, 0.1, 0.2]:
@@ -601,11 +601,52 @@ def test_lasso_regression():
         res_coef = res[:3]
         res_bias = res[-1]
 
-        reg = linear_model.Lasso(alpha=lambda_, fit_intercept=True)
-        reg.fit(x, y)
-        res_sklearn = np.asarray(reg.coef_)
+        sklearn = linear_model.Lasso(alpha=lambda_, fit_intercept=True)
+        sklearn.fit(x, y)
+        res_sklearn = np.asarray(sklearn.coef_)
         assert np.all(np.abs(res_sklearn - res_coef) < 1e-4)
-        assert abs(res_bias - reg.intercept_) < 1e-4
+        assert abs(res_bias - sklearn.intercept_) < 1e-4
+
+
+def test_elastic_net_regression():
+    # These tests have bigger precision tolerance because of different stopping criterions
+
+    from sklearn import linear_model
+
+    df = (
+        pds.frame(size=5_000)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_columns(
+            y=pl.col("x1") * 0.5 + pl.col("x2") * 0.25 - pl.col("x3") * 0.15 + pds.random() * 0.0001
+        )
+    )
+
+    x = df.select("x1", "x2", "x3").to_numpy()
+    y = df["y"].to_numpy()
+
+    for reg in [0.01, 0.05, 0.1, 0.2]:
+        l1_reg = reg
+        l2_reg = reg
+
+        df_res = df.select(
+            pds.query_lstsq(
+                "x1", "x2", "x3", target="y", l1_reg=l1_reg, l2_reg=l2_reg, add_bias=False
+            ).alias("coeffs")
+        ).explode("coeffs")
+
+        res = df_res["coeffs"].to_numpy()
+
+        alpha = l1_reg + l2_reg
+        l1_ratio = l1_reg / (l1_reg + l2_reg)
+
+        sklearn = linear_model.ElasticNet(alpha=alpha, l1_ratio=l1_ratio, fit_intercept=False)
+        sklearn.fit(x, y)
+        res_sklearn = np.asarray(sklearn.coef_)
+        assert np.all(np.abs(res_sklearn - res) < 1e-4)
 
 
 def test_recursive_lstsq():

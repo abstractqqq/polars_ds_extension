@@ -29,7 +29,6 @@ def query_lstsq(
     target: str | pl.Expr,
     add_bias: bool = False,
     weights: str | pl.Expr | None = None,
-    skip_null: bool = False,
     return_pred: bool = False,
     l1_reg: float = 0.0,
     l2_reg: float = 0.0,
@@ -39,9 +38,9 @@ def query_lstsq(
 ) -> pl.Expr:
     """
     Computes least squares solution to the equation Ax = y where y is the target. If l1_reg is > 0,
-    then this performs Lasso regression. If l2_reg is > 0, this performs Ridge regression. Only
-    one of l1_reg or l2_reg can be greater than 0 and any other case will result in normal regression. (This
-    is because Elastic net hasn't been implemented.)
+    then this performs Lasso regression. If l2_reg is > 0, this performs Ridge regression. If both are
+    > 0, then this is elastic net regression. If none of the cases above is true, as is the default case,
+    then a normal regression will be performed.
 
     All positional arguments should be expressions representing predictive variables. This
     does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
@@ -62,8 +61,6 @@ def query_lstsq(
     weights
         Whether to perform a weighted least squares or not. If this is weighted, then it will ignore
         l1_reg or l2_reg parameters.
-    skip_null
-        Deprecated. Use null_policy = 'skip'. Whether to skip a row if there is a null value in row
     return_pred
         If true, return prediction and residue. If false, return coefficients. Note that
         for coefficients, it reduces to one output (like max/min), but for predictions and
@@ -73,9 +70,8 @@ def query_lstsq(
     l2_reg
         Regularization factor for Ridge. Should be nonzero when method = l2.
     tol
-        When method = 'l1', if maximum coordinate update is < tol, the algorithm is considered to have
-        converged. If not, it will run for at most 2000 iterations. This stopping criterion is not as
-        good as the dual gap.
+        For Lasso or elastic net regression, if maximum coordinate update is < tol, the algorithm is considered
+        to have converged. If not, it will run for at most 2000 iterations.
     solver
         Only applies when this is normal or l2 regression. One of ['svd', 'qr', 'cholesky'].
         Both 'svd' and 'qr' can handle rank deficient cases relatively well, while cholesky may fail or
@@ -86,14 +82,6 @@ def query_lstsq(
         the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
         columns.
     """
-    if skip_null:
-        warnings.warn(
-            "`skip_null` is deprecated. Please use null_policy = 'skip'.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        null_policy = "skip"
-
     weighted = weights is not None
 
     lr_kwargs = {
@@ -157,7 +145,7 @@ def query_lstsq_w_rcond(
         Cut-off ratio for small singular values. If rcond < machine precision * MAX(M,N),
         it will be set to machine precision * MAX(M,N).
     l2_reg
-        Regularization factor for Ridge. Should be nonzero when method = l2.
+        The L2 regularization factor. If this is > 0, then a Ridge regression will be performed.
     null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
         One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
@@ -216,7 +204,7 @@ def query_recursive_lstsq(
     add_bias
         Whether to add a bias term
     l2_reg
-        The L2 regularization factor. This performs Ridge regression if this is > 0.
+        The L2 regularization factor. If this is > 0, then a Ridge regression will be performed.
     null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
         One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
@@ -280,7 +268,7 @@ def query_rolling_lstsq(
     add_bias
         Whether to add a bias term
     l2_reg
-        The L2 regularization factor. This performs rolling Ridge if this is > 0.
+        The L2 regularization factor. If this is > 0, then a Ridge regression will be performed.
     min_valid_rows
         Minimum number of valid rows to evaluate the model. This is only used when null policy is `skip`. E.g.
         if there are nulls in the windows, the window must have at least `min_valid_rows` valid rows in order to
@@ -331,7 +319,6 @@ def query_lstsq_report(
     target: str | pl.Expr,
     weights: str | pl.Expr | None = None,
     add_bias: bool = False,
-    skip_null: bool = False,
     null_policy: NullPolicy = "raise",
 ) -> pl.Expr:
     """
@@ -350,23 +337,12 @@ def query_lstsq_report(
         If not None, this will then compute the stats for a weights least square.
     add_bias
         Whether to add a bias term. If bias is added, it is always the last feature.
-    skip_null
-        Deprecated. Use null_policy = 'skip'. Whether to skip a row if there is a null value in row
     null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
         One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
         the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
         columns.
     """
-    if skip_null:
-        import warnings  # noqa: E401
-
-        warnings.warn(
-            "`skip_null` is deprecated. Please use null_policy = 'skip'.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        null_policy = "skip"
 
     lr_kwargs = {
         "bias": add_bias,

@@ -31,6 +31,7 @@ pub enum LRMethods {
     Normal, // Normal. Normal Equation
     L1, // Lasso, L1 regularized
     L2, // Ridge, L2 regularized
+    ElasticNet,
 }
 
 impl From<&str> for LRMethods {
@@ -38,7 +39,25 @@ impl From<&str> for LRMethods {
         match value {
             "l1" | "lasso" => Self::L1,
             "l2" | "ridge" => Self::L2,
+            "elastic" => Self::ElasticNet,
             _ => Self::Normal,
+        }
+    }
+}
+
+/// Converts a 2-tuple of floats into LRMethods
+/// The first entry is assumed to the l1 regularization factor, and
+/// the second is assumed to be the l2 regularization factor
+impl From<(f64, f64)> for LRMethods {
+    fn from(value: (f64, f64)) -> Self {
+        if value.0 > 0. && value.1 <= 0. {
+            LRMethods::L1
+        } else if value.0 <= 0. && value.1 > 0. {
+            LRMethods::L2
+        } else if value.0 > 0. && value.1 > 0. {
+            LRMethods::ElasticNet
+        } else {
+            LRMethods::Normal
         }
     }
 }
@@ -347,8 +366,7 @@ pub fn faer_solve_lstsq(x: MatRef<f64>, y: MatRef<f64>, how: LRSolverMethods) ->
 /// Least square that sets all singular values below threshold to 0.
 /// Returns the coefficients and the singular values
 #[inline(always)]
-pub fn faer_solve_lstsq_rcond(x: MatRef<f64>, y: MatRef<f64>, rcond:f64) -> (Mat<f64>, Vec<f64>) {
-
+pub fn faer_solve_lstsq_rcond(x: MatRef<f64>, y: MatRef<f64>, rcond: f64) -> (Mat<f64>, Vec<f64>) {
     let xt = x.transpose();
     let svd = (xt * x).thin_svd();
 
@@ -366,29 +384,26 @@ pub fn faer_solve_lstsq_rcond(x: MatRef<f64>, y: MatRef<f64>, rcond:f64) -> (Mat
         .s_diagonal()
         .iter()
         .copied()
-        .map(|x| if x >= threshold { x.recip() } else { 0. } )
+        .map(|x| if x >= threshold { x.recip() } else { 0. })
         .collect::<Vec<_>>();
 
     let s_inv = faer::mat::from_row_major_slice(&s_inv, s_inv.len(), 1);
     let s_inv = s_inv.column_vector_as_diagonal();
 
     let weights = svd.v() * s_inv * svd.u().transpose() * xt * y;
-    (weights, singular_values)    
-
+    (weights, singular_values)
 }
 
 /// Least square that sets all singular values below threshold to 0.
 /// Returns the coefficients and the singular values
 #[inline(always)]
 pub fn faer_solve_ridge_rcond(
-    x: MatRef<f64>, 
-    y: MatRef<f64>, 
+    x: MatRef<f64>,
+    y: MatRef<f64>,
     lambda: f64,
     has_bias: bool,
-    rcond:f64
+    rcond: f64,
 ) -> (Mat<f64>, Vec<f64>) {
-
-
     let n1 = x.ncols().abs_diff(has_bias as usize);
     let xt = x.transpose();
     let mut xtx_plus = xt * x;
@@ -413,18 +428,15 @@ pub fn faer_solve_ridge_rcond(
         .s_diagonal()
         .iter()
         .copied()
-        .map(|x| if x >= threshold { x.recip() } else { 0. } )
+        .map(|x| if x >= threshold { x.recip() } else { 0. })
         .collect::<Vec<_>>();
 
     let s_inv = faer::mat::from_row_major_slice(&s_inv, s_inv.len(), 1);
     let s_inv = s_inv.column_vector_as_diagonal();
 
     let weights = svd.v() * s_inv * svd.u().transpose() * xt * y;
-    (weights, singular_values)    
-
+    (weights, singular_values)
 }
-
-
 
 /// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
 #[inline(always)]
@@ -503,7 +515,12 @@ pub fn faer_cholesky_ridge_with_inv(
 
 /// Solves the weighted least square with weights given by the user
 #[inline(always)]
-pub fn faer_weighted_lstsq(x: MatRef<f64>, y: MatRef<f64>, w: &[f64], how:LRSolverMethods) -> Mat<f64> {
+pub fn faer_weighted_lstsq(
+    x: MatRef<f64>,
+    y: MatRef<f64>,
+    w: &[f64],
+    how: LRSolverMethods,
+) -> Mat<f64> {
     let weights = faer::mat::from_row_major_slice(w, x.nrows(), 1);
     let w = weights.column_vector_as_diagonal();
     let xt = x.transpose();
@@ -512,39 +529,41 @@ pub fn faer_weighted_lstsq(x: MatRef<f64>, y: MatRef<f64>, w: &[f64], how:LRSolv
         LRSolverMethods::SVD => {
             let svd = (&xtw * x).thin_svd();
             svd.solve(xtw * y)
-        },
+        }
         LRSolverMethods::QR => {
             let qr = (&xtw * x).col_piv_qr();
             qr.solve(xtw * y)
-        },
+        }
         LRSolverMethods::Choleskey => match (&xtw * x).cholesky(Side::Lower) {
             Ok(cho) => cho.solve(xtw * y),
             Err(_) => {
                 let svd = (&xtw * x).thin_svd();
                 svd.solve(xtw * y)
-            },
+            }
         },
     }
 }
 
 #[inline(always)]
-fn soft_threshold_l1(rho: f64, lambda: f64) -> f64 {
-    rho.signum() * (rho.abs() - lambda).max(0f64)
+fn soft_threshold_l1(z: f64, lambda: f64) -> f64 {
+    z.signum() * (z.abs() - lambda).max(0f64)
 }
 
-/// Computes Lasso Regression coefficients by the use of Coordinate Descent.
+/// Computes Lasso/Elastic Regression coefficients by the use of Coordinate Descent.
 /// The current stopping criterion is based on L Inf norm of the changes in the
 /// coordinates. A better alternative might be the dual gap.
 ///
 /// Reference:
 /// https://xavierbourretsicotte.github.io/lasso_implementation.html
+/// https://www.stat.cmu.edu/~ryantibs/convexopt-F18/lectures/coord-desc.pdf
 /// https://github.com/minatosato/Lasso/blob/master/coordinate_descent_lasso.py
 /// https://en.wikipedia.org/wiki/Lasso_(statistics)
 #[inline(always)]
-pub fn faer_lasso_regression(
+pub fn faer_coordinate_descent(
     x: MatRef<f64>,
     y: MatRef<f64>,
-    lambda: f64,
+    l1_reg: f64,
+    l2_reg: f64,
     has_bias: bool,
     tol: f64,
 ) -> Mat<f64> {
@@ -552,15 +571,16 @@ pub fn faer_lasso_regression(
     let ncols = x.ncols();
     let n1 = ncols.abs_diff(has_bias as usize);
 
-    let lambda_new = m * lambda;
+    let lambda_l1 = m * l1_reg;
 
     let mut beta: Mat<f64> = Mat::zeros(ncols, 1);
     let mut converge = false;
 
     // compute column squared l2 norms.
+    // (In the case of Elastic net, squared l2 norms + l2 regularization factor)
     let norms = x
         .col_iter()
-        .map(|c| c.squared_norm_l2())
+        .map(|c| c.squared_norm_l2() + m * l2_reg)
         .collect::<Vec<_>>();
 
     let xty = x.transpose() * y;
@@ -576,10 +596,11 @@ pub fn faer_lasso_regression(
             *unsafe { beta.get_mut_unchecked(j, 0) } = 0f64;
             let xtx_j = unsafe { xtx.get_unchecked(j..j + 1, ..) };
 
-            let dot = xty.read(j, 0) - (xtx_j * &beta).read(0, 0);
+            // Xi^t(y - X-i Beta-i)
+            let main_update = xty.read(j, 0) - (xtx_j * &beta).read(0, 0);
 
             // update beta(j, 0).
-            let after = soft_threshold_l1(dot, lambda_new) / norms[j];
+            let after = soft_threshold_l1(main_update, lambda_l1) / norms[j];
             *unsafe { beta.get_mut_unchecked(j, 0) } = after;
             max_change = (after - before).abs().max(max_change);
         }

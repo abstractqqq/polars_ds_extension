@@ -75,7 +75,6 @@ def test_pds_linear_regression_on_df(benchmark, n):
             pds.query_lstsq(
                 *X_VARS,
                 target=Y[0],
-                method="normal",
             )
         )
 
@@ -98,7 +97,7 @@ def test_pds_lasso_on_df(benchmark, n):
 
     @benchmark
     def func():
-        df.select(pds.query_lstsq(*X_VARS, target=Y[0], method="l1", l1_reg=0.1))
+        df.select(pds.query_lstsq(*X_VARS, target=Y[0], l1_reg=0.1))
 
 
 @pytest.mark.parametrize("n", SIZES)
@@ -119,7 +118,7 @@ def test_ridge_svd_on_df(benchmark, n):
 
     @benchmark
     def func():
-        df.select(pds.query_lstsq(*X_VARS, target=Y[0], method="l2", l2_reg=0.1, solver="svd"))
+        df.select(pds.query_lstsq(*X_VARS, target=Y[0], l2_reg=0.1, solver="svd"))
 
 
 @pytest.mark.parametrize("n", SIZES)
@@ -140,7 +139,7 @@ def test_ridge_cholesky_on_df(benchmark, n):
 
     @benchmark
     def func():
-        df.select(pds.query_lstsq(*X_VARS, target=Y[0], method="l2", l2_reg=0.1, solver="cholesky"))
+        df.select(pds.query_lstsq(*X_VARS, target=Y[0], l2_reg=0.1, solver="cholesky"))
 
 
 @pytest.mark.parametrize("n", SIZES)
