@@ -2,7 +2,9 @@ use core::f64;
 
 /// Least Squares using Faer and ndarray.
 use crate::linalg::lstsq::{
-    faer_lasso_regression, faer_recursive_lstsq, faer_rolling_lstsq, faer_rolling_skipping_lstsq, faer_solve_lstsq, faer_solve_lstsq_rcond, faer_solve_ridge, faer_solve_ridge_rcond, faer_weighted_lstsq, ClosedFormLRMethods, LRMethods
+    faer_coordinate_descent, faer_recursive_lstsq, faer_rolling_lstsq, faer_rolling_skipping_lstsq,
+    faer_solve_lstsq, faer_solve_lstsq_rcond, faer_solve_ridge, faer_solve_ridge_rcond,
+    faer_weighted_lstsq, ClosedFormLRMethods, LRMethods,
 };
 use crate::utils::{to_frame, NullPolicy};
 use faer::prelude::*;
@@ -64,7 +66,10 @@ fn coeff_pred_output(_: &[Field]) -> PolarsResult<Field> {
 
 fn coeff_singular_values_output(_: &[Field]) -> PolarsResult<Field> {
     let coeffs = Field::new("coeffs", DataType::List(Box::new(DataType::Float64)));
-    let singular_values = Field::new("singular_values", DataType::List(Box::new(DataType::Float64)));
+    let singular_values = Field::new(
+        "singular_values",
+        DataType::List(Box::new(DataType::Float64)),
+    );
     let v: Vec<Field> = vec![coeffs, singular_values];
     Ok(Field::new("", DataType::Struct(v)))
 }
@@ -74,16 +79,6 @@ fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
         "coeffs",
         DataType::List(Box::new(DataType::Float64)),
     ))
-}
-
-fn infer_regression_method(l1_reg:f64, l2_reg:f64) -> LRMethods {
-    if l1_reg > 0. && l2_reg <= 0. {
-        LRMethods::L1 
-    } else if l1_reg <= 0. && l2_reg > 0. {
-        LRMethods::L2
-    } else {
-        LRMethods::Normal
-    }
 }
 
 /// Returns a Array2 ready for linear regression, and a mask, where true means the row doesn't contain null
@@ -191,8 +186,8 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
 
     let solver = kwargs.solver.as_str().into();
     let weighted = kwargs.weighted;
-    let data_for_matrix = if weighted {&inputs[1..]} else {inputs};
- 
+    let data_for_matrix = if weighted { &inputs[1..] } else { inputs };
+
     match series_to_mat_for_lstsq(data_for_matrix, add_bias, null_policy) {
         Ok((mat, _)) => {
             // Solving Least Square
@@ -208,10 +203,20 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                 }
                 faer_weighted_lstsq(x, y, weights, solver)
             } else {
-                match infer_regression_method(kwargs.l1_reg, kwargs.l2_reg) {
+                match LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)) {
                     LRMethods::Normal => faer_solve_lstsq(x, y, solver),
-                    LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
-                    LRMethods::L2 => faer_solve_ridge(x, y, kwargs.l2_reg, add_bias, solver)
+                    LRMethods::L1 => {
+                        faer_coordinate_descent(x, y, kwargs.l1_reg, 0., add_bias, kwargs.tol)
+                    }
+                    LRMethods::L2 => faer_solve_ridge(x, y, kwargs.l2_reg, add_bias, solver),
+                    LRMethods::ElasticNet => faer_coordinate_descent(
+                        x,
+                        y,
+                        kwargs.l1_reg,
+                        kwargs.l2_reg,
+                        add_bias,
+                        kwargs.tol,
+                    ),
                 }
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
@@ -231,15 +236,19 @@ fn pl_lstsq_w_rcond(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Seri
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
-    let method = if kwargs.l2_reg > 0. {ClosedFormLRMethods::L2} else {ClosedFormLRMethods::Normal};
+    let method = if kwargs.l2_reg > 0. {
+        ClosedFormLRMethods::L2
+    } else {
+        ClosedFormLRMethods::Normal
+    };
 
     // Target y is at index 0
     match series_to_mat_for_lstsq(inputs, add_bias, null_policy) {
         Ok((mat, _)) => {
-            // rcond will be passed as tol 
-            let rcond = kwargs.tol.max(
-                f64::EPSILON * (inputs.len().max(mat.len())) as f64
-            );
+            // rcond will be passed as tol
+            let rcond = kwargs
+                .tol
+                .max(f64::EPSILON * (inputs.len().max(mat.len())) as f64);
 
             // Solving Least Square
             let x = mat.slice(s![.., 1..]).into_faer();
@@ -248,7 +257,9 @@ fn pl_lstsq_w_rcond(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Seri
             //     // faer_solve_ridge_rcond
             let (coeffs, singular_values) = match method {
                 ClosedFormLRMethods::Normal => faer_solve_lstsq_rcond(x, y, rcond),
-                ClosedFormLRMethods::L2 => faer_solve_ridge_rcond(x, y, kwargs.l2_reg, add_bias, rcond),
+                ClosedFormLRMethods::L2 => {
+                    faer_solve_ridge_rcond(x, y, kwargs.l2_reg, add_bias, rcond)
+                }
             };
 
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
@@ -258,7 +269,12 @@ fn pl_lstsq_w_rcond(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Seri
             let coeffs_ca = builder.finish();
 
             let mut sv_builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                ListPrimitiveChunkedBuilder::new("singular_values", 1, singular_values.len(), DataType::Float64);
+                ListPrimitiveChunkedBuilder::new(
+                    "singular_values",
+                    1,
+                    singular_values.len(),
+                    DataType::Float64,
+                );
 
             sv_builder.append_slice(&singular_values);
             let coeffs_sv = sv_builder.finish();
@@ -270,7 +286,6 @@ fn pl_lstsq_w_rcond(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Seri
     }
 }
 
-
 #[polars_expr(output_type_func=pred_residue_output)]
 fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
@@ -279,13 +294,13 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
 
     let solver = kwargs.solver.as_str().into();
     let weighted = kwargs.weighted;
-    let data_for_matrix = if weighted {&inputs[1..]} else {inputs};
+    let data_for_matrix = if weighted { &inputs[1..] } else { inputs };
 
     match series_to_mat_for_lstsq(data_for_matrix, add_bias, null_policy.clone()) {
         Ok((mat, mask)) => {
             let y = mat.slice(s![.., 0..1]).into_faer();
             let x = mat.slice(s![.., 1..]).into_faer();
-            let coeffs =if weighted {
+            let coeffs = if weighted {
                 let weights = inputs[0].f64().unwrap();
                 let weights = weights.cont_slice().unwrap();
                 if weights.len() != mat.nrows() {
@@ -295,10 +310,20 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
                 }
                 faer_weighted_lstsq(x, y, weights, solver)
             } else {
-                match infer_regression_method(kwargs.l1_reg, kwargs.l2_reg) {
+                match LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)) {
                     LRMethods::Normal => faer_solve_lstsq(x, y, solver),
-                    LRMethods::L1 => faer_lasso_regression(x, y, kwargs.l1_reg, add_bias, kwargs.tol),
-                    LRMethods::L2 => faer_solve_ridge(x, y, kwargs.l2_reg, add_bias, solver)
+                    LRMethods::L1 => {
+                        faer_coordinate_descent(x, y, kwargs.l1_reg, 0., add_bias, kwargs.tol)
+                    }
+                    LRMethods::L2 => faer_solve_ridge(x, y, kwargs.l2_reg, add_bias, solver),
+                    LRMethods::ElasticNet => faer_coordinate_descent(
+                        x,
+                        y,
+                        kwargs.l1_reg,
+                        kwargs.l2_reg,
+                        add_bias,
+                        kwargs.tol,
+                    ),
                 }
             };
 
@@ -557,7 +582,7 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
 fn pl_recursive_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<Series> {
     let n = kwargs.n; // Gauranteed n >= 1
     let has_bias = kwargs.bias;
-    
+
     // Gauranteed in Python that this won't be SKIP. SKIP doesn't work now.
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
@@ -667,7 +692,9 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
             let x = mat.slice(s![.., 1..]).into_faer();
             let y = mat.slice(s![.., 0..1]).into_faer();
             let coeffs = match should_skip {
-                true => faer_rolling_skipping_lstsq(x, y, n, kwargs.min_size, kwargs.lambda, has_bias),
+                true => {
+                    faer_rolling_skipping_lstsq(x, y, n, kwargs.min_size, kwargs.lambda, has_bias)
+                }
                 false => faer_rolling_lstsq(x, y, n, kwargs.lambda, has_bias),
             };
 
