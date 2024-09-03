@@ -13,3 +13,4 @@ category_encoders
 copent
 astropy
 graphviz
+plotly
