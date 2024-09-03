@@ -18,9 +18,8 @@ defaults:
   run:
     shell: bash
 
-# Drop 3.8 once it reaches end of life
 env:
-  PYTHON_VERSION: '3.8'
+  PYTHON_VERSION: '3.9'
 
 jobs:
   create-sdist:

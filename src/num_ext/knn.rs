@@ -2,7 +2,7 @@
 /// other features/entropies that require KNN to be efficiently computed.
 use crate::{
     arkadia::{
-        matrix_to_empty_leaves, matrix_to_leaves, AnyKDT, KNNMethod, KNNRegressor, Leaf,
+        matrix_to_empty_leaves, matrix_to_leaves, KDT, KNNMethod, KNNRegressor, Leaf,
         SpacialQueries,
     },
     utils::{list_u32_output, series_to_ndarray, split_offsets, DIST},
@@ -124,7 +124,7 @@ fn pl_knn_avg(
     let mut leaves = matrix_to_leaves_filtered(&binding, id, &null_mask);
 
     let tree = match dist_from_str::<f64>(kwargs.metric) {
-        Ok(d) => Ok(AnyKDT::from_leaves_unchecked(&mut leaves, d)),
+        Ok(d) => Ok(KDT::from_leaves_unchecked(&mut leaves, d)),
         Err(e) => Err(e),
     }
     .map_err(|err| PolarsError::ComputeError(err.into()))?;
@@ -267,7 +267,7 @@ fn pl_knn_ptwise(
     let ca = match dist_from_str::<f64>(kwargs.metric) {
         Ok(d) => {
             let mut leaves = matrix_to_leaves_filtered(&binding, id, null_mask);
-            let tree = AnyKDT::from_leaves_unchecked(&mut leaves, d);
+            let tree = KDT::from_leaves_unchecked(&mut leaves, d);
             Ok(knn_ptwise(
                 tree,
                 eval_mask,
@@ -430,7 +430,7 @@ fn pl_knn_ptwise_w_dist(
     let (ca_nb, ca_dist) = match dist_from_str::<f64>(kwargs.metric) {
         Ok(d) => {
             let mut leaves = matrix_to_leaves_filtered(&binding, id, null_mask);
-            let tree = AnyKDT::from_leaves_unchecked(&mut leaves, d);
+            let tree = KDT::from_leaves_unchecked(&mut leaves, d);
             Ok(knn_ptwise_w_dist(
                 tree,
                 eval_mask,
@@ -519,7 +519,7 @@ fn pl_query_radius_ptwise(
     let ca = match dist_from_str::<f64>(kwargs.metric) {
         Ok(d) => {
             let mut leaves = matrix_to_leaves(&binding, id);
-            let tree = AnyKDT::from_leaves_unchecked(&mut leaves, d);
+            let tree = KDT::from_leaves_unchecked(&mut leaves, d);
             Ok(query_radius_ptwise(
                 tree,
                 binding,
@@ -635,7 +635,7 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
         let ca = match dist_from_str::<f64>(kwargs.metric) {
             Ok(d) => {
                 let mut leaves = matrix_to_empty_leaves(&binding);
-                let tree = AnyKDT::from_leaves_unchecked(&mut leaves, d);
+                let tree = KDT::from_leaves_unchecked(&mut leaves, d);
                 Ok(query_nb_cnt(tree, data.view(), r, can_parallel))
             }
             Err(e) => Err(e),
@@ -646,7 +646,7 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
         let ca = match dist_from_str::<f64>(kwargs.metric) {
             Ok(d) => {
                 let mut leaves = matrix_to_empty_leaves(&binding);
-                let tree = AnyKDT::from_leaves_unchecked(&mut leaves, d);
+                let tree = KDT::from_leaves_unchecked(&mut leaves, d);
                 Ok(query_nb_cnt_w_radius(
                     tree,
                     data.view(),
