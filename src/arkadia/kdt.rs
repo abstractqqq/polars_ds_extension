@@ -1,9 +1,6 @@
 /// A Kdtree
-use super::KNNRegressor;
-use crate::{
-    arkadia::{leaf::KdLeaf, suggest_capacity, Leaf, SpacialQueries, NB},
-    utils::DIST,
-};
+use super::{leaf::KdLeaf, suggest_capacity, KNNRegressor, Leaf, SpacialQueries, NB};
+use crate::utils::DIST;
 use cfavml::safe_trait_distance_ops::DistanceOps;
 use num::Float;
 use std::{fmt::Debug, usize};
@@ -26,8 +23,8 @@ pub struct KDT<'a, T: Float + DistanceOps + 'static + Debug, A> {
 }
 
 impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
-    // Helper function that finds the bounding box for each (sub)kdtree 
-    // Vec of length 2 * dim. First dim values are the mins, and the rest are maxes 
+    // Helper function that finds the bounding box for each (sub)kdtree
+    // Vec of length 2 * dim. First dim values are the mins, and the rest are maxes
     fn find_bounds(data: &[Leaf<'a, T, A>], dim: usize) -> Vec<T> {
         let mut bounds = vec![T::max_value(); dim];
         bounds.extend(std::iter::repeat(T::min_value()).take(dim));

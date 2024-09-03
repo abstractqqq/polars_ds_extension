@@ -2,8 +2,8 @@
 /// other features/entropies that require KNN to be efficiently computed.
 use crate::{
     arkadia::{
-        matrix_to_empty_leaves, matrix_to_leaves, KDT, KNNMethod, KNNRegressor, Leaf,
-        SpacialQueries,
+        matrix_to_empty_leaves, matrix_to_leaves, KNNMethod, KNNRegressor, Leaf, SpacialQueries,
+        KDT,
     },
     utils::{list_u32_output, series_to_ndarray, split_offsets, DIST},
 };

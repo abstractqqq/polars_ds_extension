@@ -162,7 +162,6 @@ def query_lstsq_w_rcond(
         "l2_reg": l2_reg,
         "solver": "",
         "tol": abs(rcond),
-        "weighted": False,
     }
     return pl_plugin(
         symbol="pl_lstsq_w_rcond",
