@@ -12,3 +12,4 @@ xicor
 category_encoders
 copent
 astropy
+graphviz
