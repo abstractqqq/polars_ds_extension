@@ -12,3 +12,6 @@ xicor
 category_encoders
 copent
 astropy
+graphviz
+plotly
+great-tables>=0.9

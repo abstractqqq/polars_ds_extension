@@ -18,9 +18,8 @@ defaults:
   run:
     shell: bash
 
-# Drop 3.8 once it reaches end of life
 env:
-  PYTHON_VERSION: '3.8'
+  PYTHON_VERSION: '3.9'
 
 jobs:
   create-sdist:
@@ -71,6 +70,16 @@ jobs:
           pip install .
           pip install -r tests/requirements-test.txt
           pytest tests/test_*
+
+      - name: Test Notebooks
+        run: | 
+          python -m pip install --upgrade pip
+          pip install jupyter ipython ipykernel nbconvert
+          pip install -r tests/requirements-test.txt
+          jupyter execute examples/basics.ipynb
+          jupyter execute examples/diagnosis.ipynb
+          jupyter execute examples/sample_and_split.ipynb
+
 
   build-wheels:
     runs-on: ${{ matrix.os }}
