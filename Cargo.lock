@@ -2002,6 +2002,7 @@ dependencies = [
  "rand_distr",
  "rapidfuzz",
  "realfft",
+ "rustfft",
  "serde",
  "unicode-normalization",
 ]

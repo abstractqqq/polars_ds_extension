@@ -157,7 +157,7 @@ def test_longest_streak_2(a, value, res):
 
 
 @pytest.mark.parametrize(
-    "df, ft, res_full, res_valid, res_same",
+    "df, kernel, res_full, res_valid, res_same",
     [
         (
             pl.DataFrame({"a": [5, 6, 7, 8, 9]}),
@@ -168,40 +168,40 @@ def test_longest_streak_2(a, value, res):
         ),
     ],
 )
-def test_convolve(df, ft, res_full, res_valid, res_same):
-    res = df.select(pds.convolve("a", ft, mode="full"))
+def test_convolve(df, kernel, res_full, res_valid, res_same):
+    res = df.select(pds.convolve("a", kernel, mode="full"))
 
     assert_frame_equal(res, res_full)
 
-    res = df.select(pds.convolve("a", ft, mode="valid"))
+    res = df.select(pds.convolve("a", kernel, mode="valid"))
 
     assert_frame_equal(res, res_valid)
 
-    res = df.select(pds.convolve("a", ft, mode="same"))
+    res = df.select(pds.convolve("a", kernel, mode="same"))
 
     assert_frame_equal(res, res_same)
 
-    res = df.select(pds.convolve("a", ft, mode="full", parallel=True))
+    res = df.select(pds.convolve("a", kernel, mode="full", parallel=True))
 
     assert_frame_equal(res, res_full)
 
-    res = df.select(pds.convolve("a", ft, mode="valid", parallel=True))
+    res = df.select(pds.convolve("a", kernel, mode="valid", parallel=True))
 
     assert_frame_equal(res, res_valid)
 
-    res = df.select(pds.convolve("a", ft, mode="same", parallel=True))
+    res = df.select(pds.convolve("a", kernel, mode="same", parallel=True))
 
     assert_frame_equal(res, res_same)
 
-    res = df.select(pds.convolve("a", ft, mode="full", method="fft"))
+    res = df.select(pds.convolve("a", kernel, mode="full", method="fft"))
 
     assert_frame_equal(res, res_full)
 
-    res = df.select(pds.convolve("a", ft, mode="valid", method="fft"))
+    res = df.select(pds.convolve("a", kernel, mode="valid", method="fft"))
 
     assert_frame_equal(res, res_valid)
 
-    res = df.select(pds.convolve("a", ft, mode="same", method="fft"))
+    res = df.select(pds.convolve("a", kernel, mode="same", method="fft"))
 
     assert_frame_equal(res, res_same)
 

@@ -36,6 +36,7 @@ __all__ = [
     "query_transfer_entropy",
     "query_permute_entropy",
     "query_similar_count",
+    # "query_psd",
 ]
 
 #################################################
@@ -370,6 +371,21 @@ def query_time_reversal_asymmetry_stats(x: str | pl.Expr, n_lags: int) -> pl.Exp
     two_lag = y.shift(-2 * n_lags)  # Nulls won't be in the mean calculation
     return (one_lag * (two_lag + y) * (two_lag - y)).mean()
 
+
+# # Wrong
+# def query_psd(x: str | pl.Expr, window_size:int, overlap_size:int) -> pl.Expr:
+#
+#     xx = str_to_expr(x)
+#     kwargs = {
+#         "window_size": window_size,
+#         "overlap_size": overlap_size,
+#     }
+#     return pl_plugin(
+#         symbol="pl_psd",
+#         args=[xx],
+#         kwargs=kwargs,
+#         returns_scalar=True,
+#     )
 
 #################################################
 # Entropies | Entropy related features          #
