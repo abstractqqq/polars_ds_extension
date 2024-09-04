@@ -1,20 +1,17 @@
-use super::KNNRegressor;
 /// A Kdtree
-use crate::{
-    arkadia::{leaf::KdLeaf, suggest_capacity, Leaf, SpacialQueries, NB},
-    utils::DIST,
-};
+use super::{leaf::KdLeaf, suggest_capacity, KNNRegressor, Leaf, SpacialQueries, NB};
+use crate::utils::DIST;
 use cfavml::safe_trait_distance_ops::DistanceOps;
 use num::Float;
 use std::{fmt::Debug, usize};
 
-pub struct AnyKDT<'a, T: Float + DistanceOps + 'static + Debug, A> {
+pub struct KDT<'a, T: Float + DistanceOps + 'static + Debug, A> {
     dim: usize,
     capacity: usize,
     // Nodes
-    left: Option<Box<AnyKDT<'a, T, A>>>,
-    right: Option<Box<AnyKDT<'a, T, A>>>,
-    // Is a leaf node if this has values
+    left: Option<Box<KDT<'a, T, A>>>,
+    right: Option<Box<KDT<'a, T, A>>>,
+    // Is a leaf node if this has valid values
     split_axis: usize,
     split_axis_value: T,
     // vec of len 2 * dim. First dim values are mins in each dim, second dim values are maxs
@@ -25,8 +22,9 @@ pub struct AnyKDT<'a, T: Float + DistanceOps + 'static + Debug, A> {
     d: DIST<T>,
 }
 
-impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
-    // Helper function that finds the bounding box for each (sub)kdtree // (Vec<T>, Vec<T>)
+impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
+    // Helper function that finds the bounding box for each (sub)kdtree
+    // Vec of length 2 * dim. First dim values are the mins, and the rest are maxes
     fn find_bounds(data: &[Leaf<'a, T, A>], dim: usize) -> Vec<T> {
         let mut bounds = vec![T::max_value(); dim];
         bounds.extend(std::iter::repeat(T::min_value()).take(dim));
@@ -44,7 +42,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
             return Err("Empty data.".into());
         }
         let dim = data[0].dim();
-        let mut tree = AnyKDT::new_empty(dim, suggest_capacity(dim), d);
+        let mut tree = KDT::new_empty(dim, suggest_capacity(dim), d);
         for leaf in data.iter().copied() {
             if leaf.dim() != dim {
                 return Err("Dimension isn't consistent.".into());
@@ -57,7 +55,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
 
     pub fn from_leaves_unchecked(data: &'a mut [Leaf<'a, T, A>], d: DIST<T>) -> Self {
         let dim = data[0].dim();
-        let mut tree = AnyKDT::new_empty(dim, suggest_capacity(dim), d);
+        let mut tree = KDT::new_empty(dim, suggest_capacity(dim), d);
         for leaf in data.iter().copied() {
             tree.add_unchecked(leaf, 0);
         }
@@ -67,7 +65,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
     pub fn new_empty(dim: usize, capacity: usize, d: DIST<T>) -> Self {
         let mut bounds = vec![T::max_value(); dim];
         bounds.extend(std::iter::repeat(T::min_value()).take(dim));
-        AnyKDT {
+        KDT {
             dim: dim,
             capacity: capacity,
             left: None,
@@ -83,7 +81,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
     /// Creates a new leaf node out of the data.
     pub fn grow_new_leaf(&self, data: Vec<Leaf<'a, T, A>>) -> Self {
         let bounds = Self::find_bounds(&data, self.dim);
-        AnyKDT {
+        KDT {
             dim: self.dim,
             capacity: self.capacity,
             left: None,
@@ -317,7 +315,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> AnyKDT<'a, T, A> {
 }
 
 impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpacialQueries<'a, T, A>
-    for AnyKDT<'a, T, A>
+    for KDT<'a, T, A>
 {
     fn dim(&self) -> usize {
         self.dim
@@ -326,7 +324,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpacialQueries<'a, T
     // #[inline(always)]
     fn knn_one_step(
         &self,
-        pending: &mut Vec<(T, &AnyKDT<'a, T, A>)>,
+        pending: &mut Vec<(T, &KDT<'a, T, A>)>,
         top_k: &mut Vec<NB<T, A>>,
         k: usize,
         point: &[T],
@@ -366,7 +364,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpacialQueries<'a, T
     #[inline(always)]
     fn within_one_step(
         &self,
-        pending: &mut Vec<(T, &AnyKDT<'a, T, A>)>,
+        pending: &mut Vec<(T, &KDT<'a, T, A>)>,
         neighbors: &mut Vec<NB<T, A>>,
         point: &[T],
         radius: T,
@@ -397,7 +395,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpacialQueries<'a, T
     #[inline(always)]
     fn within_count_one_step(
         &self,
-        pending: &mut Vec<(T, &AnyKDT<'a, T, A>)>,
+        pending: &mut Vec<(T, &KDT<'a, T, A>)>,
         point: &[T],
         radius: T,
     ) -> u32 {
@@ -435,7 +433,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpacialQueries<'a, T
 }
 
 impl<'a, T: Float + DistanceOps + 'static + Debug + Into<f64>, A: Float + Into<f64>>
-    KNNRegressor<'a, T, A> for AnyKDT<'a, T, A>
+    KNNRegressor<'a, T, A> for KDT<'a, T, A>
 {
 }
 
@@ -511,7 +509,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves(&binding, &values);
 
-        let tree = AnyKDT::from_leaves(&mut leaves, DIST::LINF).unwrap();
+        let tree = KDT::from_leaves(&mut leaves, DIST::LINF).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
@@ -545,7 +543,7 @@ mod tests {
 
         let binding = mat.view();
         let leaves = matrix_to_leaves_w_row_num(&binding);
-        let mut tree = AnyKDT::new_empty(3, 40, DIST::SQL2);
+        let mut tree = KDT::new_empty(3, 40, DIST::SQL2);
         for leaf in leaves.into_iter() {
             let _ = tree.add(leaf);
         }
@@ -582,7 +580,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves_w_row_num(&binding);
 
-        let tree = AnyKDT::from_leaves(&mut leaves, DIST::SQL2).unwrap();
+        let tree = KDT::from_leaves(&mut leaves, DIST::SQL2).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 
@@ -616,7 +614,7 @@ mod tests {
 
         let binding = mat.view();
         let leaves = matrix_to_leaves_w_row_num(&binding);
-        let mut tree = AnyKDT::new_empty(10, 40, DIST::SQL2);
+        let mut tree = KDT::new_empty(10, 40, DIST::SQL2);
         for leaf in leaves.into_iter() {
             let _ = tree.add(leaf);
         }
@@ -653,7 +651,7 @@ mod tests {
         let binding = mat.view();
         let mut leaves = matrix_to_leaves_w_row_num(&binding);
 
-        let tree = AnyKDT::from_leaves(&mut leaves, DIST::L1).unwrap();
+        let tree = KDT::from_leaves(&mut leaves, DIST::L1).unwrap();
 
         let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
 

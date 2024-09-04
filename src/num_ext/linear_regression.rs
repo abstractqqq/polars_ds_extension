@@ -1,12 +1,11 @@
-/// Least Squares using Faer and ndarray.
-
-use core::f64;
 use crate::linalg::lstsq::{
     faer_coordinate_descent, faer_recursive_lstsq, faer_rolling_lstsq, faer_rolling_skipping_lstsq,
     faer_solve_lstsq, faer_solve_lstsq_rcond, faer_solve_ridge, faer_solve_ridge_rcond,
     faer_weighted_lstsq, ClosedFormLRMethods, LRMethods,
 };
 use crate::utils::{to_frame, NullPolicy};
+/// Least Squares using Faer and ndarray.
+use core::f64;
 use faer::prelude::*;
 use faer_ext::IntoFaer;
 use itertools::Itertools;

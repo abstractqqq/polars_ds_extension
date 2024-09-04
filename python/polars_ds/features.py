@@ -11,7 +11,7 @@ from typing import Iterable, Literal
 
 __all__ = [
     "query_abs_energy",
-    "symmetry_ratio",
+    "query_symm_ratio",
     "query_mean_abs_change",
     "query_cv",
     "query_mean_n_abs_max",
@@ -45,10 +45,10 @@ __all__ = [
 # index_mass_quantile
 
 
-def symmetry_ratio(x: str | pl.Expr) -> pl.Expr:
+def query_symm_ratio(x: str | pl.Expr) -> pl.Expr:
     """
-    Returns |mean - median| / (max - min). Note the closer to 0 this value is, the more symmetric
-    the series is.
+    Returns the symmetric ratio: |mean - median| / (max - min). Note the closer to 0 this value is,
+    the more symmetric the series is.
     """
     y = str_to_expr(x)
     return (y.mean() - y.median()).abs() / (y.max() - y.min())

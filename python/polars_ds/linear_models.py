@@ -1,6 +1,5 @@
 """
-Linear models. Currently, only supports Polars DataFrame Inputs or NumPy matrices as inputs. This module is in 
-very early development and is subject to frequent breaking changes.
+Linear models. This module is in very early development and is subject to frequent breaking changes.
 
 This module requires the NumPy package. PDS only requires Polars, but you can get all the optional dependencies by
 
@@ -18,7 +17,7 @@ import numpy as np
 from typing import List, Tuple
 from .type_alias import LRSolverMethods, NullPolicy, PolarsFrame
 
-from polars_ds._polars_ds import PyOnlineLR
+from polars_ds._polars_ds import PyLR, PyOnlineLR
 
 import sys
 
@@ -44,17 +43,20 @@ class LR:
         """
         Parameters
         ----------
-        fit_bias
-            Whether to add a bias term. Also known as intercept in other packages.
         lambda_
             The regularization parameters for ridge. If this is positive, then this class will solve Ridge.
         solver
             Use one of 'svd', 'cholesky' and 'qr' method to solve the least square equation. Default is 'qr'.
+        fit_bias
+            Whether to add a bias term. Also known as intercept in other packages.
         feature_names_in_
             Names for the incoming features, if available. If None, the names will be empty. They will be
             learned if .fit_df() is run later, or .set_input_features() is set later.
         """
-        self._lr = PyOnlineLR()
+        self._lr = PyLR()
+        self.feature_names_in_: List[str] = (
+            [] if feature_names_in_ is None else list(feature_names_in_)
+        )
 
     @staticmethod
     def _handle_nulls_in_df(
@@ -167,6 +169,7 @@ class LR:
         features
             List of strings.
         """
+        self.feature_names_in_.clear()
         self.feature_names_in_ = list(features)
         return self
 
@@ -247,6 +250,7 @@ class LR:
         )
         X = df2.select(features).to_numpy()
         y = df2.select(target).to_numpy()
+        self.feature_names_in_.clear()
         self.feature_names_in_ = list(features)
         return self.fit(X, y)
 
@@ -259,12 +263,7 @@ class LR:
         X
             Data to predict on, as a matrix
         """
-        if X.ndim == 1:
-            return self._lr.predict(X.reshape((1, -1)))
-        elif X.ndim == 2:
-            return self._lr.predict(X)
-        else:
-            return ValueError("Dimension not supported.")
+        return self._lr.predict(X.reshape((1, -1)))
 
     def predict_df(self, df: PolarsFrame, name: str = "prediction") -> PolarsFrame:
         """
@@ -296,7 +295,11 @@ class LR:
 
 class OnlineLR:
     """
-    Normal or Ridge Online Regression. Currently doesn't support dataframe inputs.
+    Normal or Ridge Online Regression. This doesn't support dataframe inputs.
+
+    Null Behaviors:
+    1. During the initial fit, no nulls/NaNs should be present
+    2. During online updates, if the record has null/NaN, then it will be ignored. Nothing will be updated.
     """
 
     def __init__(
@@ -317,7 +320,8 @@ class OnlineLR:
     @classmethod
     def from_coeffs_and_inv(cls, coeffs: List[float], inv: np.ndarray, bias: float = 0.0) -> Self:
         """
-        Constructs an online linear regression instance from coefficients, inverse and bias.
+        Constructs an online linear regression instance from coefficients, inverse and bias. This copies
+        data.
 
         Parameters
         ----------
@@ -414,9 +418,4 @@ class OnlineLR:
         X
             Data to predict on, as a matrix
         """
-        if X.ndim == 1:
-            return self._lr.predict(X.reshape((1, -1)))
-        elif X.ndim == 2:
-            return self._lr.predict(X)
-        else:
-            return ValueError("Dimension not supported.")
+        return self._lr.predict(X.reshape((1, -1)))

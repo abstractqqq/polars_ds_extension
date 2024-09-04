@@ -12,12 +12,12 @@
 /// and it is more convenient to just use strings.
 /// E.g.
 /// within_count returns a u32 as opposed to usize because that can help me skip a type conversion when used with Polars.
-pub mod arkadia_any;
+pub mod kdt;
 pub mod leaf;
 pub mod neighbor;
 pub mod utils;
 
-pub use arkadia_any::AnyKDT;
+pub use kdt::KDT;
 pub use leaf::{KdLeaf, Leaf};
 pub use neighbor::NB;
 use serde::Deserialize;

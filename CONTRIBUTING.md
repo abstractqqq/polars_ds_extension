@@ -32,6 +32,6 @@ For docs and typo fix PRs, we welcome changes that:
 
 4. Fix actual broken UI/style components in doc/readme.
 
-Simple stylistic change/reformatting that doesn't register any significant change in looks, or doesn't fix any previously noted problems will not be approved.
+Simple stylistic change/reformatting that doesn't result in any significant change in looks, or doesn't fix any previously noted problems will not be approved.
 
 Please understand, and thank you for your time.
