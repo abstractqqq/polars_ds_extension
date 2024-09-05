@@ -77,9 +77,6 @@ fn valid_fft_convolve(input: &[f64], kernel: &[f64]) -> PolarsResult<Vec<f64>> {
     let mut output_vec = vec![0.; in_shape];
     output_vec[..in_shape].copy_from_slice(input);
 
-    let mut oth = vec![0.; in_shape];
-    oth[..kernel.len()].copy_from_slice(kernel);
-
     let mut planner: RealFftPlanner<f64> = RealFftPlanner::new();
     let r2c = planner.plan_fft_forward(in_shape);
     let c2r = planner.plan_fft_inverse(in_shape);
@@ -89,7 +86,14 @@ fn valid_fft_convolve(input: &[f64], kernel: &[f64]) -> PolarsResult<Vec<f64>> {
 
     // Forward FFT on the inputs
     let _ = r2c.process(&mut output_vec, &mut spec_p);
-    let _ = r2c.process(&mut oth, &mut spec_q);
+    
+    // Write kernel to output_vec, then 0 fill the rest
+    output_vec[..kernel.len()].copy_from_slice(kernel);
+    for i in kernel.len()..output_vec.len() {
+        output_vec[i] = 0.; 
+    }
+    // Now output_vec is the kernel
+    let _ = r2c.process(&mut output_vec, &mut spec_q);
 
     // After forward FFT, multiply elementwise
     for i in 0..spec_p.len() {
