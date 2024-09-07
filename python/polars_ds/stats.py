@@ -550,9 +550,10 @@ def random_int(
     )
 
 
-def random_str(min_size: int, max_size: int) -> pl.Expr:
+def random_str(min_size: int, max_size: int, seed: int | None = None) -> pl.Expr:
     """
-    Generates random strings of length between min_size and max_size.
+    Generates random strings of length between min_size and max_size. The characters are
+    uniformly distributed over ASCII letters and numbers: a-z, A-Z and 0-9.
 
     Parameters
     ----------
@@ -573,7 +574,7 @@ def random_str(min_size: int, max_size: int) -> pl.Expr:
             pl.len().cast(pl.UInt32),
             pl.lit(mi, pl.UInt32),
             pl.lit(ma, pl.UInt32),
-            pl.lit(42, pl.UInt64),
+            pl.lit(seed, pl.UInt64),
         ],
         is_elementwise=True,
     )

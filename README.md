@@ -223,7 +223,7 @@ See this for Native Polars DataFrame Explorative tools: [notebook](./examples/di
 
 # Disclaimer
 
-**Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars and will try to be as stable as possible for polars>=0.20.6. Exceptions will be made when Polars's update forces changes in the plugins.**
+**Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars (for most of its core) and will try to be as stable as possible for polars>=0.20.16. Exceptions will be made when Polars's update forces changes in the plugins.**
 
 This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed.
 

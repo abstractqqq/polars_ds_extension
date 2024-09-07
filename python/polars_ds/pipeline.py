@@ -21,7 +21,7 @@ from .type_alias import (
     EncoderDefaultStrategy,
 )
 
-from ._utils import _POLARS_LEGACY_SUPPORT, _IS_POLARS_V1
+from ._utils import _IS_POLARS_V1
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -188,9 +188,6 @@ class Pipeline:
         """
         Converts self to a dict, with all expressions turned into JSON strings.
         """
-        if _POLARS_LEGACY_SUPPORT:
-            raise ValueError("This functionality doesn't support polars < 0.20.16.")
-
         return {
             "name": str(self.name),
             "target": self.target,
@@ -213,9 +210,6 @@ class Pipeline:
         kwargs
             Keyword arguments to Python's default json
         """
-        if _POLARS_LEGACY_SUPPORT:
-            raise ValueError("This functionality doesn't support polars < 0.20.16.")
-
         # Maybe support other json package?
         if path is None:
             return json.dumps(self.to_dict(), **kwargs)
@@ -229,9 +223,6 @@ class Pipeline:
         """
         Recreates a pipeline from a dictionary created by the `to_dict` call.
         """
-        if _POLARS_LEGACY_SUPPORT:
-            raise ValueError("This functionality doesn't support polars < 0.20.16.")
-
         from io import StringIO
 
         try:
@@ -300,16 +291,12 @@ class Pipeline:
         """
         Creates the Pipeline from the JSON string.
         """
-        if _POLARS_LEGACY_SUPPORT:
-            raise ValueError("This functionality doesn't support polars < 0.20.16.")
         return Pipeline.from_dict(json.loads(json_str))
 
     def from_json(path: str) -> Self:
         """
         Creates the Pipeline by loading a local JSON file at path
         """
-        if _POLARS_LEGACY_SUPPORT:
-            raise ValueError("This functionality doesn't support polars < 0.20.16.")
         with open(path, "r") as f:
             pipe_dict = json.load(f)
         return Pipeline.from_dict(pipe_dict)
@@ -582,7 +569,7 @@ class Blueprint:
         self._steps.append(SelectStep(cols))
         return self
 
-    def shrink_dtype(self, force_f32: bool = False) -> pl.Expr:
+    def shrink_dtype(self, force_f32: bool = False) -> Self:
         """
         Shrinks the dtype by calling shrink_dtype on all numerical columns. This may reduce
         the memory pressure during the process.
@@ -600,7 +587,9 @@ class Blueprint:
 
         return self
 
-    def polynomial_features(self, cols: List[str], degree: int, interaction_only: bool = True):
+    def polynomial_features(
+        self, cols: List[str], degree: int, interaction_only: bool = True
+    ) -> Self:
         """
         Generates polynomial combinations out of the features given, at the given degree.
 
@@ -669,7 +658,7 @@ class Blueprint:
         self._steps.append(SelectStep(pl.all().exclude(cols)))
         return self
 
-    def rename(self, rename_dict: Dict[str, str]) -> pl.Expr:
+    def rename(self, rename_dict: Dict[str, str]) -> Self:
         """
         Renames the columns by the mapping.
 
