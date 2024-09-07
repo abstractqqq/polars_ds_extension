@@ -1,5 +1,5 @@
-use crate::utils::float_output;
 /// Generates random sample from distributions for Polars DataFrame
+use crate::utils::float_output;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use rand::distributions::Uniform;

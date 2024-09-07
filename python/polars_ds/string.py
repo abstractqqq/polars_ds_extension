@@ -653,8 +653,8 @@ def similar_to_vocab(
     strategy: Literal["avg", "all", "any"] = "avg",
 ) -> pl.Expr:
     """
-    Compare each word in the vocab with each word in self. Filters c to the words
-    that are most similar to the words in the vocab.
+    Compare each word in the vocab with each word in the column c. Returns a boolean
+    that indicates whether there exist words in c that are similar to words in vocab.
 
     Parameters
     ----------
