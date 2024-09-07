@@ -694,6 +694,18 @@ class Blueprint:
             self._steps.append(SelectStep([pl.col(c).alias(c.lower()) for c in self._df.columns]))
         return self
 
+    def uppercase(self) -> Self:
+        """
+        Uppercases all column names.
+        """
+        if _IS_POLARS_V1:
+            self._steps.append(
+                SelectStep([pl.col(c).alias(c.upper()) for c in self._df.collect_schema().names()])
+            )
+        else:
+            self._steps.append(SelectStep([pl.col(c).alias(c.upper()) for c in self._df.columns]))
+        return self
+
     def one_hot_encode(
         self,
         cols: IntoExprColumn,

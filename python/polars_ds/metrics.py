@@ -25,6 +25,8 @@ __all__ = [
     "query_multi_roc_auc",
     "query_cat_cross_entropy",
     "query_confusion_matrix",
+    "query_fairness",
+    "query_p_pct_score",
 ]
 
 
@@ -546,3 +548,45 @@ def query_cat_cross_entropy(
     if normalize:
         return -y_prob.log().sum() / a.count()
     return -y_prob.log().sum()
+
+
+def query_fairness(pred: str | pl.Expr, sensitive_cond: pl.Expr) -> pl.Expr:
+    """
+    A simple fairness metric for regression output. Computes the absolute difference between
+    the average of the `pred` values on when the `sensitive_cond` is true vs the
+    avg of the values when `sensitive_cond` is false.
+
+    The lower this value is, the more fair is the model on the sensitive condition.
+
+    Parameters
+    ----------
+    pred
+        The predictions
+    sensitive_cond
+        A boolean expression representing the sensitive condition
+    """
+    p = str_to_expr(pred)
+    return (p.filter(sensitive_cond).mean() - p.filter(~sensitive_cond).mean()).abs()
+
+
+def query_p_pct_score(pred: str | pl.Expr, sensitive_cond: pl.Expr) -> pl.Expr:
+    """
+    Computes the 'p-percent score', which measures the fairness of a classification
+    model on a sensitive_cond. Let z = the sensitive_cond, then:
+
+    p-percent score = min(P(y = 1 | z = 1) / P(y = 1 | z = 0), P(y = 1 | z = 0) / P(y = 1 | z = 1))
+
+    Parameters
+    ----------
+    pred
+        The predictions. Must be 0s and 1s.
+    sensitive_cond
+        A boolean expression representing the sensitive condition
+    """
+    p = str_to_expr(pred)
+    p_y1_z1 = p.filter(
+        sensitive_cond
+    ).mean()  # since p is 0s and 1s, this is equal to P(pred = 1 | sensitive_cond)
+    p_y1_z0 = p.filter(~sensitive_cond).mean()
+    ratio = p_y1_z1 / p_y1_z0
+    return pl.min_horizontal(ratio, 1 / ratio)
