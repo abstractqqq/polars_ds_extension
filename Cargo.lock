@@ -2001,6 +2001,7 @@ dependencies = [
  "rand",
  "rand_distr",
  "rapidfuzz",
+ "rayon",
  "realfft",
  "rustfft",
  "serde",

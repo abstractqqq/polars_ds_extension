@@ -2,7 +2,7 @@
 /// other features/entropies that require KNN to be efficiently computed.
 use crate::{
     arkadia::{
-        matrix_to_empty_leaves, matrix_to_leaves, KNNMethod, KNNRegressor, Leaf, SpacialQueries,
+        matrix_to_empty_leaves, matrix_to_leaves, KNNMethod, KNNRegressor, Leaf, SpatialQueries,
         KDT,
     },
     utils::{list_u32_output, series_to_ndarray, split_offsets, DIST},
@@ -82,20 +82,6 @@ pub fn matrix_to_leaves_filtered<'a, T: Float + 'static, A: Copy>(
         .collect::<Vec<_>>()
 }
 
-// used in all cases but squared l2 (multiple queries)
-pub fn dist_from_str<T: Float + cfavml::safe_trait_distance_ops::DistanceOps + 'static>(
-    dist_str: String,
-) -> Result<DIST<T>, String> {
-    match dist_str.as_ref() {
-        "l1" => Ok(DIST::L1),
-        "l2" => Ok(DIST::L2),
-        "sql2" => Ok(DIST::SQL2),
-        "linf" | "inf" => Ok(DIST::LINF),
-        "cosine" => Ok(DIST::ANY(cfavml::cosine)),
-        _ => Err("Unknown distance metric.".into()),
-    }
-}
-
 /// KNN Regression
 /// Always do k + 1 because this operation is in-dataframe, and this means
 /// that the point itself is always a neighbor to itself.
@@ -123,7 +109,7 @@ fn pl_knn_avg(
     let binding = data.view();
     let mut leaves = matrix_to_leaves_filtered(&binding, id, &null_mask);
 
-    let tree = match dist_from_str::<f64>(kwargs.metric) {
+    let tree = match DIST::<f64>::new_from_str_informed(kwargs.metric, data.ncols()) {
         Ok(d) => Ok(KDT::from_leaves_unchecked(&mut leaves, d)),
         Err(e) => Err(e),
     }
@@ -176,7 +162,7 @@ pub fn knn_ptwise<'a, Kdt>(
     epsilon: f64,
 ) -> ListChunked
 where
-    Kdt: SpacialQueries<'a, f64, u32> + std::marker::Sync,
+    Kdt: SpatialQueries<'a, f64, u32> + std::marker::Sync,
 {
     let nrows = data.nrows();
     if can_parallel {
@@ -264,7 +250,7 @@ fn pl_knn_ptwise(
     let data = series_to_ndarray(&inputs[inputs_offset..], IndexOrder::C)?;
     let binding = data.view();
 
-    let ca = match dist_from_str::<f64>(kwargs.metric) {
+    let ca = match DIST::<f64>::new_from_str_informed(kwargs.metric, data.ncols()) {
         Ok(d) => {
             let mut leaves = matrix_to_leaves_filtered(&binding, id, null_mask);
             let tree = KDT::from_leaves_unchecked(&mut leaves, d);
@@ -295,7 +281,7 @@ pub fn knn_ptwise_w_dist<'a, Kdt>(
     epsilon: f64,
 ) -> (ListChunked, ListChunked)
 where
-    Kdt: SpacialQueries<'a, f64, u32> + std::marker::Sync,
+    Kdt: SpatialQueries<'a, f64, u32> + std::marker::Sync,
 {
     let nrows = data.nrows();
     if can_parallel {
@@ -427,7 +413,7 @@ fn pl_knn_ptwise_w_dist(
     let data = series_to_ndarray(&inputs[inputs_offset..], IndexOrder::C)?;
     let binding = data.view();
 
-    let (ca_nb, ca_dist) = match dist_from_str::<f64>(kwargs.metric) {
+    let (ca_nb, ca_dist) = match DIST::<f64>::new_from_str_informed(kwargs.metric, data.ncols()) {
         Ok(d) => {
             let mut leaves = matrix_to_leaves_filtered(&binding, id, null_mask);
             let tree = KDT::from_leaves_unchecked(&mut leaves, d);
@@ -457,7 +443,7 @@ pub fn query_radius_ptwise<'a, Kdt>(
     sort: bool,
 ) -> ListChunked
 where
-    Kdt: SpacialQueries<'a, f64, u32> + std::marker::Sync,
+    Kdt: SpatialQueries<'a, f64, u32> + std::marker::Sync,
 {
     if can_parallel {
         let nrows = data.nrows();
@@ -516,7 +502,7 @@ fn pl_query_radius_ptwise(
     let binding = data.view();
     // Building output
 
-    let ca = match dist_from_str::<f64>(kwargs.metric) {
+    let ca = match DIST::<f64>::new_from_str_informed(kwargs.metric, data.ncols()) {
         Ok(d) => {
             let mut leaves = matrix_to_leaves(&binding, id);
             let tree = KDT::from_leaves_unchecked(&mut leaves, d);
@@ -542,7 +528,7 @@ pub fn query_nb_cnt<'a, Kdt>(
     can_parallel: bool,
 ) -> UInt32Chunked
 where
-    Kdt: SpacialQueries<'a, f64, ()> + std::marker::Sync,
+    Kdt: SpatialQueries<'a, f64, ()> + std::marker::Sync,
 {
     // as_slice.unwrap() is safe because when we create the matrices, we specified C order.
     let nrows = data.nrows();
@@ -580,7 +566,7 @@ pub fn query_nb_cnt_w_radius<'a, Kdt>(
     can_parallel: bool,
 ) -> UInt32Chunked
 where
-    Kdt: SpacialQueries<'a, f64, ()> + std::marker::Sync,
+    Kdt: SpatialQueries<'a, f64, ()> + std::marker::Sync,
 {
     if can_parallel {
         let radius = radius.to_vec();
@@ -632,7 +618,7 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
     let binding = data.view();
     if radius.len() == 1 {
         let r = radius.get(0).unwrap();
-        let ca = match dist_from_str::<f64>(kwargs.metric) {
+        let ca = match DIST::<f64>::new_from_str_informed(kwargs.metric, data.ncols()) {
             Ok(d) => {
                 let mut leaves = matrix_to_empty_leaves(&binding);
                 let tree = KDT::from_leaves_unchecked(&mut leaves, d);
@@ -643,7 +629,7 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
         .map_err(|err| PolarsError::ComputeError(err.into()))?;
         Ok(ca.with_name("cnt").into_series())
     } else if radius.len() == nrows {
-        let ca = match dist_from_str::<f64>(kwargs.metric) {
+        let ca = match DIST::<f64>::new_from_str_informed(kwargs.metric, data.ncols()) {
             Ok(d) => {
                 let mut leaves = matrix_to_empty_leaves(&binding);
                 let tree = KDT::from_leaves_unchecked(&mut leaves, d);

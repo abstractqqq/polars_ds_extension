@@ -5,7 +5,7 @@ use crate::linalg::{
     LinalgErrors,
 };
 use faer_ext::{IntoFaer, IntoNdarray};
-use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
+use numpy::{IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -40,6 +40,7 @@ impl PyLR {
     }
 
     pub fn fit(&mut self, X: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) -> PyResult<()> {
+        
         let x = X.as_array().into_faer();
         let y = y.as_array().into_faer();
         match self.lr.fit(x, y) {

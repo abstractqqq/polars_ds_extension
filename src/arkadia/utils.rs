@@ -1,18 +1,23 @@
-use crate::arkadia::leaf::Leaf;
+use crate::arkadia::leaf::{Leaf, OwnedLeaf};
 use ndarray::ArrayView2;
 use num::Float;
 
-// ---
+#[derive(Clone, Default)]
+pub enum SplitMethod {
+    MIDPOINT, // min + (max - min) / 2
+    #[default]
+    MEDIAN,
+}
 
-// #[derive(Clone, Default)]
-// pub enum SplitMethod {
-//     #[default]
-//     MIDPOINT, // min + (max - min) / 2
-//     MEAN,
-//     MEDIAN,
-// }
-
-// ---
+impl From<bool> for SplitMethod {
+    fn from(balanced: bool) -> Self {
+        if balanced {
+            Self::MEDIAN
+        } else {
+            Self::MIDPOINT
+        }
+    }
+}
 
 pub fn suggest_capacity(dim: usize) -> usize {
     if dim < 5 {
@@ -43,6 +48,17 @@ pub fn matrix_to_leaves<'a, T: Float + 'static, A: Copy>(
 pub fn matrix_to_leaves_w_row_num<'a, T: Float + 'static>(
     matrix: &'a ArrayView2<'a, T>,
 ) -> Vec<Leaf<'a, T, usize>> {
+    matrix
+        .rows()
+        .into_iter()
+        .enumerate()
+        .map(|pair| pair.into())
+        .collect::<Vec<_>>()
+}
+
+pub fn matrix_to_leaves_w_row_num_owned<'a, T: Float + 'static>(
+    matrix: ArrayView2<'a, T>,
+) -> Vec<OwnedLeaf<T, usize>> {
     matrix
         .rows()
         .into_iter()

@@ -159,12 +159,42 @@ impl TryFrom<String> for NullPolicy {
 pub enum DIST<T: Float + 'static> {
     L1,
     L2,
+    L2SIMD,
     SQL2, // Squared L2
+    SQL2SIMD,
     LINF,
     ANY(fn(&[T], &[T]) -> T),
 }
 
 impl<T: Float + DistanceOps + 'static> DIST<T> {
+
+    /// New DIST from the string suggested and informed by the dimension
+    pub fn new_from_str_informed(
+        dist_str: String,
+        dim: usize,
+    ) -> Result<Self, String> {
+        match dist_str.as_ref() {
+            "l1" => Ok(DIST::L1),
+            "l2" => {
+                if dim < 16 {
+                    Ok(DIST::L2)
+                } else {
+                    Ok(DIST::L2SIMD)
+                }
+            },
+            "sql2" => {
+                if dim < 16 {
+                    Ok(DIST::SQL2)
+                } else {
+                    Ok(DIST::SQL2SIMD)
+                }
+            },
+            "linf" | "inf" => Ok(DIST::LINF),
+            "cosine" => Ok(DIST::ANY(cfavml::cosine)),
+            _ => Err("Unknown distance metric.".into()),
+        }
+    }
+
     #[inline(always)]
     pub fn dist(&self, a1: &[T], a2: &[T]) -> T {
         match self {
@@ -174,28 +204,21 @@ impl<T: Float + DistanceOps + 'static> DIST<T> {
                 .zip(a2.iter().copied())
                 .fold(T::zero(), |acc, (x, y)| acc + ((x - y).abs())),
 
-            DIST::L2 => {
-                if a1.len() < 16 {
-                    a1.iter()
-                        .copied()
-                        .zip(a2.iter().copied())
-                        .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y))
-                        .sqrt()
-                } else {
-                    cfavml::squared_euclidean(a1, a2).sqrt()
-                }
-            }
-            DIST::SQL2 => {
-                // Small penalty to use cfavml when len is small
-                if a1.len() < 16 {
-                    a1.iter()
-                        .copied()
-                        .zip(a2.iter().copied())
-                        .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y))
-                } else {
-                    cfavml::squared_euclidean(a1, a2)
-                }
-            }
+            DIST::L2 => a1.iter()
+                .copied()
+                .zip(a2.iter().copied())
+                .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y))
+                .sqrt(),
+
+            DIST::L2SIMD => cfavml::squared_euclidean(a1, a2),
+
+            DIST::SQL2 => a1.iter()
+                .copied()
+                .zip(a2.iter().copied())
+                .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y)),
+
+            DIST::SQL2SIMD => cfavml::squared_euclidean(a1, a2),
+
             DIST::LINF => a1
                 .iter()
                 .copied()

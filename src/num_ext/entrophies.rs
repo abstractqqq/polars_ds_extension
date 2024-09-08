@@ -1,4 +1,4 @@
-use crate::arkadia::{kdt::KDT, matrix_to_empty_leaves, SpacialQueries};
+use crate::arkadia::{kdt::KDT, matrix_to_empty_leaves, SpatialQueries};
 use crate::num_ext::knn::{query_nb_cnt, KDTKwargs};
 use crate::utils::{series_to_ndarray, split_offsets, DIST};
 use ndarray::{s, ArrayView2};

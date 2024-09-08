@@ -17,14 +17,15 @@ pub mod leaf;
 pub mod neighbor;
 pub mod utils;
 
-pub use kdt::KDT;
+pub use kdt::{KDT,OwnedKDT};
 pub use leaf::{KdLeaf, Leaf};
 pub use neighbor::NB;
 use serde::Deserialize;
 pub use utils::{
     matrix_to_empty_leaves,
     matrix_to_leaves,
-    suggest_capacity, //SplitMethod,
+    suggest_capacity, 
+    SplitMethod,
 };
 
 // ---------------------------------------------------------------------------------------------------------
@@ -53,7 +54,7 @@ impl KNNMethod {
 }
 
 /// K Dimensional Tree Queries. Should be the same for ball trees, etc.
-pub trait SpacialQueries<'a, T: Float + 'static, A> {
+pub trait SpatialQueries<'a, T: Float + 'static, A> {
     fn dim(&self) -> usize;
 
     fn knn_one_step(
@@ -152,7 +153,7 @@ pub trait SpacialQueries<'a, T: Float + 'static, A> {
 }
 
 pub trait KNNRegressor<'a, T: Float + Into<f64> + 'static, A: Float + Into<f64>>:
-    SpacialQueries<'a, T, A>
+    SpatialQueries<'a, T, A>
 {
     fn knn_regress(
         &self,
@@ -224,7 +225,7 @@ pub trait KNNRegressor<'a, T: Float + Into<f64> + 'static, A: Float + Into<f64>>
     }
 }
 
-pub trait KNNClassifier<'a, T: Float + 'static>: SpacialQueries<'a, T, u32> {
+pub trait KNNClassifier<'a, T: Float + 'static>: SpatialQueries<'a, T, u32> {
     fn knn_classif(&self, k: usize, point: &[T], max_dist_bound: T, how: KNNMethod) -> Option<u32> {
         let knn = self.knn_bounded(k, point, max_dist_bound, T::zero());
         todo!()
