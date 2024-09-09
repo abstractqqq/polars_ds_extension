@@ -21,7 +21,7 @@ impl From<bool> for SplitMethod {
 
 pub fn suggest_capacity(dim: usize) -> usize {
     if dim < 5 {
-        8
+        10
     } else if dim < 10 {
         20
     } else if dim < 15 {
@@ -48,17 +48,6 @@ pub fn matrix_to_leaves<'a, T: Float + 'static, A: Copy>(
 pub fn matrix_to_leaves_w_row_num<'a, T: Float + 'static>(
     matrix: &'a ArrayView2<'a, T>,
 ) -> Vec<Leaf<'a, T, usize>> {
-    matrix
-        .rows()
-        .into_iter()
-        .enumerate()
-        .map(|pair| pair.into())
-        .collect::<Vec<_>>()
-}
-
-pub fn matrix_to_leaves_w_row_num_owned<'a, T: Float + 'static>(
-    matrix: ArrayView2<'a, T>,
-) -> Vec<OwnedLeaf<T, usize>> {
     matrix
         .rows()
         .into_iter()

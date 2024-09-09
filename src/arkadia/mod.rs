@@ -117,6 +117,24 @@ pub trait SpatialQueries<'a, T: Float + 'static, A> {
         }
     }
 
+    fn knn_bounded_unchecked(
+        &self,
+        k: usize,
+        point: &[T],
+        max_dist_bound: T,
+        epsilon: T,
+    ) -> Vec<NB<T, A>> {
+
+        let mut top_k = Vec::with_capacity(k + 1);
+        let mut pending = Vec::with_capacity(k + 1);
+        pending.push((T::min_value(), self));
+        while !pending.is_empty() {
+            self.knn_one_step(&mut pending, &mut top_k, k, point, max_dist_bound, epsilon);
+        }
+        top_k
+        
+    }
+
     fn within(&self, point: &[T], radius: T, sort: bool) -> Option<Vec<NB<T, A>>> {
         // radius is actually squared radius
         if radius <= T::zero() + T::epsilon() || (point.iter().any(|x| !x.is_finite())) {

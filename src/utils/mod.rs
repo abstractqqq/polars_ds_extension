@@ -210,7 +210,7 @@ impl<T: Float + DistanceOps + 'static> DIST<T> {
                 .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y))
                 .sqrt(),
 
-            DIST::L2SIMD => cfavml::squared_euclidean(a1, a2),
+            DIST::L2SIMD => cfavml::squared_euclidean(a1, a2).sqrt(),
 
             DIST::SQL2 => a1.iter()
                 .copied()
