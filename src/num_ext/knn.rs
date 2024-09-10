@@ -5,7 +5,7 @@ use crate::{
         matrix_to_empty_leaves, matrix_to_leaves, KNNMethod, KNNRegressor, Leaf, SpatialQueries,
         KDT,
     },
-    utils::{list_u32_output, series_to_ndarray, split_offsets, DIST},
+    utils::{list_u32_output, series_to_ndarray, split_offsets, series_to_row_major_slice, DIST},
 };
 
 use ndarray::{s, ArrayView2};
@@ -82,6 +82,20 @@ pub fn matrix_to_leaves_filtered<'a, T: Float + 'static, A: Copy>(
         .collect::<Vec<_>>()
 }
 
+pub fn row_major_slice_to_leaves_filtered<'a, T: Float + 'static, A: Copy>(
+    slice: &'a [T],
+    row_len: usize,
+    values: &'a [A],
+    filter: &BooleanChunked,
+) -> Vec<Leaf<'a, T, A>> {
+    filter
+        .into_iter()
+        .zip(values.iter().copied().zip(slice.chunks_exact(row_len)))
+        .filter(|(f, _)| f.unwrap_or(false))
+        .map(|(_, pair)| pair.into())
+        .collect::<Vec<_>>()
+}
+
 /// KNN Regression
 /// Always do k + 1 because this operation is in-dataframe, and this means
 /// that the point itself is always a neighbor to itself.
@@ -105,11 +119,14 @@ fn pl_knn_avg(
     let null_mask = inputs[1].bool().unwrap();
     let nrows = null_mask.len();
 
-    let data = series_to_ndarray(&inputs[2..], IndexOrder::C)?;
-    let binding = data.view();
-    let mut leaves = matrix_to_leaves_filtered(&binding, id, &null_mask);
+    // let data = series_to_ndarray(&inputs[2..], IndexOrder::C)?;
 
-    let tree = match DIST::<f64>::new_from_str_informed(kwargs.metric, data.ncols()) {
+    let ncols = inputs[2..].len();
+    let data = series_to_row_major_slice::<Float64Type>(&inputs[2..])?;
+    let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, &null_mask);
+
+
+    let tree = match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
         Ok(d) => Ok(KDT::from_leaves_unchecked(&mut leaves, d)),
         Err(e) => Err(e),
     }
@@ -122,12 +139,11 @@ fn pl_knn_avg(
             let chunks: Vec<_> = splits
                 .into_par_iter()
                 .map(|(offset, len)| {
-                    let slice = binding.slice(s![offset..offset + len, ..]);
+                    let subslice = &data[offset * ncols..(offset + len) * ncols]; 
                     let out = Float64Chunked::from_iter_options(
                         "",
-                        slice.rows().into_iter().map(|row| {
-                            let sl = row.as_slice().unwrap();
-                            tree.knn_regress(k + 1, sl, min_bound, max_bound, method)
+                        subslice.chunks_exact(ncols).into_iter().map(|row| {
+                            tree.knn_regress(k + 1, row, min_bound, max_bound, method)
                         }),
                     );
                     out.downcast_iter().cloned().collect::<Vec<_>>()
@@ -139,9 +155,8 @@ fn pl_knn_avg(
     } else {
         Float64Chunked::from_iter_options(
             "",
-            data.rows().into_iter().map(|row| {
-                let sl = row.as_slice().unwrap();
-                tree.knn_regress(k + 1, sl, min_bound, max_bound, method)
+            data.chunks_exact(ncols).into_iter().map(|row| {
+                tree.knn_regress(k + 1, row, min_bound, max_bound, method)
             }),
         )
     };

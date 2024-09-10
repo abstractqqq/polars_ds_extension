@@ -22,6 +22,15 @@ impl<'a, T: Float , A> From<(A, ArrayView1<'a, T>)> for Leaf<'a, T, A> {
     }
 }
 
+impl<'a, T: Float , A: Copy> From<(A, &'a [T])> for Leaf<'a, T, A> {
+    fn from(value: (A, &'a [T])) -> Self {
+        Leaf {
+            item: value.0,
+            row_vec: value.1
+        }
+    }
+}
+
 impl<T: Float , A: Copy> From<(A, &[T])> for OwnedLeaf<T, A> {
     fn from(value: (A, &[T])) -> Self {
         OwnedLeaf {

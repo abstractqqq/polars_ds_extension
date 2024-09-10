@@ -1,14 +1,16 @@
 use cfavml::safe_trait_distance_ops::DistanceOps;
 use ndarray::Array2;
 use num::Float;
+use rayon::prelude::*;
 use polars::{
     datatypes::{DataType, Field, Float64Type},
-    error::{PolarsError, PolarsResult},
+    error::{polars_ensure, PolarsError, PolarsResult},
     frame::DataFrame,
     lazy::dsl::FieldsMapper,
-    prelude::IndexOrder,
+    prelude::*,
     series::Series,
 };
+use pyo3_polars::export::polars_core::POOL;
 
 // -------------------------------------------------------------------------------
 // Common, Resuable Functions
@@ -35,6 +37,74 @@ pub fn series_to_ndarray(inputs: &[Series], order: IndexOrder) -> PolarsResult<A
         df.to_ndarray::<Float64Type>(order)
     }
 }
+
+/// Organizes the series data into a `matrix`, and return the underlying slice
+/// as a row-major slice. This code here is taken from polars dataframe.to_ndarray()
+pub fn series_to_row_major_slice<N>(series:&[Series]) -> PolarsResult<Vec<<N as PolarsNumericType>::Native>>
+where
+    N: PolarsNumericType,
+{
+    if series.is_empty() {
+        return Err(PolarsError::NoData("Data is empty".into()));
+    }
+    // Safe because series is not empty
+    let height:usize = series[0].len();
+    for s in &series[1..] {
+        if s.len() != height {
+            return Err(PolarsError::ShapeMismatch("Seires don't have the same length.".into()));
+        }
+    }
+    let m = series.len();
+    let mut membuf = Vec::with_capacity(height * m);
+    let ptr = membuf.as_ptr() as usize;
+    // let columns = self.get_columns();
+    POOL.install(|| {
+        series.par_iter().enumerate().try_for_each(|(col_idx, s)| {
+            let s = s.cast(&N::get_dtype())?;
+            let s = match s.dtype() {
+                DataType::Float32 => {
+                    let ca = s.f32().unwrap();
+                    ca.none_to_nan().into_series()
+                },
+                DataType::Float64 => {
+                    let ca = s.f64().unwrap();
+                    ca.none_to_nan().into_series()
+                },
+                _ => s,
+            };
+            polars_ensure!(
+                s.null_count() == 0,
+                ComputeError: "creation of ndarray with null values is not supported"
+            );
+            let ca = s.unpack::<N>()?;
+
+            let mut chunk_offset = 0;
+            for arr in ca.downcast_iter() {
+                let vals = arr.values();
+                let num_cols = m;
+                unsafe {
+                    let mut offset =
+                        (ptr as *mut N::Native).add(col_idx + chunk_offset * num_cols);
+                    for v in vals.iter() {
+                        *offset = *v;
+                        offset = offset.add(num_cols);
+                    }
+                }
+                chunk_offset += vals.len();
+            }
+
+            Ok(())
+        })
+    })?;
+
+    // SAFETY:
+    // we have written all data, so we can now safely set length
+    unsafe {
+        membuf.set_len(height * m);
+    }
+    Ok(membuf)
+}
+
 
 // Shared splitting method
 pub fn split_offsets(len: usize, n: usize) -> Vec<(usize, usize)> {
