@@ -82,15 +82,15 @@ fn valid_fft_convolve(input: &[f64], kernel: &[f64]) -> PolarsResult<Vec<f64>> {
     let c2r = planner.plan_fft_inverse(in_shape);
 
     let mut spec_p = r2c.make_output_vec();
-    let mut spec_q = r2c.make_output_vec(); 
+    let mut spec_q = r2c.make_output_vec();
 
     // Forward FFT on the inputs
     let _ = r2c.process(&mut output_vec, &mut spec_p);
-    
+
     // Write kernel to output_vec, then 0 fill the rest
     output_vec[..kernel.len()].copy_from_slice(kernel);
     for i in kernel.len()..output_vec.len() {
-        output_vec[i] = 0.; 
+        output_vec[i] = 0.;
     }
     // Now output_vec is the kernel
     let _ = r2c.process(&mut output_vec, &mut spec_q);

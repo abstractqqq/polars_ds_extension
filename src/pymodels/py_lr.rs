@@ -40,7 +40,6 @@ impl PyLR {
     }
 
     pub fn fit(&mut self, X: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) -> PyResult<()> {
-        
         let x = X.as_array().into_faer();
         let y = y.as_array().into_faer();
         match self.lr.fit(x, y) {

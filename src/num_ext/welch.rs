@@ -1,5 +1,3 @@
-
-
 // use num::{complex::Complex64, Zero};
 // use polars::prelude::*;
 // use pyo3_polars::derive::polars_expr;
@@ -11,7 +9,6 @@
 //     pub(crate) window_size: usize,
 //     pub(crate) overlap_size: usize,
 // }
-
 
 // fn welch(s:&[f64], window_length:usize, overlap_size:usize) -> f64 {
 
@@ -34,12 +31,12 @@
 //             .into_iter()
 //             .fold(0f64, |acc, z| acc + z.re * z.re + z.im * z.im);
 
-//         count += 1; 
+//         count += 1;
 //         left_idx += overlap_size;
 //     }
 
 //     sums / count as f64
-// } 
+// }
 
 // #[polars_expr(output_type=Float64)]
 // fn pl_psd(

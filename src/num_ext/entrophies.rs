@@ -1,8 +1,8 @@
-use core::f64;
 use crate::arkadia::utils::slice_to_empty_leaves;
 use crate::arkadia::{kdt::KDT, SpatialQueries};
 use crate::num_ext::knn::KDTKwargs;
 use crate::utils::{series_to_row_major_slice, split_offsets, DIST};
+use core::f64;
 use polars::prelude::*;
 use polars_core::POOL;
 use pyo3_polars::derive::{polars_expr, CallerContext};
@@ -49,19 +49,18 @@ fn pl_approximate_entropy(
     let tree = KDT::from_leaves_unchecked(&mut leaves, DIST::LINF);
 
     let phi_m = if can_parallel {
-        data
-        .chunks_exact(ncols)
-        .par_bridge()
-        .map(|sl| 
-            (tree.within_count(&sl[..ncols_minus_1], r).unwrap_or(0) as f64 / nrows as f64).ln()
-        )
-        .sum::<f64>() / nrows as f64
+        data.chunks_exact(ncols)
+            .par_bridge()
+            .map(|sl| {
+                (tree.within_count(&sl[..ncols_minus_1], r).unwrap_or(0) as f64 / nrows as f64).ln()
+            })
+            .sum::<f64>()
+            / nrows as f64
     } else {
-        data
-        .chunks_exact(ncols)
-        .fold(0f64, |acc, sl| 
-            acc + (tree.within_count(&sl[..ncols_minus_1], r).unwrap_or(0) as f64 / nrows as f64).ln()
-        ) / nrows as f64
+        data.chunks_exact(ncols).fold(0f64, |acc, sl| {
+            acc + (tree.within_count(&sl[..ncols_minus_1], r).unwrap_or(0) as f64 / nrows as f64)
+                .ln()
+        }) / nrows as f64
     };
 
     // Step 3, 4, 5 for m + 1 in wiki
@@ -74,25 +73,23 @@ fn pl_approximate_entropy(
         .take(nrows_minus_1)
         .map(|sl| ((), sl).into())
         .collect::<Vec<_>>();
-    
+
     let tree = KDT::from_leaves_unchecked(&mut leaves2, DIST::LINF);
 
     let phi_m1 = if can_parallel {
-        data
-        .chunks_exact(ncols)
-        .take(nrows_minus_1)
-        .par_bridge()
-        .map(|sl| 
-            (tree.within_count(sl, r).unwrap_or(0) as f64 / nrows_minus_1 as f64).ln()
-        )
-        .sum::<f64>() / nrows_minus_1 as f64
+        data.chunks_exact(ncols)
+            .take(nrows_minus_1)
+            .par_bridge()
+            .map(|sl| (tree.within_count(sl, r).unwrap_or(0) as f64 / nrows_minus_1 as f64).ln())
+            .sum::<f64>()
+            / nrows_minus_1 as f64
     } else {
-        data
-        .chunks_exact(ncols)
-        .take(nrows_minus_1)
-        .fold(0f64, |acc, sl|
-            acc + (tree.within_count(sl, r).unwrap_or(0) as f64 / nrows_minus_1 as f64).ln()
-        ) / nrows_minus_1 as f64
+        data.chunks_exact(ncols)
+            .take(nrows_minus_1)
+            .fold(0f64, |acc, sl| {
+                acc + (tree.within_count(sl, r).unwrap_or(0) as f64 / nrows_minus_1 as f64).ln()
+            })
+            / nrows_minus_1 as f64
     };
     // Output
     Ok(Series::from_vec(name, vec![(phi_m1 - phi_m).abs()]))
@@ -135,17 +132,16 @@ fn pl_sample_entropy(
     let tree = KDT::from_leaves_unchecked(&mut leaves, DIST::LINF);
 
     let b = if can_parallel {
-        data
-        .chunks_exact(ncols)
-        .par_bridge()
-        .map(|sl| tree.within_count(&sl[..ncols_minus_1], r).unwrap_or(0))
-        .sum::<u32>() as f64 - nrows as f64
+        data.chunks_exact(ncols)
+            .par_bridge()
+            .map(|sl| tree.within_count(&sl[..ncols_minus_1], r).unwrap_or(0))
+            .sum::<u32>() as f64
+            - nrows as f64
     } else {
-        data
-        .chunks_exact(ncols)
-        .fold(0u32, |acc, sl|
+        data.chunks_exact(ncols).fold(0u32, |acc, sl| {
             acc + tree.within_count(&sl[..ncols_minus_1], r).unwrap_or(0)
-        ) as f64 - nrows as f64
+        }) as f64
+            - nrows as f64
     };
 
     drop(tree);
@@ -159,19 +155,17 @@ fn pl_sample_entropy(
 
     let tree = KDT::from_leaves_unchecked(&mut leaves2, DIST::LINF);
     let a = if can_parallel {
-        data
-        .chunks_exact(ncols)
-        .take(nrows_minus_1)
-        .par_bridge()
-        .map(|sl| tree.within_count(sl, r).unwrap_or(0))
-        .sum::<u32>() as f64 - nrows_minus_1 as f64
+        data.chunks_exact(ncols)
+            .take(nrows_minus_1)
+            .par_bridge()
+            .map(|sl| tree.within_count(sl, r).unwrap_or(0))
+            .sum::<u32>() as f64
+            - nrows_minus_1 as f64
     } else {
-        data
-        .chunks_exact(ncols)
-        .take(nrows_minus_1)
-        .fold(0u32, |acc, sl|
-            acc + tree.within_count(sl, r).unwrap_or(0)
-        ) as f64 - nrows_minus_1 as f64
+        data.chunks_exact(ncols)
+            .take(nrows_minus_1)
+            .fold(0u32, |acc, sl| acc + tree.within_count(sl, r).unwrap_or(0)) as f64
+            - nrows_minus_1 as f64
     };
     // Output
     Ok(Series::from_vec(name, vec![(b / a).ln()]))
@@ -193,7 +187,8 @@ fn _knn_entropy_helper<'a>(
             subslice.chunks_exact(ncols).fold(0f64, |acc, row| {
                 if let Some(mut v) = tree.knn(k + 1, row, 0.) {
                     v.pop()
-                        .map(|nb| acc + (2.0 * nb.to_dist()).ln()).unwrap_or(f64::NAN)
+                        .map(|nb| acc + (2.0 * nb.to_dist()).ln())
+                        .unwrap_or(f64::NAN)
                 } else {
                     acc
                 }
@@ -204,7 +199,8 @@ fn _knn_entropy_helper<'a>(
         data.chunks_exact(ncols).fold(0f64, |acc, row| {
             if let Some(mut v) = tree.knn(k + 1, row, 0.) {
                 v.pop()
-                    .map(|nb| acc + (2.0 * nb.to_dist()).ln()).unwrap_or(f64::NAN)
+                    .map(|nb| acc + (2.0 * nb.to_dist()).ln())
+                    .unwrap_or(f64::NAN)
             } else {
                 acc
             }

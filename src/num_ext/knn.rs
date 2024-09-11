@@ -2,7 +2,8 @@
 /// other features/entropies that require KNN to be efficiently computed.
 use crate::{
     arkadia::{
-        utils::{slice_to_empty_leaves, slice_to_leaves}, KNNMethod, KNNRegressor, Leaf, SpatialQueries, KDT
+        utils::{slice_to_empty_leaves, slice_to_leaves},
+        KNNMethod, KNNRegressor, Leaf, KDT, SpatialQueries,
     },
     utils::{list_u32_output, series_to_row_major_slice, split_offsets, DIST},
 };
@@ -110,7 +111,6 @@ fn pl_knn_avg(
     let data = series_to_row_major_slice::<Float64Type>(&inputs[2..])?;
     let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, &null_mask);
 
-
     let tree = match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
         Ok(d) => Ok(KDT::from_leaves_unchecked(&mut leaves, d)),
         Err(e) => Err(e),
@@ -124,12 +124,12 @@ fn pl_knn_avg(
             let chunks: Vec<_> = splits
                 .into_par_iter()
                 .map(|(offset, len)| {
-                    let subslice = &data[offset * ncols..(offset + len) * ncols]; 
+                    let subslice = &data[offset * ncols..(offset + len) * ncols];
                     let out = Float64Chunked::from_iter_options(
                         "",
-                        subslice.chunks_exact(ncols).map(|row| {
-                            tree.knn_regress(k + 1, row, min_bound, max_bound, method)
-                        }),
+                        subslice
+                            .chunks_exact(ncols)
+                            .map(|row| tree.knn_regress(k + 1, row, min_bound, max_bound, method)),
                     );
                     out.downcast_iter().cloned().collect::<Vec<_>>()
                 })
@@ -140,9 +140,8 @@ fn pl_knn_avg(
     } else {
         Float64Chunked::from_iter_options(
             "",
-            data.chunks_exact(ncols).map(|row| {
-                tree.knn_regress(k + 1, row, min_bound, max_bound, method)
-            }),
+            data.chunks_exact(ncols)
+                .map(|row| tree.knn_regress(k + 1, row, min_bound, max_bound, method)),
         )
     };
 
@@ -202,9 +201,7 @@ where
         for (b, p) in eval_mask.into_iter().zip(data.chunks_exact(ncols)) {
             if b {
                 match tree.knn_bounded(k + 1, p, max_bound, epsilon) {
-                    Some(nbs) => {
-                        builder.append_iter_values(nbs.into_iter().map(|nb| nb.to_item()))
-                    }
+                    Some(nbs) => builder.append_iter_values(nbs.into_iter().map(|nb| nb.to_item())),
                     None => builder.append_null(),
                 }
             } else {
@@ -307,8 +304,7 @@ where
                     let mask = &eval_mask[offset..offset + len];
                     for (b, p) in mask.iter().zip(subslice.chunks_exact(ncols)) {
                         if *b {
-                            match tree.knn_bounded(k + 1, p, max_bound, epsilon)
-                            {
+                            match tree.knn_bounded(k + 1, p, max_bound, epsilon) {
                                 Some(nbs) => {
                                     let mut distances = Vec::with_capacity(nbs.len());
                                     let mut neighbors = Vec::with_capacity(nbs.len());
@@ -504,13 +500,7 @@ fn pl_query_radius_ptwise(
         Ok(d) => {
             let mut leaves = slice_to_leaves(&data, ncols, id);
             let tree = KDT::from_leaves_unchecked(&mut leaves, d);
-            Ok(query_radius_ptwise(
-                tree,
-                &data,
-                radius,
-                can_parallel,
-                sort,
-            ))
+            Ok(query_radius_ptwise(tree, &data, radius, can_parallel, sort))
         }
         Err(e) => Err(e),
     }
@@ -578,9 +568,7 @@ where
             let rad = &radius[offset..offset + len];
             for (row, r) in subslice.chunks_exact(ncols).zip(rad.iter()) {
                 match r {
-                    Some(r) => {
-                        builder.append_option(tree.within_count(row, *r))
-                    }
+                    Some(r) => builder.append_option(tree.within_count(row, *r)),
                     None => builder.append_null(),
                 }
             }
@@ -630,12 +618,7 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
             Ok(d) => {
                 let mut leaves = slice_to_empty_leaves(&data, ncols);
                 let tree = KDT::from_leaves_unchecked(&mut leaves, d);
-                Ok(query_nb_cnt_w_radius(
-                    tree,
-                    &data,
-                    radius,
-                    can_parallel,
-                ))
+                Ok(query_nb_cnt_w_radius(tree, &data, radius, can_parallel))
             }
             Err(e) => Err(e),
         }

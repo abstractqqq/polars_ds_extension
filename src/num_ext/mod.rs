@@ -18,8 +18,8 @@ mod subseq_sim;
 mod target_encode;
 mod tp_fp;
 mod trapz;
-mod woe_iv;
 mod welch;
+mod woe_iv;
 
 // Collection of other distances
 

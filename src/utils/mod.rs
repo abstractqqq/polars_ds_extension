@@ -1,6 +1,5 @@
 use cfavml::safe_trait_distance_ops::DistanceOps;
 use num::Float;
-use rayon::prelude::*;
 use polars::{
     datatypes::{DataType, Field},
     error::{polars_ensure, PolarsError, PolarsResult},
@@ -10,6 +9,7 @@ use polars::{
     series::Series,
 };
 use pyo3_polars::export::polars_core::POOL;
+use rayon::prelude::*;
 
 // -------------------------------------------------------------------------------
 // Common, Resuable Functions
@@ -40,7 +40,9 @@ pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
 /// Organizes the series data into a `matrix`, and return the underlying slice
 /// as a row-major slice. This code here is taken from polars dataframe.to_ndarray()
 #[inline(always)]
-pub fn series_to_row_major_slice<N>(series:&[Series]) -> PolarsResult<Vec<<N as PolarsNumericType>::Native>>
+pub fn series_to_row_major_slice<N>(
+    series: &[Series],
+) -> PolarsResult<Vec<<N as PolarsNumericType>::Native>>
 where
     N: PolarsNumericType,
 {
@@ -48,10 +50,12 @@ where
         return Err(PolarsError::NoData("Data is empty".into()));
     }
     // Safe because series is not empty
-    let height:usize = series[0].len();
+    let height: usize = series[0].len();
     for s in &series[1..] {
         if s.len() != height {
-            return Err(PolarsError::ShapeMismatch("Seires don't have the same length.".into()));
+            return Err(PolarsError::ShapeMismatch(
+                "Seires don't have the same length.".into(),
+            ));
         }
     }
     let m = series.len();
@@ -65,11 +69,11 @@ where
                 DataType::Float32 => {
                     let ca = s.f32().unwrap();
                     ca.none_to_nan().into_series()
-                },
+                }
                 DataType::Float64 => {
                     let ca = s.f64().unwrap();
                     ca.none_to_nan().into_series()
-                },
+                }
                 _ => s,
             };
             polars_ensure!(
@@ -83,8 +87,7 @@ where
                 let vals = arr.values();
                 unsafe {
                     let num_cols = m;
-                    let mut offset =
-                        (ptr as *mut N::Native).add(col_idx + chunk_offset * num_cols);
+                    let mut offset = (ptr as *mut N::Native).add(col_idx + chunk_offset * num_cols);
                     for v in vals.iter() {
                         *offset = *v;
                         offset = offset.add(num_cols);
@@ -236,12 +239,8 @@ pub enum DIST<T: Float + 'static> {
 }
 
 impl<T: Float + DistanceOps + 'static> DIST<T> {
-
     /// New DIST from the string suggested and informed by the dimension
-    pub fn new_from_str_informed(
-        dist_str: String,
-        dim: usize,
-    ) -> Result<Self, String> {
+    pub fn new_from_str_informed(dist_str: String, dim: usize) -> Result<Self, String> {
         match dist_str.as_ref() {
             "l1" => Ok(DIST::L1),
             "l2" => {
@@ -250,14 +249,14 @@ impl<T: Float + DistanceOps + 'static> DIST<T> {
                 } else {
                     Ok(DIST::L2SIMD)
                 }
-            },
+            }
             "sql2" => {
                 if dim < 16 {
                     Ok(DIST::SQL2)
                 } else {
                     Ok(DIST::SQL2SIMD)
                 }
-            },
+            }
             "linf" | "inf" => Ok(DIST::LINF),
             "cosine" => Ok(DIST::ANY(cfavml::cosine)),
             _ => Err("Unknown distance metric.".into()),
@@ -273,7 +272,8 @@ impl<T: Float + DistanceOps + 'static> DIST<T> {
                 .zip(a2.iter().copied())
                 .fold(T::zero(), |acc, (x, y)| acc + ((x - y).abs())),
 
-            DIST::L2 => a1.iter()
+            DIST::L2 => a1
+                .iter()
                 .copied()
                 .zip(a2.iter().copied())
                 .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y))
@@ -281,7 +281,8 @@ impl<T: Float + DistanceOps + 'static> DIST<T> {
 
             DIST::L2SIMD => cfavml::squared_euclidean(a1, a2).sqrt(),
 
-            DIST::SQL2 => a1.iter()
+            DIST::SQL2 => a1
+                .iter()
                 .copied()
                 .zip(a2.iter().copied())
                 .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y)),

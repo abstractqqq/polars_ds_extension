@@ -1,15 +1,17 @@
 /// A Kdtree
-use super::{leaf::{KdLeaf, OwnedLeaf}, SplitMethod, suggest_capacity, KNNRegressor, Leaf, SpatialQueries, NB};
+use super::{
+    leaf::{KdLeaf, OwnedLeaf},
+    suggest_capacity, KNNRegressor, Leaf, SpatialQueries, SplitMethod, NB,
+};
 use crate::utils::DIST;
 use cfavml::safe_trait_distance_ops::DistanceOps;
 use num::Float;
 use std::{fmt::Debug, usize};
 
-
 /// This checks the closest distance from point to the boundaries of the box (subtree),
 /// which can help us skip entire boxes.
 #[inline]
-fn _closest_dist_to_box<T:Float>(bounds: &[T], point: &[T], dim: usize, d:DIST<T>) -> T {
+fn _closest_dist_to_box<T: Float>(bounds: &[T], point: &[T], dim: usize, d: DIST<T>) -> T {
     let mut dist = T::zero();
     match d {
         DIST::L1 => {
@@ -69,8 +71,6 @@ fn _closest_dist_to_box<T:Float>(bounds: &[T], point: &[T], dim: usize, d:DIST<T
         }
     }
 }
-
-
 
 pub struct KDT<'a, T: Float + DistanceOps + 'static + Debug, A> {
     pub dim: usize,
@@ -275,17 +275,27 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
         }
     }
 
-    fn update_top_k(&self, top_k: &mut Vec<NB<T, A>>, k: usize, point: &[T], current_max:T, max_dist_bound: T) {
+    fn update_top_k(
+        &self,
+        top_k: &mut Vec<NB<T, A>>,
+        k: usize,
+        point: &[T],
+        current_max: T,
+        max_dist_bound: T,
+    ) {
         // This is only called if is_leaf. Safe to unwrap.
         let mut cur_max = current_max;
         for element in self.data.iter() {
             let dist = self.d.dist(element.row_vec, point);
             if dist <= max_dist_bound && (dist < cur_max || top_k.len() < k) {
                 let idx = top_k.partition_point(|s| s.dist <= dist);
-                top_k.insert(idx,  NB {
-                    dist: dist,
-                    item: element.item,
-                });
+                top_k.insert(
+                    idx,
+                    NB {
+                        dist: dist,
+                        item: element.item,
+                    },
+                );
                 if top_k.len() > k {
                     top_k.pop();
                 }
@@ -433,10 +443,9 @@ impl<'a, T: Float + DistanceOps + 'static + Debug + Into<f64>, A: Float + Into<f
 {
 }
 
-
 // ---------- Owned KDT ----------
 
-pub struct OwnedKDT<T: Float + DistanceOps + 'static + Debug, A:Copy> {
+pub struct OwnedKDT<T: Float + DistanceOps + 'static + Debug, A: Copy> {
     pub dim: usize,
     pub capacity: usize,
     // Nodes
@@ -452,7 +461,7 @@ pub struct OwnedKDT<T: Float + DistanceOps + 'static + Debug, A:Copy> {
     //
     d: DIST<T>,
     // Split Method
-    split_method: SplitMethod
+    split_method: SplitMethod,
 }
 
 impl<T: Float + DistanceOps + 'static + Debug, A: Copy> OwnedKDT<T, A> {
@@ -470,7 +479,11 @@ impl<T: Float + DistanceOps + 'static + Debug, A: Copy> OwnedKDT<T, A> {
         bounds
     }
 
-    pub fn from_leaves(data: Vec<OwnedLeaf<T, A>>, d: DIST<T>, split_method: SplitMethod) -> Result<Self, String> {
+    pub fn from_leaves(
+        data: Vec<OwnedLeaf<T, A>>,
+        d: DIST<T>,
+        split_method: SplitMethod,
+    ) -> Result<Self, String> {
         if data.is_empty() {
             return Err("Empty data.".into());
         }
@@ -486,7 +499,11 @@ impl<T: Float + DistanceOps + 'static + Debug, A: Copy> OwnedKDT<T, A> {
         Ok(tree)
     }
 
-    pub fn from_leaves_unchecked(data: Vec<OwnedLeaf<T, A>>, d: DIST<T>, split_method: SplitMethod) -> Self {
+    pub fn from_leaves_unchecked(
+        data: Vec<OwnedLeaf<T, A>>,
+        d: DIST<T>,
+        split_method: SplitMethod,
+    ) -> Self {
         let dim = data[0].dim();
         let mut tree = OwnedKDT::new_empty(dim, suggest_capacity(dim), d, split_method);
         for leaf in data.into_iter() {
@@ -504,7 +521,7 @@ impl<T: Float + DistanceOps + 'static + Debug, A: Copy> OwnedKDT<T, A> {
     //     split_method: SplitMethod
     // ) -> Self {
     //     let n = data.len();
-        
+
     //     let bounds = Self::find_bounds(&data, dim);
     //     // let (min_bounds, max_bounds) = Self::find_bounds(data, dim);
     //     if n <= capacity {
@@ -539,7 +556,7 @@ impl<T: Float + DistanceOps + 'static + Debug, A: Copy> OwnedKDT<T, A> {
     //                 let split_value = data[split_idx].value_at(axis);
     //                 (split_value, split_idx)
     //             },
-    //         };    
+    //         };
     //         let (left, right) = data.split_at_mut(split_idx);
 
     //         if left.is_empty() {
@@ -586,7 +603,7 @@ impl<T: Float + DistanceOps + 'static + Debug, A: Copy> OwnedKDT<T, A> {
     //     }
     // }
 
-    pub fn new_empty(dim: usize, capacity: usize, d: DIST<T>, split_method:SplitMethod) -> Self {
+    pub fn new_empty(dim: usize, capacity: usize, d: DIST<T>, split_method: SplitMethod) -> Self {
         let mut bounds = vec![T::max_value(); dim];
         bounds.extend(std::iter::repeat(T::min_value()).take(dim));
         OwnedKDT {
@@ -599,7 +616,7 @@ impl<T: Float + DistanceOps + 'static + Debug, A: Copy> OwnedKDT<T, A> {
             bounds: bounds,
             data: vec![],
             d: d,
-            split_method: split_method
+            split_method: split_method,
         }
     }
 
@@ -616,7 +633,7 @@ impl<T: Float + DistanceOps + 'static + Debug, A: Copy> OwnedKDT<T, A> {
             bounds: bounds,
             data: data,
             d: self.d,
-            split_method: self.split_method.clone()
+            split_method: self.split_method.clone(),
         }
     }
 
@@ -692,12 +709,14 @@ impl<T: Float + DistanceOps + 'static + Debug, A: Copy> OwnedKDT<T, A> {
                 let (split_value, split_idx) = match self.split_method {
                     SplitMethod::MIDPOINT => {
                         let midpoint = self.bounds[axis]
-                            + (self.bounds[axis + self.dim] - self.bounds[axis]) / (T::one() + T::one());
+                            + (self.bounds[axis + self.dim] - self.bounds[axis])
+                                / (T::one() + T::one());
                         // True will go right, false go left
                         new_data.sort_unstable_by_key(|leaf| leaf.value_at(axis) >= midpoint);
-                        let split_idx = new_data.partition_point(|elem| elem.value_at(axis) < midpoint);
+                        let split_idx =
+                            new_data.partition_point(|elem| elem.value_at(axis) < midpoint);
                         (midpoint, split_idx)
-                    },
+                    }
                     SplitMethod::MEDIAN => {
                         new_data.sort_unstable_by(|l1, l2| {
                             l1.value_at(axis).partial_cmp(&l2.value_at(axis)).unwrap()
@@ -705,7 +724,7 @@ impl<T: Float + DistanceOps + 'static + Debug, A: Copy> OwnedKDT<T, A> {
                         let split_idx = new_data.len() >> 1;
                         let split_value = new_data[split_idx].value_at(axis);
                         (split_value, split_idx)
-                    },
+                    }
                 };
 
                 let (left, right) = new_data.split_at(split_idx);
@@ -747,17 +766,27 @@ impl<T: Float + DistanceOps + 'static + Debug, A: Copy> OwnedKDT<T, A> {
         }
     }
 
-    fn update_top_k(&self, top_k: &mut Vec<NB<T, A>>, k: usize, point: &[T], current_max:T, max_dist_bound: T) {
+    fn update_top_k(
+        &self,
+        top_k: &mut Vec<NB<T, A>>,
+        k: usize,
+        point: &[T],
+        current_max: T,
+        max_dist_bound: T,
+    ) {
         // This is only called if is_leaf. Safe to unwrap.
         let mut cur_max = current_max;
         for element in self.data.iter() {
             let dist = self.d.dist(element.vec(), point);
             if dist <= max_dist_bound && (dist < cur_max || top_k.len() < k) {
                 let idx = top_k.partition_point(|s| s.dist <= dist);
-                top_k.insert(idx,  NB {
-                    dist: dist,
-                    item: element.item,
-                });
+                top_k.insert(
+                    idx,
+                    NB {
+                        dist: dist,
+                        item: element.item,
+                    },
+                );
                 if top_k.len() > k {
                     top_k.pop();
                 }
@@ -906,10 +935,8 @@ impl<'a, T: Float + DistanceOps + 'static + Debug + Into<f64>, A: Float + Into<f
 
 #[cfg(test)]
 mod tests {
-    use super::super::matrix_to_leaves;
     use super::*;
-    use crate::arkadia::utils::matrix_to_leaves_w_row_num;
-    use ndarray::{arr1, Array2, ArrayView1, ArrayView2};
+    use crate::arkadia::slice_to_leaves;
 
     fn l1_dist_slice(a1: &[f64], a2: &[f64]) -> f64 {
         a1.iter()
@@ -929,26 +956,23 @@ mod tests {
             .fold(T::zero(), |acc, (&a, &b)| acc + (a - b) * (a - b))
     }
 
-    fn random_3d_rows() -> [f64; 3] {
-        rand::random()
-    }
-
     fn random_10d_rows() -> [f64; 10] {
         rand::random()
     }
 
     fn generate_test_answer(
-        mat: ArrayView2<f64>,
-        point: ArrayView1<f64>,
+        data: &[f64],
+        row_size: usize,
+        point: &[f64],
         dist_func: fn(&[f64], &[f64]) -> f64,
     ) -> (Vec<usize>, Vec<f64>) {
-        let mut ans_distances = mat
-            .rows()
-            .into_iter()
-            .map(|v| dist_func(v.to_slice().unwrap(), &point.to_vec()))
+        let mut ans_distances = data
+            .chunks_exact(row_size)
+            .map(|v| dist_func(v, point))
             .collect::<Vec<_>>();
 
-        let mut ans_argmins = (0..mat.nrows()).collect::<Vec<_>>();
+        let nrows = data.len() / row_size;
+        let mut ans_argmins = (0..nrows).collect::<Vec<_>>();
         ans_argmins.sort_by(|&i, &j| ans_distances[i].partial_cmp(&ans_distances[j]).unwrap());
         ans_distances.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
@@ -965,20 +989,16 @@ mod tests {
             v.extend_from_slice(&random_10d_rows());
         }
 
-        let mat = Array2::from_shape_vec((rows, 10), v).unwrap();
-        let mat = mat.as_standard_layout().to_owned();
-        let point = arr1(&[0.5; 10]);
+        let point = [0.5; 10];
         // brute force test
-        let (ans_argmins, ans_distances) =
-            generate_test_answer(mat.view(), point.view(), linf_dist_slice);
+        let (ans_argmins, ans_distances) = generate_test_answer(&v, 10, &point, linf_dist_slice);
 
         let values = (0..rows).collect::<Vec<_>>();
-        let binding = mat.view();
-        let mut leaves = matrix_to_leaves(&binding, &values);
+        let mut leaves = slice_to_leaves(&v, 10, &values);
 
         let tree = KDT::from_leaves(&mut leaves, DIST::LINF).unwrap();
 
-        let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
+        let output = tree.knn(k, &point, 0f64);
 
         assert!(output.is_some());
         let output = output.unwrap();
@@ -992,30 +1012,26 @@ mod tests {
     }
 
     #[test]
-    fn test_3d_knn_l2_dist_2() {
+    fn test_10d_knn_l1_dist() {
         // 10 nearest neighbors, matrix of size 1000 x 10
         let k = 10usize;
         let mut v = Vec::new();
         let rows = 5_000usize;
         for _ in 0..rows {
-            v.extend_from_slice(&random_3d_rows());
+            v.extend_from_slice(&random_10d_rows());
         }
 
-        let mat = Array2::from_shape_vec((rows, 3), v).unwrap();
-        let mat = mat.as_standard_layout().to_owned();
-        let point = arr1(&[0.125; 3]);
+        let point = [0.5; 10];
         // brute force test
-        let (ans_argmins, ans_distances) =
-            generate_test_answer(mat.view(), point.view(), squared_l2);
+        let (ans_argmins, ans_distances) = generate_test_answer(&v, 10, &point, l1_dist_slice);
 
-        let binding = mat.view();
-        let leaves = matrix_to_leaves_w_row_num(&binding);
-        let mut tree = KDT::new_empty(3, 40, DIST::SQL2);
-        for leaf in leaves.into_iter() {
-            let _ = tree.add(leaf);
-        }
+        let values = (0..rows).collect::<Vec<_>>();
+        let mut leaves = slice_to_leaves(&v, 10, &values);
 
-        let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
+        let tree = KDT::from_leaves(&mut leaves, DIST::L1).unwrap();
+
+        let output = tree.knn(k, &point, 0f64);
+
         assert!(output.is_some());
         let output = output.unwrap();
         let indices = output.iter().map(|nb| nb.item).collect::<Vec<_>>();
@@ -1037,90 +1053,16 @@ mod tests {
             v.extend_from_slice(&random_10d_rows());
         }
 
-        let mat = Array2::from_shape_vec((rows, 10), v).unwrap();
-        let mat = mat.as_standard_layout().to_owned();
-        let point = arr1(&[0.5; 10]);
+        let point = [0.5; 10];
         // brute force test
-        let (ans_argmins, ans_distances) =
-            generate_test_answer(mat.view(), point.view(), squared_l2);
+        let (ans_argmins, ans_distances) = generate_test_answer(&v, 10, &point, squared_l2);
 
-        let binding = mat.view();
-        let mut leaves = matrix_to_leaves_w_row_num(&binding);
+        let values = (0..rows).collect::<Vec<_>>();
+        let mut leaves = slice_to_leaves(&v, 10, &values);
 
         let tree = KDT::from_leaves(&mut leaves, DIST::SQL2).unwrap();
 
-        let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
-
-        assert!(output.is_some());
-        let output = output.unwrap();
-        let indices = output.iter().map(|nb| nb.item).collect::<Vec<_>>();
-        let distances = output.iter().map(|nb| nb.dist).collect::<Vec<_>>();
-
-        assert_eq!(&ans_argmins[..k], &indices);
-        for (d1, d2) in ans_distances[..k].iter().zip(distances.into_iter()) {
-            assert!((d1 - d2).abs() < 1e-10);
-        }
-    }
-
-    #[test]
-    fn test_10d_knn_l2_dist_2() {
-        // 10 nearest neighbors, matrix of size 1000 x 10
-        let k = 10usize;
-        let mut v = Vec::new();
-        let rows = 5_000usize;
-        for _ in 0..rows {
-            v.extend_from_slice(&random_10d_rows());
-        }
-
-        let mat = Array2::from_shape_vec((rows, 10), v).unwrap();
-        let mat = mat.as_standard_layout().to_owned();
-        let point = arr1(&[0.5; 10]);
-        // brute force test
-        let (ans_argmins, ans_distances) =
-            generate_test_answer(mat.view(), point.view(), squared_l2);
-
-        let binding = mat.view();
-        let leaves = matrix_to_leaves_w_row_num(&binding);
-        let mut tree = KDT::new_empty(10, 40, DIST::SQL2);
-        for leaf in leaves.into_iter() {
-            let _ = tree.add(leaf);
-        }
-
-        let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
-        assert!(output.is_some());
-        let output = output.unwrap();
-        let indices = output.iter().map(|nb| nb.item).collect::<Vec<_>>();
-        let distances = output.iter().map(|nb| nb.dist).collect::<Vec<_>>();
-
-        assert_eq!(&ans_argmins[..k], &indices);
-        for (d1, d2) in ans_distances[..k].iter().zip(distances.into_iter()) {
-            assert!((d1 - d2).abs() < 1e-10);
-        }
-    }
-
-    #[test]
-    fn test_10d_knn_l1_dist() {
-        // 10 nearest neighbors, matrix of size 1000 x 10
-        let k = 10usize;
-        let mut v = Vec::new();
-        let rows = 1_000usize;
-        for _ in 0..rows {
-            v.extend_from_slice(&random_10d_rows());
-        }
-
-        let mat = Array2::from_shape_vec((rows, 10), v).unwrap();
-        let mat = mat.as_standard_layout().to_owned();
-        let point = arr1(&[0.5; 10]);
-        // brute force test
-        let (ans_argmins, ans_distances) =
-            generate_test_answer(mat.view(), point.view(), l1_dist_slice);
-
-        let binding = mat.view();
-        let mut leaves = matrix_to_leaves_w_row_num(&binding);
-
-        let tree = KDT::from_leaves(&mut leaves, DIST::L1).unwrap();
-
-        let output = tree.knn(k, point.as_slice().unwrap(), 0f64);
+        let output = tree.knn(k, &point, 0f64);
 
         assert!(output.is_some());
         let output = output.unwrap();

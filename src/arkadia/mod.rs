@@ -17,18 +17,11 @@ pub mod leaf;
 pub mod neighbor;
 pub mod utils;
 
-pub use kdt::{KDT,OwnedKDT};
+pub use kdt::{OwnedKDT, KDT};
 pub use leaf::{KdLeaf, Leaf};
 pub use neighbor::NB;
 use serde::Deserialize;
-pub use utils::{
-    SplitMethod,
-    suggest_capacity,
-    slice_to_empty_leaves,
-    slice_to_leaves,
-    matrix_to_leaves,
-    matrix_to_empty_leaves
-};
+pub use utils::{slice_to_empty_leaves, slice_to_leaves, suggest_capacity, SplitMethod};
 
 // ---------------------------------------------------------------------------------------------------------
 use num::Float;
@@ -126,7 +119,6 @@ pub trait SpatialQueries<'a, T: Float + 'static, A> {
         max_dist_bound: T,
         epsilon: T,
     ) -> Vec<NB<T, A>> {
-
         let mut top_k = Vec::with_capacity(k + 1);
         let mut pending = Vec::with_capacity(k + 1);
         pending.push((T::min_value(), self));
@@ -134,7 +126,6 @@ pub trait SpatialQueries<'a, T: Float + 'static, A> {
             self.knn_one_step(&mut pending, &mut top_k, k, point, max_dist_bound, epsilon);
         }
         top_k
-        
     }
 
     fn within(&self, point: &[T], radius: T, sort: bool) -> Option<Vec<NB<T, A>>> {
