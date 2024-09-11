@@ -1,9 +1,8 @@
 use cfavml::safe_trait_distance_ops::DistanceOps;
-use ndarray::Array2;
 use num::Float;
 use rayon::prelude::*;
 use polars::{
-    datatypes::{DataType, Field, Float64Type},
+    datatypes::{DataType, Field},
     error::{polars_ensure, PolarsError, PolarsResult},
     frame::DataFrame,
     lazy::dsl::FieldsMapper,
@@ -28,18 +27,19 @@ pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
     DataFrame::new(inputs.to_vec())
 }
 
-#[inline(always)]
-pub fn series_to_ndarray(inputs: &[Series], order: IndexOrder) -> PolarsResult<Array2<f64>> {
-    let df = DataFrame::new(inputs.to_vec())?;
-    if df.is_empty() {
-        Err(PolarsError::ComputeError("Empty data.".into()))
-    } else {
-        df.to_ndarray::<Float64Type>(order)
-    }
-}
+// #[inline(always)]
+// pub fn series_to_ndarray(inputs: &[Series], order: IndexOrder) -> PolarsResult<Array2<f64>> {
+//     let df = DataFrame::new(inputs.to_vec())?;
+//     if df.is_empty() {
+//         Err(PolarsError::ComputeError("Empty data.".into()))
+//     } else {
+//         df.to_ndarray::<Float64Type>(order)
+//     }
+// }
 
 /// Organizes the series data into a `matrix`, and return the underlying slice
 /// as a row-major slice. This code here is taken from polars dataframe.to_ndarray()
+#[inline(always)]
 pub fn series_to_row_major_slice<N>(series:&[Series]) -> PolarsResult<Vec<<N as PolarsNumericType>::Native>>
 where
     N: PolarsNumericType,
@@ -81,8 +81,8 @@ where
             let mut chunk_offset = 0;
             for arr in ca.downcast_iter() {
                 let vals = arr.values();
-                let num_cols = m;
                 unsafe {
+                    let num_cols = m;
                     let mut offset =
                         (ptr as *mut N::Native).add(col_idx + chunk_offset * num_cols);
                     for v in vals.iter() {
@@ -104,7 +104,6 @@ where
     }
     Ok(membuf)
 }
-
 
 // Shared splitting method
 pub fn split_offsets(len: usize, n: usize) -> Vec<(usize, usize)> {

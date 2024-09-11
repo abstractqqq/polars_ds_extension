@@ -33,6 +33,26 @@ pub fn suggest_capacity(dim: usize) -> usize {
     }
 }
 
+pub fn slice_to_leaves<'a, T: Float + 'static, A: Copy>(
+    slice: &'a [T],
+    row_len: usize,
+    values: &'a [A],
+) -> Vec<Leaf<'a, T, A>> {
+    values
+        .iter()
+        .copied()
+        .zip(slice.chunks_exact(row_len))
+        .map(|pair| pair.into())
+        .collect::<Vec<_>>()
+}
+
+pub fn slice_to_empty_leaves<'a, T: Float + 'static>(
+    slice: &'a [T],
+    row_len: usize,
+) -> Vec<Leaf<'a, T, ()>> {
+    slice.chunks_exact(row_len).map(|row| ((), row).into()).collect()   
+}
+
 pub fn matrix_to_leaves<'a, T: Float + 'static, A: Copy>(
     matrix: &'a ArrayView2<'a, T>,
     values: &'a [A],
