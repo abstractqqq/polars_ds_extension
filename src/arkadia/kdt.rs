@@ -641,6 +641,8 @@ impl<T: Float + DistanceOps + 'static + Debug, A: Copy> OwnedKDT<T, A> {
         !(self.left.is_some() || self.right.is_some())
     }
 
+    // Add: count of all leaves in kdt.
+
     /// Updates the bounds according to the new leaf
     fn update_bounds(&mut self, leaf: &OwnedLeaf<T, A>) {
         for i in 0..self.dim {

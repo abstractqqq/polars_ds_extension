@@ -1,4 +1,3 @@
-use ndarray::ArrayView1;
 use num::Float;
 
 #[derive(Clone, Copy)]
@@ -11,15 +10,6 @@ pub struct Leaf<'a, T: Float, A> {
 pub struct OwnedLeaf<T: Float, A> {
     pub item: A,
     pub row_vec: Vec<T>,
-}
-
-impl<'a, T: Float, A> From<(A, ArrayView1<'a, T>)> for Leaf<'a, T, A> {
-    fn from(value: (A, ArrayView1<'a, T>)) -> Self {
-        Leaf {
-            item: value.0,
-            row_vec: value.1.to_slice().unwrap(),
-        }
-    }
 }
 
 impl<'a, T: Float, A: Copy> From<(A, &'a [T])> for Leaf<'a, T, A> {
