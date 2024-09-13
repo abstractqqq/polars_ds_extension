@@ -1,4 +1,4 @@
-use crate::arkadia::leaf::Leaf;
+use crate::arkadia::leaf::{Leaf, OwnedLeaf};
 use num::Float;
 
 #[derive(Clone, Default)]
@@ -37,6 +37,19 @@ pub fn slice_to_leaves<'a, T: Float + 'static, A: Copy>(
     row_len: usize,
     values: &'a [A],
 ) -> Vec<Leaf<'a, T, A>> {
+    values
+        .iter()
+        .copied()
+        .zip(slice.chunks_exact(row_len))
+        .map(|pair| pair.into())
+        .collect()
+}
+
+pub fn slice_to_owned_leaves<T: Float + 'static, A: Copy>(
+    slice: &[T],
+    row_len: usize,
+    values: &[A],
+) -> Vec<OwnedLeaf<T, A>> {
     values
         .iter()
         .copied()

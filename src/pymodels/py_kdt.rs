@@ -3,7 +3,10 @@ use crate::arkadia::{leaf::OwnedLeaf, OwnedKDT, SpatialQueries};
 use crate::linalg::LinalgErrors;
 use crate::utils::DIST;
 use core::f64;
-use numpy::{IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray2, PyUntypedArrayMethods};
+use numpy::{
+    IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
+    PyUntypedArrayMethods,
+};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
@@ -14,7 +17,10 @@ pub struct PyKDT {
 }
 
 fn row_major_slice_to_leaves(sl: &[f64], row_size: usize) -> Vec<OwnedLeaf<f64, usize>> {
-    sl.chunks_exact(row_size).enumerate().map(|pair| pair.into()).collect()
+    sl.chunks_exact(row_size)
+        .enumerate()
+        .map(|pair| pair.into())
+        .collect()
 }
 
 #[pymethods]
@@ -41,35 +47,32 @@ impl PyKDT {
         }
     }
 
-    // pub fn add<'py>(
-    //     &mut self,
-    //     py: Python<'py>,
-    //     X: PyReadonlyArray2<f64>,
-    // ) {
+    pub fn count(&self) -> usize {
+        self.kdt.count_all()
+    }
 
-    //     if X.is_c_contiguous() && !X.is_empty() {
-    //         let nrows = X.shape()[0];
-    //         let ncols = X.shape()[1];
-    //         let matrix_slice = X.as_slice().unwrap();
-    //         if nrows != self.kdt.dim() {
-    //             Err(LinalgErrors::DimensionMismatch.into())
-    //         } else {
+    pub fn dim(&self) -> usize {
+        self.kdt.dim()
+    }
 
-    //             for sl in matrix_slice.chunks_exact(ncols) {
-
-    //             }
-    //             self.kdt.add_unchecked(leaf, depth)
-
-
-    //         }
-
-
-
-    //     } else {
-    //         Err(LinalgErrors::NotContiguousOrEmpty.into())
-    //     }
-
-    // }
+    pub fn add<'py>(&mut self, X: PyReadonlyArray2<f64>) -> PyResult<()> {
+        // To use this, X shouldn't have NaNs.
+        if X.is_c_contiguous() && !X.is_empty() {
+            let ncols = X.shape()[1];
+            let matrix_slice = X.as_slice().unwrap();
+            if ncols != self.kdt.dim() {
+                Err(LinalgErrors::DimensionMismatch.into())
+            } else {
+                let cur_count = self.kdt.count_all();
+                for (i, sl) in matrix_slice.chunks_exact(ncols).enumerate() {
+                    self.kdt.add_unchecked((cur_count + i, sl).into(), 0);
+                }
+                Ok(())
+            }
+        } else {
+            Err(LinalgErrors::NotContiguousOrEmpty.into())
+        }
+    }
 
     pub fn knn<'py>(
         &self,
@@ -79,7 +82,7 @@ impl PyKDT {
         epsilon: f64,
         max_dist_bound: f64,
         parallel: bool,
-    ) -> PyResult<(Bound<'py, PyArray2<f64>>, Bound<'py, PyArray2<usize>>)> {
+    ) -> PyResult<(Bound<'py, PyArray2<f64>>, Bound<'py, PyArray2<u32>>)> {
         if X.is_c_contiguous() && !X.is_empty() {
             let nrows = X.shape()[0];
             let ncols = X.shape()[1];
@@ -94,17 +97,12 @@ impl PyKDT {
             let mut idx_vec = Vec::with_capacity(nrows * k);
             if parallel && nrows >= 16 {
                 let mut neighbors = Vec::with_capacity(nrows);
-                (0..nrows)
-                    .into_par_iter()
-                    .map(|i| 
+                let pts = matrix_slice.chunks_exact(ncols).collect::<Vec<_>>();
+                pts.into_par_iter()
+                    .map(|sl| {
                         self.kdt
-                            .knn_bounded_unchecked(
-                                k, 
-                                &matrix_slice[i * ncols..(i + 1) * ncols], 
-                                max_dist_bound, 
-                                epsilon
-                            )
-                    )
+                            .knn_bounded_unchecked(k, sl, max_dist_bound, epsilon)
+                    })
                     .collect_into_vec(&mut neighbors);
 
                 for nbs in neighbors {
@@ -112,12 +110,12 @@ impl PyKDT {
                     for nb in nbs {
                         let (d, id) = nb.to_pair();
                         dist_vec.push(d);
-                        idx_vec.push(id);
+                        idx_vec.push(id as u32);
                     }
                     let diff = k.abs_diff(n_found);
                     for _ in 0..diff {
                         dist_vec.push(f64::INFINITY);
-                        idx_vec.push(nrows + 1);
+                        idx_vec.push(u32::MAX);
                     }
                 }
             } else {
@@ -129,12 +127,12 @@ impl PyKDT {
                     for nb in result {
                         let (d, id) = nb.to_pair();
                         dist_vec.push(d);
-                        idx_vec.push(id);
+                        idx_vec.push(id as u32);
                     }
                     let diff = k.abs_diff(n_found);
                     for _ in 0..diff {
                         dist_vec.push(f64::INFINITY);
-                        idx_vec.push(nrows + 1);
+                        idx_vec.push(u32::MAX);
                     }
                 }
             }
@@ -148,46 +146,165 @@ impl PyKDT {
         }
     }
 
+    pub fn within_idx_only_vec_r<'py>(
+        &self,
+        X: PyReadonlyArray2<f64>,
+        r: PyReadonlyArray1<f64>,
+        sort: bool,
+        parallel: bool,
+    ) -> PyResult<Vec<Vec<u32>>> {
+        if X.is_c_contiguous() && !X.is_empty() {
+            let nrows = X.shape()[0];
+            let ncols = X.shape()[1];
+            let radius = r.as_slice().map_err(|e| PyErr::from(e))?;
+            if radius.len() != nrows {
+                return Err(LinalgErrors::Other(
+                    "Size of radius is not equal to number of rows in X".into(),
+                )
+                .into());
+            }
+
+            let matrix_slice = X.as_slice().unwrap();
+
+            if parallel && nrows > 16 {
+                let pairs = matrix_slice
+                    .chunks_exact(ncols)
+                    .zip(radius.iter().copied())
+                    .collect::<Vec<_>>();
+
+                let mut output_vec = Vec::with_capacity(nrows);
+                pairs
+                    .into_par_iter()
+                    .map(|(sl, r)| {
+                        self.kdt
+                            .within(sl, r, sort)
+                            .unwrap_or(vec![])
+                            .into_iter()
+                            .map(|nb| nb.to_item() as u32)
+                            .collect::<Vec<_>>()
+                    })
+                    .collect_into_vec(&mut output_vec);
+                Ok(output_vec)
+            } else {
+                Ok(matrix_slice
+                    .chunks_exact(ncols)
+                    .zip(radius.iter().copied())
+                    .map(|(pt, r)| {
+                        self.kdt
+                            .within(pt, r, sort)
+                            .unwrap_or(vec![])
+                            .into_iter()
+                            .map(|nb| nb.to_item() as u32)
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>())
+            }
+        } else {
+            Err(LinalgErrors::NotContiguousOrEmpty.into())
+        }
+    }
+
     pub fn within_idx_only<'py>(
         &self,
         X: PyReadonlyArray2<f64>,
         r: f64,
-        sort:bool,
+        sort: bool,
         parallel: bool,
     ) -> PyResult<Vec<Vec<u32>>> {
-
         if X.is_c_contiguous() && !X.is_empty() {
             let nrows = X.shape()[0];
             let ncols = X.shape()[1];
             let matrix_slice = X.as_slice().unwrap();
 
             if parallel && nrows > 16 {
+                let pts = matrix_slice.chunks_exact(ncols).collect::<Vec<_>>();
                 let mut output_vec = Vec::with_capacity(nrows);
-                (0..nrows)
-                    .into_par_iter()
-                    .map(|i| {
+                pts.into_par_iter()
+                    .map(|sl| {
                         self.kdt
-                            .within(&matrix_slice[i * ncols..(i + 1) * ncols], r, sort)
+                            .within(sl, r, sort)
                             .unwrap_or(vec![])
                             .into_iter()
                             .map(|nb| nb.to_item() as u32)
                             .collect::<Vec<_>>()
-                    }).collect_into_vec(&mut output_vec);
+                    })
+                    .collect_into_vec(&mut output_vec);
                 Ok(output_vec)
             } else {
-                Ok(
-                    matrix_slice.chunks_exact(ncols).map(
-                    |pt| 
-                    self.kdt
-                        .within(pt, r, sort)
-                        .unwrap_or(vec![])
-                        .into_iter()
-                        .map(|nb| nb.to_item() as u32)
-                        .collect::<Vec<_>>()
-                    ).collect::<Vec<_>>()
+                Ok(matrix_slice
+                    .chunks_exact(ncols)
+                    .map(|pt| {
+                        self.kdt
+                            .within(pt, r, sort)
+                            .unwrap_or(vec![])
+                            .into_iter()
+                            .map(|nb| nb.to_item() as u32)
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>())
+            }
+        } else {
+            Err(LinalgErrors::NotContiguousOrEmpty.into())
+        }
+    }
+
+    pub fn within_with_dist_vec_r<'py>(
+        &self,
+        X: PyReadonlyArray2<f64>,
+        r: PyReadonlyArray1<f64>,
+        sort: bool,
+        parallel: bool,
+    ) -> PyResult<Vec<Vec<(u32, f64)>>> {
+        if X.is_c_contiguous() && !X.is_empty() {
+            let nrows = X.shape()[0];
+            let ncols = X.shape()[1];
+            let matrix_slice = X.as_slice().unwrap();
+            let radius = r.as_slice().map_err(|e| PyErr::from(e))?;
+            if radius.len() != nrows {
+                return Err(LinalgErrors::Other(
+                    "Size of radius is not equal to number of rows in X".into(),
                 )
+                .into());
             }
 
+            if parallel && nrows > 16 {
+                let pairs = matrix_slice
+                    .chunks_exact(ncols)
+                    .zip(radius.iter().copied())
+                    .collect::<Vec<_>>();
+                let mut output_vec = Vec::with_capacity(nrows);
+                pairs
+                    .into_par_iter()
+                    .map(|(sl, r)| {
+                        self.kdt
+                            .within(sl, r, sort)
+                            .unwrap_or(vec![])
+                            .into_iter()
+                            .map(|nb| {
+                                let (d, u) = nb.to_pair();
+                                (u as u32, d)
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect_into_vec(&mut output_vec);
+                Ok(output_vec)
+            } else {
+                Ok(matrix_slice
+                    .chunks_exact(ncols)
+                    .zip(radius.iter().copied())
+                    .map(|(pt, r)| {
+                        self.kdt
+                            .within(pt, r, sort)
+                            .unwrap_or(vec![])
+                            .into_iter()
+                            .map(|nb| {
+                                let (d, u) = nb.to_pair();
+                                (u as u32, d)
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>())
+            }
         } else {
             Err(LinalgErrors::NotContiguousOrEmpty.into())
         }
@@ -197,72 +314,122 @@ impl PyKDT {
         &self,
         X: PyReadonlyArray2<f64>,
         r: f64,
-        sort:bool,
+        sort: bool,
         parallel: bool,
     ) -> PyResult<Vec<Vec<(u32, f64)>>> {
-
         if X.is_c_contiguous() && !X.is_empty() {
             let nrows = X.shape()[0];
             let ncols = X.shape()[1];
             let matrix_slice = X.as_slice().unwrap();
 
             if parallel && nrows > 16 {
+                let pts = matrix_slice.chunks_exact(ncols).collect::<Vec<_>>();
                 let mut output_vec = Vec::with_capacity(nrows);
-                (0..nrows)
-                    .into_par_iter()
-                    .map(|i| {
+                pts.into_par_iter()
+                    .map(|sl| {
                         self.kdt
-                            .within(&matrix_slice[i * ncols..(i + 1) * ncols], r, sort)
+                            .within(sl, r, sort)
                             .unwrap_or(vec![])
                             .into_iter()
-                            .map(|nb|{
+                            .map(|nb| {
                                 let (d, u) = nb.to_pair();
                                 (u as u32, d)
                             })
                             .collect::<Vec<_>>()
-                    }).collect_into_vec(&mut output_vec);
+                    })
+                    .collect_into_vec(&mut output_vec);
                 Ok(output_vec)
             } else {
-                Ok(
-                    matrix_slice.chunks_exact(ncols).map(
-                    |pt| 
-                    self.kdt
-                        .within(pt, r, sort)
-                        .unwrap_or(vec![])
-                        .into_iter()
-                        .map(|nb| {
-                            let (d, u) = nb.to_pair();
-                            (u as u32, d)
-                        })
-                        .collect::<Vec<_>>()
-                    ).collect::<Vec<_>>()
-                )
+                Ok(matrix_slice
+                    .chunks_exact(ncols)
+                    .map(|pt| {
+                        self.kdt
+                            .within(pt, r, sort)
+                            .unwrap_or(vec![])
+                            .into_iter()
+                            .map(|nb| {
+                                let (d, u) = nb.to_pair();
+                                (u as u32, d)
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>())
             }
         } else {
             Err(LinalgErrors::NotContiguousOrEmpty.into())
         }
     }
 
-
     pub fn within_count<'py>(
         &self,
         py: Python<'py>,
         X: PyReadonlyArray2<f64>,
         r: f64,
-        // parallel: bool,
-    ) -> PyResult<Bound<'py, PyArray1<u32>>> {
-
+        parallel: bool,
+    ) -> PyResult<Bound<'py, PyArray1<i32>>> {
         if X.is_c_contiguous() && !X.is_empty() {
+            let nrows = X.shape()[0];
             let ncols = X.shape()[1];
             let matrix_slice = X.as_slice().unwrap();
-            let output:Vec<u32> = matrix_slice.chunks_exact(ncols).map(
-                |sl| self.kdt.within_count(sl, r).unwrap_or(0)
-            ).collect();
+
+            let output: Vec<i32> = if parallel && nrows > 32 {
+                let pts = matrix_slice.chunks_exact(ncols).collect::<Vec<_>>();
+                let mut output_vec = Vec::with_capacity(pts.len());
+                pts.into_par_iter()
+                    .map(|sl| self.kdt.within_count(sl, r).unwrap_or(0) as i32)
+                    .collect_into_vec(&mut output_vec);
+                output_vec
+            } else {
+                matrix_slice
+                    .chunks_exact(ncols)
+                    .map(|sl| self.kdt.within_count(sl, r).unwrap_or(0) as i32)
+                    .collect()
+            };
             Ok(output.into_pyarray_bound(py))
         } else {
             Err(LinalgErrors::NotContiguousOrEmpty.into())
         }
-
     }
 
+    pub fn within_count_vec_r<'py>(
+        &self,
+        py: Python<'py>,
+        X: PyReadonlyArray2<f64>,
+        r: PyReadonlyArray1<f64>,
+        parallel: bool,
+    ) -> PyResult<Bound<'py, PyArray1<i32>>> {
+        if X.is_c_contiguous() && !X.is_empty() {
+            let nrows = X.shape()[0];
+            let ncols = X.shape()[1];
+            let matrix_slice = X.as_slice().unwrap();
+            let radius = r.as_slice().map_err(|e| PyErr::from(e))?;
+            if radius.len() != nrows {
+                return Err(LinalgErrors::Other(
+                    "Size of radius is not equal to number of rows in X".into(),
+                )
+                .into());
+            }
+
+            let output: Vec<i32> = if parallel && nrows > 32 {
+                let pts = matrix_slice
+                    .chunks_exact(ncols)
+                    .zip(radius.iter().copied())
+                    .collect::<Vec<_>>();
+                let mut output_vec = Vec::with_capacity(pts.len());
+                pts.into_par_iter()
+                    .map(|(sl, r)| self.kdt.within_count(sl, r).unwrap_or(0) as i32)
+                    .collect_into_vec(&mut output_vec);
+                output_vec
+            } else {
+                matrix_slice
+                    .chunks_exact(ncols)
+                    .zip(radius.iter().copied())
+                    .map(|(sl, r)| self.kdt.within_count(sl, r).unwrap_or(0) as i32)
+                    .collect()
+            };
+            Ok(output.into_pyarray_bound(py))
+        } else {
+            Err(LinalgErrors::NotContiguousOrEmpty.into())
+        }
+    }
 }

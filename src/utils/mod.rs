@@ -239,7 +239,7 @@ pub enum DIST<T: Float + 'static> {
 }
 
 impl<T: Float + DistanceOps + 'static> DIST<T> {
-    /// New DIST from the string suggested and informed by the dimension
+    /// New DIST from the string and informed by the dimension
     pub fn new_from_str_informed(dist_str: String, dim: usize) -> Result<Self, String> {
         match dist_str.as_ref() {
             "l1" => Ok(DIST::L1),

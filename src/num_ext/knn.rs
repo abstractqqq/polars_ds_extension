@@ -3,7 +3,7 @@
 use crate::{
     arkadia::{
         utils::{slice_to_empty_leaves, slice_to_leaves},
-        KNNMethod, KNNRegressor, Leaf, KDT, SpatialQueries,
+        KNNMethod, KNNRegressor, Leaf, SpatialQueries, KDT,
     },
     utils::{list_u32_output, series_to_row_major_slice, split_offsets, DIST},
 };

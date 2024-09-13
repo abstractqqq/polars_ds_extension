@@ -21,7 +21,9 @@ pub use kdt::{OwnedKDT, KDT};
 pub use leaf::{KdLeaf, Leaf};
 pub use neighbor::NB;
 use serde::Deserialize;
-pub use utils::{slice_to_empty_leaves, slice_to_leaves, suggest_capacity, SplitMethod};
+pub use utils::{
+    slice_to_empty_leaves, slice_to_leaves, slice_to_owned_leaves, suggest_capacity, SplitMethod,
+};
 
 // ---------------------------------------------------------------------------------------------------------
 use num::Float;

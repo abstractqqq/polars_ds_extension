@@ -641,7 +641,26 @@ impl<T: Float + DistanceOps + 'static + Debug, A: Copy> OwnedKDT<T, A> {
         !(self.left.is_some() || self.right.is_some())
     }
 
-    // Add: count of all leaves in kdt.
+    /// Count of leaves in the current node
+    pub fn count(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Count of leaves in the entire subree
+    pub fn count_all(&self) -> usize {
+        let mut stack = vec![self];
+        let mut answer = 0usize;
+        while !stack.is_empty() {
+            let top = stack.pop().unwrap();
+            if top.is_leaf() {
+                answer += top.count();
+            } else {
+                stack.push(top.left.as_ref().unwrap());
+                stack.push(top.right.as_ref().unwrap());
+            }
+        }
+        answer
+    }
 
     /// Updates the bounds according to the new leaf
     fn update_bounds(&mut self, leaf: &OwnedLeaf<T, A>) {
@@ -938,7 +957,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug + Into<f64>, A: Float + Into<f
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::arkadia::slice_to_leaves;
+    use crate::arkadia::{slice_to_leaves, slice_to_owned_leaves};
 
     fn l1_dist_slice(a1: &[f64], a2: &[f64]) -> f64 {
         a1.iter()
@@ -1063,6 +1082,39 @@ mod tests {
         let mut leaves = slice_to_leaves(&v, 10, &values);
 
         let tree = KDT::from_leaves(&mut leaves, DIST::SQL2).unwrap();
+
+        let output = tree.knn(k, &point, 0f64);
+
+        assert!(output.is_some());
+        let output = output.unwrap();
+        let indices = output.iter().map(|nb| nb.item).collect::<Vec<_>>();
+        let distances = output.iter().map(|nb| nb.dist).collect::<Vec<_>>();
+
+        assert_eq!(&ans_argmins[..k], &indices);
+        for (d1, d2) in ans_distances[..k].iter().zip(distances.into_iter()) {
+            assert!((d1 - d2).abs() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_10d_knn_l2_dist_owned() {
+        // 10 nearest neighbors, matrix of size 1000 x 10
+        let k = 10usize;
+        let mut v = Vec::new();
+        let rows = 5_000usize;
+        for _ in 0..rows {
+            v.extend_from_slice(&random_10d_rows());
+        }
+
+        let point = [0.5; 10];
+        // brute force test
+        let (ans_argmins, ans_distances) = generate_test_answer(&v, 10, &point, squared_l2);
+
+        let values = (0..rows).collect::<Vec<_>>();
+        let leaves = slice_to_owned_leaves(&v, 10, &values);
+
+        let tree = OwnedKDT::from_leaves(leaves, DIST::SQL2, SplitMethod::MIDPOINT).unwrap();
+        assert!(tree.count_all() == rows);
 
         let output = tree.knn(k, &point, 0f64);
 
