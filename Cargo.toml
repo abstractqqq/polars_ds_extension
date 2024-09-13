@@ -12,7 +12,9 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = {version = "*", features = ["abi3-py38", "extension-module"]}
 pyo3-polars = {version = "0.15", features = ["derive"]}
-polars = {version = "0.41.3", features = ["performant", "cse", "lazy", "parquet", "dtype-array", "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", "cum_agg", "round_series", "nightly"]}
+polars = {version = "0.41.3", features = ["performant", "cse", "lazy", 
+"parquet", "dtype-array", "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", 
+"cum_agg", "round_series", "nightly", "dtype-struct"]}
 num = "0.4.1"
 faer = {version = "0.19", features = ["nightly"]}
 faer-ext = {version = "0.2.0", features = ["ndarray"]}
@@ -43,3 +45,8 @@ jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }
 codegen-units = 1
 strip = "symbols" 
 # lto = "fat"
+
+
+[dev-dependencies]
+rand = "0.8"
+rand_chacha = "0.3"

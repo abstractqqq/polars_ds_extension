@@ -1,6 +1,6 @@
 use num::Float;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Leaf<'a, T: Float, A> {
     pub item: A,
     pub row_vec: &'a [T],
