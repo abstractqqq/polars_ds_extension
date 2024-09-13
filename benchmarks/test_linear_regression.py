@@ -1,5 +1,7 @@
 import polars as pl
 import polars_ds as pds
+import numpy as np
+import scipy
 import pytest
 from polars_ds.linear_models import LR
 from sklearn.linear_model import Lasso, LinearRegression, Ridge
@@ -62,6 +64,30 @@ def test_sklearn_linear_regression_on_matrix(benchmark, n):
     def func():
         reg = LinearRegression(fit_intercept=False, n_jobs=-1)
         reg.fit(X, y)
+
+
+@pytest.mark.parametrize("n", SIZES)
+@pytest.mark.benchmark(group="linear_on_matrix")
+def test_numpy_linear_regression_on_matrix(benchmark, n):
+    df = DF.sample(n=n, seed=SEED)
+    X = df.select(*X_VARS).to_numpy()
+    y = df.select(*Y).to_numpy()
+
+    @benchmark
+    def func():
+        _ = np.linalg.lstsq(X, y)
+
+
+@pytest.mark.parametrize("n", SIZES)
+@pytest.mark.benchmark(group="linear_on_matrix")
+def test_scipy_linear_regression_on_matrix(benchmark, n):
+    df = DF.sample(n=n, seed=SEED)
+    X = df.select(*X_VARS).to_numpy()
+    y = df.select(*Y).to_numpy()
+
+    @benchmark
+    def func():
+        _ = scipy.linalg.lstsq(X, y, check_finite=False)
 
 
 @pytest.mark.parametrize("n", SIZES)

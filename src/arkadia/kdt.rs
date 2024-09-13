@@ -443,7 +443,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug + Into<f64>, A: Float + Into<f
 {
 }
 
-// ---------- Owned KDT ----------
+// ---------- Owned KDT (for Python Interop) ----------
 
 pub struct OwnedKDT<T: Float + DistanceOps + 'static + Debug, A: Copy> {
     pub dim: usize,
