@@ -1,14 +1,15 @@
 use cfavml::safe_trait_distance_ops::DistanceOps;
-use ndarray::Array2;
 use num::Float;
 use polars::{
-    datatypes::{DataType, Field, Float64Type},
-    error::{PolarsError, PolarsResult},
+    datatypes::{DataType, Field},
+    error::{polars_ensure, PolarsError, PolarsResult},
     frame::DataFrame,
     lazy::dsl::FieldsMapper,
-    prelude::IndexOrder,
+    prelude::*,
     series::Series,
 };
+use pyo3_polars::export::polars_core::POOL;
+use rayon::prelude::*;
 
 // -------------------------------------------------------------------------------
 // Common, Resuable Functions
@@ -26,14 +27,85 @@ pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
     DataFrame::new(inputs.to_vec())
 }
 
+// #[inline(always)]
+// pub fn series_to_ndarray(inputs: &[Series], order: IndexOrder) -> PolarsResult<Array2<f64>> {
+//     let df = DataFrame::new(inputs.to_vec())?;
+//     if df.is_empty() {
+//         Err(PolarsError::ComputeError("Empty data.".into()))
+//     } else {
+//         df.to_ndarray::<Float64Type>(order)
+//     }
+// }
+
+/// Organizes the series data into a `matrix`, and return the underlying slice
+/// as a row-major slice. This code here is taken from polars dataframe.to_ndarray()
 #[inline(always)]
-pub fn series_to_ndarray(inputs: &[Series], order: IndexOrder) -> PolarsResult<Array2<f64>> {
-    let df = DataFrame::new(inputs.to_vec())?;
-    if df.is_empty() {
-        Err(PolarsError::ComputeError("Empty data.".into()))
-    } else {
-        df.to_ndarray::<Float64Type>(order)
+pub fn series_to_row_major_slice<N>(
+    series: &[Series],
+) -> PolarsResult<Vec<<N as PolarsNumericType>::Native>>
+where
+    N: PolarsNumericType,
+{
+    if series.is_empty() {
+        return Err(PolarsError::NoData("Data is empty".into()));
     }
+    // Safe because series is not empty
+    let height: usize = series[0].len();
+    for s in &series[1..] {
+        if s.len() != height {
+            return Err(PolarsError::ShapeMismatch(
+                "Seires don't have the same length.".into(),
+            ));
+        }
+    }
+    let m = series.len();
+    let mut membuf = Vec::with_capacity(height * m);
+    let ptr = membuf.as_ptr() as usize;
+    // let columns = self.get_columns();
+    POOL.install(|| {
+        series.par_iter().enumerate().try_for_each(|(col_idx, s)| {
+            let s = s.cast(&N::get_dtype())?;
+            let s = match s.dtype() {
+                DataType::Float32 => {
+                    let ca = s.f32().unwrap();
+                    ca.none_to_nan().into_series()
+                }
+                DataType::Float64 => {
+                    let ca = s.f64().unwrap();
+                    ca.none_to_nan().into_series()
+                }
+                _ => s,
+            };
+            polars_ensure!(
+                s.null_count() == 0,
+                ComputeError: "creation of ndarray with null values is not supported"
+            );
+            let ca = s.unpack::<N>()?;
+
+            let mut chunk_offset = 0;
+            for arr in ca.downcast_iter() {
+                let vals = arr.values();
+                unsafe {
+                    let num_cols = m;
+                    let mut offset = (ptr as *mut N::Native).add(col_idx + chunk_offset * num_cols);
+                    for v in vals.iter() {
+                        *offset = *v;
+                        offset = offset.add(num_cols);
+                    }
+                }
+                chunk_offset += vals.len();
+            }
+
+            Ok(())
+        })
+    })?;
+
+    // SAFETY:
+    // we have written all data, so we can now safely set length
+    unsafe {
+        membuf.set_len(height * m);
+    }
+    Ok(membuf)
 }
 
 // Shared splitting method
@@ -159,12 +231,38 @@ impl TryFrom<String> for NullPolicy {
 pub enum DIST<T: Float + 'static> {
     L1,
     L2,
+    L2SIMD,
     SQL2, // Squared L2
+    SQL2SIMD,
     LINF,
     ANY(fn(&[T], &[T]) -> T),
 }
 
 impl<T: Float + DistanceOps + 'static> DIST<T> {
+    /// New DIST from the string and informed by the dimension
+    pub fn new_from_str_informed(dist_str: String, dim: usize) -> Result<Self, String> {
+        match dist_str.as_ref() {
+            "l1" => Ok(DIST::L1),
+            "l2" => {
+                if dim < 16 {
+                    Ok(DIST::L2)
+                } else {
+                    Ok(DIST::L2SIMD)
+                }
+            }
+            "sql2" => {
+                if dim < 16 {
+                    Ok(DIST::SQL2)
+                } else {
+                    Ok(DIST::SQL2SIMD)
+                }
+            }
+            "linf" | "inf" => Ok(DIST::LINF),
+            "cosine" => Ok(DIST::ANY(cfavml::cosine)),
+            _ => Err("Unknown distance metric.".into()),
+        }
+    }
+
     #[inline(always)]
     pub fn dist(&self, a1: &[T], a2: &[T]) -> T {
         match self {
@@ -174,28 +272,23 @@ impl<T: Float + DistanceOps + 'static> DIST<T> {
                 .zip(a2.iter().copied())
                 .fold(T::zero(), |acc, (x, y)| acc + ((x - y).abs())),
 
-            DIST::L2 => {
-                if a1.len() < 16 {
-                    a1.iter()
-                        .copied()
-                        .zip(a2.iter().copied())
-                        .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y))
-                        .sqrt()
-                } else {
-                    cfavml::squared_euclidean(a1, a2).sqrt()
-                }
-            }
-            DIST::SQL2 => {
-                // Small penalty to use cfavml when len is small
-                if a1.len() < 16 {
-                    a1.iter()
-                        .copied()
-                        .zip(a2.iter().copied())
-                        .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y))
-                } else {
-                    cfavml::squared_euclidean(a1, a2)
-                }
-            }
+            DIST::L2 => a1
+                .iter()
+                .copied()
+                .zip(a2.iter().copied())
+                .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y))
+                .sqrt(),
+
+            DIST::L2SIMD => cfavml::squared_euclidean(a1, a2).sqrt(),
+
+            DIST::SQL2 => a1
+                .iter()
+                .copied()
+                .zip(a2.iter().copied())
+                .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y)),
+
+            DIST::SQL2SIMD => cfavml::squared_euclidean(a1, a2),
+
             DIST::LINF => a1
                 .iter()
                 .copied()

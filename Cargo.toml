@@ -33,6 +33,7 @@ ahash = ">=0.8.5"
 unicode-normalization = "0.1.23"
 numpy = "0.21.0"
 cfavml = {version = "0.3.0", features=["nightly"]}
+rayon = "1.10.0"
 
 # Remove this part once I update polars dependency
 [target.'cfg(target_os = "linux")'.dependencies]

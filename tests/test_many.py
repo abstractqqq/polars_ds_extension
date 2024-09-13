@@ -1660,9 +1660,8 @@ def test_approximate_entropy(s, m, r, scale, res):
 
 def test_approximate_entropy_edge_cases():
     df = pl.Series(name="a", values=[1]).to_frame()
-    # Error because after slicing, this becomes empty
-    with pytest.raises(Exception) as _:
-        _ = df.select(pds.query_approx_entropy("a", m=2, filtering_level=0.1, scale_by_std=False))
+    res = df.select(pds.query_approx_entropy("a", m=2, filtering_level=0.1, scale_by_std=False))
+    assert np.isnan(res.item(0, 0))
 
 
 @pytest.mark.parametrize(
