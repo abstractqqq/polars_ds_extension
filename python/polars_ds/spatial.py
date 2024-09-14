@@ -1,3 +1,8 @@
+"""
+Data structures for Spatial Queries, suah as KNN, within radius searches, etc.. These are good for small and medium sized data, 
+and data of relatively small dimension (<30). 
+"""
+
 from __future__ import annotations
 
 import numpy as np
@@ -16,7 +21,8 @@ else:  # 3.10, 3.9, 3.8
 class KDTree:
 
     """
-    A Kdtree. This copies data.
+    A Kdtree. This copies data. It is not recommended to use Kdtree on data with dimension > 30. Query speed
+    for higher dimensional data is not much better than brute force.
     """
 
     def __init__(self, X: np.ndarray, distance: KdtDistance = "sql2"):
