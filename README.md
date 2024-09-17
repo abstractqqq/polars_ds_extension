@@ -231,8 +231,7 @@ This package is not tested with Polars streaming mode and is not designed to wor
 
 1. Rust Snowball Stemmer is taken from Tsoding's Seroost project (MIT). See [here](https://github.com/tsoding/seroost)
 2. Some statistics functions are taken from Statrs (MIT) and internalized. See [here](https://github.com/statrs-dev/statrs/tree/master)
-3. Graph functionalities are powered by the petgragh crate. See [here](https://crates.io/crates/petgraph)
-4. Linear algebra routines are powered partly by [faer](https://crates.io/crates/faer)
+3. Linear algebra routines are powered partly by [faer](https://crates.io/crates/faer)
 
 # Other related Projects
 

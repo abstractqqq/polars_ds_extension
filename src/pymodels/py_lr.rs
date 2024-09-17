@@ -1,11 +1,11 @@
 #![allow(non_snake_case)]
 /// Linear Regression Interop with Python
 use crate::linalg::{
-    lstsq::{LinearModels, OnlineLR, LR},
+    lstsq::{LinearRegression, OnlineLR, LR, ElasticNet},
     LinalgErrors,
 };
 use faer_ext::{IntoFaer, IntoNdarray};
-use numpy::{IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
+use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -48,9 +48,11 @@ impl PyLR {
         }
     }
 
-    pub fn set_coeffs_and_bias(&mut self, coeffs: PyReadonlyArray1<f64>, bias: f64) {
-        self.lr
-            .set_coeffs_and_bias(coeffs.as_slice().unwrap(), bias)
+    pub fn set_coeffs_and_bias(&mut self, coeffs: PyReadonlyArray1<f64>, bias: f64) -> PyResult<()> {
+        match coeffs.as_slice() {
+            Ok(s) => Ok(self.lr.set_coeffs_and_bias(s, bias)),
+            Err(e) => Err(e.into()),
+        }
     }
 
     pub fn predict<'py>(
@@ -86,6 +88,88 @@ impl PyLR {
     #[getter]
     pub fn lambda_(&self) -> f64 {
         self.lr.lambda
+    }
+}
+
+#[pyclass(subclass)]
+pub struct PyElasticNet {
+    lr: ElasticNet,
+}
+
+#[pymethods]
+impl PyElasticNet {
+    #[new]
+    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature=(
+        l1_reg,
+        l2_reg,
+        fit_bias = false,
+        tol = 1e-5, 
+        max_iter = 2000,
+    ))]
+    pub fn new(l1_reg:f64, l2_reg:f64, fit_bias: bool, tol:f64, max_iter:usize) -> Self {
+        PyElasticNet {
+            lr: ElasticNet::new(l1_reg, l2_reg, fit_bias, tol, max_iter),
+        }
+    }
+
+    pub fn set_coeffs_and_bias(&mut self, coeffs: PyReadonlyArray1<f64>, bias: f64) -> PyResult<()> {
+        match coeffs.as_slice() {
+            Ok(s) => Ok(self.lr.set_coeffs_and_bias(s, bias)),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn is_fit(&self) -> bool {
+        self.lr.is_fit()
+    }
+
+    pub fn fit(&mut self, X: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) -> PyResult<()> {
+        let x = X.as_array().into_faer();
+        let y = y.as_array().into_faer();
+        match self.lr.fit(x, y) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn predict<'py>(
+        &self,
+        py: Python<'py>,
+        X: PyReadonlyArray2<f64>,
+    ) -> PyResult<Bound<'py, PyArray1<f64>>> {
+        let x = X.as_array().into_faer();
+        match self.lr.predict(x) {
+            Ok(result) => {
+                // result should be n by 1, where n = x.nrows()
+                let res = result.col_as_slice(0);
+                let v = res.to_vec();
+                Ok(v.into_pyarray_bound(py))
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn fit_bias(&self) -> bool {
+        self.lr.fit_bias()
+    }
+
+    #[getter]
+    pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<f64>>> {
+        match self.lr.coeffs_as_vec() {
+            Ok(v) => Ok(v.into_pyarray_bound(py)),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    #[getter]
+    pub fn bias(&self) -> f64 {
+        self.lr.bias
+    }
+
+    #[getter]
+    pub fn regularizers(&self) -> (f64, f64) {
+        self.lr.regularizers()
     }
 }
 
@@ -133,11 +217,11 @@ impl PyOnlineLR {
         inv: PyReadonlyArray2<f64>,
         bias: f64,
     ) -> PyResult<()> {
-        match self
-            .lr
-            .set_coeffs_bias_inverse(coeffs.as_slice().unwrap(), inv.as_array(), bias)
-        {
-            Ok(_) => Ok(()),
+        match coeffs.as_slice() {
+            Ok(s) => match self.lr.set_coeffs_bias_inverse(s, inv.as_array().into_faer(), bias) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(e.into()),
+                },
             Err(e) => Err(e.into()),
         }
     }

@@ -2,10 +2,12 @@ import polars as pl
 import polars_ds as pds
 import pytest
 import numpy as np
-from polars_ds.linear_models import LR, OnlineLR
+from polars_ds.linear_models import OnlineLR, ElasticNet
 
 
 def test_lr_null_policies_for_np():
+    from polars_ds.linear_models import _handle_nans_in_np
+
     size = 5_000
     df = (
         pds.frame(size=size)
@@ -25,22 +27,22 @@ def test_lr_null_policies_for_np():
     x = df.select("x1", "x2", "x3").to_numpy()
     y = df.select("y").to_numpy()
 
-    x_nan, _ = LR._handle_nans_in_np(x, y, "ignore")
+    x_nan, _ = _handle_nans_in_np(x, y, "ignore")
     assert np.all(np.isnan(x_nan[nulls][:, 0]))
 
     with pytest.raises(Exception) as exc_info:
-        LR._handle_nans_in_np(x, y, "raise")
+        _handle_nans_in_np(x, y, "raise")
         assert str(exc_info.value) == "Nulls found in X or y."
 
-    x_skipped, _ = LR._handle_nans_in_np(x, y, "skip")
+    x_skipped, _ = _handle_nans_in_np(x, y, "skip")
     assert np.all(x_skipped == x[~nulls])
 
-    x_zeroed, _ = LR._handle_nans_in_np(x, y, "zero")
+    x_zeroed, _ = _handle_nans_in_np(x, y, "zero")
     assert np.all(
         x_zeroed[nulls][:, 0] == 0.0
     )  # checking out the first column because only that has nulls
 
-    x_one, _ = LR._handle_nans_in_np(x, y, "one")
+    x_one, _ = _handle_nans_in_np(x, y, "one")
     assert np.all(
         x_one[nulls][:, 0] == 1.0
     )  # checking out the first column because only that has nulls
@@ -82,3 +84,40 @@ def test_online_lr():
         sk_lr.fit(X[: i + 1], y[: i + 1])
         sklearn_coeffs = sk_lr.coef_
         assert np.all(np.abs(coeffs - sklearn_coeffs) < 1e-5)
+
+
+def test_elastic_net():
+    import sklearn.linear_model as lm
+
+    l1_reg = 0.1
+    l2_reg = 0.1
+
+    df = (
+        pds.frame(size=5000)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_row_index()
+        .with_columns(
+            y=pl.col("x1") + pl.col("x2") * 0.2 - 0.3 * pl.col("x3"),
+        )
+        .with_columns(is_null=pl.col("x1").is_null())
+    )
+
+    X = df.select("x1", "x2", "x3").to_numpy()
+    y = df.select("y").to_numpy()
+
+    en = ElasticNet(l1_reg=l1_reg, l2_reg=l2_reg)
+    en.fit(X, y)
+    pds_res = en.coeffs()
+
+    alpha = l1_reg + l2_reg
+    l1_ratio = l1_reg / (l1_reg + l2_reg)
+
+    elastic = lm.ElasticNet(alpha=alpha, l1_ratio=l1_ratio, fit_intercept=False)
+    elastic.fit(X, y)
+    sklearn_res = elastic.coef_
+    # bigger difference because of different stopping criterions
+    assert np.all(np.abs(pds_res - sklearn_res) < 1e-4)
