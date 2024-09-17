@@ -1,8 +1,7 @@
 #![allow(non_snake_case)]
 use super::LinalgErrors;
 use faer::{prelude::*, Side};
-use faer_ext::IntoFaer;
-use ndarray::ArrayView2;
+use core::f64;
 use std::ops::Neg;
 
 #[derive(Clone, Copy, Default)]
@@ -89,7 +88,7 @@ impl From<f64> for ClosedFormLRMethods {
     }
 }
 
-pub trait LinearModels {
+pub trait LinearRegression {
     fn coefficients(&self) -> MatRef<f64>;
 
     /// Returns a copy of the coefficients
@@ -99,11 +98,22 @@ pub trait LinearModels {
 
     fn bias(&self) -> f64;
 
-    fn has_bias(&self) -> bool;
-
-    fn fit(&mut self, X: MatRef<f64>, y: MatRef<f64>) -> Result<(), LinalgErrors>;
+    fn fit_bias(&self) -> bool;
 
     fn fit_unchecked(&mut self, X: MatRef<f64>, y: MatRef<f64>);
+
+    /// Fits the linear regression. Input X is any m x n matrix. Input y must be a m x 1 matrix.
+    /// Note, if there is a bias term in the data, then it must be in the matrix X as the last
+    /// column and has_bias must be true. This will not append a bias column to X.
+    fn fit(&mut self, X: MatRef<f64>, y: MatRef<f64>) -> Result<(), LinalgErrors> {
+        if X.nrows() != y.nrows() {
+            return Err(LinalgErrors::DimensionMismatch);
+        } else if X.nrows() < X.ncols() || X.nrows() == 0 || y.nrows() == 0 {
+            return Err(LinalgErrors::NotEnoughData);
+        }
+        self.fit_unchecked(X, y);
+        Ok(())
+    }
 
     fn is_fit(&self) -> bool {
         !(self.coefficients().shape() == (0, 0))
@@ -135,12 +145,16 @@ pub trait LinearModels {
         } else if !self.is_fit() {
             Err(LinalgErrors::MatNotLearnedYet)
         } else {
-            if self.has_bias() && self.bias().abs() > f64::EPSILON {
-                let temp = Mat::full(X.nrows(), 1, self.bias());
-                Ok(X * self.coefficients() + temp)
-            } else {
-                Ok(X * self.coefficients())
-            }
+            let mut result = X * self.coefficients();
+            let bias = self.bias();
+            if self.fit_bias() && self.bias().abs() > f64::EPSILON {
+                unsafe {
+                    for i in 0..result.nrows() {
+                        *result.get_mut_unchecked(i, 0) += bias;
+                    }
+                }
+            } 
+            Ok(result)
         }
     }
 }
@@ -185,7 +199,7 @@ impl LR {
     }
 }
 
-impl LinearModels for LR {
+impl LinearRegression for LR {
     fn coefficients(&self) -> MatRef<f64> {
         self.coefficients.as_ref()
     }
@@ -194,7 +208,7 @@ impl LinearModels for LR {
         self.bias
     }
 
-    fn has_bias(&self) -> bool {
+    fn fit_bias(&self) -> bool {
         self.fit_bias
     }
 
@@ -204,16 +218,14 @@ impl LinearModels for LR {
             let new = faer::concat![[X, ones]];
             match self.method {
                 ClosedFormLRMethods::Normal => faer_solve_lstsq(new.as_ref(), y, self.solver),
-                ClosedFormLRMethods::L2 => {
+                ClosedFormLRMethods::L2 => 
                     faer_solve_ridge(new.as_ref(), y, self.lambda, self.fit_bias, self.solver)
-                }
             }
         } else {
             match self.method {
                 ClosedFormLRMethods::Normal => faer_solve_lstsq(X, y, self.solver),
-                ClosedFormLRMethods::L2 => {
+                ClosedFormLRMethods::L2 => 
                     faer_solve_ridge(X, y, self.lambda, self.fit_bias, self.solver)
-                }
             }
         };
         if self.fit_bias {
@@ -227,19 +239,7 @@ impl LinearModels for LR {
         }
     }
 
-    /// Fits the linear regression. Input X is any m x n matrix. Input y must be a m x 1 matrix.
-    /// Note, if there is a bias term in the data, then it must be in the matrix X as the last
-    /// column and has_bias must be true. This will not append a bias column to X.
-    /// This doesn't check dimensions.
-    fn fit(&mut self, X: MatRef<f64>, y: MatRef<f64>) -> Result<(), LinalgErrors> {
-        if X.nrows() != y.nrows() {
-            return Err(LinalgErrors::DimensionMismatch);
-        } else if X.nrows() < X.ncols() {
-            return Err(LinalgErrors::NotEnoughRows);
-        }
-        self.fit_unchecked(X, y);
-        Ok(())
-    }
+
 }
 
 /// A struct that handles online linear regression
@@ -267,7 +267,7 @@ impl OnlineLR {
     pub fn set_coeffs_bias_inverse(
         &mut self,
         coeffs: &[f64],
-        inv: ArrayView2<f64>,
+        inv: MatRef<f64>,
         bias: f64,
     ) -> Result<(), LinalgErrors> {
         if coeffs.len() != inv.ncols() {
@@ -275,7 +275,7 @@ impl OnlineLR {
         } else {
             self.coefficients =
                 (faer::mat::from_row_major_slice(coeffs, coeffs.len(), 1)).to_owned();
-            self.inv = inv.into_faer().to_owned();
+            self.inv = inv.to_owned();
             self.bias = bias;
             self.fit_bias = bias.abs() > f64::EPSILON;
             Ok(())
@@ -313,7 +313,7 @@ impl OnlineLR {
     }
 }
 
-impl LinearModels for OnlineLR {
+impl LinearRegression for OnlineLR {
     fn coefficients(&self) -> MatRef<f64> {
         self.coefficients.as_ref()
     }
@@ -322,7 +322,7 @@ impl LinearModels for OnlineLR {
         self.bias
     }
 
-    fn has_bias(&self) -> bool {
+    fn fit_bias(&self) -> bool {
         self.fit_bias
     }
 
@@ -335,18 +335,100 @@ impl LinearModels for OnlineLR {
         };
     }
 
-    /// The very initial fit of the Online Regression Problem.
-    /// Defaults to Column Pivot QR for normal and Cholesky for Ridge
+}
+
+/// A struct that handles regular linear regression and Ridge regression.
+pub struct ElasticNet {
+    pub l1_reg: f64,
+    pub l2_reg: f64,
+    pub coefficients: Mat<f64>, // n_features x 1 matrix, doesn't contain bias
+    pub fit_bias: bool,
+    pub bias: f64,
+    pub tol: f64,
+    pub max_iter: usize
+}
+
+impl ElasticNet {
+    pub fn new(l1_reg:f64, l2_reg:f64, fit_bias: bool, tol:f64, max_iter:usize) -> Self {
+        ElasticNet {
+            l1_reg: l1_reg,
+            l2_reg: l2_reg,
+            coefficients: Mat::new(),
+            fit_bias: fit_bias,
+            bias: 0.,
+            tol: tol,
+            max_iter: max_iter
+        }
+    }
+
+    pub fn from_values(coeffs: &[f64], bias: f64) -> Self {
+        ElasticNet {
+            l1_reg: f64::NAN,
+            l2_reg: f64::NAN,
+            coefficients: faer::mat::from_row_major_slice(coeffs, coeffs.len(), 1).to_owned(),
+            fit_bias: bias.abs() > f64::EPSILON,
+            bias: bias,
+            tol: 1e-5,
+            max_iter: 2000
+        }
+    }
+
+    pub fn set_coeffs_and_bias(&mut self, coeffs: &[f64], bias: f64) {
+        self.coefficients = (faer::mat::from_row_major_slice(coeffs, coeffs.len(), 1)).to_owned();
+        self.bias = bias;
+        self.fit_bias = bias.abs() > f64::EPSILON;
+    }
+
+    pub fn regularizers(&self) -> (f64, f64) {
+        (self.l1_reg, self.l2_reg)
+    }
+}
+
+impl LinearRegression for ElasticNet {
+    fn coefficients(&self) -> MatRef<f64> {
+        self.coefficients.as_ref()
+    }
+
+    fn bias(&self) -> f64 {
+        self.bias
+    }
+
+    fn fit_bias(&self) -> bool {
+        self.fit_bias
+    }
+
+    fn fit_unchecked(&mut self, X: MatRef<f64>, y: MatRef<f64>) {
+        let all_coefficients = if self.fit_bias {
+            let ones = Mat::full(X.nrows(), 1, 1.0);
+            let new_x = faer::concat![[X, ones]];
+            faer_coordinate_descent(new_x.as_ref(), y, self.l1_reg, self.l2_reg, self.fit_bias, self.tol, self.max_iter)
+        } else {
+            faer_coordinate_descent(X, y, self.l1_reg, self.l2_reg, self.fit_bias, self.tol, self.max_iter)
+        };
+
+        if self.fit_bias {
+            let n = all_coefficients.nrows();
+            let slice = all_coefficients.col_as_slice(0);
+            self.coefficients =
+                faer::mat::from_row_major_slice(&slice[..n - 1], n - 1, 1).to_owned();
+            self.bias = slice[n - 1];
+        } else {
+            self.coefficients = all_coefficients;
+        }
+    }
+
     fn fit(&mut self, X: MatRef<f64>, y: MatRef<f64>) -> Result<(), LinalgErrors> {
         if X.nrows() != y.nrows() {
             return Err(LinalgErrors::DimensionMismatch);
-        } else if X.nrows() < X.ncols() {
-            return Err(LinalgErrors::NotEnoughRows);
-        }
+        } else if X.nrows() == 0 || y.nrows() == 0 {
+            return Err(LinalgErrors::NotEnoughData);
+        } // Ok to have nrows < ncols
         self.fit_unchecked(X, y);
         Ok(())
     }
 }
+
+
 
 //------------------------------------ The Basic Functions ---------------------------------------
 
@@ -566,6 +648,7 @@ pub fn faer_coordinate_descent(
     l2_reg: f64,
     has_bias: bool,
     tol: f64,
+    max_iter: usize,
 ) -> Mat<f64> {
     let m = x.nrows() as f64;
     let ncols = x.ncols();
@@ -587,7 +670,7 @@ pub fn faer_coordinate_descent(
     let xtx = x.transpose() * x;
 
     // Random selection often leads to faster convergence?
-    for _ in 0..2000 {
+    for _ in 0..max_iter {
         let mut max_change = 0f64;
         for j in 0..n1 {
             // temporary set beta(j, 0) to 0.
@@ -619,7 +702,7 @@ pub fn faer_coordinate_descent(
     }
 
     if !converge {
-        println!("Lasso regression: 2000 iterations have passed and result hasn't converged.")
+        println!("Lasso regression: Max number of iterations have passed and result hasn't converged.")
     }
 
     beta

@@ -16,6 +16,7 @@ use pyo3::{pymodule, types::PyModule, Bound, PyResult, Python};
 #[pyo3(name = "_polars_ds")]
 fn _polars_ds(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<pymodels::py_lr::PyLR>()?;
+    m.add_class::<pymodels::py_lr::PyElasticNet>()?;
     m.add_class::<pymodels::py_lr::PyOnlineLR>()?;
     m.add_class::<pymodels::py_kdt::PyKDT>()?;
     Ok(())
