@@ -92,3 +92,6 @@ docs/_build/
 # Polars Extension
 .so
 .dll
+
+# Pytest-benchmark
+.benchmarks
