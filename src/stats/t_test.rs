@@ -1,39 +1,31 @@
+use core::f64;
+
 /// Student's t test and Welch's t test.
 use super::{simple_stats_output, Alternative, StatsResult};
-use crate::{
-    stats,
-    stats_utils::{beta, is_zero},
-};
+use crate::{stats, stats_utils::beta};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 #[inline]
-fn ttest_ind(
-    m1: f64,
-    m2: f64,
-    v1: f64,
-    v2: f64,
-    n: f64,
-    alt: Alternative,
-) -> Result<StatsResult, String> {
+fn ttest_ind(m1: f64, m2: f64, v1: f64, v2: f64, n: f64, alt: Alternative) -> StatsResult {
     let num = m1 - m2;
     // ((var1 + var2) / 2 ).sqrt() * (2./n).sqrt() can be simplified as below
     let denom = ((v1 + v2) / n).sqrt();
-    if is_zero(denom) {
-        Err("T Test: Division by 0 encountered.".into())
+    if denom == 0. {
+        println!("T Test: Division by 0 encountered.");
+        StatsResult::new(f64::NAN, f64::NAN)
     } else {
         let t = num / denom;
         let df = 2. * n - 2.;
         let p = match alt {
-            Alternative::Less => beta::student_t_sf(-t, df),
-            Alternative::Greater => beta::student_t_sf(t, df),
+            Alternative::Less => beta::student_t_sf(-t, df).unwrap_or(f64::NAN),
+            Alternative::Greater => beta::student_t_sf(t, df).unwrap_or(f64::NAN),
             Alternative::TwoSided => match beta::student_t_sf(t.abs(), df) {
-                Ok(p) => Ok(2.0 * p),
-                Err(e) => Err(e),
+                Ok(p) => 2.0 * p,
+                Err(_) => f64::NAN,
             },
         };
-        let p = p?;
-        Ok(StatsResult::new(t, p))
+        StatsResult::new(t, p)
     }
 }
 
@@ -47,7 +39,7 @@ fn ttest_1samp(
 ) -> Result<StatsResult, String> {
     let num = mean - pop_mean;
     let denom = (var / n).sqrt();
-    if is_zero(denom) {
+    if denom == 0. {
         Err("T Test: Division by 0 encountered.".into())
     } else {
         let t = num / denom;
@@ -79,7 +71,7 @@ fn welch_t(
     let vn1 = v1 / n1;
     let vn2 = v2 / n2;
     let denom = (vn1 + vn2).sqrt();
-    if is_zero(denom) {
+    if denom == 0. {
         Err("T Test: Division by 0 encountered.".into())
     } else {
         let t = num / denom;
@@ -122,8 +114,7 @@ fn pl_ttest_2samp(inputs: &[Series]) -> PolarsResult<Series> {
         ));
     }
 
-    let res = ttest_ind(mean1, mean2, var1, var2, n, alt)
-        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+    let res = ttest_ind(mean1, mean2, var1, var2, n, alt);
 
     let s = Series::from_vec("statistic", vec![res.statistic]);
     let pchunked = Float64Chunked::from_iter_options("pvalue", [res.p].into_iter());

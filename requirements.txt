@@ -3,3 +3,4 @@ maturin[patchelf]>=1.3.2
 polars
 pre-commit
 ipykernel
+numpy # for all functionalities, including linear models

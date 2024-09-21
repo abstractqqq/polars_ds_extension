@@ -17,7 +17,7 @@
 
 # The Project
 
-PDS is a modern take on data science and traditional tabular machine learning. It is dataframe-centric in design, and provides parallelism for free via **Polars**. It offers Polars syntax that works both in normal and aggregation contexts, and provides these conveniences to the end user without any additional dependency. It includes the most common functions from NumPy, SciPy, edit distances, KNN-related queries, EDA tools. Yes, it only depends on Polars (unless you want to use the plotting functionalities). Most of the code is rewritten in **Rust** and is on par or even faster than existing functions in SciPy and Scikit-learn. The following are some examples:
+PDS is a modern take on data science and traditional tabular machine learning. It is dataframe-centric in design, and provides parallelism for free via **Polars**. It offers Polars syntax that works both in normal and aggregation contexts, and provides these conveniences to the end user without any additional dependency. It includes the most common functions from NumPy, SciPy, edit distances, KNN-related queries, EDA tools, feature engineering queries, etc. Yes, it only depends on Polars (unless you want to use the plotting functionalities and want to interop with NumPy). Most of the code is rewritten in **Rust** and is on par or even faster than existing functions in SciPy and Scikit-learn. The following are some examples:
 
 Parallel evaluations of classification metrics on segments
 
@@ -50,7 +50,7 @@ df.select(
         pl.col("var1"), pl.col("var2"), pl.col("var3"), # Columns used as the coordinates in 3d space
         index = pl.col("id"),
         r = 0.1, 
-        dist = "l2", # actually this is squared l2
+        dist = "sql2", # squared l2
         parallel = True
     ).alias("best friends"),
 ).with_columns( # -1 to remove the point itself
@@ -223,7 +223,7 @@ See this for Native Polars DataFrame Explorative tools: [notebook](./examples/di
 
 # Disclaimer
 
-**Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars and will try to be as stable as possible for polars>=0.20.6. Exceptions will be made when Polars's update forces changes in the plugins.**
+**Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars (for most of its core) and will try to be as stable as possible for polars>=1 (It currently supports polars>=0.20.16 but that will be dropped soon). Exceptions will be made when Polars's update forces changes in the plugins.**
 
 This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed.
 
@@ -231,8 +231,7 @@ This package is not tested with Polars streaming mode and is not designed to wor
 
 1. Rust Snowball Stemmer is taken from Tsoding's Seroost project (MIT). See [here](https://github.com/tsoding/seroost)
 2. Some statistics functions are taken from Statrs (MIT) and internalized. See [here](https://github.com/statrs-dev/statrs/tree/master)
-3. Graph functionalities are powered by the petgragh crate. See [here](https://crates.io/crates/petgraph)
-4. Linear algebra routines are powered partly by [faer](https://crates.io/crates/faer)
+3. Linear algebra routines are powered partly by [faer](https://crates.io/crates/faer)
 
 # Other related Projects
 

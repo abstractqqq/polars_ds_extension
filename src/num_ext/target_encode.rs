@@ -30,6 +30,7 @@ fn get_target_encode_frame(
 
     Ok(df
         .lazy()
+        .drop_nulls(None)
         .group_by([col("value")])
         .agg([len().alias("cnt"), col("target").mean().alias("cond_p")])
         .with_column(

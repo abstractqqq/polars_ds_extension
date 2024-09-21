@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import List, Literal, Union
+from typing import List, Literal, Dict
 import polars as pl
 from ._utils import pl_plugin
-from .type_alias import StrOrExpr, str_to_expr
+from .type_alias import str_to_expr
 
 
 __all__ = [
@@ -36,138 +36,10 @@ __all__ = [
     "normalize_whitespace",
 ]
 
-# @pl.api.register_expr_namespace("str2")
-# class StrExt:
-
-#     """
-#     This class contains tools for dealing with string similarity, common string operations like tokenize,
-#     extract numbers, etc., inside Polars DataFrame.
-
-#     Polars Namespace: str2
-
-#     Example: pl.col("a").str2.levenshtein(pl.col("b"), return_sim=True)
-#     """
-
-#     def __init__(self, expr: pl.Expr):
-#         self._expr: pl.Expr = expr
-
-#     def infer_infreq(
-#         self,
-#         *,
-#         min_count: Optional[int] = None,
-#         min_frac: Optional[float] = None,
-#         parallel: bool = False,
-#     ) -> pl.Expr:
-#         """
-#         Infers infrequent categories (strings) by min_count or min_frac and return a list as output.
-
-#         Parameters
-#         ----------
-#         min_count
-#             If set, an infrequency category will be defined as a category with count < this.
-#         min_frac
-#             If set, an infrequency category will be defined as a category with pct < this. min_count
-#             takes priority over this.
-#         parallel
-#             Whether to run value_counts in parallel. This may not provide much speed up and is not
-#             recommended in a group_by context.
-#         """
-#         name = self._expr.meta.root_names()[0]
-#         vc = self._expr.value_counts(parallel=parallel, sort=True)
-#         if min_count is None and min_frac is None:
-#             raise ValueError("Either min_count or min_frac must be provided.")
-#         elif min_count is not None:
-#             infreq: pl.Expr = vc.filter(vc.struct.field("count") < min_count).struct.field(name)
-#         elif min_frac is not None:
-#             infreq: pl.Expr = vc.filter(
-#                 vc.struct.field("count") / vc.struct.field("count").sum() < min_frac
-#             ).struct.field(name)
-
-#         return infreq.implode()
-
-#     def merge_infreq(
-#         self,
-#         *,
-#         min_count: Optional[int] = None,
-#         min_frac: Optional[float] = None,
-#         separator: str = "|",
-#         parallel: bool = False,
-#     ) -> pl.Expr:
-#         """
-#         Merge infrequent categories (strings) in the column into one category (string) separated by a
-#         separator. This is useful when you want to do one-hot-encoding but not too many distinct
-#         values because of low value counts. This does not mean that infreq categories are similar, however.
-
-#         Parameters
-#         ----------
-#         min_count
-#             If set, an infrequency category will be defined as a category with count < this.
-#         min_frac
-#             If set, an infrequency category will be defined as a category with pct < this. min_count
-#             takes priority over this.
-#         separator
-#             What separator to use when joining the categories. E.g if "a" and "b" are rare categories,
-#             and separator = "|", they will be mapped to "a|b"
-#         parallel
-#             Whether to run value_counts in parallel. This may not provide much speed up and is not
-#             recommended in a group_by context.
-#         """
-
-#         # Will be fixed soon and sort will not be needed
-#         name = self._expr.meta.root_names()[0]
-#         vc = self._expr.value_counts(parallel=parallel, sort=True)
-#         if min_count is None and min_frac is None:
-#             raise ValueError("Either min_count or min_frac must be provided.")
-#         elif min_count is not None:
-#             to_merge: pl.Expr = vc.filter(vc.struct.field("count") < min_count).struct.field(name)
-#         elif min_frac is not None:
-#             to_merge: pl.Expr = vc.filter(
-#                 vc.struct.field("count") / vc.struct.field("count").sum() < min_frac
-#             ).struct.field(name)
-
-#         return (
-#             pl.when(self._expr.is_in(to_merge))
-#             .then(to_merge.cast(pl.String).fill_null("null").implode().first().list.join(separator))
-#             .otherwise(self._expr)
-#         )
-
-
-#     def freq_removal(
-#         self, lower: float = 0.05, upper: float = 0.95, parallel: bool = True
-#     ) -> pl.Expr:
-#         """
-#         Removes from each documents words that are too frequent (in the entire dataset). This assumes
-#         that the input expression represents lists of strings. E.g. output of tokenize.
-
-#         Parameters
-#         ----------
-#         lower
-#             Lower percentile. If a word's frequency is < than this, it will be removed.
-#         upper
-#             Upper percentile. If a word's frequency is > than this, it will be removed.
-#         parallel
-#             Whether to run word count in parallel. It is not recommended when you are in a group_by
-#             context.
-#         """
-
-#         name = self._expr.meta.root_names()[0]
-#         vc = self._expr.list.explode().value_counts(parallel=parallel).sort()
-#         lo = vc.struct.field("count").quantile(lower)
-#         u = vc.struct.field("count").quantile(upper)
-#         remove = (
-#             vc.filter((vc.struct.field("count") < lo) | (vc.struct.field("count") > u))
-#             .struct.field(name)
-#             .implode()
-#         )
-
-#         return self._expr.list.set_difference(remove)
-
-# -------------------------------------------------------------------------------------------------
-
 
 def filter_by_levenshtein(
-    c: StrOrExpr,
-    other: StrOrExpr,
+    c: str | pl.Expr,
+    other: str | pl.Expr,
     bound: int,
     parallel: bool = False,
 ) -> pl.Expr:
@@ -185,8 +57,8 @@ def filter_by_levenshtein(
     bound
         Closed upper bound. If distance <= bound, return true and false otherwise.
     parallel
-        Whether to run the comparisons in parallel. Note that this is not always faster, especially
-        when used with other expressions or in group_by/over context.
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
     """
 
     return pl_plugin(
@@ -197,13 +69,12 @@ def filter_by_levenshtein(
             pl.lit(abs(bound), pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
-        is_elementwise=True,
     )
 
 
 def filter_by_hamming(
-    c: StrOrExpr,
-    other: Union[str, pl.Expr],
+    c: str | pl.Expr,
+    other: str | pl.Expr,
     bound: int,
     pad: bool = False,
     parallel: bool = False,
@@ -235,12 +106,11 @@ def filter_by_hamming(
             pl.lit(bound, dtype=pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
-        is_elementwise=True,
     )
 
 
 def str_hamming(
-    c: StrOrExpr, other: StrOrExpr, pad: bool = False, parallel: bool = False
+    c: str | pl.Expr, other: str | pl.Expr, pad: bool = False, parallel: bool = False
 ) -> pl.Expr:
     """
     Computes the hamming distance between two strings. If they do not have the same length, null will
@@ -264,17 +134,15 @@ def str_hamming(
         return pl_plugin(
             symbol="pl_hamming_padded",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
         )
     else:
         return pl_plugin(
             symbol="pl_hamming",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
         )
 
 
-def is_stopword(c: StrOrExpr) -> pl.Expr:
+def is_stopword(c: str | pl.Expr) -> pl.Expr:
     """
     Checks whether the string is a stopword in English or not.
     """
@@ -285,7 +153,7 @@ def is_stopword(c: StrOrExpr) -> pl.Expr:
     )
 
 
-def to_camel_case(c: StrOrExpr) -> pl.Expr:
+def to_camel_case(c: str | pl.Expr) -> pl.Expr:
     """Turns itself into camel case. E.g. helloWorld"""
     return pl_plugin(
         symbol="pl_to_camel",
@@ -294,7 +162,7 @@ def to_camel_case(c: StrOrExpr) -> pl.Expr:
     )
 
 
-def to_snake_case(c: StrOrExpr) -> pl.Expr:
+def to_snake_case(c: str | pl.Expr) -> pl.Expr:
     """Turns itself into snake case. E.g. hello_world"""
     return pl_plugin(
         symbol="pl_to_snake",
@@ -303,7 +171,7 @@ def to_snake_case(c: StrOrExpr) -> pl.Expr:
     )
 
 
-def to_pascal_case(c: StrOrExpr) -> pl.Expr:
+def to_pascal_case(c: str | pl.Expr) -> pl.Expr:
     """Turns itself into Pascal case. E.g. HelloWorld"""
     return pl_plugin(
         symbol="pl_to_pascal",
@@ -312,7 +180,7 @@ def to_pascal_case(c: StrOrExpr) -> pl.Expr:
     )
 
 
-def to_constant_case(c: StrOrExpr) -> pl.Expr:
+def to_constant_case(c: str | pl.Expr) -> pl.Expr:
     """Turns itself into constant case. E.g. Hello_World"""
     return pl_plugin(
         symbol="pl_to_constant",
@@ -322,8 +190,8 @@ def to_constant_case(c: StrOrExpr) -> pl.Expr:
 
 
 def query_similar_words(
-    c: StrOrExpr,
-    vocab: Union[pl.Expr, List[str]],
+    c: str | pl.Expr,
+    vocab: pl.Expr | List[str],
     k: int = 1,
     threshold: int = 100,
     metric: Literal["lv", "hamming"] = "lv",
@@ -345,13 +213,13 @@ def query_similar_words(
     k : int, >0
         k most similar words will be found
     threshold : int, >0
-        A word in the vocab has to be within threshold distance from words in self to be considered.
-        This is a positive integer because all the distances output integers.
+        Only considers words to be similar if they are within distance threshold. This is a positive integer
+        because all the distances output integers.
     metric
         Which similarity metric to use. One of `lv`, `hamming`
     parallel
-        Whether to run the comparisons in parallel. Note that this is not always faster, especially
-        when used with other expressions or in group_by/over context.
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
     """
     if metric not in ("lv", "hamming"):
         raise ValueError(f"Unknown metric for similar_words: {metric}")
@@ -371,7 +239,6 @@ def query_similar_words(
                 "threshold": threshold,
                 "parallel": parallel,
             },
-            is_elementwise=True,
         )
     elif k > 1:
         return pl_plugin(
@@ -383,13 +250,12 @@ def query_similar_words(
                 "threshold": threshold,
                 "parallel": parallel,
             },
-            is_elementwise=True,
         )
     else:
         raise ValueError("Input `k` must be >= 1.")
 
 
-def str_snowball(c: StrOrExpr, no_stopwords: bool = True) -> pl.Expr:
+def str_snowball(c: str | pl.Expr, no_stopwords: bool = True) -> pl.Expr:
     """
     Applies the snowball stemmer for the column. The column is supposed to be a column of single words.
     Numbers will be stemmed to the empty string.
@@ -409,7 +275,7 @@ def str_snowball(c: StrOrExpr, no_stopwords: bool = True) -> pl.Expr:
     )
 
 
-def str_tokenize(c: StrOrExpr, pattern: str = r"(?u)\b\w\w+\b", stem: bool = False) -> pl.Expr:
+def str_tokenize(c: str | pl.Expr, pattern: str = r"(?u)\b\w\w+\b", stem: bool = False) -> pl.Expr:
     """
     Tokenize the string according to the pattern. This will only extract the words
     satisfying the pattern.
@@ -431,8 +297,8 @@ def str_tokenize(c: StrOrExpr, pattern: str = r"(?u)\b\w\w+\b", stem: bool = Fal
 
 
 def str_jaccard(
-    c: StrOrExpr,
-    other: StrOrExpr,
+    c: str | pl.Expr,
+    other: str | pl.Expr,
     substr_size: int = 2,
     parallel: bool = False,
 ) -> pl.Expr:
@@ -454,8 +320,8 @@ def str_jaccard(
         The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
         the set ('ap', 'pp', 'pl', 'le') before being compared.
     parallel
-        Whether to run the comparisons in parallel. Note that this is not always faster, especially
-        when used with other expressions or in group_by/over context.
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
     """
     return pl_plugin(
         symbol="pl_str_jaccard",
@@ -465,13 +331,12 @@ def str_jaccard(
             pl.lit(substr_size, pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
-        is_elementwise=True,
     )
 
 
 def str_overlap_coeff(
-    c: StrOrExpr,
-    other: StrOrExpr,
+    c: str | pl.Expr,
+    other: str | pl.Expr,
     substr_size: int = 2,
     parallel: bool = False,
 ) -> pl.Expr:
@@ -493,8 +358,8 @@ def str_overlap_coeff(
         The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
         the set ('ap', 'pp', 'pl', 'le') before being compared.
     parallel
-        Whether to run the comparisons in parallel. Note that this is not always faster, especially
-        when used with other expressions or in group_by/over context.
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
     """
     return pl_plugin(
         symbol="pl_overlap_coeff",
@@ -504,13 +369,12 @@ def str_overlap_coeff(
             pl.lit(substr_size, pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
-        is_elementwise=True,
     )
 
 
 def str_sorensen_dice(
-    c: StrOrExpr,
-    other: StrOrExpr,
+    c: str | pl.Expr,
+    other: str | pl.Expr,
     substr_size: int = 2,
     parallel: bool = False,
 ) -> pl.Expr:
@@ -532,8 +396,8 @@ def str_sorensen_dice(
         The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
         the set ('ap', 'pp', 'pl', 'le') before being compared.
     parallel
-        Whether to run the comparisons in parallel. Note that this is not always faster, especially
-        when used with other expressions or in group_by/over context.
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
     """
     return pl_plugin(
         symbol="pl_sorensen_dice",
@@ -543,13 +407,12 @@ def str_sorensen_dice(
             pl.lit(substr_size, pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
-        is_elementwise=True,
     )
 
 
 def str_tversky_sim(
-    c: StrOrExpr,
-    other: StrOrExpr,
+    c: str | pl.Expr,
+    other: str | pl.Expr,
     alpha: float,
     beta: float,
     substr_size: int = 2,
@@ -580,8 +443,8 @@ def str_tversky_sim(
         The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
         the set ('ap', 'pp', 'pl', 'le') before being compared.
     parallel
-        Whether to run the comparisons in parallel. Note that this is not always faster, especially
-        when used with other expressions or in group_by/over context.
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
 
     Reference
     ---------
@@ -600,13 +463,12 @@ def str_tversky_sim(
             pl.lit(beta, pl.Float64),
             pl.lit(parallel, pl.Boolean),
         ],
-        is_elementwise=True,
     )
 
 
 def str_jw(
-    c: StrOrExpr,
-    other: StrOrExpr,
+    c: str | pl.Expr,
+    other: str | pl.Expr,
     weight: float = 0.1,
     parallel: bool = False,
 ) -> pl.Expr:
@@ -624,8 +486,8 @@ def str_jw(
     weight
         Weight for prefix. A typical value is 0.1.
     parallel
-        Whether to run the comparisons in parallel. Note that this is not always faster, especially
-        when used with other expressions or in group_by/over context.
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
     """
     return pl_plugin(
         symbol="pl_jw",
@@ -635,11 +497,10 @@ def str_jw(
             pl.lit(weight, pl.Float64),
             pl.lit(parallel, pl.Boolean),
         ],
-        is_elementwise=True,
     )
 
 
-def str_jaro(c: StrOrExpr, other: StrOrExpr, parallel: bool = False) -> pl.Expr:
+def str_jaro(c: str | pl.Expr, other: str | pl.Expr, parallel: bool = False) -> pl.Expr:
     """
     Computes the Jaro similarity between this and the other str. Jaro distance = 1 - Jaro sim.
 
@@ -651,8 +512,8 @@ def str_jaro(c: StrOrExpr, other: StrOrExpr, parallel: bool = False) -> pl.Expr:
         Either the name of the column or a Polars expression. If you want to compare a single
         string with all of column c, use pl.lit(your_str)
     parallel
-        Whether to run the comparisons in parallel. Note that this is not always faster, especially
-        when used with other expressions or in group_by/over context.
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
     """
     return pl_plugin(
         symbol="pl_jaro",
@@ -662,8 +523,8 @@ def str_jaro(c: StrOrExpr, other: StrOrExpr, parallel: bool = False) -> pl.Expr:
 
 
 def str_d_leven(
-    c: StrOrExpr,
-    other: StrOrExpr,
+    c: str | pl.Expr,
+    other: str | pl.Expr,
     parallel: bool = False,
     return_sim: bool = False,
 ) -> pl.Expr:
@@ -678,8 +539,8 @@ def str_d_leven(
         Either the name of the column or a Polars expression. If you want to compare a single
         string with all of column c, use pl.lit(your_str)
     parallel
-        Whether to run the comparisons in parallel. Note that this is not always faster, especially
-        when used with other expressions or in group_by/over context.
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
     return_sim
         If true, return normalized Damerau-Levenshtein.
     """
@@ -687,19 +548,17 @@ def str_d_leven(
         return pl_plugin(
             symbol="pl_d_levenshtein_sim",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
         )
     else:
         return pl_plugin(
             symbol="pl_d_levenshtein",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
         )
 
 
 def str_leven(
-    c: StrOrExpr,
-    other: StrOrExpr,
+    c: str | pl.Expr,
+    other: str | pl.Expr,
     parallel: bool = False,
     return_sim: bool = False,
 ) -> pl.Expr:
@@ -714,8 +573,8 @@ def str_leven(
         Either the name of the column or a Polars expression. If you want to compare a single
         string with all of column c, use pl.lit(your_str)
     parallel
-        Whether to run the comparisons in parallel. Note that this is not always faster, especially
-        when used with other expressions or in group_by/over context.
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
     return_sim
         If true, return normalized Levenshtein.
     """
@@ -723,19 +582,17 @@ def str_leven(
         return pl_plugin(
             symbol="pl_levenshtein_sim",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
         )
     else:
         return pl_plugin(
             symbol="pl_levenshtein",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
         )
 
 
 def str_osa(
-    c: StrOrExpr,
-    other: StrOrExpr,
+    c: str | pl.Expr,
+    other: str | pl.Expr,
     parallel: bool = False,
     return_sim: bool = False,
 ) -> pl.Expr:
@@ -750,8 +607,8 @@ def str_osa(
         Either the name of the column or a Polars expression. If you want to compare a single
         string with all of column c, use pl.lit(your_str)
     parallel
-        Whether to run the comparisons in parallel. Note that this is not always faster, especially
-        when used with other expressions or in group_by/over context.
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
     return_sim
         If true, return normalized OSA similarity.
     """
@@ -759,17 +616,15 @@ def str_osa(
         return pl_plugin(
             symbol="pl_osa_sim",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
         )
     else:
         return pl_plugin(
             symbol="pl_osa",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
         )
 
 
-def str_fuzz(c: StrOrExpr, other: StrOrExpr, parallel: bool = False) -> pl.Expr:
+def str_fuzz(c: str | pl.Expr, other: str | pl.Expr, parallel: bool = False) -> pl.Expr:
     """
     A string similarity based on Longest Common Subsequence.
 
@@ -781,26 +636,25 @@ def str_fuzz(c: StrOrExpr, other: StrOrExpr, parallel: bool = False) -> pl.Expr:
         Either the name of the column or a Polars expression. If you want to compare a single
         string with all of column c, use pl.lit(your_str)
     parallel
-        Whether to run the comparisons in parallel. Note that this is not always faster, especially
-        when used with other expressions or in group_by/over context.
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
     """
     return pl_plugin(
         symbol="pl_fuzz",
         args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
-        is_elementwise=True,
     )
 
 
 def similar_to_vocab(
-    c: StrOrExpr,
+    c: str | pl.Expr,
     vocab: List[str],
     threshold: float,
     metric: Literal["lv", "dlv", "jw", "osa"] = "lv",
     strategy: Literal["avg", "all", "any"] = "avg",
 ) -> pl.Expr:
     """
-    Compare each word in the vocab with each word in self. Filters c to the words
-    that are most similar to the words in the vocab.
+    Compare each word in the vocab with each word in the column c. Returns a boolean
+    that indicates whether there exist words in c that are similar to words in vocab.
 
     Parameters
     ----------
@@ -842,7 +696,7 @@ def similar_to_vocab(
 
 
 def extract_numbers(
-    c: StrOrExpr,
+    c: str | pl.Expr,
     ignore_comma: bool = False,
     join_by: str = "",
     dtype: pl.DataType = pl.String,
@@ -925,12 +779,12 @@ def extract_numbers(
     return expr
 
 
-def replace_non_ascii(c: StrOrExpr, value: str = "") -> pl.Expr:
+def replace_non_ascii(c: str | pl.Expr, value: str = "") -> pl.Expr:
     """Replaces non-Ascii values with the specified value.
 
     Parameters
     ----------
-    c : StrOrExpr
+    c : str | pl.Expr
         The column name or expression
     value : str
         The value to replace non-Ascii values with, by default ""
@@ -966,13 +820,13 @@ def replace_non_ascii(c: StrOrExpr, value: str = "") -> pl.Expr:
     return expr.str.replace_all(r"[^\p{Ascii}]", value)
 
 
-def remove_diacritics(c: StrOrExpr) -> pl.Expr:
+def remove_diacritics(c: str | pl.Expr) -> pl.Expr:
     """Remove diacritics (e.g. è -> e) by converting the string to its NFD normalized
     form and removing the resulting non-ASCII components.
 
     Parameters
     ----------
-    c : StrOrExpr
+    c : str | pl.Expr
 
     Returns
     -------
@@ -999,7 +853,7 @@ def remove_diacritics(c: StrOrExpr) -> pl.Expr:
     )
 
 
-def normalize_string(c: StrOrExpr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) -> pl.Expr:
+def normalize_string(c: str | pl.Expr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) -> pl.Expr:
     """
     Normalize Unicode string using one of 'NFC', 'NFKC', 'NFD', or 'NFKD'
     normalization.
@@ -1008,7 +862,7 @@ def normalize_string(c: StrOrExpr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) 
 
     Parameters
     ----------
-    c : StrOrExpr
+    c : str | pl.Expr
         The string column
     form: Literal["NFC", "NFKC", "NFD", "NFKD"]
         The Unicode normalization form to use
@@ -1049,13 +903,13 @@ def normalize_string(c: StrOrExpr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) 
     )
 
 
-def map_words(c: StrOrExpr, mapping: dict[str, str]) -> pl.Expr:
+def map_words(c: str | pl.Expr, mapping: Dict[str, str]) -> pl.Expr:
     """
     Replace words based on the specified mapping.
 
     Parameters
     ----------
-    c : StrOrExpr
+    c : str | pl.Expr
         The string column
     mapping : dict[str, str]
         A dictionary of {word: replace_with}
@@ -1085,13 +939,13 @@ def map_words(c: StrOrExpr, mapping: dict[str, str]) -> pl.Expr:
     )
 
 
-def normalize_whitespace(c: StrOrExpr, only_spaces: bool = False) -> pl.Expr:
+def normalize_whitespace(c: str | pl.Expr, only_spaces: bool = False) -> pl.Expr:
     """
     Normalize whitespace to one, e.g. 'a   b' -> 'a b'.
 
     Parameters
     ----------
-    c : StrOrExpr
+    c : str | pl.Expr
         The string column
     only_spaces: bool
         If True, only split on the space character ' ' instead of any whitespace

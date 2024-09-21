@@ -1,42 +1,23 @@
 from __future__ import annotations
 import math
 import polars as pl
-from typing import Union, Optional, List, Iterable
+from typing import Union, List, Iterable
 from .type_alias import (
     DetrendMethod,
-    Distance,
     ConvMode,
     ConvMethod,
     str_to_expr,
-    StrOrExpr,
-    LinearRegressionMethod,
 )
 from ._utils import pl_plugin
 
 __all__ = [
+    "query_singular_values",
+    "query_principal_components",
     "softmax",
     "query_gcd",
     "query_lcm",
     "haversine",
-    "query_singular_values",
     "query_pca",
-    "query_principal_components",
-    "query_knn_ptwise",
-    "query_knn_entropy",
-    "within_dist_from",
-    "is_knn_from",
-    "query_radius_ptwise",
-    "query_nb_cnt",
-    "query_approx_entropy",
-    "query_sample_entropy",
-    "query_cond_entropy",
-    "query_copula_entropy",
-    "query_cond_indep",
-    "query_transfer_entropy",
-    "query_permute_entropy",
-    "query_lstsq",
-    "query_lstsq_report",
-    "query_lempel_ziv",
     "query_jaccard_row",
     "query_jaccard_col",
     "query_psi",
@@ -61,7 +42,7 @@ __all__ = [
 ]
 
 
-def softmax(x: StrOrExpr) -> pl.Expr:
+def softmax(x: str | pl.Expr) -> pl.Expr:
     """
     Applies the softmax function to the column, which turns any real valued column into valid probability
     values. This is simply a shorthand for x.exp() / x.exp().sum() for expressions x.
@@ -75,7 +56,7 @@ def softmax(x: StrOrExpr) -> pl.Expr:
     return xx.exp() / (xx.exp().sum())
 
 
-def query_gcd(x: StrOrExpr, y: Union[int, str, pl.Expr]) -> pl.Expr:
+def query_gcd(x: str | pl.Expr, y: int | str | pl.Expr) -> pl.Expr:
     """
     Computes GCD of two integer columns. This will try to cast everything to int32.
 
@@ -98,7 +79,7 @@ def query_gcd(x: StrOrExpr, y: Union[int, str, pl.Expr]) -> pl.Expr:
     )
 
 
-def query_lcm(x: StrOrExpr, y: Union[int, str, pl.Expr]) -> pl.Expr:
+def query_lcm(x: str | pl.Expr, y: Union[int, str, pl.Expr]) -> pl.Expr:
     """
     Computes LCM of two integer columns. This will try to cast everything to int32.
 
@@ -122,8 +103,8 @@ def query_lcm(x: StrOrExpr, y: Union[int, str, pl.Expr]) -> pl.Expr:
 
 
 def haversine(
-    x_lat: StrOrExpr,
-    x_long: StrOrExpr,
+    x_lat: str | pl.Expr,
+    x_long: str | pl.Expr,
     y_lat: Union[float, str, pl.Expr],
     y_long: Union[float, str, pl.Expr],
 ) -> pl.Expr:
@@ -154,7 +135,7 @@ def haversine(
 
 
 def query_singular_values(
-    *features: StrOrExpr,
+    *features: str | pl.Expr,
     center: bool = True,
     as_explained_var: bool = False,
     as_ratio: bool = False,
@@ -193,7 +174,7 @@ def query_singular_values(
 
 
 def query_pca(
-    *features: StrOrExpr,
+    *features: str | pl.Expr,
     center: bool = True,
 ) -> pl.Expr:
     """
@@ -217,7 +198,7 @@ def query_pca(
 
 
 def query_principal_components(
-    *features: StrOrExpr,
+    *features: str | pl.Expr,
     k: int = 2,
     center: bool = True,
 ) -> pl.Expr:
@@ -245,776 +226,7 @@ def query_principal_components(
     return pl_plugin(symbol="pl_principal_components", args=actual_inputs)
 
 
-def query_knn_ptwise(
-    *features: StrOrExpr,
-    index: StrOrExpr,
-    k: int = 5,
-    dist: Distance = "sql2",
-    parallel: bool = False,
-    return_dist: bool = False,
-    eval_mask: Optional[StrOrExpr] = None,
-    data_mask: Optional[StrOrExpr] = None,
-    epsilon: float = 0.0,
-) -> pl.Expr:
-    """
-    Takes the index column, and uses feature columns to determine the k nearest neighbors
-    to every id in the index columns. By default, this will return k + 1 neighbors, because in almost
-    all cases, the point is a neighbor to itself and this returns k actual neighbors. The only exception
-    is when data_mask excludes the point from being a neighbor, in which case, k + 1 distinct neighbors will
-    be returned.
-
-    Note that the index column must be convertible to u32. If you do not have a u32 column,
-    you can generate one using pl.int_range(..), which should be a step before this. The index column
-    must not contain nulls.
-
-    Also note that this internally builds a kd-tree for fast querying and deallocates it once we
-    are done. If you need to repeatedly run the same query on the same data, then it is not
-    ideal to use this. A specialized external kd-tree structure would be better in that case.
-
-    Parameters
-    ----------
-    *features : str | pl.Expr
-        Other columns used as features
-    index : str | pl.Expr
-        The column used as index, must be castable to u32
-    k : int
-        Number of neighbors to query
-    leaf_size : int
-        Leaf size for the kd-tree. Tuning this might improve runtime performance.
-    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
-        Note `sql2` stands for squared l2.
-    parallel : bool
-        Whether to run the k-nearest neighbor query in parallel. This is recommended when you
-        are running only this expression, and not in group_by context.
-    return_dist
-        If true, return a struct with indices and distances.
-    eval_mask
-        Either None or a boolean expression or the name of a boolean column. If not none, this will
-        only evaluate KNN for rows where this is true. This can speed up computation with K is large
-        and when only results on a subset are nedded.
-    data_mask
-        Either None or a boolean expression or the name of a boolean column. If none, all rows can be
-        neighbors. If not None, the pool of possible neighbors will be rows where this is true.
-    epsilon
-        If > 0, then it is possible to miss a neighbor within epsilon distance away. This parameter
-        should increase as the dimension of the vector space increases because higher dimensions
-        allow for errors from more directions.
-    """
-    if k < 1:
-        raise ValueError("Input `k` must be >= 1.")
-
-    idx = str_to_expr(index).cast(pl.UInt32).rechunk()
-    cols = [idx]
-    if eval_mask is None:
-        skip_eval = False
-    else:
-        skip_eval = True
-        cols.append(str_to_expr(eval_mask))
-
-    if data_mask is None:
-        skip_data = False
-    else:
-        skip_data = True
-        cols.append(str_to_expr(data_mask))
-
-    cols.extend(str_to_expr(x) for x in features)
-    kwargs = {
-        "k": k,
-        "leaf_size": 32,
-        "metric": str(dist).lower(),
-        "parallel": parallel,
-        "skip_eval": skip_eval,
-        "skip_data": skip_data,
-        "epsilon": abs(epsilon),
-    }
-    if return_dist:
-        return pl_plugin(
-            symbol="pl_knn_ptwise_w_dist",
-            args=cols,
-            kwargs=kwargs,
-            is_elementwise=True,
-        )
-    else:
-        return pl_plugin(
-            symbol="pl_knn_ptwise",
-            args=cols,
-            kwargs=kwargs,
-            is_elementwise=True,
-        )
-
-
-def within_dist_from(
-    *features: StrOrExpr,
-    pt: Iterable[float],
-    r: Union[float, pl.Expr],
-    dist: Distance = "sql2",
-) -> pl.Expr:
-    """
-    Returns a boolean column that returns points that are within radius from the given point.
-
-    Parameters
-    ----------
-    *features : str | pl.Expr
-        Other columns used as features
-    pt : Iterable[float]
-        The point, at which we filter using the radius.
-    r : either a float or an expression
-        The radius to query with. If this is an expression, the radius will be applied row-wise.
-    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
-        Note `sql2` stands for squared l2.
-    """
-    # For a single point, it is faster to just do it in native polars
-    oth = [str_to_expr(x) for x in features]
-    if len(pt) != len(oth):
-        raise ValueError("Dimension does not match.")
-
-    if dist == "l1":
-        return (
-            pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
-            <= r
-        )
-    elif dist in ("l2", "sql2"):
-        return (
-            pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(pt, oth))
-            <= r
-        )
-    elif dist == "inf":
-        return (
-            pl.max_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
-            <= r
-        )
-    elif dist == "cosine":
-        x_list = list(pt)
-        x_norm = sum(z * z for z in x_list)
-        oth_norm = pl.sum_horizontal(e * e for e in oth)
-        dist = (
-            1.0
-            - pl.sum_horizontal(xi * e for xi, e in zip(x_list, oth)) / (x_norm * oth_norm).sqrt()
-        )
-        return dist <= r
-    elif dist in ("h", "haversine"):
-        pt_as_list = list(pt)
-        if (len(pt_as_list) != 2) or (len(oth) < 2):
-            raise ValueError(
-                "For Haversine distance, input x must have dimension 2 and 2 other columns"
-                " must be provided as lat and long."
-            )
-
-        y_lat = pl.lit(pt_as_list[0], dtype=pl.Float64)
-        y_long = pl.lit(pt_as_list[1], dtype=pl.Float64)
-        dist = haversine(oth[0], oth[1], y_lat, y_long)
-        return dist <= r
-    else:
-        raise ValueError(f"Unknown distance function: {dist}")
-
-
-def is_knn_from(
-    *features: StrOrExpr,
-    pt: Iterable[float],
-    k: int,
-    dist: Distance = "sql2",
-) -> pl.Expr:
-    """
-    Returns a boolean column that returns points that are k nearest neighbors from the point.
-
-    Parameters
-    ----------
-    *features : str | pl.Expr
-        Other columns used as features
-    pt : Iterable[float]
-        The point, at which we filter using the radius.
-    k : int
-        k nearest neighbor
-    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
-        Note `sql2` stands for squared l2.
-    """
-    # For a single point, it is faster to just do it in native polars
-    oth = [str_to_expr(x) for x in features]
-    if len(pt) != len(oth):
-        raise ValueError("Dimension does not match.")
-
-    if dist == "l1":
-        dist = pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
-        return dist <= dist.bottom_k(k=k).max()
-    elif dist in ("l2", "sql2"):
-        dist = pl.sum_horizontal(
-            (e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(pt, oth)
-        )
-        return dist <= dist.bottom_k(k=k).max()
-    elif dist == "inf":
-        dist = pl.max_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
-        return dist <= dist.bottom_k(k=k).max()
-    elif dist == "cosine":
-        x_list = list(pt)
-        x_norm = sum(z * z for z in x_list)
-        oth_norm = pl.sum_horizontal(e * e for e in oth)
-        dist = (
-            1.0
-            - pl.sum_horizontal(xi * e for xi, e in zip(x_list, oth)) / (x_norm * oth_norm).sqrt()
-        )
-        return dist <= dist.bottom_k(k=k).max()
-    elif dist in ("h", "haversine"):
-        pt_as_list = list(pt)
-        if (len(pt_as_list) != 2) or (len(oth) < 2):
-            raise ValueError(
-                "For Haversine distance, input x must have dimension 2 and 2 other columns"
-                " must be provided as lat and long."
-            )
-
-        y_lat = pl.lit(pt_as_list[0], dtype=pl.Float64)
-        y_long = pl.lit(pt_as_list[1], dtype=pl.Float64)
-        dist = haversine(oth[0], oth[1], y_lat, y_long)
-        return dist <= dist.bottom_k(k=k).max()
-    else:
-        raise ValueError(f"Unknown distance function: {dist}")
-
-
-def query_radius_ptwise(
-    *features: StrOrExpr,
-    index: StrOrExpr,
-    r: float,
-    dist: Distance = "sql2",
-    sort: bool = True,
-    parallel: bool = False,
-) -> pl.Expr:
-    """
-    Takes the index column, and uses features columns to determine distance, and finds all neighbors
-    within distance r from each id in the index column. If you only care about neighbor count, you
-    should use query_nb_cnt, which supports expression for radius.
-
-    Note that the index column must be convertible to u32. If you do not have a u32 ID column,
-    you can generate one using pl.int_range(..), which should be a step before this.
-
-    Also note that this internally builds a kd-tree for fast querying and deallocates it once we
-    are done. If you need to repeatedly run the same query on the same data, then it is not
-    ideal to use this. A specialized external kd-tree structure would be better in that case.
-
-    Parameters
-    ----------
-    *features : str | pl.Expr
-        Other columns used as features
-    index : str | pl.Expr
-        The column used as index, must be castable to u32
-    r : float
-        The radius. Must be a scalar value now.
-    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
-        Note `sql2` stands for squared l2.
-    sort
-        Whether the neighbors returned should be sorted by the distance. Setting this to False can
-        improve performance by 10-20%.
-    parallel : bool
-        Whether to run the k-nearest neighbor query in parallel. This is recommended when you
-        are running only this expression, and not in group_by context.
-    """
-    if r <= 0.0:
-        raise ValueError("Input `r` must be > 0.")
-    elif isinstance(r, pl.Expr):
-        raise ValueError("Input `r` must be a scalar now. Expression input is not implemented.")
-
-    idx = str_to_expr(index).cast(pl.UInt32).rechunk()
-    metric = str(dist).lower()
-    cols = [idx]
-    cols.extend(str_to_expr(x) for x in features)
-    return pl_plugin(
-        symbol="pl_query_radius_ptwise",
-        args=cols,
-        kwargs={"r": r, "leaf_size": 32, "metric": metric, "parallel": parallel, "sort": sort},
-        is_elementwise=True,
-    )
-
-
-def query_nb_cnt(
-    r: Union[float, str, pl.Expr, List[float], "np.ndarray", pl.Series],  # noqa: F821
-    *features: StrOrExpr,
-    dist: Distance = "sql2",
-    parallel: bool = False,
-) -> pl.Expr:
-    """
-    Return the number of neighbors within (<=) radius r for each row under the given distance
-    metric. The point itself is always a neighbor of itself.
-
-    Parameters
-    ----------
-    r : float | Iterable[float] | pl.Expr | str
-        If this is a scalar, then it will run the query with fixed radius for all rows. If
-        this is a list, then it must have the same height as the dataframe. If
-        this is an expression, it must be an expression representing radius. If this is a str,
-        it must be the name of a column
-    *features : str | pl.Expr
-        Other columns used as features
-    dist : Literal[`l1`, `l2`, `sql2`, `inf`, `cosine`]
-        Note `sql2` stands for squared l2.
-    parallel : bool
-        Whether to run the distance query in parallel. This is recommended when you
-        are running only this expression, and not in group_by context.
-    """
-    if isinstance(r, (float, int)):
-        rad = pl.lit(pl.Series(values=[r], dtype=pl.Float64))
-    elif isinstance(r, pl.Expr):
-        rad = r
-    elif isinstance(r, str):
-        rad = pl.col(r)
-    else:
-        rad = pl.lit(pl.Series(values=r, dtype=pl.Float64))
-
-    return pl_plugin(
-        symbol="pl_nb_cnt",
-        args=[rad] + [str_to_expr(x) for x in features],
-        kwargs={
-            "k": 0,
-            "leaf_size": 32,  # useless now
-            "metric": dist,
-            "parallel": parallel,
-            "skip_eval": False,
-            "skip_data": False,
-        },
-        is_elementwise=True,
-    )
-
-
-def query_approx_entropy(
-    ts: StrOrExpr,
-    m: int,
-    filtering_level: float,
-    scale_by_std: bool = True,
-    parallel: bool = True,
-) -> pl.Expr:
-    """
-    Approximate sample entropies of a time series given the filtering level. It is highly
-    recommended that the user impute nulls before calling this.
-
-    If NaN/some error is returned/thrown, it is likely that:
-    (1) Too little data, e.g. m + 1 > length
-    (2) filtering_level or (filtering_level * std) is too close to 0 or std is null/NaN.
-
-    Parameters
-    ----------
-    ts : str | pl.Expr
-        A time series
-    m : int
-        Length of compared runs of data. This is `m` in the wikipedia article.
-    filtering_level : float
-        Filtering level, must be positive. This is `r` in the wikipedia article.
-    scale_by_std : bool
-        Whether to scale filter level by std of data. In most applications, this is the default
-        behavior, but not in some other cases.
-    parallel : bool
-        Whether to run this in parallel or not. This is recommended when you
-        are running only this expression, and not in group_by context.
-
-    Reference
-    ---------
-    https://en.wikipedia.org/wiki/Approximate_entropy
-    """
-
-    if filtering_level <= 0:
-        raise ValueError("Filter level must be positive.")
-
-    t = str_to_expr(ts)
-    if scale_by_std:
-        r: pl.Expr = filtering_level * t.std()
-    else:
-        r: pl.Expr = pl.lit(filtering_level, dtype=pl.Float64)
-
-    rows = t.len() - m + 1
-    data = [r, t.slice(0, length=rows).cast(pl.Float64)]
-    # See rust code for more comment on why I put m + 1 here.
-    data.extend(
-        t.shift(-i).slice(0, length=rows).cast(pl.Float64).alias(str(i)) for i in range(1, m + 1)
-    )
-    # More errors are handled in Rust
-    return pl_plugin(
-        symbol="pl_approximate_entropy",
-        args=data,
-        kwargs={
-            "k": 0,
-            "leaf_size": 32,
-            "metric": "inf",
-            "parallel": parallel,
-        },
-        returns_scalar=True,
-        pass_name_to_apply=True,
-    )
-
-
-def query_sample_entropy(
-    ts: StrOrExpr, ratio: float = 0.2, m: int = 2, parallel: bool = False
-) -> pl.Expr:
-    """
-    Calculate the sample entropy of this column. It is highly
-    recommended that the user impute nulls before calling this.
-
-    If NaN/some error is returned/thrown, it is likely that:
-    (1) Too little data, e.g. m + 1 > length
-    (2) ratio or (ratio * std) is too close to or below 0 or std is null/NaN.
-
-    Parameters
-    ----------
-    ts : str | pl.Expr
-        A time series
-    ratio : float
-        The tolerance parameter. Default is 0.2.
-    m : int
-        Length of a run of data. Most common run length is 2.
-    parallel : bool
-        Whether to run this in parallel or not. This is recommended when you
-        are running only this expression, and not in group_by context.
-
-    Reference
-    ---------
-    https://en.wikipedia.org/wiki/Sample_entropy
-    """
-    t = str_to_expr(ts)
-    r = ratio * t.std(ddof=0)
-    rows = t.len() - m + 1
-
-    data = [r, t.slice(0, length=rows)]
-    # See rust code for more comment on why I put m + 1 here.
-    data.extend(
-        t.shift(-i).slice(0, length=rows).alias(str(i)) for i in range(1, m + 1)
-    )  # More errors are handled in Rust
-    return pl_plugin(
-        symbol="pl_sample_entropy",
-        args=data,
-        kwargs={
-            "k": 0,
-            "leaf_size": 32,
-            "metric": "inf",
-            "parallel": parallel,
-        },
-        returns_scalar=True,
-        pass_name_to_apply=True,
-    )
-
-
-def query_cond_entropy(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
-    """
-    Queries the conditional entropy of x on y, aka. H(x|y).
-
-    Parameters
-    ----------
-    x
-        Either a string or a polars expression
-    y
-        Either a string or a polars expression
-    """
-    return pl_plugin(
-        symbol="pl_conditional_entropy",
-        args=[str_to_expr(x), str_to_expr(y)],
-        returns_scalar=True,
-        pass_name_to_apply=True,
-    )
-
-
-def query_knn_entropy(
-    *features: StrOrExpr,
-    k: int = 3,
-    dist: Distance = "l2",
-    parallel: bool = False,
-) -> pl.Expr:
-    """
-    Computes KNN entropy among all the rows.
-
-    Note if rows <= k, NaN will be returned.
-
-    Parameters
-    ----------
-    *features
-        Columns used as features
-    k
-        The number of nearest neighbor to consider. Usually 2 or 3.
-    dist : Literal[`l2`, `inf`]
-        Note `l2` is actually squared `l2` for computational efficiency.
-    parallel : bool
-        Whether to run the distance query in parallel. This is recommended when you
-        are running only this expression, and not in group_by context.
-
-    Reference
-    ---------
-    https://arxiv.org/pdf/1506.06501v1.pdf
-    """
-    if k <= 0:
-        raise ValueError("Input `k` must be > 0.")
-    if dist not in ["l2", "inf"]:
-        raise ValueError("Invalid metric for KNN entropy.")
-
-    return pl_plugin(
-        symbol="pl_knn_entropy",
-        args=[str_to_expr(e).alias(str(i)) for i, e in enumerate(features)],
-        kwargs={
-            "k": k,
-            "leaf_size": 32,
-            "metric": dist,
-            "parallel": parallel,
-            "skip_eval": False,
-            "skip_data": False,
-        },
-        returns_scalar=True,
-        pass_name_to_apply=True,
-    )
-
-
-def query_copula_entropy(*features: StrOrExpr, k: int = 3, parallel: bool = False) -> pl.Expr:
-    """
-    Estimates Copula Entropy via rank statistics.
-
-    Reference
-    ---------
-    Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
-    """
-    ranks = [x.rank() / x.len() for x in (str_to_expr(f) for f in features)]
-    return -query_knn_entropy(*ranks, k=k, dist="l2", parallel=parallel)
-
-
-def query_cond_indep(
-    x: StrOrExpr, y: StrOrExpr, z: StrOrExpr, k: int = 3, parallel: bool = False
-) -> pl.Expr:
-    """
-    Computes the conditional independance of `x`  and `y`, conditioned on `z`
-
-    Reference
-    ---------
-    Jian Ma. Multivariate Normality Test with Copula Entropy. arXiv preprint arXiv:2206.05956, 2022.
-    """
-    # We can likely optimize this by going into Rust.
-    # Here we are
-    # (1) computing rank multiple times
-    # (2) creating 3 separate kd-trees, and copying the data 3 times. Might just need to copy once.
-    xyz = query_copula_entropy(x, y, z, k=k, parallel=parallel)
-    yz = query_copula_entropy(y, z, k=k, parallel=parallel)
-    xz = query_copula_entropy(x, z, k=k, parallel=parallel)
-    return xyz - yz - xz
-
-
-def query_transfer_entropy(
-    x: StrOrExpr, source: StrOrExpr, lag: int = 1, k: int = 3, parallel: bool = False
-) -> pl.Expr:
-    """
-    Estimating transfer entropy from `source` to `x` with a lag
-
-    Reference
-    ---------
-    Jian Ma. Estimating Transfer Entropy via Copula Entropy. arXiv preprint arXiv:1910.04375, 2019.
-    """
-    if lag < 1:
-        raise ValueError("Input `lag` must be >= 1.")
-
-    xx = str_to_expr(x)
-    x1 = xx.slice(0, pl.len() - lag)
-    x2 = xx.slice(lag, pl.len() - lag)  # (equivalent to slice(lag, None), but will break in v1.0)
-    s = str_to_expr(source).slice(0, pl.len() - lag)
-    return query_cond_indep(x2, s, x1, k=k, parallel=parallel)
-
-
-def query_permute_entropy(
-    ts: StrOrExpr,
-    tau: int = 1,
-    n_dims: int = 3,
-    base: float = math.e,
-) -> pl.Expr:
-    """
-    Computes permutation entropy.
-
-    Parameters
-    ----------
-    ts : str | pl.Expr
-        A time series
-    tau : int
-        The embedding time delay which controls the number of time periods between elements
-        of each of the new column vectors.
-    n_dims : int, > 1
-        The embedding dimension which controls the length of each of the new column vectors
-    base : float
-        The base for log in the entropy computation
-
-    Reference
-    ---------
-    https://www.aptech.com/blog/permutation-entropy/
-    """
-    if n_dims <= 1:
-        raise ValueError("Input `n_dims` has to be > 1.")
-    if tau < 1:
-        raise ValueError("Input `tau` has to be >= 1.")
-
-    t = str_to_expr(ts)
-    if tau == 1:  # Fast track the most common use case
-        return (
-            pl.concat_list(t, *(t.shift(-i) for i in range(1, n_dims)))
-            .head(t.len() - n_dims + 1)
-            .list.eval(pl.element().arg_sort())
-            .value_counts()  # groupby and count, but returns a struct
-            .struct.field("count")  # extract the field named "count"
-            .entropy(base=base, normalize=True)
-        )
-    else:
-        return (
-            pl.concat_list(
-                t.gather_every(tau),
-                *(t.shift(-i).gather_every(tau) for i in range(1, n_dims)),
-            )
-            .slice(0, length=(t.len() // tau) + 1 - (n_dims // tau))
-            .list.eval(pl.element().arg_sort())
-            .value_counts()
-            .struct.field("count")
-            .entropy(base=base, normalize=True)
-        )
-
-
-def query_lstsq(
-    *x: StrOrExpr,
-    target: StrOrExpr,
-    add_bias: bool = False,
-    skip_null: bool = False,
-    return_pred: bool = False,
-    method: LinearRegressionMethod = "normal",
-    l1_reg: float = 0.0,
-    l2_reg: float = 0.0,
-    tol: float = 1e-5,
-) -> pl.Expr:
-    """
-    Computes least squares solution to the equation Ax = y where y is the target.
-
-    All positional arguments should be expressions representing predictive variables. This
-    does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
-
-    If add_bias is true, it will be the last coefficient in the output
-    and output will have len(variables) + 1. Bias term will not be regularized if method is l1 or l2.
-
-    Memory hint: if data takes 100MB of memory, you need to have at least 200MB of memory to run this.
-
-    Parameters
-    ----------
-    x : str | pl.Expr
-        The variables used to predict target
-    target : str | pl.Expr
-        The target variable
-    add_bias
-        Whether to add a bias term
-    skip_null
-        Whether to skip a row if there is a null value in row
-    return_pred
-        If true, return prediction and residue. If false, return coefficients. Note that
-        for coefficients, it reduces to one output (like max/min), but for predictions and
-        residue, it will return the same number of rows as in input.
-    method
-        Linear Regression method. One of "normal" (normal equation), "l2" (l2 regularized, Ridge),
-        "l1" (l1 regularized, Lasso).
-    l1_reg
-        Regularization factor for Lasso. Should be nonzero when method = l1.
-    l2_reg
-        Regularization factor for Ridge. Should be nonzero when method = l2.
-    tol
-        When method = l1, if maximum coordinate update is < tol, the algorithm is considered to have
-        converged. If not, it will run for at most 2000 iterations. This stopping criterion is not as
-        good as the dual gap.
-    """
-    t = str_to_expr(target).cast(pl.Float64)
-    cols = [t]
-    cols.extend(str_to_expr(z) for z in x)
-
-    if method == "l1" and l1_reg <= 0.0:
-        raise ValueError("For Lasso regression, `l1_reg` must be positive.")
-    if method == "l2" and l2_reg <= 0.0:
-        raise ValueError("For Ridge regression, `l2_reg` must be positive.")
-
-    lr_kwargs = {
-        "bias": add_bias,
-        "skip_null": skip_null,
-        "method": str(method).lower(),
-        "l1_reg": l1_reg,
-        "l2_reg": l2_reg,
-        "tol": tol,
-    }
-    if return_pred:
-        return pl_plugin(
-            symbol="pl_lstsq_pred",
-            args=cols,
-            kwargs=lr_kwargs,
-            pass_name_to_apply=True,
-        )
-    else:
-        return pl_plugin(
-            symbol="pl_lstsq",
-            args=cols,
-            kwargs=lr_kwargs,
-            returns_scalar=True,
-            pass_name_to_apply=True,
-        )
-
-
-def query_lstsq_report(
-    *x: StrOrExpr,
-    target: StrOrExpr,
-    add_bias: bool = False,
-    skip_null: bool = False,
-) -> pl.Expr:
-    """
-    Creates a least square report with more stats about each coefficient.
-
-    Note: if columns are not linearly independent, some numerical issue may occur. E.g
-    you may see unrealistic coefficients in the output. It is possible to have
-    `silent` numerical issue during computation. For this report, input must not
-    contain nulls and there must be > # features number of records. This uses the closed
-    form solution to compute the least square report.
-
-    This functions returns a struct with the same length as the number of features used
-    in the linear regression, and +1 if add_bias is true. This can only perform ordinary
-    least squares.
-
-    Parameters
-    ----------
-    x : str | pl.Expr
-        The variables used to predict target
-    target : str | pl.Expr
-        The target variable
-    add_bias
-        Whether to add a bias term. If bias is added, it is always the last feature.
-    skip_null
-        Whether to skip a row if there is a null value in row
-    """
-    t = str_to_expr(target).cast(pl.Float64)
-    cols = [t]
-    cols.extend(str_to_expr(z) for z in x)
-    lr_kwargs = {
-        "bias": add_bias,
-        "skip_null": skip_null,
-        "method": "normal",
-        "l1_reg": 0.0,
-        "l2_reg": 0.0,
-        "tol": 0.0,
-    }
-    return pl_plugin(
-        symbol="pl_lstsq_report",
-        args=cols,
-        kwargs=lr_kwargs,
-        changes_length=True,
-        pass_name_to_apply=True,
-    )
-
-
-def query_lempel_ziv(b: StrOrExpr, as_ratio: bool = True) -> pl.Expr:
-    """
-    Computes Lempel Ziv complexity on a boolean column. Null will be mapped to False.
-
-    Parameters
-    ----------
-    b
-        A boolean column
-    as_ratio : bool
-        If true, return complexity / length.
-    """
-    x = str_to_expr(b)
-    out = pl_plugin(
-        symbol="pl_lempel_ziv_complexity",
-        args=[x],
-        returns_scalar=True,
-    )
-    if as_ratio:
-        return out / x.len()
-    return out
-
-
-def query_jaccard_row(first: StrOrExpr, second: StrOrExpr) -> pl.Expr:
+def query_jaccard_row(first: str | pl.Expr, second: str | pl.Expr) -> pl.Expr:
     """
     Computes jaccard similarity pairwise between this and the other column. The type of
     each column must be list and the lists must have the same inner type. The inner type
@@ -1034,7 +246,9 @@ def query_jaccard_row(first: StrOrExpr, second: StrOrExpr) -> pl.Expr:
     )
 
 
-def query_jaccard_col(first: StrOrExpr, second: StrOrExpr, count_null: bool = False) -> pl.Expr:
+def query_jaccard_col(
+    first: str | pl.Expr, second: str | pl.Expr, count_null: bool = False
+) -> pl.Expr:
     """
     Computes jaccard similarity column-wise. This will hash entire columns and compares the two
     hashsets. Note: only integer/str columns can be compared.
@@ -1056,8 +270,8 @@ def query_jaccard_col(first: StrOrExpr, second: StrOrExpr, count_null: bool = Fa
 
 
 def query_psi(
-    new: Union[pl.Expr, Iterable[float]],
-    baseline: Union[pl.Expr, Iterable[float]],
+    new: str | pl.expr | Iterable[float],
+    baseline: str | pl.expr | Iterable[float],
     n_bins: int = 10,
     return_report: bool = False,
 ) -> pl.Expr:
@@ -1135,8 +349,8 @@ def query_psi(
 
 
 def query_psi_discrete(
-    new: Union[StrOrExpr, Iterable[str]],
-    baseline: Union[StrOrExpr, Iterable[str]],
+    new: str | pl.expr | Iterable[float],
+    baseline: str | pl.expr | Iterable[float],
     return_report: bool = False,
 ) -> pl.Expr:
     """
@@ -1198,9 +412,9 @@ def query_psi_discrete(
 
 
 def query_psi_w_breakpoints(
-    new: Union[StrOrExpr, Iterable[float]],
-    baseline: Union[StrOrExpr, Iterable[float]],
-    breakpoints: List[float],  # noqa: F821
+    new: str | pl.expr | Iterable[float],
+    baseline: str | pl.expr | Iterable[float],
+    breakpoints: List[float],
 ) -> pl.Expr:
     """
     Creates a PSI report using the custom breakpoints.
@@ -1243,7 +457,9 @@ def query_psi_w_breakpoints(
     ).alias("psi_report")
 
 
-def query_woe(x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], n_bins: int = 10) -> pl.Expr:
+def query_woe(
+    x: str | pl.Expr, target: str | pl.expr | Iterable[float], n_bins: int = 10
+) -> pl.Expr:
     """
     Compute the Weight of Evidence for x with respect to target. This assumes x
     is continuous. A value of 1 is added to all events/non-events
@@ -1275,8 +491,8 @@ def query_woe(x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], n_bins: int
 
 
 def query_woe_discrete(
-    x: StrOrExpr,
-    target: Union[StrOrExpr, Iterable[int]],
+    x: str | pl.Expr,
+    target: Union[str | pl.Expr, Iterable[int]],
 ) -> pl.Expr:
     """
     Compute the Weight of Evidence for x with respect to target. This assumes x
@@ -1306,7 +522,10 @@ def query_woe_discrete(
 
 
 def query_iv(
-    x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], n_bins: int = 10, return_sum: bool = True
+    x: str | pl.Expr,
+    target: str | pl.expr | Iterable[float],
+    n_bins: int = 10,
+    return_sum: bool = True,
 ) -> pl.Expr:
     """
     Compute Information Value for x with respect to target. This assumes the variable x
@@ -1343,7 +562,7 @@ def query_iv(
 
 
 def query_iv_discrete(
-    x: StrOrExpr, target: Union[StrOrExpr, Iterable[int]], return_sum: bool = True
+    x: str | pl.Expr, target: str | pl.Expr | Iterable[int], return_sum: bool = True
 ) -> pl.Expr:
     """
     Compute the Information Value for x with respect to target. This assumes x
@@ -1372,7 +591,7 @@ def query_iv_discrete(
     return out.struct.field("iv").sum() if return_sum else out
 
 
-def integrate_trapz(y: StrOrExpr, x: Union[float, pl.Expr]) -> pl.Expr:
+def integrate_trapz(y: str | pl.Expr, x: float | pl.Expr) -> pl.Expr:
     """
     Integrate y along x using the trapezoidal rule. If x is not a single
     value, then x should be sorted.
@@ -1390,7 +609,7 @@ def integrate_trapz(y: StrOrExpr, x: Union[float, pl.Expr]) -> pl.Expr:
     if isinstance(x, float):
         xx = pl.lit(abs(x), pl.Float64)
     else:
-        xx = x.cast(pl.Float64)
+        xx = str_to_expr(x).cast(pl.Float64)
 
     return pl_plugin(
         symbol="pl_trapz",
@@ -1400,8 +619,8 @@ def integrate_trapz(y: StrOrExpr, x: Union[float, pl.Expr]) -> pl.Expr:
 
 
 def convolve(
-    x: StrOrExpr,
-    kernel: Union[List[float], "np.ndarray", pl.Series, pl.Expr],  # noqa: F821
+    x: str | pl.Expr,
+    kernel: List[float] | "np.ndarray" | pl.Series | pl.Expr,  # noqa: F821
     fill_value: Union[float, pl.Expr] = 0.0,
     method: ConvMethod = "direct",
     mode: ConvMode = "full",
@@ -1457,7 +676,7 @@ def convolve(
     )
 
 
-def list_amax(list_col: StrOrExpr) -> pl.Expr:
+def list_amax(list_col: str | pl.Expr) -> pl.Expr:
     """
     Finds the argmax of the list in this column. This is useful for
 
@@ -1468,7 +687,7 @@ def list_amax(list_col: StrOrExpr) -> pl.Expr:
     return str_to_expr(list_col).list.eval(pl.element().arg_max())
 
 
-def gamma(x: StrOrExpr) -> pl.Expr:
+def gamma(x: str | pl.Expr) -> pl.Expr:
     """
     Applies the gamma function to self. Note, this will return NaN for negative values and inf when x = 0,
     whereas SciPy's gamma function will return inf for all x <= 0.
@@ -1480,7 +699,7 @@ def gamma(x: StrOrExpr) -> pl.Expr:
     )
 
 
-def expit(x: StrOrExpr) -> pl.Expr:
+def expit(x: str | pl.Expr) -> pl.Expr:
     """
     Applies the Expit function to self. Expit(x) = 1 / (1 + e^(-x))
     """
@@ -1491,7 +710,7 @@ def expit(x: StrOrExpr) -> pl.Expr:
     )
 
 
-def logit(x: StrOrExpr) -> pl.Expr:
+def logit(x: str | pl.Expr) -> pl.Expr:
     """
     Applies the logit function to self. Logit(x) = ln(x/(1-x)).
     Note that logit(0) = -inf, logit(1) = inf, and logit(p) for p < 0 or p > 1 yields nan.
@@ -1503,7 +722,7 @@ def logit(x: StrOrExpr) -> pl.Expr:
     )
 
 
-def exp2(x: StrOrExpr) -> pl.Expr:
+def exp2(x: str | pl.Expr) -> pl.Expr:
     """
     Returns 2^x.
     """
@@ -1514,7 +733,7 @@ def exp2(x: StrOrExpr) -> pl.Expr:
     )
 
 
-def fract(x: StrOrExpr) -> pl.Expr:
+def fract(x: str | pl.Expr) -> pl.Expr:
     """
     Returns the fractional part of the input values. E.g. fractional part of 1.1 is 0.1
     """
@@ -1525,7 +744,7 @@ def fract(x: StrOrExpr) -> pl.Expr:
     )
 
 
-def trunc(x: StrOrExpr) -> pl.Expr:
+def trunc(x: str | pl.Expr) -> pl.Expr:
     """
     Returns the integer part of the input values. E.g. integer part of 1.1 is 1.0
     """
@@ -1536,7 +755,7 @@ def trunc(x: StrOrExpr) -> pl.Expr:
     )
 
 
-def sinc(x: StrOrExpr) -> pl.Expr:
+def sinc(x: str | pl.Expr) -> pl.Expr:
     """
     Computes the sinc function normalized by pi.
     """
@@ -1545,7 +764,7 @@ def sinc(x: StrOrExpr) -> pl.Expr:
     return y.sin() / y
 
 
-def detrend(x: StrOrExpr, method: DetrendMethod = "linear") -> pl.Expr:
+def detrend(x: str | pl.Expr, method: DetrendMethod = "linear") -> pl.Expr:
     """
     Detrends self using either linear/mean method. This does not persist.
 
@@ -1567,7 +786,7 @@ def detrend(x: StrOrExpr, method: DetrendMethod = "linear") -> pl.Expr:
         raise ValueError(f"Unknown detrend method: {method}")
 
 
-def rfft(series: StrOrExpr, n: Optional[int] = None, return_full: bool = False) -> pl.Expr:
+def rfft(series: str | pl.Expr, n: int | None = None, return_full: bool = False) -> pl.Expr:
     """
     Computes the DFT transform of a real-valued input series using FFT Algorithm. Note that
     by default a series of length (length // 2 + 1) will be returned.
@@ -1593,8 +812,8 @@ def rfft(series: StrOrExpr, n: Optional[int] = None, return_full: bool = False) 
 
 
 def target_encode(
-    s: StrOrExpr,
-    target: Union[StrOrExpr, Iterable[int]],
+    s: str | pl.Expr,
+    target: str | pl.Expr | Iterable[int],
     min_samples_leaf: int = 20,
     smoothing: float = 10.0,
 ) -> pl.Expr:

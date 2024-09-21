@@ -1,18 +1,12 @@
 from __future__ import annotations
+
 import polars as pl
 import math
-from .type_alias import Alternative, str_to_expr, StrOrExpr, CorrMethod, Noise, QuantileMethod
-from typing import Optional, Union
+from .type_alias import Alternative, str_to_expr, CorrMethod, Noise, QuantileMethod
+from typing import Union
 from ._utils import pl_plugin
 
 __all__ = [
-    "query_cv",
-    "query_std_over_median",
-    "query_std_over_range",
-    "query_std_over_quantiles",
-    "query_longest_streak",
-    "query_avg_streak",
-    "query_streak",
     "query_ttest_ind",
     "query_ttest_1samp",
     "query_ttest_ind_from_stats",
@@ -20,9 +14,6 @@ __all__ = [
     "query_f_test",
     "query_mann_whitney_u",
     "query_chi2",
-    "query_first_digit_cnt",
-    "query_c3_stats",
-    "query_cid_ce",
     "perturb",
     "jitter",
     "add_noise",
@@ -50,188 +41,9 @@ __all__ = [
 ]
 
 
-def query_cv(x: StrOrExpr, ddof: int = 1) -> pl.Expr:
-    """
-    Returns the coefficient of variation for the variable. This is a shorthand for std / mean.
-
-    Parameters
-    ----------
-    x
-        The variable
-    ddof
-        The delta degree of frendom used in std computation
-    """
-    xx = str_to_expr(x)
-    return xx.std(ddof=ddof) / xx.mean()
-
-
-def query_std_over_median(x: StrOrExpr, ddof: int = 1) -> pl.Expr:
-    """
-    This is a shorthand for std / median.
-
-    Parameters
-    ----------
-    x
-        The variable
-    ddof
-        The delta degree of frendom used in std computation
-    """
-    xx = str_to_expr(x)
-    return xx.std(ddof=ddof) / xx.median()
-
-
-def query_std_over_range(x: StrOrExpr, ddof: int = 1) -> pl.Expr:
-    """
-    Standard deviation over the range of the variable. This is a shorthand for std / (max - min)
-
-    Parameters
-    ----------
-    x
-        The variable
-    ddof
-        The delta degree of frendom used in std computation
-    """
-    xx = str_to_expr(x)
-    return xx.std(ddof=ddof) / (xx.max() - xx.min())
-
-
-def query_std_over_quantiles(
-    x: StrOrExpr, ddof: int = 1, q1: float = 0.25, q2: float = 0.75
-) -> pl.Expr:
-    """
-    A more robust version of std over range, where range is replaced by quantiles q1 and q2.
-
-    Parameters
-    ----------
-    x
-        The variable
-    ddof
-        The delta degree of frendom used in std computation
-    q1
-        The lower quantile
-    q2
-        The higher quantile
-    """
-    if q1 >= 1.0 or q1 <= 0.0 or q2 >= 1.0 or q2 <= 0.0 or q1 >= q2:
-        raise ValueError("The quantiles q1, q2 must be within (0, 1) and q2 must be > q1.")
-
-    xx = str_to_expr(x)
-    return xx.std(ddof=ddof) / (xx.quantile(q2) - xx.quantile(q1))
-
-
-def query_longest_streak(where: StrOrExpr) -> pl.Expr:
-    """
-    Finds the longest streak length where the condition `where` is true.
-
-    Note: the query is still runnable when `where` doesn't represent boolean column / boolean expressions.
-    However, if that is the case the answer will not be easily interpretable.
-
-    Parameters
-    ----------
-    where
-        If where is string, the string must represent the name of a string column. If where is
-        an expression, the expression must evaluate to some boolean expression.
-    """
-
-    if isinstance(where, str):
-        condition = pl.col(where)
-    else:
-        condition = where
-
-    y = condition.rle().struct.rename_fields(
-        ["len", "value"]
-    )  # POLARS V1 rename fields can be removed when polars hit v1.0
-    return (
-        y.filter(y.struct.field("value"))
-        .struct.field("len")
-        .max()
-        .fill_null(0)
-        .alias("longest_streak")
-    )
-
-
-def query_avg_streak(where: StrOrExpr) -> pl.Expr:
-    """
-    Finds the average streak length where the condition `where` is true. The average is taken on
-    the true set.
-
-    Note: the query is still runnable when `where` doesn't represent boolean column / boolean expressions.
-    However, if that is the case the answer will not be easily interpretable.
-
-    Parameters
-    ----------
-    where
-        If where is string, the string must represent the name of a string column. If where is
-        an expression, the expression must evaluate to some boolean expression.
-    """
-
-    if isinstance(where, str):
-        condition = pl.col(where)
-    else:
-        condition = where
-
-    y = condition.rle().struct.rename_fields(
-        ["len", "value"]
-    )  # POLARS V1 rename fields can be removed when polars hit v1.0
-    return (
-        y.filter(y.struct.field("value"))
-        .struct.field("len")
-        .mean()
-        .fill_null(0)
-        .alias("avg_streak")
-    )
-
-
-def query_streak(where: StrOrExpr) -> pl.Expr:
-    """
-    Finds the streak length where the condition `where` is true. This returns a full column of streak lengths.
-
-    Note: the query is still runnable when `where` doesn't represent boolean column / boolean expressions.
-    However, if that is the case the answer will not be easily interpretable.
-
-    Parameters
-    ----------
-    where
-        If where is string, the string must represent the name of a string column. If where is
-        an expression, the expression must evaluate to some boolean expression.
-    """
-
-    if isinstance(where, str):
-        condition = pl.col(where)
-    else:
-        condition = where
-
-    y = condition.rle().struct.rename_fields(
-        ["len", "value"]
-    )  # POLARS V1 rename fields can be removed when polars hit v1.0
-    return y.struct.field("len").alias("streak_len")
-
-
-def query_first_digit_cnt(var: StrOrExpr) -> pl.Expr:
-    """
-    Finds the first digit count in the data. This is closely related to Benford's law,
-    which states that the the first digits (1-9) follow a certain distribution.
-
-    The output is a single element column of type list[u32]. The first value represents the count of 1s
-    that are the first digit, the second value represents the count of 2s that are the first digit, etc.
-
-    E.g. first digit of 12 is 1, of 0.0312 is 3. For integers, it is possible to have value = 0, and this
-    will not be counted as a first digit.
-
-    Reference
-    ---------
-    https://en.wikipedia.org/wiki/Benford%27s_law
-    """
-    return pl_plugin(
-        symbol="pl_benford_law",
-        args=[str_to_expr(var)],
-        returns_scalar=True,
-    )
-
-
 def query_ttest_ind(
-    var1: StrOrExpr,
-    var2: StrOrExpr,
+    var1: str | pl.Expr,
+    var2: str | pl.Expr,
     alternative: Alternative = "two-sided",
     equal_var: bool = False,
 ) -> pl.Expr:
@@ -288,7 +100,7 @@ def query_ttest_ind(
 
 
 def query_ttest_1samp(
-    var1: StrOrExpr, pop_mean: float, alternative: Alternative = "two-sided"
+    var1: str | pl.Expr, pop_mean: float, alternative: Alternative = "two-sided"
 ) -> pl.Expr:
     """
     Performs a standard 1 sample t test using reference column and expected mean. This function
@@ -318,7 +130,7 @@ def query_ttest_1samp(
 
 
 def query_ttest_ind_from_stats(
-    var1: StrOrExpr,
+    var1: str | pl.Expr,
     mean: float,
     var: float,
     cnt: int,
@@ -374,8 +186,8 @@ def query_ttest_ind_from_stats(
 
 
 def query_ks_2samp(
-    var1: StrOrExpr,
-    var2: StrOrExpr,
+    var1: str | pl.Expr,
+    var2: str | pl.Expr,
     alpha: float = 0.05,
     is_binary: bool = False,
 ) -> pl.Expr:
@@ -426,7 +238,7 @@ def query_ks_2samp(
         )
 
 
-def query_f_test(*variables: StrOrExpr, group: StrOrExpr) -> pl.Expr:
+def query_f_test(*variables: str | pl.Expr, group: str | pl.Expr) -> pl.Expr:
     """
     Performs the ANOVA F-test.
 
@@ -447,7 +259,7 @@ def query_f_test(*variables: StrOrExpr, group: StrOrExpr) -> pl.Expr:
         return pl_plugin(symbol="pl_f_test", args=vars_, changes_length=True)
 
 
-def query_chi2(var1: StrOrExpr, var2: StrOrExpr) -> pl.Expr:
+def query_chi2(var1: str | pl.Expr, var2: str | pl.Expr) -> pl.Expr:
     """
     Computes the Chi Squared statistic and p value between two categorical values.
 
@@ -469,55 +281,9 @@ def query_chi2(var1: StrOrExpr, var2: StrOrExpr) -> pl.Expr:
     )
 
 
-def query_c3_stats(x: StrOrExpr, lag: int) -> pl.Expr:
-    """
-    Measure of non-linearity in the time series using c3 statistics.
-
-    Parameters
-    ----------
-    x : pl.Expr
-        Either the name of the column or a Polars expression
-    lag : int
-        The lag that should be used in the calculation of the feature.
-
-    Reference
-    ---------
-    https://arxiv.org/pdf/chao-dyn/9909043
-    """
-    two_lags = 2 * lag
-    xx = str_to_expr(x)
-    return ((xx.mul(xx.shift(lag)).mul(xx.shift(two_lags))).sum()).truediv(xx.len() - two_lags)
-
-
-def query_cid_ce(x: StrOrExpr, normalize: bool = False) -> pl.Expr:
-    """
-    Estimates the time series complexity.
-
-    Parameters
-    ----------
-    x : pl.Expr
-        Either the name of the column or a Polars expression
-    normalize : bool, optional
-        If True, z-normalizes the time-series before computing the feature.
-        Default is False.
-
-    Reference
-    ---------
-    https://www.cs.ucr.edu/~eamonn/Complexity-Invariant%20Distance%20Measure.pdf
-    """
-    xx = str_to_expr(x)
-    if normalize:
-        y = (xx - xx.mean()) / xx.std()
-    else:
-        y = xx
-
-    z = y - y.shift(-1)
-    return z.dot(z).sqrt()
-
-
 def query_mann_whitney_u(
-    var1: StrOrExpr,
-    var2: StrOrExpr,
+    var1: str | pl.Expr,
+    var2: str | pl.Expr,
     alternative: Alternative = "two-sided",
 ) -> pl.Expr:
     """
@@ -560,7 +326,7 @@ def query_mann_whitney_u(
 
 
 def winsorize(
-    x: StrOrExpr,
+    x: str | pl.Expr,
     lower: float = 0.05,
     upper: float = 0.95,
     method: QuantileMethod = "nearest",
@@ -590,7 +356,7 @@ def winsorize(
     )
 
 
-def perturb(x: StrOrExpr, epsilon: float, positive: bool = False):
+def perturb(x: str | pl.Expr, epsilon: float, positive: bool = False):
     """
     Perturb the var by a small amount. This only applies to float columns.
 
@@ -623,7 +389,7 @@ def perturb(x: StrOrExpr, epsilon: float, positive: bool = False):
     )
 
 
-def jitter(x: StrOrExpr, std: Union[float, pl.Expr] = 1.0) -> pl.Expr:
+def jitter(x: str | pl.Expr, std: float | pl.Expr = 1.0) -> pl.Expr:
     """
     Adds a Gaussian noise of N(0, std) to the column.
 
@@ -651,7 +417,7 @@ def jitter(x: StrOrExpr, std: Union[float, pl.Expr] = 1.0) -> pl.Expr:
     )
 
 
-def add_noise(x: StrOrExpr, noise_type: Noise = "gaussian", **kwargs) -> pl.Expr:
+def add_noise(x: str | pl.Expr, noise_type: Noise = "gaussian", **kwargs) -> pl.Expr:
     """
     Adds some noise to the column.
 
@@ -673,7 +439,7 @@ def add_noise(x: StrOrExpr, noise_type: Noise = "gaussian", **kwargs) -> pl.Expr
         raise ValueError(f"The noise_type {noise_type} is not currently supported.")
 
 
-def normal_test(var: StrOrExpr) -> pl.Expr:
+def normal_test(var: str | pl.Expr) -> pl.Expr:
     """
     Perform a normality test which is based on D'Agostino and Pearson's test
     that combines skew and kurtosis to produce an omnibus test of normality.
@@ -706,7 +472,7 @@ def normal_test(var: StrOrExpr) -> pl.Expr:
 def random(
     lower: Union[pl.Expr, float] = 0.0,
     upper: Union[pl.Expr, float] = 1.0,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> pl.Expr:
     """
     Generate random numbers in [lower, upper)
@@ -729,7 +495,7 @@ def random(
     )
 
 
-def random_null(var: StrOrExpr, pct: float, seed: Optional[int] = None) -> pl.Expr:
+def random_null(var: str | pl.Expr, pct: float, seed: int | None = None) -> pl.Expr:
     """
     Creates random null values in var. If var contains nulls originally, they
     will stay null.
@@ -753,7 +519,7 @@ def random_null(var: StrOrExpr, pct: float, seed: Optional[int] = None) -> pl.Ex
 
 
 def random_int(
-    lower: Union[int, pl.Expr], upper: Union[int, pl.Expr], seed: Optional[int] = None
+    lower: Union[int, pl.Expr], upper: Union[int, pl.Expr], seed: int | None = None
 ) -> pl.Expr:
     """
     Generates random integer between lower and upper.
@@ -784,9 +550,10 @@ def random_int(
     )
 
 
-def random_str(min_size: int, max_size: int) -> pl.Expr:
+def random_str(min_size: int, max_size: int, seed: int | None = None) -> pl.Expr:
     """
-    Generates random strings of length between min_size and max_size.
+    Generates random strings of length between min_size and max_size. The characters are
+    uniformly distributed over ASCII letters and numbers: a-z, A-Z and 0-9.
 
     Parameters
     ----------
@@ -807,13 +574,13 @@ def random_str(min_size: int, max_size: int) -> pl.Expr:
             pl.len().cast(pl.UInt32),
             pl.lit(mi, pl.UInt32),
             pl.lit(ma, pl.UInt32),
-            pl.lit(42, pl.UInt64),
+            pl.lit(seed, pl.UInt64),
         ],
         is_elementwise=True,
     )
 
 
-def random_binomial(n: int, p: int, seed: Optional[int] = None) -> pl.Expr:
+def random_binomial(n: int, p: int, seed: int | None = None) -> pl.Expr:
     """
     Generates random integer following a binomial distribution.
 
@@ -841,7 +608,7 @@ def random_binomial(n: int, p: int, seed: Optional[int] = None) -> pl.Expr:
     )
 
 
-def random_exp(lambda_: float, seed: Optional[int] = None) -> pl.Expr:
+def random_exp(lambda_: float, seed: int | None = None) -> pl.Expr:
     """
     Generates random numbers following an exponential distribution.
 
@@ -860,7 +627,7 @@ def random_exp(lambda_: float, seed: Optional[int] = None) -> pl.Expr:
 
 
 def random_normal(
-    mean: Union[pl.Expr, float], std: Union[pl.Expr, float], seed: Optional[int] = None
+    mean: Union[pl.Expr, float], std: Union[pl.Expr, float], seed: int | None = None
 ) -> pl.Expr:
     """
     Generates random number following a normal distribution.
@@ -883,7 +650,7 @@ def random_normal(
     )
 
 
-def hmean(var: StrOrExpr) -> pl.Expr:
+def hmean(var: str | pl.Expr) -> pl.Expr:
     """
     Computes the harmonic mean.
 
@@ -896,7 +663,7 @@ def hmean(var: StrOrExpr) -> pl.Expr:
     return x.count() / (1.0 / x).sum()
 
 
-def gmean(var: StrOrExpr) -> pl.Expr:
+def gmean(var: str | pl.Expr) -> pl.Expr:
     """
     Computes the geometric mean.
 
@@ -908,7 +675,9 @@ def gmean(var: StrOrExpr) -> pl.Expr:
     return str_to_expr(var).ln().mean().exp()
 
 
-def weighted_gmean(var: StrOrExpr, weights: StrOrExpr, is_normalized: bool = False) -> pl.Expr:
+def weighted_gmean(
+    var: str | pl.Expr, weights: str | pl.Expr, is_normalized: bool = False
+) -> pl.Expr:
     """
     Computes the weighted geometric mean.
 
@@ -928,7 +697,9 @@ def weighted_gmean(var: StrOrExpr, weights: StrOrExpr, is_normalized: bool = Fal
         return (x.ln().dot(w) / (w.sum())).exp()
 
 
-def weighted_mean(var: StrOrExpr, weights: StrOrExpr, is_normalized: bool = False) -> pl.Expr:
+def weighted_mean(
+    var: str | pl.Expr, weights: str | pl.Expr, is_normalized: bool = False
+) -> pl.Expr:
     """
     Computes the weighted mean, where weights is an expr represeting
     a weight column. The weights column must have the same length as var.
@@ -951,7 +722,7 @@ def weighted_mean(var: StrOrExpr, weights: StrOrExpr, is_normalized: bool = Fals
     return out / w.sum()
 
 
-def weighted_var(var: StrOrExpr, weights: StrOrExpr, freq_weights: bool = False) -> pl.Expr:
+def weighted_var(var: str | pl.Expr, weights: str | pl.Expr, freq_weights: bool = False) -> pl.Expr:
     """
     Computes the weighted variance. The weights column must have the same length as var.
 
@@ -980,7 +751,7 @@ def weighted_var(var: StrOrExpr, weights: StrOrExpr, freq_weights: bool = False)
     return summand / w.sum()
 
 
-def weighted_cov(x: StrOrExpr, y: StrOrExpr, weights: Union[pl.Expr, float]) -> pl.Expr:
+def weighted_cov(x: str | pl.Expr, y: str | pl.Expr, weights: Union[pl.Expr, float]) -> pl.Expr:
     """
     Computes the weighted covariance between x and y. The weights column must have the same
     length as both x an y.
@@ -1005,7 +776,7 @@ def weighted_cov(x: StrOrExpr, y: StrOrExpr, weights: Union[pl.Expr, float]) -> 
     return w.dot((xx - wx) * (yy - wy)) / w.sum()
 
 
-def weighted_corr(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Expr:
+def weighted_corr(x: str | pl.Expr, y: str | pl.Expr, weights: str | pl.Expr) -> pl.Expr:
     """
     Computes the weighted correlation between x and y. The weights column must have the same
     length as both x an y.
@@ -1033,9 +804,9 @@ def weighted_corr(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Expr:
     return numerator * w.sum() / (sxx * syy).sqrt()
 
 
-def cosine_sim(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
+def cosine_sim(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
     """
-    Column-wise cosine similarity
+    Column-and-column cosine similarity
 
     Parameters
     ----------
@@ -1050,7 +821,7 @@ def cosine_sim(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
     return xx.dot(yy) / (x2 * y2).sqrt()
 
 
-def weighted_cosine_sim(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Expr:
+def weighted_cosine_sim(x: str | pl.Expr, y: str | pl.Expr, weights: str | pl.Expr) -> pl.Expr:
     """
     Computes the weighted cosine similarity between x and y (column-wise). The weights column
     must have the same length as both x an y.
@@ -1077,7 +848,7 @@ def weighted_cosine_sim(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Ex
     return (w * xx).dot(yy) / (wx2 * wy2).sqrt()
 
 
-def kendall_tau(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
+def kendall_tau(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
     """
     Computes Kendall's Tau (b) correlation between x and y. This automatically drops rows with null.
 
@@ -1100,7 +871,7 @@ def kendall_tau(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
     )
 
 
-def bicor(x: StrOrExpr, y: StrOrExpr, c: float = 9.0) -> pl.Expr:
+def bicor(x: str | pl.Expr, y: str | pl.Expr, c: float = 9.0) -> pl.Expr:
     """
     Computes the Biweight Midcorrelation between x and y. This is commonly referred to as bicor.
 
@@ -1139,7 +910,7 @@ def bicor(x: StrOrExpr, y: StrOrExpr, c: float = 9.0) -> pl.Expr:
 
 
 def xi_corr(
-    x: StrOrExpr, y: StrOrExpr, seed: Optional[int] = None, return_p: bool = False
+    x: str | pl.Expr, y: str | pl.Expr, seed: int | None = None, return_p: bool = False
 ) -> pl.Expr:
     """
     Computes the ξ(xi) correlation developed by SOURAV CHATTERJEE in the paper in the reference.
@@ -1182,7 +953,7 @@ def xi_corr(
         )
 
 
-def corr(x: StrOrExpr, y: StrOrExpr, method: CorrMethod = "pearson") -> pl.Expr:
+def corr(x: str | pl.Expr, y: str | pl.Expr, method: CorrMethod = "pearson") -> pl.Expr:
     """
     A convenience function for calling different types of correlations. Pearson and Spearman correlation
     runs on Polar's native expression, while Kendall and Xi correlation runs on code in this package.

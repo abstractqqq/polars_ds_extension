@@ -15,9 +15,10 @@ fn iv_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new("iv_output", DataType::Struct(v)))
 }
 
-/// Get a lazyframe needed to compute WOE.
+/// Get a lazyframe needed to compute Weight Of Evidence.
 /// Inputs[0] by default is the discrete bins / categories (cast to String at Python side)
 /// Inputs[1] by default is the target (0s and 1s)
+/// Nulls will be droppped
 fn get_woe_frame(discrete_col: &Series, target: &Series) -> PolarsResult<LazyFrame> {
     let df = df!(
         "value" => discrete_col,
@@ -27,6 +28,7 @@ fn get_woe_frame(discrete_col: &Series, target: &Series) -> PolarsResult<LazyFra
     // so that the computation will not yield inf as output.
     let out = df
         .lazy()
+        .drop_nulls(None)
         .group_by([col("value")])
         .agg([len().alias("cnt"), col("target").sum().alias("goods")])
         .select([

@@ -3,6 +3,7 @@ This module provides classic ML dataset transforms. Note all functions here are 
 that the data learned (e.g. mean value in mean imputation) will not be preserved. For pipeline usage, which
 preserves the learned values and optimizes the transform query, see pipeline.py.
 """
+from __future__ import annotations
 
 import polars as pl
 import polars.selectors as cs
@@ -11,12 +12,13 @@ from .type_alias import (
     SimpleImputeMethod,
     SimpleScaleMethod,
     ExprTransform,
-    StrOrExpr,
     QuantileMethod,
+    EncoderDefaultStrategy,
 )
 from . import num as pds_num
+from . import query_linear as pds_linear
 from ._utils import _IS_POLARS_V1
-from typing import List, Union, Optional
+from typing import List
 
 
 def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean") -> ExprTransform:
@@ -46,37 +48,8 @@ def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean"
         raise ValueError(f"Unknown input method: {method}")
 
 
-def impute_nan(
-    df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean"
-) -> ExprTransform:
-    """
-    Impute NaN values in the given columns. NaN is not the same as null in Polars. In most Polars dataframes,
-    NaN should occur only because of numerical problems, such as log(-1). This transformation
-    also only applies to float columns and non-float columns will be ignored despite being passed in cols.
-
-    This transform will collect if input is lazy.
-
-    Parameters
-    ----------
-    df
-        Either a lazy or an eager dataframe
-    cols
-        A list of strings representing column names
-    method
-        One of `mean` or `median`. `mode` will result in error.
-    """
-    if method == "mean":
-        temp = df.lazy().select(cols).select(cs.float().mean()).collect()
-        return [pl.col(c).fill_nan(m) for c, m in zip(temp.columns, temp.row(0))]
-    elif method == "median":
-        temp = df.lazy().select(cols).select(cs.float().median()).collect()
-        return [pl.col(c).fill_nan(m) for c, m in zip(temp.columns, temp.row(0))]
-    else:
-        raise ValueError(f"Unknown input method: {method}")
-
-
 def linear_impute(
-    df: PolarsFrame, features: List[str], target: Union[str, pl.Expr], add_bias: bool = False
+    df: PolarsFrame, features: List[str], target: str | pl.Expr, add_bias: bool = False
 ) -> ExprTransform:
     """
     Imputes the target column by training a simple linear regression using the other features. This will
@@ -102,20 +75,27 @@ def linear_impute(
         target_name = df.lazy().select(target).collect_schema().names()[0]
     else:
         target_name = df.select(target).columns[0]
+
+    features_as_expr = [pl.col(f) for f in features]
+    target_as_expr = pl.col(target_name)
     temp = (
         df.lazy()
-        .select(pds_num.query_lstsq(*features, target=target, add_bias=add_bias, skip_null=True))
+        .select(
+            pds_linear.query_lstsq(
+                *features_as_expr, target=target_as_expr, add_bias=add_bias, null_policy="skip"
+            )
+        )
         .collect()
     )  # Add streaming config
     coeffs = temp.item(0, 0)
-    linear_eq = [pl.col(f) * coeffs[i] for i, f in enumerate(features)]
+    linear_eq = [f * coeffs[i] for i, f in enumerate(features_as_expr)]
     if add_bias:
         linear_eq.append(pl.lit(coeffs[-1], dtype=pl.Float64))
 
     return [
-        pl.when(pl.col(target_name).is_null())
+        pl.when(target_as_expr.is_null())
         .then(pl.sum_horizontal(linear_eq))
-        .otherwise(pl.col(target_name).cast(pl.Float64))
+        .otherwise(target_as_expr.cast(pl.Float64))
         .alias(target_name)
     ]
 
@@ -272,7 +252,7 @@ def one_hot_encode(
 ) -> ExprTransform:
     """
     Find the unique values in the string/categorical columns and one-hot encode them. This will NOT
-    consider nulls as one of the unique values.
+    consider nulls as one of the unique values. Append a one-hot null indicator if you want to encode nulls.
 
     Parameters
     ----------
@@ -304,31 +284,102 @@ def one_hot_encode(
     for t in temp.collect().get_columns():
         u: pl.Series = t[0]  # t is a Series which contains a single series, so u is a series
         if len(u) > 1:
+            # Need to take care of the case where null == 1 is null. Need only True and False, not null
             exprs.extend(
-                pl.col(t.name)
-                .eq(u[i])
-                .fill_null(False)  # In the EQ comparison, None will result in None
-                .cast(pl.UInt8)
-                .alias(t.name + separator + u[i])
+                pl.col(t.name).eq_missing(u[i]).cast(pl.UInt8).alias(t.name + separator + u[i])
                 for i in range(int(drop_first), len(u))
             )
 
+    if len(exprs) == 0:
+        raise ValueError(
+            "Provided columns either do not exist or are not string/categorical types."
+        )
+
     return exprs
+
+
+def rank_hot_encode(
+    col: str,
+    ranking: List[str],
+) -> ExprTransform:
+    """
+    Given a ranking, e.g. ["bad", "neutral", "good"], where "bad", "neutral" and "good" are values coming
+    from the column `col`, this will create 2 additional columns, where a row of [0, 0] will represent
+    "bad", and a row of [1, 0] will represent "neutral", and a row of [1,1] will represent "good". The meaning
+    of each rows is that the value is at least this rank. This currently only works on string columns.
+
+    Values not in the provided ranking will have -1 in all the new columns.
+
+    Parameters
+    ----------
+    col
+        The name of a single column
+    ranking
+        A list of string representing the ranking of the values
+    """
+
+    n_ranks = len(ranking)
+    if n_ranks <= 1:
+        raise ValueError("Rank hot encoding does not work with single value ranking.")
+
+    if not _IS_POLARS_V1:
+        raise ValueError("Unavailable for Polars < v1.")
+
+    number_rank = list(range(n_ranks))
+    ranked_expr = pl.col(col).replace_strict(
+        old=ranking, new=number_rank, default=None, return_dtype=pl.Int32
+    )
+    return [
+        (ranked_expr >= i).cast(pl.Int8).fill_null(-1).alias(f"{col}>={c}")
+        for i, c in zip(range(1, n_ranks), ranking[1:])
+    ]
+
+
+def _encoder_default_value(
+    temp: PolarsFrame,
+    default: EncoderDefaultStrategy | float | None,
+    target: str | pl.Expr | pl.Series,
+) -> float | None:
+    """
+    Finds the default value for encoders (Target, WOE, IV encoders) for null and unknown values.
+    """
+    if default is None or isinstance(default, (int, float)):
+        return default
+    elif isinstance(default, str):
+        if default == "null":
+            return None
+        elif default == "zero":
+            return 0.0
+        elif default == "mean":
+            if isinstance(target, str):
+                return temp.lazy().select(pl.col(target).mean()).collect().item(0, 0)
+            elif isinstance(target, pl.Expr):
+                return temp.lazy().select(target.mean()).collect().item(0, 0)
+            elif isinstance(target, pl.Series):
+                return target.mean()
+            else:
+                raise ValueError("Target's type is not supported.")
+        else:
+            raise ValueError(
+                "When input `default` is string, it can only be `mean` or `null` or `zero`."
+            )
+    else:
+        raise ValueError("Invalid type for `default`")
 
 
 def target_encode(
     df: PolarsFrame,
     cols: List[str],
     /,
-    target: Union[StrOrExpr, pl.Series],
+    target: str | pl.Expr | pl.Series,
     min_samples_leaf: int = 20,
     smoothing: float = 10.0,
-    default: Optional[float] = None,
+    default: EncoderDefaultStrategy | float | None = "null",
 ) -> ExprTransform:
     """
     Target encode the given variables. This will overwrite the columns that will be encoded.
 
-    Note: nulls will be encoded as well.
+    Note: Nulls will always be mapped to the default.
 
     Parameters
     ----------
@@ -343,7 +394,8 @@ def target_encode(
     smoothing
         Smoothing effect to balance categorical average vs prior
     default
-        If new value is encountered during transform, it will be mapped to default
+        If a new value is encountered during transform (unseen in training dataset), it will be mapped to default.
+        If this is a string, it can be `null`, `zero`, or `mean`, where `mean` means map them to the mean of the target.
 
     Reference
     ---------
@@ -358,6 +410,13 @@ def target_encode(
     else:
         valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
 
+    if len(valid_cols) == 0:
+        raise ValueError(
+            "The provided columns are either not string/categorical type, or are not in df."
+        )
+
+    default_value = _encoder_default_value(temp, default=default, target=target)
+
     temp = temp.select(
         pds_num.target_encode(
             c, target, min_samples_leaf=min_samples_leaf, smoothing=smoothing
@@ -369,7 +428,7 @@ def target_encode(
         exprs = [
             # c[0] will be a series of struct because of the implode above.
             pl.col(c.name).replace_strict(
-                old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default
+                old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default_value
             )
             for c in temp.get_columns()
         ]
@@ -377,7 +436,7 @@ def target_encode(
         exprs = [
             # c[0] will be a series of struct because of the implode above.
             pl.col(c.name).replace(
-                old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default
+                old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default_value
             )
             for c in temp.get_columns()
         ]
@@ -388,15 +447,15 @@ def woe_encode(
     df: PolarsFrame,
     cols: List[str],
     /,
-    target: Union[StrOrExpr, pl.Series],
-    default: Optional[float] = None,
+    target: str | pl.Expr | pl.Series,
+    default: EncoderDefaultStrategy | float | None = "null",
 ) -> ExprTransform:
     """
     Use Weight of Evidence to encode a discrete variable x with respect to target. This assumes x
     is discrete and castable to String. A value of 1 is added to all events/non-events
     (goods/bads) to smooth the computation. This is -1 * output of the package category_encoder's WOEEncoder.
 
-    Note: nulls will be encoded as well.
+    Note: Nulls will always be mapped to the default.
 
     Parameters
     ----------
@@ -407,7 +466,8 @@ def woe_encode(
     target
         The target column
     default
-        If new value is encountered during transform, it will be mapped to default
+        If a new value is encountered during transform (unseen in training dataset), it will be mapped to default.
+        If this is a string, it can be `null`, `zero`, or `mean`, where `mean` means map them to the mean of the target.
 
     Reference
     ---------
@@ -421,6 +481,13 @@ def woe_encode(
     else:
         valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
 
+    if len(valid_cols) == 0:
+        raise ValueError(
+            "The provided columns are either not string/categorical type, or are not in df."
+        )
+
+    default_value = _encoder_default_value(temp, default=default, target=target)
+
     temp = temp.select(
         pds_num.query_woe_discrete(c, target).implode() for c in valid_cols
     ).collect()  # add collect config..
@@ -429,7 +496,7 @@ def woe_encode(
         exprs = [
             # c[0] will be a series of struct because of the implode above.
             pl.col(c.name).replace_strict(
-                old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default
+                old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default_value
             )
             for c in temp.get_columns()
         ]
@@ -437,7 +504,7 @@ def woe_encode(
         exprs = [
             # c[0] will be a series of struct because of the implode above.
             pl.col(c.name).replace(
-                old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default
+                old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default_value
             )
             for c in temp.get_columns()
         ]
@@ -449,15 +516,15 @@ def iv_encode(
     df: PolarsFrame,
     cols: List[str],
     /,
-    target: Union[StrOrExpr, pl.Series],
-    default: Optional[float] = None,
+    target: str | pl.Expr | pl.Series,
+    default: EncoderDefaultStrategy | float | None = "null",
 ) -> ExprTransform:
     """
     Use Information Value to encode a discrete variable x with respect to target. This assumes x
     is discrete and castable to String. A value of 1 is added to all events/non-events
     (goods/bads) to smooth the computation.
 
-    Note: nulls will be encoded as well.
+    Note: Nulls will always be mapped to the default.
 
     Parameters
     ----------
@@ -468,7 +535,8 @@ def iv_encode(
     target
         The target column
     default
-        If new value is encountered during transform, it will be mapped to default
+        If a new value is encountered during transform (unseen in training dataset), it will be mapped to default.
+        If this is a string, it can be `null`, `zero`, or `mean`, where `mean` means map them to the mean of the target.
 
     Reference
     ---------
@@ -481,6 +549,14 @@ def iv_encode(
         )
     else:
         valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
+
+    if len(valid_cols) == 0:
+        raise ValueError(
+            "The provided columns are either not string/categorical type, or are not in df."
+        )
+
+    default_value = _encoder_default_value(temp, default=default, target=target)
+
     temp = temp.select(
         pds_num.query_iv_discrete(c, target, return_sum=False).implode() for c in valid_cols
     ).collect()  # add collect config..
@@ -489,7 +565,7 @@ def iv_encode(
         exprs = [
             # c[0] will be a series of struct because of the implode above.
             pl.col(c.name).replace_strict(
-                old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default
+                old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default_value
             )
             for c in temp.get_columns()
         ]
@@ -497,8 +573,38 @@ def iv_encode(
         exprs = [
             # c[0] will be a series of struct because of the implode above.
             pl.col(c.name).replace(
-                old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default
+                old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default_value
             )
             for c in temp.get_columns()
         ]
     return exprs
+
+
+def polynomial_features(
+    cols: List[str],
+    /,
+    degree: int,
+    interaction_only: bool = False,
+) -> ExprTransform:
+    """
+    Generates polynomial combinations out of the features given, at the given degree.
+
+    Parameters
+    ----------
+    cols
+        A list of strings representing column names.
+    degree
+        The degree of the polynomial combination
+    interaction_only
+        It true, only combinations that involve 2 or more variables will be used.
+    """
+    from itertools import combinations_with_replacement
+
+    if degree <= 1:
+        raise ValueError("Degree should be > 1.")
+
+    return list(
+        pl.reduce(function=lambda acc, x: acc * x, exprs=list(comb)).alias("*".join(comb))
+        for comb in combinations_with_replacement(cols, degree)
+        if ((not interaction_only) or len(set(comb)) > 1)
+    )

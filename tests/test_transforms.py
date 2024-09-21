@@ -9,7 +9,7 @@ def test_target_encode():
     from category_encoders import TargetEncoder
 
     # random df to test target_encode
-    df = pds.random_data(size=2000, n_cols=0).select(
+    df = pds.frame(size=2000).select(
         pds.random_int(0, 3).cast(pl.String).alias("cat"), pds.random_int(0, 2).alias("target")
     )
 
@@ -33,7 +33,7 @@ def test_target_encode():
 def test_woe_encode():
     from category_encoders import WOEEncoder
 
-    df = pds.random_data(size=2000, n_cols=0).select(
+    df = pds.frame(size=2000).select(
         pds.random_int(0, 3).cast(pl.String).alias("str_col"),
         pds.random_int(0, 2).alias("target"),
     )
@@ -52,7 +52,7 @@ def test_woe_encode():
 def test_scale():
     from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
-    df = pds.random_data(size=100, n_cols=0).select(
+    df = pds.frame(size=100).select(
         pds.random().alias("a"),
         pds.random_normal(0.0, 1.0).alias("b"),
     )
@@ -104,3 +104,52 @@ def test_impute(df):
     df2 = pl.from_numpy(mat, schema=cols)
 
     assert_frame_equal(df1, df2)
+
+
+@pytest.mark.parametrize(
+    "df, ranking",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "col": [
+                        "bad",
+                        "bad",
+                        "good",
+                        "neutral",
+                        "neutral",
+                        "neutral",
+                        "bad",
+                        "good",
+                        None,
+                        "unknown",
+                    ]
+                }
+            ),
+            ["bad", "neutral", "good"],
+        ),
+    ],
+)
+def test_rank_hot_encode(df, ranking):
+    # all columns will be tested against the native Python lambda impl
+    # Naive Python Lambda method
+    mapping = dict(zip(ranking, range(len(ranking))))
+    df_naive = df.select(
+        (
+            (
+                pl.col("col").map_elements(
+                    lambda x: mapping[x] if x in mapping else None,
+                    return_dtype=pl.Int32,
+                )
+                >= i
+            )
+            .cast(pl.Int8)
+            .fill_null(-1)
+            .alias(f"col>={ranking[i]}")
+            # fill_null with -1. If we get null, that means the value is not in ranking or is null.
+        )
+        for i in range(1, len(ranking))
+    )
+
+    df_to_test = df.select(t.rank_hot_encode(col="col", ranking=ranking))
+    assert_frame_equal(df_to_test, df_naive)

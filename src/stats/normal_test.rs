@@ -7,13 +7,13 @@
 /// [1] D'Agostino, R. B. (1971), "An omnibus test of normality for
 ///     moderate and large sample size", Biometrika, 58, 341-348
 /// [2] https://www.stata.com/manuals/rsktest.pdf
-use super::{simple_stats_output, StatsResult};
-use crate::stats_utils::{gamma, is_zero};
+use super::simple_stats_output;
+use crate::stats_utils::gamma;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 /// Returns the skew test statistic, no pvalue, add p value if needed
-fn skew_test_statistic(skew: f64, n: usize) -> Result<StatsResult, String> {
+fn skew_test_statistic(skew: f64, n: usize) -> f64 {
     let n = n as f64;
     let y = skew * ((n + 1.) * (n + 3.) / (6. * (n - 2.))).sqrt();
     let beta2 = 3. * (n.powi(2) + 27. * n - 70.) * (n + 1.) * (n + 3.)
@@ -23,11 +23,11 @@ fn skew_test_statistic(skew: f64, n: usize) -> Result<StatsResult, String> {
 
     let tmp = y / alpha;
     let z = (tmp + (tmp.powi(2) + 1.).sqrt()).ln() / (w2.ln() * 0.5).sqrt();
-    Ok(StatsResult::from_stats(z))
+    z
 }
 
 /// Returns the kurtosis test statistic, no pvalue, add p value if needed
-fn kurtosis_test_statistic(kur: f64, n: usize) -> Result<StatsResult, String> {
+fn kurtosis_test_statistic(kur: f64, n: usize) -> f64 {
     let n = n as f64;
     let e = 3.0 * (n - 1.) / (n + 1.);
     let var = 24.0 * n * (n - 2.) * (n - 3.) / ((n + 1.).powi(2) * (n + 3.) * (n + 5.));
@@ -40,13 +40,14 @@ fn kurtosis_test_statistic(kur: f64, n: usize) -> Result<StatsResult, String> {
 
     let tmp = 2. / (9. * a);
     let denom = 1. + x * (2. / (a - 4.)).sqrt();
-    if is_zero(denom) {
-        Err("Kurtosis test: Division by 0 encountered.".to_owned())
+    if denom == 0. {
+        println!("Kurtosis test: Division by 0 encountered.");
+        f64::NAN
     } else {
         let term1 = 1. - tmp;
         let term2 = ((1. - 2. / a) / denom.abs()).cbrt();
         let z = (term1 - term2) / tmp.sqrt();
-        Ok(StatsResult::from_stats(z))
+        z
     }
 }
 
@@ -67,12 +68,8 @@ fn pl_normal_test(inputs: &[Series]) -> PolarsResult<Series> {
         ));
     }
 
-    let s = skew_test_statistic(skew, n).map_err(|err| PolarsError::ComputeError(err.into()));
-    let k =
-        kurtosis_test_statistic(kurtosis, n).map_err(|err| PolarsError::ComputeError(err.into()));
-
-    let s = s?.statistic; // the statistics
-    let k = k?.statistic; // the statistics
+    let s = skew_test_statistic(skew, n);
+    let k = kurtosis_test_statistic(kurtosis, n);
 
     let k2 = s * s + k * k; // the statistics
 
