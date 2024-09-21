@@ -1,11 +1,14 @@
+from __future__ import annotations
+
 import polars as pl
 import random
 import math
-from typing import Union, Optional, List, Tuple
+from .type_alias import PolarsFrame
+from typing import List, Tuple
 from itertools import combinations, islice
 
 
-def _sampler_expr(value: Union[float, int], seed: Optional[int] = None) -> pl.Expr:
+def _sampler_expr(value: float | int, seed: int | None = None) -> pl.Expr:
     if isinstance(value, float):
         if value >= 1.0 or value <= 0.0:
             raise ValueError("Sample rate must be in (0, 1) range.")
@@ -20,9 +23,7 @@ def _sampler_expr(value: Union[float, int], seed: Optional[int] = None) -> pl.Ex
         raise ValueError("Sample value must be either int or float.")
 
 
-def sample(
-    df: Union[pl.DataFrame, pl.LazyFrame], value: Union[float, int], seed: Optional[int] = None
-) -> pl.DataFrame:
+def sample(df: PolarsFrame, value: float | int, seed: int | None = None) -> pl.DataFrame:
     """
     Samples the dataframe.
 
@@ -40,16 +41,14 @@ def sample(
 
 
 def volume_neutral(
-    df: Union[pl.DataFrame, pl.LazyFrame],
+    df: PolarsFrame,
     by: pl.Expr,
-    control: Optional[Union[pl.Expr, List[pl.Expr]]] = None,
-    target_volume: Optional[int] = None,
-    seed: Optional[int] = None,
+    control: pl.Expr | List[pl.Expr] | None = None,
+    target_volume: int | None = None,
+    seed: int | None = None,
 ) -> pl.DataFrame:
     """
-    Say we have a reference column, which is discrete. Let's say it has three distinct values, A,
-    B, and C, with a, b, c being the value counts. It will randomly select min(a, b, c, target_volume)
-    rows from each category, thus the name volume neutral.
+    Select volume neutral many population from each segment in `by`, with optional control categories.
 
     Parameters
     ----------
@@ -62,7 +61,7 @@ def volume_neutral(
         Additional level(s). If not none, the volume neutral selection will happen at the
         sublevel of the control column(s). See example.
     target_volume
-        If none, it will select min(a, b, c) rows, this means that one group is always fully selected.
+        If none, it will select min(a, b, c) rows.
     seed
         A random seed
     """
@@ -90,9 +89,9 @@ def volume_neutral(
 
 
 def downsample(
-    df: Union[pl.DataFrame, pl.LazyFrame],
-    conditions: Union[Tuple[pl.Expr, Union[float, int]], List[Tuple[pl.Expr, Union[float, int]]]],
-    seed: Optional[int] = None,
+    df: PolarsFrame,
+    *conditions: Tuple[pl.Expr, float | int],
+    seed: int | None = None,
 ) -> pl.DataFrame:
     """
     Downsamples data on the subsets where condition is true.
@@ -102,8 +101,9 @@ def downsample(
     df
         Either a lazy or eager Polars dataframe
     conditions
-        Either a Tuple[pl.Expr, float|int] or a list of such tuples. The first entry in the tuple should be a
-        boolean expression and the second entry means we sample either n or x% on the part where the boolean is true.
+        Tuple[pl.Expr, float|int] or a sequence of such tuples as positional arguments.
+        The first entry in the tuple should be a boolean expression and the second entry means we sample
+        either n or x% on the part where the boolean is true.
     seed
         A random seed
 
@@ -144,20 +144,15 @@ def downsample(
     >>>     [(pl.col("y").is_between(1, 2, closed="both"), 0.5)]
     >>> )
     """
-    if isinstance(conditions, Tuple):
-        all_conds = [conditions]
-    else:
-        all_conds = conditions
-
-    all_filters = ((_sampler_expr(r, seed).over(c) | (~c)) for c, r in all_conds)
+    all_filters = ((_sampler_expr(r, seed).over(c) | (~c)) for c, r in conditions)
     return df.lazy().filter(pl.lit(True).and_(*all_filters)).collect()
 
 
 def random_cols(
-    df: Union[pl.DataFrame, pl.LazyFrame],
+    df: PolarsFrame,
     k: int,
-    keep: Optional[List[str]] = None,
-    seed: Optional[int] = None,
+    keep: List[str] | None = None,
+    seed: int | None = None,
 ) -> List[str]:
     """
     Selects random columns in the dataframe. Returns the selected columns in a list. Note, it is

@@ -121,19 +121,36 @@ def test_confusion_matrix(y_true, y_score):
     pytest.approx(res) == ref
 
 
+def test_roc_auc():
+    from sklearn.metrics import roc_auc_score
+
+    df = pds.frame(size=2000).select(
+        pds.random(0.0, 1.0).alias("predictions"),
+        pds.random(0.0, 1.0).round().cast(pl.Int32).alias("target"),
+        pl.lit(0).alias("zero_target"),
+    )
+
+    roc_auc = df.select(pds.query_roc_auc("target", "predictions")).item(0, 0)
+
+    answer = roc_auc_score(df["target"].to_numpy(), df["predictions"].to_numpy())
+
+    assert np.isclose(roc_auc, answer)
+
+    # When all classes are 0, roc_auc returns NaN
+    nan_roc = df.select(pds.query_roc_auc("zero_target", "predictions")).item(0, 0)
+
+    assert np.isnan(nan_roc)
+
+
 def test_multiclass_roc_auc():
     from sklearn.metrics import roc_auc_score
 
     def roc_auc_random_data(size: int = N_ROWS) -> pl.DataFrame:
-        df = pl.DataFrame(
-            {
-                "id": range(size),
-            }
-        ).with_columns(
+        df = pds.frame(size=N_ROWS, index_name="id").with_columns(
             pl.col("id").cast(pl.UInt64),
-            pl.col("id").stats.rand_uniform(low=0.0, high=1.0).alias("val1"),
-            pl.col("id").stats.rand_uniform(low=0.0, high=1.0).alias("val2"),
-            pl.col("id").stats.rand_uniform(low=0.0, high=1.0).alias("val3"),
+            pds.random().alias("val1"),
+            pds.random().alias("val2"),
+            pds.random().alias("val3"),
             pl.col("id").mod(3).alias("actuals"),
         )
         # Need to normalize to make sure this is valid ROC AUC data

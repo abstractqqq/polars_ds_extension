@@ -1,10 +1,16 @@
 import polars as pl
 from typing import Any, Optional, List, Dict, Union
+from pathlib import Path
+from polars.plugins import register_plugin_function
+
+# Only need this
+_PLUGIN_PATH = Path(__file__).parent
+# FLAG FOR v1 polars
+_IS_POLARS_V1 = pl.__version__.startswith("1.")
 
 
 def pl_plugin(
     *,
-    lib: str,
     symbol: str,
     args: List[Union[pl.Series, pl.Expr]],
     kwargs: Optional[Dict[str, Any]] = None,
@@ -12,25 +18,10 @@ def pl_plugin(
     returns_scalar: bool = False,
     changes_length: bool = False,
     cast_to_supertype: bool = False,
+    pass_name_to_apply: bool = False,
 ) -> pl.Expr:
-    # pl.__version__ should always be a valid version number, so split returns always 3 strs
-    if tuple(int(x) for x in pl.__version__.split(".")) < (0, 20, 16):
-        # This will eventually be deprecated?
-        return args[0].register_plugin(
-            lib=lib,
-            symbol=symbol,
-            args=args[1:],
-            kwargs=kwargs,
-            is_elementwise=is_elementwise,
-            returns_scalar=returns_scalar,
-            changes_length=changes_length,
-            cast_to_supertype=cast_to_supertype,
-        )
-
-    from polars.plugins import register_plugin_function
-
     return register_plugin_function(
-        plugin_path=lib,
+        plugin_path=_PLUGIN_PATH,
         args=args,
         function_name=symbol,
         kwargs=kwargs,
@@ -38,4 +29,5 @@ def pl_plugin(
         returns_scalar=returns_scalar,
         changes_length=changes_length,
         cast_to_supertype=cast_to_supertype,
+        pass_name_to_apply=pass_name_to_apply,
     )

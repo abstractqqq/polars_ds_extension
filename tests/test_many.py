@@ -4,13 +4,13 @@ import pytest
 import polars as pl
 import numpy as np
 import polars_ds as pds
-from polars.testing import assert_frame_equal
+from polars.testing import assert_frame_equal, assert_series_equal
 
 
 def test_pca():
     from sklearn.decomposition import PCA
 
-    df = pds.random_data(size=2000, n_cols=0).select(
+    df = pds.frame(size=2000).select(
         pds.random(0.0, 1.0).alias("x1"),
         pds.random(0.0, 1.0).alias("x2"),
         pds.random(0.0, 1.0).alias("x3"),
@@ -63,7 +63,7 @@ def test_copula_entropy():
 def test_cond_indep_and_transfer():
     from copent import ci, transent
 
-    df = pds.random_data(size=2_000, n_cols=0).select(
+    df = pds.frame(size=2_000).select(
         pds.random(0.0, 1.0).alias("x1"),
         pds.random(0.0, 1.0).alias("x2"),
         pds.random(0.0, 1.0).alias("x3"),
@@ -81,7 +81,7 @@ def test_cond_indep_and_transfer():
 
 
 def test_xi_corr():
-    df = pds.random_data(size=2_000, n_cols=0).select(
+    df = pds.frame(size=2_000).select(
         pds.random(0.0, 12.0).alias("x"),
         pds.random(0.0, 1.0).alias("y"),
     )
@@ -94,13 +94,29 @@ def test_xi_corr():
     ans_statistic = xi_obj.correlation
     test_statistic = df.select(pds.xi_corr("x", "y")).item(0, 0)
 
-    assert np.isclose(ans_statistic, test_statistic, rtol=1e-4)
+    assert np.isclose(ans_statistic, test_statistic, rtol=1e-5)
+
+
+def test_bicor():
+    df = pds.frame(size=2_000).select(
+        pds.random(0.0, 1.0).alias("x"),
+        pds.random(0.0, 1.0).alias("y"),
+    )
+
+    from astropy.stats import biweight_midcorrelation
+
+    x = df["x"].to_numpy()
+    y = df["y"].to_numpy()
+    answer = biweight_midcorrelation(x, y)
+    test_result = df.select(pds.bicor("x", "y")).item(0, 0)
+
+    assert np.isclose(answer, test_result)
 
 
 def test_kendall_tau():
     from scipy.stats import kendalltau
 
-    df = pds.random_data(size=2000, n_cols=0).select(
+    df = pds.frame(size=2000).select(
         pds.random_int(0, 200).alias("x"),
         pds.random_int(0, 200).alias("y"),
     )
@@ -113,7 +129,35 @@ def test_kendall_tau():
 
 
 @pytest.mark.parametrize(
-    "df, ft, res_full, res_valid, res_same",
+    "a, value, res",
+    [
+        ([1, 2, 3, 4, 5, None], 2, 4),
+        ([1, 2, 3, 4, 5, None], 6, 0),
+    ],
+)
+def test_longest_streak(a, value, res):
+    # >=
+    df = pl.DataFrame({"a": a})
+    longest = df.select(pds.query_longest_streak(pl.col("a") >= value)).item(0, 0)
+    assert longest == res
+
+
+@pytest.mark.parametrize(
+    "a, value, res",
+    [
+        ([1, 2, 3, 4, 5, None], 2, 2),
+        ([1, 2, 3, 4, 5, None], 6, 5),  # None doesn't count
+    ],
+)
+def test_longest_streak_2(a, value, res):
+    # <=
+    df = pl.DataFrame({"a": a})
+    longest = df.select(pds.query_longest_streak(pl.col("a") <= value)).item(0, 0)
+    assert longest == res
+
+
+@pytest.mark.parametrize(
+    "df, kernel, res_full, res_valid, res_same",
     [
         (
             pl.DataFrame({"a": [5, 6, 7, 8, 9]}),
@@ -124,40 +168,40 @@ def test_kendall_tau():
         ),
     ],
 )
-def test_convolve(df, ft, res_full, res_valid, res_same):
-    res = df.select(pds.convolve("a", ft, mode="full"))
+def test_convolve(df, kernel, res_full, res_valid, res_same):
+    res = df.select(pds.convolve("a", kernel, mode="full"))
 
     assert_frame_equal(res, res_full)
 
-    res = df.select(pds.convolve("a", ft, mode="valid"))
+    res = df.select(pds.convolve("a", kernel, mode="valid"))
 
     assert_frame_equal(res, res_valid)
 
-    res = df.select(pds.convolve("a", ft, mode="same"))
+    res = df.select(pds.convolve("a", kernel, mode="same"))
 
     assert_frame_equal(res, res_same)
 
-    res = df.select(pds.convolve("a", ft, mode="full", parallel=True))
+    res = df.select(pds.convolve("a", kernel, mode="full", parallel=True))
 
     assert_frame_equal(res, res_full)
 
-    res = df.select(pds.convolve("a", ft, mode="valid", parallel=True))
+    res = df.select(pds.convolve("a", kernel, mode="valid", parallel=True))
 
     assert_frame_equal(res, res_valid)
 
-    res = df.select(pds.convolve("a", ft, mode="same", parallel=True))
+    res = df.select(pds.convolve("a", kernel, mode="same", parallel=True))
 
     assert_frame_equal(res, res_same)
 
-    res = df.select(pds.convolve("a", ft, mode="full", method="fft"))
+    res = df.select(pds.convolve("a", kernel, mode="full", method="fft"))
 
     assert_frame_equal(res, res_full)
 
-    res = df.select(pds.convolve("a", ft, mode="valid", method="fft"))
+    res = df.select(pds.convolve("a", kernel, mode="valid", method="fft"))
 
     assert_frame_equal(res, res_valid)
 
-    res = df.select(pds.convolve("a", ft, mode="same", method="fft"))
+    res = df.select(pds.convolve("a", kernel, mode="same", method="fft"))
 
     assert_frame_equal(res, res_same)
 
@@ -229,6 +273,31 @@ def test_f_test(df):
 
 
 @pytest.mark.parametrize(
+    "df",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "x1": np.random.normal(size=1_000),
+                    "x2": np.random.normal(size=1_000),
+                }
+            )
+        ),
+    ],
+)
+def test_mann_whitney_u(df):
+    from scipy.stats import mannwhitneyu
+
+    res = df.select(pds.query_mann_whitney_u("x1", "x2"))
+    res = res.item(0, 0)  # A dictionary
+    res_statistic = res["statistic"]
+    res_pvalue = res["pvalue"]
+    answer = mannwhitneyu(df["x1"].to_numpy(), df["x2"].to_numpy())
+    assert np.isclose(res_statistic, answer.statistic)
+    assert np.isclose(res_pvalue, answer.pvalue)
+
+
+@pytest.mark.parametrize(
     "df, res",
     [
         (
@@ -236,7 +305,7 @@ def test_f_test(df):
             [11, 5, 1, 1, 1, 1, 1, 1, 1],
         ),
         (
-            pl.DataFrame({"a": [1, 2, 3, 4, float("nan"), float("inf"), None]}),
+            pl.DataFrame({"a": [1.0, 2.0, 3.0, 4.0, float("nan"), float("inf"), None]}),
             [1, 1, 1, 1, 0, 0, 0, 0, 0],  # NaN, Inf, None are ignored
         ),
     ],
@@ -425,10 +494,411 @@ def test_lstsq():
     assert_frame_equal(df.select(pds.query_lstsq(pl.col("a"), target="y", add_bias=True)), res)
 
 
-# Hard to write generic tests because ncols can vary in X
+def test_lstsq_against_sklearn():
+    # Random data + noise
+    df = (
+        pds.frame(size=5_000)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_columns(
+            y=pl.col("x1") * 0.5 + pl.col("x2") * 0.1 - pl.col("x3") * 0.15 + pds.random() * 0.0001
+        )
+    )
+
+    #
+    from sklearn import linear_model
+
+    x = df.select("x1", "x2", "x3").to_numpy()
+    y = df["y"].to_numpy()
+
+    # sklearn, normal, with bias
+    reg = linear_model.LinearRegression(fit_intercept=True)
+    reg.fit(x, y)
+
+    # pds, normal, with bias
+    normal_coeffs = df.select(
+        pds.query_lstsq(
+            "x1",
+            "x2",
+            "x3",
+            target="y",
+            add_bias=True,
+        ).alias("pred")
+    ).explode("pred")
+    all_coeffs = normal_coeffs["pred"].to_numpy()
+    # non-bias terms, some precision differences expected.
+    assert np.all(np.abs(all_coeffs[:3] - reg.coef_) < 1e-5)
+    assert np.isclose(all_coeffs[-1], reg.intercept_, rtol=1e-5)
+
+    # sklearn, L2 (Ridge), with bias
+    reg = linear_model.Ridge(alpha=0.1, fit_intercept=True)
+    reg.fit(x, y)
+
+    # pds, normal, with bias
+    normal_coeffs = df.select(
+        pds.query_lstsq(
+            "x1",
+            "x2",
+            "x3",
+            target="y",
+            l2_reg=0.1,
+            add_bias=True,
+        ).alias("pred")
+    ).explode("pred")
+    all_coeffs = normal_coeffs["pred"].to_numpy()
+    coeffs = all_coeffs[:3]
+    bias = all_coeffs[-1]
+    # non-bias terms, slightly bigger precision differences expected.
+    assert np.all(np.abs(coeffs - reg.coef_) < 1e-3)
+    assert abs(bias - reg.intercept_) < 1e-3
+
+
+def test_lasso_regression():
+    # These tests have bigger precision tolerance because of different stopping criterions
+
+    from sklearn import linear_model
+
+    df = (
+        pds.frame(size=5_000)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_columns(
+            y=pl.col("x1") * 0.5 + pl.col("x2") * 0.25 - pl.col("x3") * 0.15 + pds.random() * 0.0001
+        )
+    )
+
+    x = df.select("x1", "x2", "x3").to_numpy()
+    y = df["y"].to_numpy()
+
+    for lambda_ in [0.01, 0.05, 0.1, 0.2]:
+        df_res = df.select(
+            pds.query_lstsq("x1", "x2", "x3", target="y", l1_reg=lambda_, add_bias=False).alias(
+                "coeffs"
+            )
+        ).explode("coeffs")
+
+        res = df_res["coeffs"].to_numpy()
+
+        sklearn = linear_model.Lasso(alpha=lambda_, fit_intercept=False)
+        sklearn.fit(x, y)
+        res_sklearn = np.asarray(sklearn.coef_)
+        assert np.all(np.abs(res_sklearn - res) < 1e-4)
+
+    for lambda_ in [0.01, 0.05, 0.1, 0.2]:
+        df_res = df.select(
+            pds.query_lstsq("x1", "x2", "x3", target="y", l1_reg=lambda_, add_bias=True).alias(
+                "coeffs"
+            )
+        ).explode("coeffs")
+
+        res = df_res["coeffs"].to_numpy()
+        res_coef = res[:3]
+        res_bias = res[-1]
+
+        sklearn = linear_model.Lasso(alpha=lambda_, fit_intercept=True)
+        sklearn.fit(x, y)
+        res_sklearn = np.asarray(sklearn.coef_)
+        assert np.all(np.abs(res_sklearn - res_coef) < 1e-4)
+        assert abs(res_bias - sklearn.intercept_) < 1e-4
+
+
+def test_elastic_net_regression():
+    # These tests have bigger precision tolerance because of different stopping criterions
+
+    from sklearn import linear_model
+
+    df = (
+        pds.frame(size=5_000)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_columns(
+            y=pl.col("x1") * 0.5 + pl.col("x2") * 0.25 - pl.col("x3") * 0.15 + pds.random() * 0.0001
+        )
+    )
+
+    x = df.select("x1", "x2", "x3").to_numpy()
+    y = df["y"].to_numpy()
+
+    for reg in [0.01, 0.05, 0.1, 0.2]:
+        l1_reg = reg
+        l2_reg = reg
+
+        df_res = df.select(
+            pds.query_lstsq(
+                "x1", "x2", "x3", target="y", l1_reg=l1_reg, l2_reg=l2_reg, add_bias=False
+            ).alias("coeffs")
+        ).explode("coeffs")
+
+        res = df_res["coeffs"].to_numpy()
+
+        alpha = l1_reg + l2_reg
+        l1_ratio = l1_reg / (l1_reg + l2_reg)
+
+        sklearn = linear_model.ElasticNet(alpha=alpha, l1_ratio=l1_ratio, fit_intercept=False)
+        sklearn.fit(x, y)
+        res_sklearn = np.asarray(sklearn.coef_)
+        assert np.all(np.abs(res_sklearn - res) < 1e-4)
+
+
+def test_recursive_lstsq():
+    # Test against the lstsq method with a fit whenver a new row is in the data
+    size = 1_000
+    df = (
+        pds.frame(size=size)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_columns(
+            y=pl.col("x1") * 0.5
+            + pl.col("x2") * 0.25
+            - pl.col("x3") * 0.15
+            + pds.random() * 0.0001,
+        )
+    )
+
+    start_with = 3
+
+    df_recursive_lr = df.select(
+        "y",
+        pds.query_recursive_lstsq(
+            "x1",
+            "x2",
+            "x3",
+            target="y",
+            start_with=start_with,
+        ).alias("result"),
+    ).unnest("result")
+
+    for i in range(start_with, 30):
+        coefficients = df.limit(i).select(
+            pds.query_lstsq(
+                "x1",
+                "x2",
+                "x3",
+                target="y",
+            ).alias("coeffs")
+        )["coeffs"]  # One element series
+
+        normal_result = coefficients[0].to_numpy()
+        # i - 1. E.g. use 3 rows of data to train, the data will be at row 2.
+        recursive_result = df_recursive_lr["coeffs"][i - 1].to_numpy()
+        assert np.all(np.abs(normal_result - recursive_result) < 1e-5)
+
+
+def test_recursive_ridge():
+    # Test against the lstsq method with a fit whenver a new row is in the data
+    size = 1_000
+    df = (
+        pds.frame(size=size)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_columns(
+            y=pl.col("x1") * 0.5
+            + pl.col("x2") * 0.25
+            - pl.col("x3") * 0.15
+            + pds.random() * 0.0001,
+        )
+    )
+
+    start_with = 3
+
+    df_recursive_lr = df.select(
+        "y",
+        pds.query_recursive_lstsq(
+            "x1",
+            "x2",
+            "x3",
+            target="y",
+            l2_reg=0.1,
+            start_with=start_with,
+        ).alias("result"),
+    ).unnest("result")
+
+    for i in range(start_with, 30):
+        coefficients = df.limit(i).select(
+            pds.query_lstsq(
+                "x1",
+                "x2",
+                "x3",
+                target="y",
+                l2_reg=0.1,
+            ).alias("coeffs")
+        )["coeffs"]  # One element series
+
+        normal_result = coefficients[0].to_numpy()
+        # i - 1. E.g. use 3 rows of data to train, the data will be at row 2.
+        recursive_result = df_recursive_lr["coeffs"][i - 1].to_numpy()
+        assert np.all(np.abs(normal_result - recursive_result) < 1e-5)
+
+
+def test_rolling_lstsq():
+    # Test rolling lstsq by comparing it with a manually rolled lstsq result.
+    # Test on multiple window sizes
+    size = 500
+    df = (
+        pds.frame(size=size)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+            pl.Series(name="id", values=list(range(size))),
+        )
+        .with_columns(
+            y=pl.col("x1") * 0.5
+            + pl.col("x2") * 0.25
+            - pl.col("x3") * 0.15
+            + pds.random() * 0.0001,
+        )
+    )
+
+    for window_size in [5, 8, 12, 15]:
+        df_to_test = df.select(
+            "id",
+            "y",
+            pds.query_rolling_lstsq(
+                "x1",
+                "x2",
+                "x3",
+                target="y",
+                window_size=window_size,
+            ).alias("result"),
+        ).unnest("result")  # .limit(10)
+        df_to_test = df_to_test.filter(pl.col("id") >= window_size - 1).select("coeffs")
+
+        results = []
+        for i in range(len(df) - window_size + 1):
+            temp = df.slice(i, length=window_size)
+            results.append(
+                temp.select(pds.query_lstsq("x1", "x2", "x3", target="y").alias("coeffs"))
+            )
+
+        df_answer = pl.concat(results)
+        assert_frame_equal(df_to_test, df_answer)
+
+
+# This only tests that nulls are correctly skipped.
+def test_rolling_null_skips():
+    size = 1000
+    # Data with random nulls
+    df = (
+        pds.frame(size=size)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_columns(
+            pl.when(pds.random() < 0.15).then(None).otherwise(pl.col("x1")).alias("x1"),
+            pl.when(pds.random() < 0.15).then(None).otherwise(pl.col("x2")).alias("x2"),
+            pl.when(pds.random() < 0.15).then(None).otherwise(pl.col("x3")).alias("x3"),
+        )
+        .with_columns(
+            null_ref=pl.any_horizontal(
+                pl.col("x1").is_null(), pl.col("x2").is_null(), pl.col("x3").is_null()
+            ),
+            y=pl.col("x1") * 0.15 + pl.col("x2") * 0.3 - pl.col("x3") * 1.5 + pds.random() * 0.0001,
+        )
+    )
+
+    window_size = 6
+    min_valid_rows = 5
+
+    result = df.with_columns(
+        pds.query_rolling_lstsq(
+            "x1",
+            "x2",
+            "x3",
+            target="y",
+            window_size=window_size,
+            min_valid_rows=min_valid_rows,
+            null_policy="skip",
+        ).alias("test")
+    ).with_columns(
+        pl.col("test").struct.field("coeffs").alias("coeffs"),
+        pl.col("test").struct.field("coeffs").is_null().alias("is_null"),
+    )
+
+    nulls = df["null_ref"].to_list()  # list of bools
+    rolling_should_be_null = [True] * (window_size - 1)
+    for i in range(0, len(nulls) - window_size + 1):
+        lower = i
+        upper = i + window_size
+        window_valid_count = window_size - np.sum(nulls[lower:upper])  # size - null count
+        rolling_should_be_null.append((window_valid_count < min_valid_rows))
+
+    answer = pl.Series(name="is_null", values=rolling_should_be_null)
+    assert_series_equal(result["is_null"], answer)
+
+
+def test_rolling_ridge():
+    # Test rolling lstsq by comparing it with a manually rolled lstsq result.
+    # Test on multiple window sizes
+    size = 500
+    df = (
+        pds.frame(size=size)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+            pl.Series(name="id", values=list(range(size))),
+        )
+        .with_columns(
+            y=pl.col("x1") * 0.5
+            + pl.col("x2") * 0.25
+            - pl.col("x3") * 0.15
+            + pds.random() * 0.0001,
+        )
+    )
+
+    for window_size in [5, 8, 12, 15]:
+        df_to_test = df.select(
+            "id",
+            "y",
+            pds.query_rolling_lstsq(
+                "x1",
+                "x2",
+                "x3",
+                target="y",
+                l2_reg=0.1,
+                window_size=window_size,
+            ).alias("result"),
+        ).unnest("result")  # .limit(10)
+        df_to_test = df_to_test.filter(pl.col("id") >= window_size - 1).select("coeffs")
+
+        results = []
+        for i in range(len(df) - window_size + 1):
+            temp = df.slice(i, length=window_size)
+            results.append(
+                temp.select(
+                    pds.query_lstsq("x1", "x2", "x3", l2_reg=0.1, target="y").alias("coeffs")
+                )
+            )
+
+        df_answer = pl.concat(results)
+        assert_frame_equal(df_to_test, df_answer)
+
+
 def test_lstsq_skip_null():
     df = pl.DataFrame(
-        {"y": [None, 9.5, 10.5, 11.5, 12.5], "a": [1, 9, 10, 11, 12], "b": [1, 0.5, 0.5, 0.5, 0.5]}
+        {
+            "y": [None, 9.5, 10.5, 11.5, 12.5],
+            "a": [1, 9, 10, 11, 12],
+            "b": [1.0, 0.5, 0.5, 0.5, 0.5],
+        }
     )
     res = pl.DataFrame(
         {
@@ -439,7 +909,7 @@ def test_lstsq_skip_null():
     assert_frame_equal(
         df.select(
             pds.query_lstsq(
-                pl.col("a"), pl.col("b"), target="y", skip_null=True, return_pred=True
+                pl.col("a"), pl.col("b"), target="y", return_pred=True, null_policy="skip"
             ).alias("result")
         ).unnest("result"),
         res,
@@ -486,6 +956,44 @@ def test_lstsq_in_group_by():
 
     assert_frame_equal(first, test_first)
     assert_frame_equal(second, test_second)
+
+
+def test_lstsq_with_rcond():
+    import numpy as np
+
+    size = 5000
+    df = (
+        pds.frame(size=size)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_row_index()
+        .with_columns(
+            y=pl.col("x1") + pl.col("x2") * 0.2 - 0.3 * pl.col("x3"),
+        )
+    )
+
+    x = df.select("x1", "x2", "x3").to_numpy()
+    y = df.select("y").to_numpy()
+    np_coeffs, _, _, np_svs = np.linalg.lstsq(x, y, rcond=0.3)  # default rcond
+    np_coeffs = np_coeffs.flatten()
+
+    res = df.select(
+        pds.query_lstsq_w_rcond(
+            "x1",
+            "x2",
+            "x3",
+            target="y",
+            rcond=0.3,
+        ).alias("result")
+    ).unnest("result")
+    coeffs = res["coeffs"][0].to_numpy()
+    svs = res["singular_values"][0].to_numpy()
+
+    assert np.all(np.abs(coeffs - np_coeffs) < 1e-10)
+    assert np.all(np.abs(svs - np_svs) < 1e-10)
 
 
 @pytest.mark.parametrize(
@@ -832,10 +1340,82 @@ def test_knn_ptwise(df, dist, k, res):
         pds.query_knn_ptwise(
             pl.col("val1"), pl.col("val2"), pl.col("val3"), index="id", dist=dist, k=k
         )
-        .list.eval(pl.element().sort().cast(pl.UInt32))
+        .list.eval(
+            pl.element().sort().cast(pl.UInt32)
+        )  # sort to prevent false results on equidistant neighbors
         .alias("nn")
     )
     res = res.select(pl.col("nn").list.eval(pl.element().sort().cast(pl.UInt32)))
+    assert_frame_equal(df2, res)
+
+
+@pytest.mark.parametrize(
+    "df, dist, k, res",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "id": [0, 1, 2, 3, 4, 5],
+                    "values": [0, 1, 2, 3, 4, 5],
+                    "a": [0.1, 1, 10, 100, float("nan"), 1.0],
+                    "b": [0.15, 1.5, 15, 150, 1.0, None],
+                    "c": [0.12, 1.2, 12, 120, 2.0, 2.0],
+                }
+            ),
+            "sql2",
+            2,
+            pl.Series(name="knn_avg", values=[1.5, 1.0, 0.5, 1.5, None, None]),
+        ),
+    ],
+)
+def test_knn_avg(df, dist, k, res):
+    to_test = df.select(
+        pds.query_knn_avg(
+            "a",
+            "b",
+            "c",
+            target="values",  # will be casted to f64
+            k=2,
+            dist="sql2",
+            weighted=False,
+        ).alias("knn_avg")
+    )
+
+    assert_series_equal(to_test["knn_avg"], res)
+
+
+@pytest.mark.parametrize(
+    "df, dist, k, max_bound, res",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "id": [0, 1, 2, 3],
+                    "a": [0.1, 1, 10, 100],
+                    "b": [0.15, 1.5, 15, 150],
+                    "c": [0.12, 1.2, 12, 120],
+                }
+            ),
+            "sql2",
+            2,
+            4.0,
+            pl.DataFrame({"friends": [[0, 1], [1, 0], [2], [3]]}),
+        ),
+    ],
+)
+def test_knn_ptwise_max_bound(df, dist, k, max_bound, res):
+    df2 = df.select(
+        pds.query_knn_ptwise(
+            "a",
+            "b",
+            "c",
+            index="id",
+            k=k,
+            dist="sql2",
+            max_bound=max_bound,
+        ).alias("friends")
+    )
+    res = res.select(pl.col("friends").list.eval(pl.element().cast(pl.UInt32)))
     assert_frame_equal(df2, res)
 
 
@@ -907,9 +1487,28 @@ def test_knn_ptwise_skip():
 @pytest.mark.parametrize(
     "df, x, dist, k, res",
     [
-        (  # Only the first row is the nearest neighbor to [0.5, 0.5, 0.5]
+        (  # Only the second is the nearest neighbor (l2 sense) to [0.5, 0.5, 0.5]
             pl.DataFrame(
-                {"id": [1, 2], "val1": [0.1, 0.2], "val2": [0.1, 0.3], "val3": [0.1, 0.4]}
+                {
+                    "id": [1, 2, 3],
+                    "val1": [0.1, 0.2, 5.0],
+                    "val2": [0.1, 0.3, 10.0],
+                    "val3": [0.1, 0.4, 11.0],
+                }
+            ),
+            [0.5, 0.5, 0.5],
+            "l2",
+            1,
+            pl.DataFrame({"id": [2]}),
+        ),
+        (  # If cosine dist, the first would be the nearest
+            pl.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "val1": [0.1, 0.2, 5.0],
+                    "val2": [0.1, 0.3, 10.0],
+                    "val3": [0.1, 0.4, 11.0],
+                }
             ),
             [0.5, 0.5, 0.5],
             "cosine",
@@ -918,11 +1517,36 @@ def test_knn_ptwise_skip():
         ),
     ],
 )
-def test_knn_filter(df, x, dist, k, res):
+def test_is_knn_from(df, x, dist, k, res):
     test = df.filter(
-        pds.query_knn_filter(pl.col("val1"), pl.col("val2"), pl.col("val3"), pt=x, dist=dist, k=k)
+        pds.is_knn_from(pl.col("val1"), pl.col("val2"), pl.col("val3"), pt=x, dist=dist, k=k)
     ).select(pl.col("id"))
 
+    assert_frame_equal(test, res)
+
+
+@pytest.mark.parametrize(
+    "df, dist, res",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "val1": [0.1, 0.2, 5.0],
+                    "val2": [0.1, 0.3, 10.0],
+                    "val3": [0.1, 0.4, 11.0],
+                }
+            ),
+            "sql2",
+            pl.DataFrame({"id": [[1, 2], [2, 1], [3]]}),
+        ),
+    ],
+)
+def test_radius_ptwise(df, dist, res):
+    test = df.select(
+        pds.query_radius_ptwise("val1", "val2", "val3", dist=dist, r=0.3, index="id").alias("id")
+    ).explode("id")  # compare after explode
+    res = res.explode("id").select(pl.col("id").cast(pl.UInt32))
     assert_frame_equal(test, res)
 
 
@@ -932,8 +1556,20 @@ def test_knn_filter(df, x, dist, k, res):
         (
             pl.DataFrame({"x": range(5), "y": range(5), "z": range(5)}),
             4,
-            "l2",
+            "sql2",
             pl.DataFrame({"nb_cnt": [2, 3, 3, 3, 2]}),  # A point is always its own neighbor
+        ),
+        (
+            pl.DataFrame(
+                {
+                    "x": [0.1, 0.2, 0.5, 0.9, 2.1],
+                    "y": [0.1, 0.3, 0.6, 1.1, 3.3],
+                    "z": [0.1, 0.4, 0.8, 1.2, 4.1],
+                }
+            ),
+            1.0,
+            "l1",
+            pl.DataFrame({"nb_cnt": [2, 3, 2, 1, 1]}),
         ),
     ],
 )
@@ -993,7 +1629,6 @@ def test_sample_entropy(s, res):
 @pytest.mark.parametrize(
     "s, m, r, scale, res",
     [
-        ([1], 2, 0.5, False, float("nan")),
         ([12, 13, 15, 16, 17] * 10, 2, 0.9, True, 0.282456191276673),
         ([1.4, -1.3, 1.7, -1.2], 2, 0.5, False, 0.0566330122651324),
         (
@@ -1014,12 +1649,19 @@ def test_sample_entropy(s, res):
         ([85, 80, 89] * 17, 2, 3, True, 0.0),
     ],
 )
-def test_apprximate_entropy(s, m, r, scale, res):
+def test_approximate_entropy(s, m, r, scale, res):
     df = pl.Series(name="a", values=s).to_frame()
+
     entropy = df.select(
         pds.query_approx_entropy("a", m=m, filtering_level=r, scale_by_std=scale)
     ).item(0, 0)
     assert np.isclose(entropy, res, atol=1e-12, equal_nan=True)
+
+
+def test_approximate_entropy_edge_cases():
+    df = pl.Series(name="a", values=[1]).to_frame()
+    res = df.select(pds.query_approx_entropy("a", m=2, filtering_level=0.1, scale_by_std=False))
+    assert np.isnan(res.item(0, 0))
 
 
 @pytest.mark.parametrize(
@@ -1065,37 +1707,40 @@ def test_psi_discrete(df, res):
     assert np.isclose(ans, res)
 
 
-@pytest.mark.parametrize(
-    "df, target, path, cost",
-    [
-        # It is easier to provide a frame that needs to be exploded by
-        (
-            pl.DataFrame(
-                {
-                    "id": range(5),
-                    "conn": [[1, 2, 3, 4], [2, 3], [4], [0, 1, 2], [1]],
-                    "cost": [[0.4, 0.3, 0.2, 0.1], [0.1, 1.0], [0.5], [0.1, 0.1, 0.1], [0.1]],
-                }
-            ).with_columns(
-                pl.col("id").cast(pl.UInt32), pl.col("conn").list.eval(pl.element().cast(pl.UInt32))
-            ),
-            1,
-            [[4, 1], [], [4, 1], [1], [1]],
-            [0.2, 0.0, 0.6, 0.1, 0.1],
-        ),
-    ],
-)
-def test_shortest_dist(df, target, path, cost):
-    df = df.explode([pl.col("conn"), pl.col("cost")])
+def test_query_similar_count():
+    def square_l2_distance(a: np.ndarray, b: np.ndarray):
+        diff = a - b
+        return diff.dot(diff)
 
-    res = (
-        df.select(pds.query_shortest_path("id", "conn", target=target, cost="cost").alias("path"))
-        .unnest("path")
-        .sort("id")
+    size = 1000
+    df = pds.frame(size=size).select(
+        pds.random(0.0, 1.0).alias("x1"),
     )
 
-    for p, ans in zip(res["path"], path):
-        assert list(p) == ans
+    query = np.random.random(size=3)
 
-    for c, ans in zip(res["cost"], cost):
-        assert c == ans
+    cnt = df.select(
+        pds.query_similar_count(query=query, target="x1", metric="sqzl2", threshold=0.1)
+    ).item(0, 0)
+
+    x1 = df["x1"].to_numpy()
+    actual_cnt = 0
+    z_normed_query = (query - np.mean(query)) / np.std(query, ddof=1)
+    for i in range(0, len(x1) - len(query) + 1):
+        sl = x1[i : i + len(query)]
+        znormed = (sl - np.mean(sl)) / np.std(sl, ddof=1)
+        actual_cnt += int((square_l2_distance(znormed, z_normed_query) < 0.1))
+
+    assert cnt == actual_cnt
+
+    cnt = df.select(
+        pds.query_similar_count(query=query, target="x1", metric="sql2", threshold=0.1)
+    ).item(0, 0)
+
+    x1 = df["x1"].to_numpy()
+    actual_cnt = 0
+    for i in range(0, len(x1) - len(query) + 1):
+        sl = x1[i : i + len(query)]
+        actual_cnt += int((square_l2_distance(sl, query) < 0.1))
+
+    assert cnt == actual_cnt

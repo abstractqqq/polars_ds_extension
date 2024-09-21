@@ -1,19 +1,10 @@
 from __future__ import annotations
+
 import polars as pl
 import math
-from .type_alias import (
-    Alternative,
-    str_to_expr,
-    StrOrExpr,
-    CorrMethod,
-    Noise,
-    RollingInterpolationMethod,
-)
-from typing import Optional, Union
-from polars.utils.udfs import _get_shared_lib_location
+from .type_alias import Alternative, str_to_expr, CorrMethod, Noise, QuantileMethod
+from typing import Union
 from ._utils import pl_plugin
-
-_lib = _get_shared_lib_location(__file__)
 
 __all__ = [
     "query_ttest_ind",
@@ -21,10 +12,8 @@ __all__ = [
     "query_ttest_ind_from_stats",
     "query_ks_2samp",
     "query_f_test",
+    "query_mann_whitney_u",
     "query_chi2",
-    "query_first_digit_cnt",
-    "query_c3_stats",
-    "query_cid_ce",
     "perturb",
     "jitter",
     "add_noise",
@@ -47,304 +36,14 @@ __all__ = [
     "weighted_cosine_sim",
     "xi_corr",
     "kendall_tau",
+    "bicor",
     "corr",
-    "StatsExt",
 ]
 
 
-@pl.api.register_expr_namespace("stats")
-class StatsExt:
-
-    """
-    This class contains tools for dealing with well-known statistical tests and random sampling inside Polars DataFrame.
-
-    Polars Namespace: stats
-
-    Example: pl.col("a").stats.rand_uniform()
-    """
-
-    def __init__(self, expr: pl.Expr):
-        self._expr: pl.Expr = expr
-
-    def rand_int(
-        self,
-        low: Union[int, pl.Expr] = 0,
-        high: Optional[Union[int, pl.Expr]] = 10,
-        seed: Optional[int] = None,
-        respect_null: bool = False,
-    ) -> pl.Expr:
-        """
-        Generates random integers uniformly from the range [low, high). Throws an error if low == high
-        or if low is None and high is None.
-
-        This treats self as the reference column.
-
-        Parameters
-        ----------
-        low
-            Lower end of random sample. If high is none, low will be set to 0.
-        high
-            Higher end of random sample. If this is None, then it will be replaced n_unique of reference.
-        seed
-            A seed to fix the random numbers. If none, use the system's entropy.
-        respect_null
-            If true, null in reference column will be null in the new column
-        """
-
-        if high is None:
-            lo = pl.lit(0, dtype=pl.Int32)
-            hi = self._expr.n_unique.cast(pl.UInt32)
-        else:
-            if isinstance(low, pl.Expr):
-                lo = low
-            elif isinstance(low, int):
-                lo = pl.lit(low, dtype=pl.Int32)
-            else:
-                raise ValueError("Input `low` must be expression or int.")
-
-            if isinstance(high, pl.Expr):
-                hi = high
-            elif isinstance(high, int):
-                hi = pl.lit(high, dtype=pl.Int32)
-            else:
-                raise ValueError("Input `high` must be expression or int.")
-
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_rand_int_w_ref",
-            args=[self._expr, lo, hi],
-            kwargs={"seed": seed, "respect_null": respect_null},
-            is_elementwise=True,
-        )
-
-    def rand_uniform(
-        self,
-        low: Optional[Union[float, pl.Expr]] = 0.0,
-        high: Optional[Union[float, pl.Expr]] = 1.0,
-        seed: Optional[int] = None,
-        respect_null: bool = False,
-    ) -> pl.Expr:
-        """
-        Creates random points from a uniform distribution within [low, high).
-        This will throw an error if low == high.
-
-        This treats self as the reference column.
-
-        Parameters
-        ----------
-        low
-            Lower end of random sample. If none, use reference col's min.
-        high
-            Higher end of random sample. If none, use reference col's max.
-        seed
-            A seed to fix the random numbers. If none, use the system's entropy.
-        respect_null
-            If true, null in reference column will be null in the new column
-        """
-        if isinstance(low, pl.Expr):
-            lo = low
-        elif isinstance(low, float):
-            lo = pl.lit(low, dtype=pl.Float64)
-        else:
-            lo = self._expr.min().cast(pl.Float64)
-
-        if isinstance(high, pl.Expr):
-            hi = high
-        elif isinstance(high, float):
-            hi = pl.lit(high, dtype=pl.Float64)
-        else:
-            hi = self._expr.max().cast(pl.Float64)
-
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_rand_uniform_w_ref",
-            args=[self._expr, lo, hi],
-            kwargs={"seed": seed, "respect_null": respect_null},
-            is_elementwise=True,
-        )
-
-    def rand_binomial(
-        self, n: int, p: float, seed: Optional[int] = None, respect_null: bool = False
-    ) -> pl.Expr:
-        """
-        Creates random points from a binomial distribution with n and p.
-
-        This treats self as the reference column.
-
-        Parameters
-        ----------
-        n
-            n in a binomial distribution
-        p
-            p in a binomial distribution
-        seed
-            A seed to fix the random numbers. If none, use the system's entropy.
-        respect_null
-            If true, null in reference column will be null in the new column
-        """
-        nn = pl.lit(n, dtype=pl.UInt32)
-        pp = pl.lit(p, dtype=pl.Float64)
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_rand_binomial_w_ref",
-            args=[self._expr, nn, pp],
-            kwargs={"seed": seed, "respect_null": respect_null},
-            is_elementwise=True,
-        )
-
-    def rand_exp(
-        self,
-        lambda_: Optional[Union[float, pl.Expr]] = None,
-        seed: Optional[int] = None,
-        respect_null: bool = False,
-    ) -> pl.Expr:
-        """
-        Creates random points from a exponential distribution with parameter `lambda_`.
-
-        This treats self as the reference column.
-
-        Parameters
-        ----------
-        lambda_
-            If none, it will be 1/reference col's mean. Note that if
-            lambda < 0 this will throw an error and lambda = 0 will only return infinity.
-        seed
-            A seed to fix the random numbers. If none, use the system's entropy.
-        respect_null
-            If true, null in reference column will be null in the new column
-        """
-        if isinstance(lambda_, pl.Expr):
-            la = lambda_
-        elif isinstance(lambda_, float):
-            la = pl.lit(lambda_, dtype=pl.Float64)
-        else:
-            la = 1.0 / self._expr.mean()
-
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_rand_exp_w_ref",
-            args=[self._expr, la],
-            kwargs={"seed": seed, "respect_null": respect_null},
-            is_elementwise=True,
-        )
-
-    def rand_normal(
-        self,
-        mean: Optional[Union[float, pl.Expr]] = None,
-        std: Optional[Union[float, pl.Expr]] = None,
-        seed: Optional[int] = None,
-        respect_null: bool = False,
-    ) -> pl.Expr:
-        """
-        Creates random points from a normal distribution with the given
-        mean and std.
-
-        This treats self as the reference column.
-
-        Parameters
-        ----------
-        mean
-            Mean of the normal distribution. If none, use reference col's mean.
-        std
-            Std of the normal distribution. If none, use reference col's std.
-        seed
-            A seed to fix the random numbers. If none, use the system's entropy.
-        respect_null
-            If true, null in reference column will be null in the new column
-        """
-        if isinstance(mean, pl.Expr):
-            me = mean
-        elif isinstance(mean, (float, int)):
-            me = pl.lit(mean, dtype=pl.Float64)
-        else:
-            me = self._expr.mean()
-
-        if isinstance(std, pl.Expr):
-            st = std
-        elif isinstance(std, (float, int)):
-            st = pl.lit(std, dtype=pl.Float64)
-        else:
-            st = self._expr.std()
-
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_rand_normal_w_ref",
-            args=[self._expr, me, st],
-            kwargs={"seed": seed, "respect_null": respect_null},
-            is_elementwise=True,
-        )
-
-    def rand_str(
-        self,
-        min_size: int = 1,
-        max_size: int = 10,
-        seed: Optional[int] = None,
-        respect_null: bool = False,
-    ) -> pl.Expr:
-        """
-        Creates self.len() many random strings with alpha-numerical values. Unfortunately that
-        means this currently only generates strings satisfying [0-9a-zA-Z]. The string's
-        length will also be uniformly.
-
-        This treats self as the reference column.
-
-        Parameters
-        ----------
-        min_size
-            The minimum length of the string to be generated. The length of the string will be
-            uniformly generated in [min_size, max_size), except when min_size = max_size, in
-            which case only fixed length strings will be generated.
-        max_size
-            The maximum length of the string to be generated.
-        seed
-            A seed to fix the random numbers. If none, use the system's entropy.
-        respect_null
-            If true, null in reference column will be null in the new column
-        """
-        if min_size <= 0 or (max_size < min_size):
-            raise ValueError("String size must be positive and max_size must be >= min_size.")
-
-        min_s = pl.lit(min_size, dtype=pl.UInt32)
-        max_s = pl.lit(max_size, dtype=pl.UInt32)
-
-        return pl_plugin(
-            lib=_lib,
-            symbol="pl_rand_str_w_ref",
-            args=[self._expr, min_s, max_s],
-            kwargs={"seed": seed, "respect_null": respect_null},
-            is_elementwise=True,
-        )
-
-
-# -------------------------------------------------------------------------------------------------------
-
-
-def query_first_digit_cnt(var: StrOrExpr) -> pl.Expr:
-    """
-    Finds the first digit count in the data. This is closely related to Benford's law,
-    which states that the the first digits (1-9) follow a certain distribution.
-
-    The output is a single element column of type list[u32]. The first value represents the count of 1s
-    that are the first digit, the second value represents the count of 2s that are the first digit, etc.
-
-    E.g. first digit of 12 is 1, of 0.0312 is 3. For integers, it is possible to have value = 0, and this
-    will not be counted as a first digit.
-
-    Reference
-    ---------
-    https://en.wikipedia.org/wiki/Benford%27s_law
-    """
-    return pl_plugin(
-        lib=_lib,
-        symbol="pl_benford_law",
-        args=[str_to_expr(var)],
-        returns_scalar=True,
-    )
-
-
 def query_ttest_ind(
-    var1: StrOrExpr,
-    var2: StrOrExpr,
+    var1: str | pl.Expr,
+    var2: str | pl.Expr,
     alternative: Alternative = "two-sided",
     equal_var: bool = False,
 ) -> pl.Expr:
@@ -380,7 +79,6 @@ def query_ttest_ind(
         v2 = y2.var()
         cnt = y1.count().cast(pl.UInt64)
         return pl_plugin(
-            lib=_lib,
             symbol="pl_ttest_2samp",
             args=[m1, m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
             returns_scalar=True,
@@ -395,7 +93,6 @@ def query_ttest_ind(
         n1 = s1.len().cast(pl.UInt64)
         n2 = s2.len().cast(pl.UInt64)
         return pl_plugin(
-            lib=_lib,
             symbol="pl_welch_t",
             args=[m1, m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
             returns_scalar=True,
@@ -403,7 +100,7 @@ def query_ttest_ind(
 
 
 def query_ttest_1samp(
-    var1: StrOrExpr, pop_mean: float, alternative: Alternative = "two-sided"
+    var1: str | pl.Expr, pop_mean: float, alternative: Alternative = "two-sided"
 ) -> pl.Expr:
     """
     Performs a standard 1 sample t test using reference column and expected mean. This function
@@ -426,7 +123,6 @@ def query_ttest_1samp(
     cnt = s1.len().cast(pl.UInt64)
     alt = pl.lit(alternative, dtype=pl.String)
     return pl_plugin(
-        lib=_lib,
         symbol="pl_ttest_1samp",
         args=[sm, pm, var, cnt, alt],
         returns_scalar=True,
@@ -434,7 +130,7 @@ def query_ttest_1samp(
 
 
 def query_ttest_ind_from_stats(
-    var1: StrOrExpr,
+    var1: str | pl.Expr,
     mean: float,
     var: float,
     cnt: int,
@@ -470,7 +166,6 @@ def query_ttest_ind_from_stats(
         v2 = pl.lit(var, pl.Float64)
         cnt = y.count().cast(pl.UInt64)
         return pl_plugin(
-            lib=_lib,
             symbol="pl_ttest_2samp",
             args=[m1, m2, v1, v2, cnt, pl.lit(alternative, dtype=pl.String)],
             returns_scalar=True,
@@ -484,7 +179,6 @@ def query_ttest_ind_from_stats(
         n1 = s1.len().cast(pl.UInt64)
         n2 = pl.lit(cnt, pl.UInt64)
         return pl_plugin(
-            lib=_lib,
             symbol="pl_welch_t",
             args=[m1, m2, v1, v2, n1, n2, pl.lit(alternative, dtype=pl.String)],
             returns_scalar=True,
@@ -492,8 +186,8 @@ def query_ttest_ind_from_stats(
 
 
 def query_ks_2samp(
-    var1: StrOrExpr,
-    var2: StrOrExpr,
+    var1: str | pl.Expr,
+    var2: str | pl.Expr,
     alpha: float = 0.05,
     is_binary: bool = False,
 ) -> pl.Expr:
@@ -502,11 +196,12 @@ def query_ks_2samp(
     sanitize data (only non-null finite values are used) before doing the computation. If
     is_binary is true, it will compare the statistics by comparing var2(var1=0) and var2(var1=1).
 
-    Note, this returns a stastics and a threshold value. The threshold value is not the p-value, but
+    Note, this returns a stastics and a threshold value. The threshold is not the p-value, but
     rather it is used in the following way: if the statistic is > the threshold value, then the null
-    hypothesis should be rejected. This is suitable only for large sameple sizes. See the reference.
+    hypothesis should be rejected. This is suitable only for large sameple sizes. See more details
+    in the reference.
 
-    If either var1 or var2 has less than 30 values, a ks stats of INFINITY will be returned.
+    If either var1 or var2 has less than 20 values, a ks stats of INFINITY will be returned.
 
     Parameters
     ----------
@@ -529,7 +224,6 @@ def query_ks_2samp(
         z1 = z.filter(y1 == 1).sort()
         z2 = z.filter(y1 == 0).sort()
         return pl_plugin(
-            lib=_lib,
             symbol="pl_ks_2samp",
             args=[z1, z2, pl.lit(alpha, pl.Float64)],
             returns_scalar=True,
@@ -538,14 +232,13 @@ def query_ks_2samp(
         z1 = y1.filter(y1.is_finite()).sort()
         z2 = y2.filter(y2.is_finite()).sort()
         return pl_plugin(
-            lib=_lib,
             symbol="pl_ks_2samp",
             args=[z1, z2, pl.lit(alpha, pl.Float64)],
             returns_scalar=True,
         )
 
 
-def query_f_test(*variables: StrOrExpr, group: StrOrExpr) -> pl.Expr:
+def query_f_test(*variables: str | pl.Expr, group: str | pl.Expr) -> pl.Expr:
     """
     Performs the ANOVA F-test.
 
@@ -561,12 +254,12 @@ def query_f_test(*variables: StrOrExpr, group: StrOrExpr) -> pl.Expr:
     if len(vars_) <= 1:
         raise ValueError("No input feature column to run F-test on.")
     elif len(vars_) == 2:
-        return pl_plugin(lib=_lib, symbol="pl_f_test", args=vars_, returns_scalar=True)
+        return pl_plugin(symbol="pl_f_test", args=vars_, returns_scalar=True)
     else:
-        return pl_plugin(lib=_lib, symbol="pl_f_test", args=vars_, changes_length=True)
+        return pl_plugin(symbol="pl_f_test", args=vars_, changes_length=True)
 
 
-def query_chi2(var1: StrOrExpr, var2: StrOrExpr) -> pl.Expr:
+def query_chi2(var1: str | pl.Expr, var2: str | pl.Expr) -> pl.Expr:
     """
     Computes the Chi Squared statistic and p value between two categorical values.
 
@@ -582,64 +275,61 @@ def query_chi2(var1: StrOrExpr, var2: StrOrExpr) -> pl.Expr:
         Either the name of the column or a Polars expression
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_chi2",
         args=[str_to_expr(var1), str_to_expr(var2)],
         returns_scalar=True,
     )
 
 
-def query_c3_stats(x: StrOrExpr, lag: int) -> pl.Expr:
+def query_mann_whitney_u(
+    var1: str | pl.Expr,
+    var2: str | pl.Expr,
+    alternative: Alternative = "two-sided",
+) -> pl.Expr:
     """
-    Measure of non-linearity in the time series using c3 statistics.
+    Computes the Mann-Whitney U statistic and the p-value. Note: this function will sanitize data (drop
+    all non-finite values) before computing the statistic. This implementation follows method 2 in reference.
+    This always applies tie correction, which may slow down computation by a little.
+
+    WIP. PVALUE NOT DONE YET.
 
     Parameters
     ----------
-    x : pl.Expr
+    var1 : pl.Expr
         Either the name of the column or a Polars expression
-    lag : int
-        The lag that should be used in the calculation of the feature.
+    var2 : pl.Expr
+        Either the name of the column or a Polars expression
+    alternative: str
+        The alternative for the test. `two-sided`, `greater` or `less`
 
     Reference
     ---------
-    https://arxiv.org/pdf/chao-dyn/9909043
+    https://en.wikipedia.org/wiki/Mann%E2%80%93Whitney_U_test
     """
-    two_lags = 2 * lag
-    xx = str_to_expr(x)
-    return ((xx.mul(xx.shift(lag)).mul(xx.shift(two_lags))).sum()).truediv(xx.len() - two_lags)
+    x = str_to_expr(var1)
+    y = str_to_expr(var2)
+    xx = x.filter(x.is_finite())
+    yy = y.filter(y.is_finite())
+    n1 = xx.len().cast(pl.Float64)
+    n2 = yy.len().cast(pl.Float64)
 
+    ranks = (xx.append(yy)).rank()
 
-def query_cid_ce(x: StrOrExpr, normalize: bool = False) -> pl.Expr:
-    """
-    Estimates the time series complexity.
+    u1 = ranks.slice(0, length=xx.len()).sum() - (n1 * (n1 + 1)) / 2
+    u2 = (n1 * n2) - u1
 
-    Parameters
-    ----------
-    x : pl.Expr
-        Either the name of the column or a Polars expression
-    normalize : bool, optional
-        If True, z-normalizes the time-series before computing the feature.
-        Default is False.
-
-    Reference
-    ---------
-    https://www.cs.ucr.edu/~eamonn/Complexity-Invariant%20Distance%20Measure.pdf
-    """
-    xx = str_to_expr(x)
-    if normalize:
-        y = (xx - xx.mean()) / xx.std()
-    else:
-        y = xx
-
-    z = y - y.shift(-1)
-    return z.dot(z).sqrt()
+    mean = (n1 * n2) / 2
+    return pl_plugin(
+        symbol="pl_mann_whitney_u",
+        args=[u1, u2, mean, ranks.sort(), pl.lit(alternative, dtype=pl.String)],
+    )
 
 
 def winsorize(
-    x: StrOrExpr,
+    x: str | pl.Expr,
     lower: float = 0.05,
     upper: float = 0.95,
-    method: RollingInterpolationMethod = "nearest",
+    method: QuantileMethod = "nearest",
 ) -> pl.Expr:
     """
     Winsorize the data by clipping by percentiles at the lower and upper ends.
@@ -666,7 +356,7 @@ def winsorize(
     )
 
 
-def perturb(x: StrOrExpr, epsilon: float, positive: bool = False):
+def perturb(x: str | pl.Expr, epsilon: float, positive: bool = False):
     """
     Perturb the var by a small amount. This only applies to float columns.
 
@@ -693,14 +383,13 @@ def perturb(x: StrOrExpr, epsilon: float, positive: bool = False):
         hi = pl.lit(half, dtype=pl.Float64)
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_perturb",
         args=[str_to_expr(x), lo, hi],
         is_elementwise=True,
     )
 
 
-def jitter(x: StrOrExpr, std: Union[float, pl.Expr] = 1.0) -> pl.Expr:
+def jitter(x: str | pl.Expr, std: float | pl.Expr = 1.0) -> pl.Expr:
     """
     Adds a Gaussian noise of N(0, std) to the column.
 
@@ -722,14 +411,13 @@ def jitter(x: StrOrExpr, std: Union[float, pl.Expr] = 1.0) -> pl.Expr:
         s = std.cast(pl.Float64)
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_jitter",
         args=[str_to_expr(x), s],
         is_elementwise=True,
     )
 
 
-def add_noise(x: StrOrExpr, noise_type: Noise = "gaussian", **kwargs) -> pl.Expr:
+def add_noise(x: str | pl.Expr, noise_type: Noise = "gaussian", **kwargs) -> pl.Expr:
     """
     Adds some noise to the column.
 
@@ -751,7 +439,7 @@ def add_noise(x: StrOrExpr, noise_type: Noise = "gaussian", **kwargs) -> pl.Expr
         raise ValueError(f"The noise_type {noise_type} is not currently supported.")
 
 
-def normal_test(var: StrOrExpr) -> pl.Expr:
+def normal_test(var: str | pl.Expr) -> pl.Expr:
     """
     Perform a normality test which is based on D'Agostino and Pearson's test
     that combines skew and kurtosis to produce an omnibus test of normality.
@@ -775,7 +463,6 @@ def normal_test(var: StrOrExpr) -> pl.Expr:
     # Pearson Kurtosis, see here: https://en.wikipedia.org/wiki/D%27Agostino%27s_K-squared_test
     kur = valid.kurtosis(fisher=False)
     return pl_plugin(
-        lib=_lib,
         symbol="pl_normal_test",
         args=[skew, kur, valid.count().cast(pl.UInt32)],
         returns_scalar=True,
@@ -785,7 +472,7 @@ def normal_test(var: StrOrExpr) -> pl.Expr:
 def random(
     lower: Union[pl.Expr, float] = 0.0,
     upper: Union[pl.Expr, float] = 1.0,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> pl.Expr:
     """
     Generate random numbers in [lower, upper)
@@ -802,14 +489,13 @@ def random(
     lo = pl.lit(lower, pl.Float64) if isinstance(lower, float) else lower
     up = pl.lit(upper, pl.Float64) if isinstance(upper, float) else upper
     return pl_plugin(
-        lib=_lib,
         symbol="pl_random",
         args=[pl.len(), lo, up, pl.lit(seed, pl.UInt64)],
         is_elementwise=True,
     )
 
 
-def random_null(var: StrOrExpr, pct: float, seed: Optional[int] = None) -> pl.Expr:
+def random_null(var: str | pl.Expr, pct: float, seed: int | None = None) -> pl.Expr:
     """
     Creates random null values in var. If var contains nulls originally, they
     will stay null.
@@ -833,7 +519,7 @@ def random_null(var: StrOrExpr, pct: float, seed: Optional[int] = None) -> pl.Ex
 
 
 def random_int(
-    lower: Union[int, pl.Expr], upper: Union[int, pl.Expr], seed: Optional[int] = None
+    lower: Union[int, pl.Expr], upper: Union[int, pl.Expr], seed: int | None = None
 ) -> pl.Expr:
     """
     Generates random integer between lower and upper.
@@ -853,7 +539,6 @@ def random_int(
     lo = pl.lit(lower, pl.Int32) if isinstance(lower, int) else lower.cast(pl.Int32)
     hi = pl.lit(upper, pl.Int32) if isinstance(upper, int) else upper.cast(pl.Int32)
     return pl_plugin(
-        lib=_lib,
         symbol="pl_rand_int",
         args=[
             pl.len().cast(pl.UInt32),
@@ -865,9 +550,10 @@ def random_int(
     )
 
 
-def random_str(min_size: int, max_size: int) -> pl.Expr:
+def random_str(min_size: int, max_size: int, seed: int | None = None) -> pl.Expr:
     """
-    Generates random strings of length between min_size and max_size.
+    Generates random strings of length between min_size and max_size. The characters are
+    uniformly distributed over ASCII letters and numbers: a-z, A-Z and 0-9.
 
     Parameters
     ----------
@@ -883,19 +569,18 @@ def random_str(min_size: int, max_size: int) -> pl.Expr:
         mi, ma = max_size, min_size
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_rand_str",
         args=[
             pl.len().cast(pl.UInt32),
             pl.lit(mi, pl.UInt32),
             pl.lit(ma, pl.UInt32),
-            pl.lit(42, pl.UInt64),
+            pl.lit(seed, pl.UInt64),
         ],
         is_elementwise=True,
     )
 
 
-def random_binomial(n: int, p: int, seed: Optional[int] = None) -> pl.Expr:
+def random_binomial(n: int, p: int, seed: int | None = None) -> pl.Expr:
     """
     Generates random integer following a binomial distribution.
 
@@ -912,7 +597,6 @@ def random_binomial(n: int, p: int, seed: Optional[int] = None) -> pl.Expr:
         raise ValueError("Input `n` must be > 1.")
 
     return pl_plugin(
-        lib=_lib,
         symbol="pl_rand_binomial",
         args=[
             pl.len().cast(pl.UInt32),
@@ -924,7 +608,7 @@ def random_binomial(n: int, p: int, seed: Optional[int] = None) -> pl.Expr:
     )
 
 
-def random_exp(lambda_: float, seed: Optional[int] = None) -> pl.Expr:
+def random_exp(lambda_: float, seed: int | None = None) -> pl.Expr:
     """
     Generates random numbers following an exponential distribution.
 
@@ -936,7 +620,6 @@ def random_exp(lambda_: float, seed: Optional[int] = None) -> pl.Expr:
         The random seed. None means no seed.
     """
     return pl_plugin(
-        lib=_lib,
         symbol="pl_rand_exp",
         args=[pl.len().cast(pl.UInt32), pl.lit(lambda_, pl.Float64), pl.lit(seed, pl.UInt64)],
         is_elementwise=True,
@@ -944,7 +627,7 @@ def random_exp(lambda_: float, seed: Optional[int] = None) -> pl.Expr:
 
 
 def random_normal(
-    mean: Union[pl.Expr, float], std: Union[pl.Expr, float], seed: Optional[int] = None
+    mean: Union[pl.Expr, float], std: Union[pl.Expr, float], seed: int | None = None
 ) -> pl.Expr:
     """
     Generates random number following a normal distribution.
@@ -961,14 +644,13 @@ def random_normal(
     m = pl.lit(mean, pl.Float64) if isinstance(mean, float) else mean
     s = pl.lit(std, pl.Float64) if isinstance(std, float) else std
     return pl_plugin(
-        lib=_lib,
         symbol="pl_rand_normal",
         args=[pl.len().cast(pl.UInt32), m, s, pl.lit(seed, pl.UInt64)],
         is_elementwise=True,
     )
 
 
-def hmean(var: StrOrExpr) -> pl.Expr:
+def hmean(var: str | pl.Expr) -> pl.Expr:
     """
     Computes the harmonic mean.
 
@@ -981,7 +663,7 @@ def hmean(var: StrOrExpr) -> pl.Expr:
     return x.count() / (1.0 / x).sum()
 
 
-def gmean(var: StrOrExpr) -> pl.Expr:
+def gmean(var: str | pl.Expr) -> pl.Expr:
     """
     Computes the geometric mean.
 
@@ -993,7 +675,9 @@ def gmean(var: StrOrExpr) -> pl.Expr:
     return str_to_expr(var).ln().mean().exp()
 
 
-def weighted_gmean(var: StrOrExpr, weights: StrOrExpr, is_normalized: bool = False) -> pl.Expr:
+def weighted_gmean(
+    var: str | pl.Expr, weights: str | pl.Expr, is_normalized: bool = False
+) -> pl.Expr:
     """
     Computes the weighted geometric mean.
 
@@ -1013,7 +697,9 @@ def weighted_gmean(var: StrOrExpr, weights: StrOrExpr, is_normalized: bool = Fal
         return (x.ln().dot(w) / (w.sum())).exp()
 
 
-def weighted_mean(var: StrOrExpr, weights: StrOrExpr, is_normalized: bool = False) -> pl.Expr:
+def weighted_mean(
+    var: str | pl.Expr, weights: str | pl.Expr, is_normalized: bool = False
+) -> pl.Expr:
     """
     Computes the weighted mean, where weights is an expr represeting
     a weight column. The weights column must have the same length as var.
@@ -1036,7 +722,7 @@ def weighted_mean(var: StrOrExpr, weights: StrOrExpr, is_normalized: bool = Fals
     return out / w.sum()
 
 
-def weighted_var(var: StrOrExpr, weights: StrOrExpr, freq_weights: bool = False) -> pl.Expr:
+def weighted_var(var: str | pl.Expr, weights: str | pl.Expr, freq_weights: bool = False) -> pl.Expr:
     """
     Computes the weighted variance. The weights column must have the same length as var.
 
@@ -1065,7 +751,7 @@ def weighted_var(var: StrOrExpr, weights: StrOrExpr, freq_weights: bool = False)
     return summand / w.sum()
 
 
-def weighted_cov(x: StrOrExpr, y: StrOrExpr, weights: Union[pl.Expr, float]) -> pl.Expr:
+def weighted_cov(x: str | pl.Expr, y: str | pl.Expr, weights: Union[pl.Expr, float]) -> pl.Expr:
     """
     Computes the weighted covariance between x and y. The weights column must have the same
     length as both x an y.
@@ -1090,7 +776,7 @@ def weighted_cov(x: StrOrExpr, y: StrOrExpr, weights: Union[pl.Expr, float]) -> 
     return w.dot((xx - wx) * (yy - wy)) / w.sum()
 
 
-def weighted_corr(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Expr:
+def weighted_corr(x: str | pl.Expr, y: str | pl.Expr, weights: str | pl.Expr) -> pl.Expr:
     """
     Computes the weighted correlation between x and y. The weights column must have the same
     length as both x an y.
@@ -1118,9 +804,9 @@ def weighted_corr(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Expr:
     return numerator * w.sum() / (sxx * syy).sqrt()
 
 
-def cosine_sim(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
+def cosine_sim(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
     """
-    Column-wise cosine similarity
+    Column-and-column cosine similarity
 
     Parameters
     ----------
@@ -1135,7 +821,7 @@ def cosine_sim(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
     return xx.dot(yy) / (x2 * y2).sqrt()
 
 
-def weighted_cosine_sim(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Expr:
+def weighted_cosine_sim(x: str | pl.Expr, y: str | pl.Expr, weights: str | pl.Expr) -> pl.Expr:
     """
     Computes the weighted cosine similarity between x and y (column-wise). The weights column
     must have the same length as both x an y.
@@ -1162,7 +848,7 @@ def weighted_cosine_sim(x: StrOrExpr, y: StrOrExpr, weights: StrOrExpr) -> pl.Ex
     return (w * xx).dot(yy) / (wx2 * wy2).sqrt()
 
 
-def kendall_tau(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
+def kendall_tau(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
     """
     Computes Kendall's Tau (b) correlation between x and y. This automatically drops rows with null.
 
@@ -1179,15 +865,52 @@ def kendall_tau(x: StrOrExpr, y: StrOrExpr) -> pl.Expr:
     """
     xx, yy = str_to_expr(x).fill_nan(None), str_to_expr(y).fill_nan(None)
     return pl_plugin(
-        lib=_lib,
         symbol="pl_kendall_tau",
         args=[xx.rank(method="min"), yy.rank(method="min")],
         returns_scalar=True,
     )
 
 
+def bicor(x: str | pl.Expr, y: str | pl.Expr, c: float = 9.0) -> pl.Expr:
+    """
+    Computes the Biweight Midcorrelation between x and y. This is commonly referred to as bicor.
+
+    Performance hint: this expression benefits from .lazy() a lot.
+
+    Parameters
+    ----------
+    x
+        The first variable
+    y
+        The second variable
+    c
+        Biweight tuning constant which is typically 9
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Biweight_midcorrelation
+    """
+    a, b = str_to_expr(x), str_to_expr(y)
+    med_a = a.median()
+    med_b = b.median()
+
+    diff_a = a - med_a
+    diff_b = b - med_b
+
+    ua = diff_a / (c * diff_a.abs().median())
+    ub = diff_b / (c * diff_b.abs().median())
+
+    w_a = (1 - ua.pow(2)).pow(2) * ((1 - ua.abs()) > 0).cast(pl.Float64)
+    w_b = (1 - ub.pow(2)).pow(2) * ((1 - ub.abs()) > 0).cast(pl.Float64)
+
+    aa = diff_a * w_a
+    bb = diff_b * w_b
+
+    return aa.dot(bb) / (aa.dot(aa) * (bb.dot(bb))).sqrt()
+
+
 def xi_corr(
-    x: StrOrExpr, y: StrOrExpr, seed: Optional[int] = None, return_p: bool = False
+    x: str | pl.Expr, y: str | pl.Expr, seed: int | None = None, return_p: bool = False
 ) -> pl.Expr:
     """
     Computes the ξ(xi) correlation developed by SOURAV CHATTERJEE in the paper in the reference.
@@ -1218,21 +941,19 @@ def xi_corr(
     ]
     if return_p:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_xi_corr_w_p",
             args=args,
             returns_scalar=True,
         )
     else:
         return pl_plugin(
-            lib=_lib,
             symbol="pl_xi_corr",
             args=args,
             returns_scalar=True,
         )
 
 
-def corr(x: StrOrExpr, y: StrOrExpr, method: CorrMethod = "pearson") -> pl.Expr:
+def corr(x: str | pl.Expr, y: str | pl.Expr, method: CorrMethod = "pearson") -> pl.Expr:
     """
     A convenience function for calling different types of correlations. Pearson and Spearman correlation
     runs on Polar's native expression, while Kendall and Xi correlation runs on code in this package.
@@ -1244,7 +965,7 @@ def corr(x: StrOrExpr, y: StrOrExpr, method: CorrMethod = "pearson") -> pl.Expr:
     y
         The second variable
     method
-        One of ["pearson", "spearman", "xi", "kendall"]
+        One of ["pearson", "spearman", "xi", "kendall", "bicor"]
     """
     if method in ["pearson", "spearman"]:
         return pl.corr(x, y, method=method)
@@ -1252,5 +973,7 @@ def corr(x: StrOrExpr, y: StrOrExpr, method: CorrMethod = "pearson") -> pl.Expr:
         return xi_corr(x, y)
     elif method == "kendall":
         return kendall_tau(x, y)
+    elif method == "bicor":
+        return bicor(x, y)
     else:
         raise ValueError(f"Unknown correlation method: {method}.")

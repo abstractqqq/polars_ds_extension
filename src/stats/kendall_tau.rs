@@ -19,7 +19,7 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
         return Ok(Series::from_vec(name, vec![f64::NAN]));
     }
 
-    let n_pairs = ((n * (n - 1)) / 2) as i64;
+    let n_pairs = ((n * (n - 1)) >> 1) as i64;
 
     let x = df.drop_in_place("x").unwrap();
     let y = df.drop_in_place("y").unwrap();

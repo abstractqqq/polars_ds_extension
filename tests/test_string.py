@@ -428,3 +428,31 @@ def test_tversky(df, size, alpha, beta, res):
         .collect(),
         res,
     )
+
+
+@pytest.mark.parametrize(
+    "df, vocab, k, result",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "a": ["AAAA", "AAAB", "AABB", "AACC", "AADD"],
+                }
+            ),
+            ["AAAD", "ACCC", "BBBB", "ABBB", "XXXX", "ADDA"],
+            1,
+            ["AAAD", "AAAD", "ABBB", "ACCC", "AAAD"],
+        ),
+    ],
+)
+def test_knn_str_lv(df, vocab, k, result):
+    res = df.select(
+        pds.query_similar_words(
+            "a",
+            vocab=vocab,
+            k=k,
+            metric="lv",
+        ).alias("result")
+    )
+    res = res["result"].to_list()
+    assert res == result

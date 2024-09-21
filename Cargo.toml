@@ -1,6 +1,6 @@
 [package]
 name = "polars_ds"
-version = "0.4.6"
+version = "0.6.0"
 edition = "2021"
 
 [lib]
@@ -11,8 +11,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = {version = "*", features = ["abi3-py38", "extension-module"]}
-pyo3-polars = {version = "0.14", features = ["derive"]}
-polars = {version = "0.40", features = ["performant", "lazy", "parquet", "dtype-array", "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", "cum_agg", "round_series", "nightly"]}
+pyo3-polars = {version = "0.15", features = ["derive"]}
+polars = {version = "0.41.3", features = ["performant", "cse", "lazy", "parquet", "dtype-array", "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", "cum_agg", "round_series", "nightly"]}
 num = "0.4.1"
 faer = {version = "0.19", features = ["nightly"]}
 faer-ext = {version = "0.2.0", features = ["ndarray"]}
@@ -23,24 +23,23 @@ hashbrown = {version = "0.14.2", features=["nightly"]}
 itertools = "0.12.0"
 rand = {version = "0.8.5"}
 rand_distr = "0.4.3"
+rustfft = "6.2.0"
 realfft = "3.3.0"
 rapidfuzz = "0.5.0"
 inflections = "1.1.1"
-kdtree = {git = "https://github.com/mrhooray/kdtree-rs.git"}
-petgraph = "0.6.4"
 ordered-float = "4.2.0"
 approx = "*"
 ahash = ">=0.8.5"
 unicode-normalization = "0.1.23"
+numpy = "0.21.0"
+cfavml = {version = "0.3.0", features=["nightly"]}
+rayon = "1.10.0"
 
-[target.'cfg(any(not(target_os = "linux"), use_mimalloc))'.dependencies]
-mimalloc = { version = "0.1", default-features = false }
- 
+# Remove this part once I update polars dependency
 [target.'cfg(target_os = "linux")'.dependencies]
 jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }
-
 
 [profile.release]
 codegen-units = 1
 strip = "symbols" 
-lto = "fat"
+# lto = "fat"

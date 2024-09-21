@@ -6,99 +6,15 @@ Read the [Docs](https://polars-ds-extension.readthedocs.io/en/latest/).
 
 # The Project
 
-The goal of the project is to **reduce dependencies**, **improve code organization**, **simplify data pipelines** and overall **faciliate analysis of various kinds of tabular data** that a data scientist may encounter. It is a package built around your favorite **Polars dataframe**. Here are some of the main areas of data science that is covered by the package:
+PDS is a modern take on data science and traditional tabular machine learning. It is dataframe-centric in design, and provides parallelism for free via **Polars**. It offers Polars syntax that works both in normal and aggregation contexts, and provides these conveniences to the end user without any additional dependency. It includes the most common functions from NumPy, SciPy, edit distances, KNN-related queries, EDA tools, feature engineering queries, etc. Yes, it only depends on Polars (unless you want to use the plotting functionalities and want to interop with NumPy). Most of the code is rewritten in **Rust** and is on par or even faster than existing functions in SciPy and Scikit-learn. The following are some examples:
 
-1. Well-known numerical transform/quantities. E.g. fft, conditional entropy, singular values, basic linear regression related quantities, population stability index, weight of evidence, column-wise/row-wise jaccard similarity etc.
-
-2. Statistics. Basic tests such as the t-test, f-test, KS statistics. Miscallaneous functions like weighted correlation, Xi-correlation. In-dataframe random column generations, etc.
-
-3. Metrics. ML metrics for common model performance reporting. E.g ROC AUC for binary/multiclass classification, logloss, r2, MAPE, etc.
-
-4. KNN-related queries. E.g. filter to k-nearest neighbors to point, find indices of all neighbors within a certain distance, etc.
-
-5. String metrics such as Levenshtein distance, Damure Levenshtein distance, other string distances, snowball stemming (English only), string Jaccard similarity, etc.
-
-6. Diagnosis. This modules contains the DIA (Data Inspection Assitant) class, which can help you profile your data, visualize data in lower dimensions, detect functional dependencies, detect other common data quality issues like null rate or high correlation. (Need plotly, great_tables, graphviz as optional dependencies.)
-
-7. Sample. Traditional dataset sampling. No time series sampling yet. This module provides functionalities such as stratified downsample, volume neutral random sampling, etc.
-
-8. Polars Native ML Pipeline. See examples [here](./examples/pipeline.ipynb). The goal is to have a Polars native pipeline that can replace Scikit-learn's pipeline and provides all the benefits of Polars. All the basic transforms in Scikit-learn and categorical-encoders are planned. This can be super powerful together with Polars's expressions. (Basically, once you have expressions, you don't need to write custom transforms like col(A)/col(B), log transform, sqrt transform, linear/polynomial transforms, etc.) Polar's expressions also offer JSON serialization in higher versions so this can also be desirable for use in the cloud. (This part is under active development.)
-
-Some other areas that currently exist, but is de-prioritized:
-
-1. Complex number related queries.
-
-2. Graph related queries. (The various representations of "Graphs" in tabular dataframe makes it hard to have consistent backend handling of such data.)
-
-# But why? Why not use Sklearn? SciPy? NumPy?
-
-The goal of the package is to **facilitate** data processes and analysis that go beyond standard SQL queries, and to **reduce** the number of dependencies in your project. It incorproates parts of SciPy, NumPy, Scikit-learn, and NLP (NLTK), etc., and treats them as Polars queries so that they can be run in parallel, in group_by contexts, all for almost no extra engineering effort.
-
-Let's see an example. Say we want to generate a model performance report. In our data, we have segments. We are not only interested in the ROC AUC of our model on the entire dataset, but we are also interested in the model's performance on different segments.
+Parallel evaluations of classification metrics on segments
 
 ```python
 import polars as pl
 import polars_ds as pds
 
-size = 100_000
-df = pl.DataFrame({
-    "a": np.random.random(size = size)
-    , "b": np.random.random(size = size)
-    , "x1" : range(size)
-    , "x2" : range(size, size + size)
-    , "y": range(-size, 0)
-    , "actual": np.round(np.random.random(size=size)).astype(np.int32)
-    , "predicted": np.random.random(size=size)
-    , "segments":["a"] * (size//2 + 100) + ["b"] * (size//2 - 100)
-})
-print(df.head())
-
-shape: (5, 8)
-┌──────────┬──────────┬─────┬────────┬─────────┬────────┬───────────┬──────────┐
-│ a        ┆ b        ┆ x1  ┆ x2     ┆ y       ┆ actual ┆ predicted ┆ segments │
-│ ---      ┆ ---      ┆ --- ┆ ---    ┆ ---     ┆ ---    ┆ ---       ┆ ---      │
-│ f64      ┆ f64      ┆ i64 ┆ i64    ┆ i64     ┆ i32    ┆ f64       ┆ str      │
-╞══════════╪══════════╪═════╪════════╪═════════╪════════╪═══════════╪══════════╡
-│ 0.19483  ┆ 0.457516 ┆ 0   ┆ 100000 ┆ -100000 ┆ 0      ┆ 0.929007  ┆ a        │
-│ 0.396265 ┆ 0.833535 ┆ 1   ┆ 100001 ┆ -99999  ┆ 1      ┆ 0.103915  ┆ a        │
-│ 0.800558 ┆ 0.030437 ┆ 2   ┆ 100002 ┆ -99998  ┆ 1      ┆ 0.558918  ┆ a        │
-│ 0.608023 ┆ 0.411389 ┆ 3   ┆ 100003 ┆ -99997  ┆ 1      ┆ 0.883684  ┆ a        │
-│ 0.847527 ┆ 0.506504 ┆ 4   ┆ 100004 ┆ -99996  ┆ 1      ┆ 0.070269  ┆ a        │
-└──────────┴──────────┴─────┴────────┴─────────┴────────┴───────────┴──────────┘
-```
-
-Traditionally, using the Pandas + Sklearn stack, we would do:
-
-```python
-import pandas as pd
-from sklearn.metrics import roc_auc_score
-
-df_pd = df.to_pandas()
-
-segments = []
-rocaucs = []
-
-for (segment, subdf) in df_pd.groupby("segments"):
-    segments.append(segment)
-    rocaucs.append(
-        roc_auc_score(subdf["actual"], subdf["predicted"])
-    )
-
-report = pd.DataFrame({
-    "segments": segments,
-    "roc_auc": rocaucs
-})
-print(report)
-
-  segments   roc_auc
-0        a  0.497745
-1        b  0.498801
-```
-
-This is ok, but not great, because (1) we are running for loops in Python, which tends to be slow. (2) We are writing more Python code, which leaves more room for errors in bigger projects. (3) The code is not very intuitive for beginners. Using Polars + Polars ds, one can do the following:
-
-```python
-df.lazy().group_by("segments").agg(
+df.lazy().group_by("segments").agg( 
     pds.query_roc_auc("actual", "predicted").alias("roc_auc"),
     pds.query_log_loss("actual", "predicted").alias("log_loss"),
 ).collect()
@@ -114,11 +30,157 @@ shape: (2, 3)
 └──────────┴──────────┴──────────┘
 ```
 
-Notice a few things: (1) Computing ROC AUC on different segments is equivalent to an aggregation on segments! It is a concept everyone who knows SQL (aka everybody who works with data) will be familiar with! (2) There is no Python code. The extension is written in pure Rust and all complexities are hidden away from the end user. (3) Because Polars provides parallel execution for free, we can compute ROC AUC and log loss simultaneously on each segment! (In Pandas, one can do something like this in aggregations but is soooo much harder to write and way more confusing to reason about.)
+Get all neighbors within radius r, call them best friends, and count the number
 
-The end result is simpler, more intuitive code that is also easier to reason about, and faster execution time. Because of Polars's extension (plugin) system, we are now blessed with both:
+```python
+df.select(
+    pl.col("id"),
+    pds.query_radius_ptwise(
+        pl.col("var1"), pl.col("var2"), pl.col("var3"), # Columns used as the coordinates in 3d space
+        index = pl.col("id"),
+        r = 0.1, 
+        dist = "sql2", # squared l2
+        parallel = True
+    ).alias("best friends"),
+).with_columns( # -1 to remove the point itself
+    (pl.col("best friends").list.len() - 1).alias("best friends count")
+).head()
 
-**Performance and elegance - something that is quite rare in the Python world.**
+shape: (5, 3)
+┌─────┬───────────────────┬────────────────────┐
+│ id  ┆ best friends      ┆ best friends count │
+│ --- ┆ ---               ┆ ---                │
+│ u32 ┆ list[u32]         ┆ u32                │
+╞═════╪═══════════════════╪════════════════════╡
+│ 0   ┆ [0, 811, … 1435]  ┆ 152                │
+│ 1   ┆ [1, 953, … 1723]  ┆ 159                │
+│ 2   ┆ [2, 355, … 835]   ┆ 243                │
+│ 3   ┆ [3, 102, … 1129]  ┆ 110                │
+│ 4   ┆ [4, 1280, … 1543] ┆ 226                │
+└─────┴───────────────────┴────────────────────┘
+```
+
+Ridge Regression on Categories
+
+```Python
+
+df = pds.random_data(size=5_000, n_cols=0).select(
+    pds.random(0.0, 1.0).alias("x1"),
+    pds.random(0.0, 1.0).alias("x2"),
+    pds.random(0.0, 1.0).alias("x3"),
+    pds.random_int(0, 3).alias("categories")
+).with_columns(
+    y = pl.col("x1") * 0.5 + pl.col("x2") * 0.25 - pl.col("x3") * 0.15 + pds.random() * 0.0001
+)
+
+df.group_by("categories").agg(
+    pds.query_lstsq(
+        "x1", "x2", "x3", 
+        target = "y",
+        method = "l2",
+        l2_reg = 0.05,
+        add_bias = False
+    ).alias("coeffs")
+) 
+
+shape: (3, 2)
+┌────────────┬─────────────────────────────────┐
+│ categories ┆ coeffs                          │
+│ ---        ┆ ---                             │
+│ i32        ┆ list[f64]                       │
+╞════════════╪═════════════════════════════════╡
+│ 0          ┆ [0.499912, 0.250005, -0.149846… │
+│ 1          ┆ [0.499922, 0.250004, -0.149856… │
+│ 2          ┆ [0.499923, 0.250004, -0.149855… │
+└────────────┴─────────────────────────────────┘
+```
+
+Various String Edit distances
+
+```Python
+df.select( # Column "word", compared to string in pl.lit(). It also supports column vs column comparison
+    pds.str_leven("word", pl.lit("asasasa"), return_sim=True).alias("Levenshtein"),
+    pds.str_osa("word", pl.lit("apples"), return_sim=True).alias("Optimal String Alignment"),
+    pds.str_jw("word", pl.lit("apples")).alias("Jaro-Winkler"),
+)
+```
+
+In-dataframe statistical tests
+
+```Python
+df.group_by("market_id").agg(
+    pds.query_ttest_ind("var1", "var2", equal_var=False).alias("t-test"),
+    pds.query_chi2("category_1", "category_2").alias("chi2-test"),
+    pds.query_f_test("var1", group = "category_1").alias("f-test")
+)
+
+shape: (3, 4)
+┌───────────┬──────────────────────┬──────────────────────┬─────────────────────┐
+│ market_id ┆ t-test               ┆ chi2-test            ┆ f-test              │
+│ ---       ┆ ---                  ┆ ---                  ┆ ---                 │
+│ i64       ┆ struct[2]            ┆ struct[2]            ┆ struct[2]           │
+╞═══════════╪══════════════════════╪══════════════════════╪═════════════════════╡
+│ 0         ┆ {2.072749,0.038272}  ┆ {33.487634,0.588673} ┆ {0.312367,0.869842} │
+│ 1         ┆ {0.469946,0.638424}  ┆ {42.672477,0.206119} ┆ {2.148937,0.072536} │
+│ 2         ┆ {-1.175325,0.239949} ┆ {28.55723,0.806758}  ┆ {0.506678,0.730849} │
+└───────────┴──────────────────────┴──────────────────────┴─────────────────────┘
+```
+
+Multiple Convolutions at once!
+
+```Python
+# Multiple Convolutions at once
+# Modes: `same`, `left` (left-aligned same), `right` (right-aligned same), `valid` or `full`
+# Method: `fft`, `direct`
+# Currently slower than SciPy but provides parallelism because of Polars
+df.select(
+    pds.convolve("f", [-1, 0, 0, 0, 1], mode = "full", method = "fft"), # column f with the kernel given here
+    pds.convolve("a", [-1, 0, 0, 0, 1], mode = "full", method = "direct"),
+    pds.convolve("b", [-1, 0, 0, 0, 1], mode = "full", method = "direct"),
+).head()
+```
+
+Tabular Machine Learning Data Transformation Pipeline
+
+```Python
+import polars as pl
+import polars.selectors as cs
+from polars_ds.pipeline import Pipeline, Blueprint
+
+bp = (
+    # If we specify a target, then target will be excluded from any transformations.
+    Blueprint(df, name = "example", target = "approved") 
+    .lowercase() # lowercase all columns
+    .select(cs.numeric() | cs.by_name(["gender", "employer_category1", "city_category"]))
+    # Impute loan_period by running a simple linear regression. 
+    # Explicitly put target, since this is not the target for prediction. 
+    .linear_impute(features = ["var1", "existing_emi"], target = "loan_period") 
+    .impute(["existing_emi"], method = "median")
+    .append_expr( # generate some features
+        pl.col("existing_emi").log1p().alias("existing_emi_log1p"),
+        pl.col("loan_amount").log1p().alias("loan_amount_log1p"),
+        pl.col("loan_amount").sqrt().alias("loan_amount_sqrt"),
+        pl.col("loan_amount").shift(-1).alias("loan_amount_lag_1") # any kind of lag transform
+    )
+    .scale( # target is numerical, but will be excluded automatically because bp is initialzied with a target
+        cs.numeric().exclude(["var1", "existing_emi_log1p"]), method = "standard"
+    ) # Scale the columns up to this point. The columns below won't be scaled
+    .append_expr(
+        # Add missing flags
+        pl.col("employer_category1").is_null().cast(pl.UInt8).alias("employer_category1_is_missing")
+    )
+    .one_hot_encode("gender", drop_first=True)
+    .woe_encode("city_category") # No need to specify target because we initialized bp with a target
+    .target_encode("employer_category1", min_samples_leaf = 20, smoothing = 10.0) # same as above
+)
+
+pipe:Pipeline = bp.materialize()
+# Check out the result in our example notebooks!
+df_transformed = pipe.transform(df)
+df_transformed.head()
+```
+
+And more!
 
 ## Getting Started
 
@@ -132,19 +194,27 @@ To make full use of the Diagnosis module, do
 pip install "polars_ds[plot]"
 ```
 
-## Examples
+## More Examples
 
 See this for Polars Extensions: [notebook](./examples/basics.ipynb)
 
 See this for Native Polars DataFrame Explorative tools: [notebook](./examples/diagnosis.ipynb)
 
+## HELP WANTED!
+
+1. Documentation writing, Doc Review, and Benchmark preparation
+
+## Road Map
+
+1. Standalone KNN and linear regression module.
+2. K-means, K-medoids clustering as expressions and also standalone modules.
+3. Other.
+
 # Disclaimer
 
-**Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars and will try to be as stable as possible for polars>=0.20.6. Exceptions will be made when Polars's update forces changes in the plugins.**
+**Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars (for most of its core) and will try to be as stable as possible for polars>=1 (It currently supports polars>=0.20.16 but that will be dropped soon). Exceptions will be made when Polars's update forces changes in the plugins.**
 
 This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed.
-
-The recommended usage will be for datasets of size 1k to 2-3mm rows, but actual performance will vary depending on dataset and hardware. Performance will only be a priority for datasets that fit in memory. It is a known fact that knn performance suffers greatly with a large k. Str-knn and Graph queries are only suitable for smaller data, of size ~1-5k for common computers.
 
 # Credits
 

@@ -3,6 +3,7 @@ mod fstats;
 mod interpolation;
 mod kendall_tau;
 mod ks;
+mod mann_whitney_u;
 mod normal_test;
 mod sample;
 mod t_test;

@@ -18,9 +18,8 @@ defaults:
   run:
     shell: bash
 
-# Drop 3.8 once it reaches end of life
 env:
-  PYTHON_VERSION: '3.8'
+  PYTHON_VERSION: '3.9'
 
 jobs:
   create-sdist:
@@ -52,7 +51,11 @@ jobs:
         run: |
           pip install --force-reinstall --verbose dist/*.tar.gz
           pip install typing_extensions
+          pip install -r requirements.txt
           python -c 'import polars_ds as pds'
+          python -c 'from polars_ds import linear_models'
+          python -c 'from polars_ds.features import *'
+          python -c 'from polars_ds.query_knn import *'
 
       - name: Upload sdist
         uses: actions/upload-artifact@v4
@@ -66,10 +69,16 @@ jobs:
           pip install pytest
           pip install .
           pip install -r tests/requirements-test.txt
-          pytest tests/test_many.py
-          pytest tests/test_string.py
-          pytest tests/test_transforms.py
-          pytest tests/test_metrics.py
+          pytest tests/test_*
+
+      - name: Test Notebooks
+        run: | 
+          python -m pip install --upgrade pip
+          pip install jupyter ipython ipykernel nbconvert
+          pip install -r tests/requirements-test.txt
+          jupyter execute examples/basics.ipynb
+          jupyter execute examples/diagnosis.ipynb
+          jupyter execute examples/sample_and_split.ipynb
 
 
   build-wheels:
