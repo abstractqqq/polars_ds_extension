@@ -11,6 +11,7 @@ from polars_ds.string import *  # noqa: F403
 from polars_ds.features import *  # noqa: F403
 from polars_ds.query_knn import *  # noqa: F403
 from polars_ds.query_linear import *  # noqa: F403
+from polars_ds.query_balltree import *  # noqa: F403
 
 
 __version__ = "0.6.0"

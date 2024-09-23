@@ -1999,6 +1999,7 @@ dependencies = [
  "pyo3",
  "pyo3-polars",
  "rand",
+ "rand_chacha",
  "rand_distr",
  "rapidfuzz",
  "rayon",

@@ -1,5 +1,6 @@
 use num::Float;
 
+mod ball_tree;
 mod benford;
 mod cond_entropy;
 mod convolve;
