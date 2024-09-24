@@ -13,11 +13,13 @@
 /// E.g.
 /// within_count returns a u32 as opposed to usize because that can help me skip a type conversion when used with Polars.
 pub mod kdt;
+pub mod ball_tree;
 pub mod leaf;
 pub mod neighbor;
 pub mod utils;
 
 pub use kdt::{OwnedKDT, KDT};
+pub use ball_tree::BallTree;
 pub use leaf::{KdLeaf, Leaf};
 pub use neighbor::NB;
 use serde::Deserialize;
