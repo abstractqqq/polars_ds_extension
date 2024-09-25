@@ -1,6 +1,3 @@
-use num::Float;
-
-mod ball_tree;
 mod benford;
 mod cond_entropy;
 mod convolve;
@@ -21,3 +18,4 @@ mod tp_fp;
 mod trapz;
 mod welch;
 mod woe_iv;
+// mod ball_tree;
