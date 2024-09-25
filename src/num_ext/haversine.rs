@@ -1,4 +1,5 @@
 use num::Float;
+use crate::utils::haversine_elementwise;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
@@ -25,7 +26,7 @@ where
             .map(|(x_lat, x_long)| {
                 let x_lat = x_lat?;
                 let x_long = x_long?;
-                Some(super::haversine_elementwise(x_lat, x_long, e_lat, e_long))
+                Some(haversine_elementwise(x_lat, x_long, e_lat, e_long))
             })
             .collect();
         Ok(out.with_name(x_lat.name()))
@@ -43,7 +44,7 @@ where
                 let x_long = x_long?;
                 let y_lat = y_lat?;
                 let y_long = y_long?;
-                Some(super::haversine_elementwise(x_lat, x_long, y_lat, y_long))
+                Some(haversine_elementwise(x_lat, x_long, y_lat, y_long))
             })
             .collect();
 
