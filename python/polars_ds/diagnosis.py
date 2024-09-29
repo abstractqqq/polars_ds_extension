@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import altair as alt
 import polars.selectors as cs
 import polars as pl
 import graphviz
+
 import plotly.express as px
 import plotly.graph_objects as go
+
 import warnings
-from typing import List, Iterable
+from typing import List, Iterable, Dict
 from functools import lru_cache
 from itertools import combinations
 from great_tables import GT, nanoplot_options
 
-from . import query_cond_entropy, query_principal_components, query_lstsq_report
+from . import query_cond_entropy, query_principal_components
 from .type_alias import CorrMethod, PolarsFrame
 from .stats import corr
 from ._utils import _IS_POLARS_V1
@@ -32,6 +35,87 @@ class DIA:
 
     If you cannot import this module, please try: pip install "polars_ds[plot]"
     """
+
+    # --- Static / Class Methods ---
+
+    @staticmethod
+    def _plot_lstsq(
+        df: pl.DataFrame | pl.LazyFrame,
+        x: IntoExpr | Iterable[IntoExpr],
+        target: IntoExpr | Iterable[IntoExpr],
+        add_bias: bool = False,
+        max_points: int = 20_000,
+        filter_by: pl.Expr | None = None,
+        title_comments: str = "",
+    ) -> alt.Chart:
+        """
+        See the method `plot_lstsq`
+        """
+        try:
+            if filter_by is None:
+                temp = df.lazy().select(x, target)
+            else:
+                temp = df.lazy().filter(filter_by).select(x, target)
+
+            actual_title_comments = "" if title_comments == "" else "<" + title_comments + ">"
+
+            if _IS_POLARS_V1:
+                x_name, y_name = temp.collect_schema().names()
+            else:
+                x_name, y_name = temp.columns
+
+            xx = pl.col(x_name)
+            yy = pl.col(y_name)
+
+            if add_bias:
+                x_mean = xx.mean()
+                y_mean = yy.mean()
+                beta = (xx - x_mean).dot(yy - y_mean) / (xx - x_mean).dot(xx - x_mean)
+                alpha = y_mean - x_mean * beta
+            else:
+                beta = xx.dot(yy) / xx.dot(xx)
+                alpha = pl.lit(0, dtype=pl.Float64)
+
+            beta, alpha = temp.select(beta, alpha).collect().row(0)
+
+            df_need = temp.select(
+                xx,
+                yy,
+                (xx * beta + alpha).alias("y_pred"),
+            )
+            # Sample down. If len(temp) < max_points, all temp will be selected. This sample supports lazy.
+            df_sampled = sample(df_need, value=max_points)
+
+            if add_bias and alpha > 0:
+                subtitle = f"y = {beta:.4f} * x + {round(alpha, 4) if add_bias else ''}"
+            elif add_bias and alpha < 0:
+                subtitle = f"y = {beta:.4f} * x - {abs(round(alpha, 4)) if add_bias else ''}"
+            else:
+                subtitle = f"y = {beta:.4f} * x"
+
+            title = alt.Title(
+                text=[
+                    f"Linear Regression: {y_name} ~ {x_name} {'+ bias' if add_bias else ''}",
+                    actual_title_comments,
+                ],
+                subtitle=subtitle,
+                align="center",
+            )
+            chart = (
+                alt.Chart(df_sampled, title=title)
+                .mark_point()
+                .encode(alt.X(x_name).scale(zero=False), alt.Y(y_name))
+            )
+            return chart + chart.mark_line().encode(
+                alt.X(x_name).scale(zero=False), alt.Y("y_pred")
+            )
+        except Exception:
+            print(
+                "Failed to generate plot. Likely causes (non-exhaustive): 1. empty data due to filter condition, 2. extreme values encountered"
+            )
+            return alt.Chart()
+
+    # --- Methods ---
 
     def __init__(self, df: PolarsFrame):
         self._frame: pl.LazyFrame = df.lazy()
@@ -106,7 +190,7 @@ class DIA:
 
     def numeric_profile(
         self, n_bins: int = 20, iqr_multiplier: float = 1.5, histogram: bool = True, gt: bool = True
-    ) -> GT:
+    ) -> GT | pl.DataFrame:
         """
         Creates a numerical profile with a histogram plot. Notice that the histograms may have
         completely different scales on the x-axis.
@@ -222,7 +306,7 @@ class DIA:
         self,
         subset: IntoExpr | Iterable[IntoExpr] = pl.all(),
         condition: pl.Expr = pl.lit(True),
-        n_bins: int = 50,
+        row_group_size: int = 50,
     ) -> GT:
         """
         Checks the null percentages per row group. Row groups are consecutive rows grouped by row number,
@@ -237,8 +321,8 @@ class DIA:
             Anything that can be put into a Polars .select statement. Defaults to pl.all()
         condition
             A boolean expression
-        n_bins
-            The number of bins to group the rows
+        row_group_size
+            The number of rows per row group
         """
         if _IS_POLARS_V1:
             cols = self._frame.select(subset).collect_schema().names()
@@ -248,7 +332,7 @@ class DIA:
         frame = self._frame.filter(condition)
         temp = (
             frame.with_row_index(name="row_group")
-            .group_by((pl.col("row_group") // (pl.len() // n_bins)).alias("row_group"))
+            .group_by((pl.col("row_group") // (pl.len() // row_group_size)).alias("row_group"))
             .agg(pl.col(cols).null_count() / pl.len())
             .sort("row_group")
             .select(
@@ -286,7 +370,7 @@ class DIA:
             )
         )
 
-    def meta(self):
+    def meta(self) -> Dict:
         """
         Returns internal data in this class as a dictionary.
         """
@@ -294,7 +378,7 @@ class DIA:
         out.pop("_frame")
         return out
 
-    def str_stats(self):
+    def str_stats(self) -> pl.DataFrame:
         """
         Returns basic statistics about the string columns.
         """
@@ -670,7 +754,7 @@ class DIA:
         Plot dependency using the result of self.infer_dependency and positively dtermines
         dependency by the threshold.
 
-        Parameters
+        Parametersk
         ----------
         threshold
             If conditional entropy is < threshold, we draw a line indicating dependency.
@@ -718,10 +802,11 @@ class DIA:
         x: IntoExpr | Iterable[IntoExpr],
         target: IntoExpr | Iterable[IntoExpr],
         add_bias: bool = False,
-        condition: pl.Expr | None = None,
         max_points: int = 20_000,
-        **kwargs,
-    ) -> go.Figure:
+        filter_by: pl.Expr | None = None,
+        title_comments: str = "",
+        by: str | None = None,
+    ) -> alt.Chart:
         """
         Plots the least squares between x and target.
 
@@ -733,61 +818,36 @@ class DIA:
             The target variable
         add_bias
             Whether to add bias in the linear regression
-        condition
-            An additional filter condition you want to apply before runing lstsq on the data. This must
-            be a boolean expression. If none, run this on the entire dataset. (The frame used to initialize DIA.)
         max_points
-            The max number of points to be displayed. If data > this limit, the data will be sampled
-        kwargs
-            Kwargs to be passed to Plotly's Figure object
+            The max number of points to be displayed. Notice that this only affects the number of points
+            on the plot. The linear regression will still be fit on the entire dataset.
+
         """
-        if condition is None:
-            temp = self._frame.select(x, target)
-            condition_str = ""
+        if by is None:
+            return DIA._plot_lstsq(
+                self._frame,
+                x,
+                target,
+                add_bias,
+                max_points,
+                filter_by,
+                title_comments,
+            ).configure(autosize="pad")
         else:
-            temp = self._frame.filter(condition).select(x, target)
-            condition_str = "\nCondition: " + str(condition)
-
-        if _IS_POLARS_V1:
-            x_name, y_name = temp.collect_schema().names()
-        else:
-            x_name, y_name = temp.columns
-
-        coeffs = (
-            temp.select(
-                query_lstsq_report(pl.col(x_name), target=pl.col(y_name), add_bias=add_bias).alias(
-                    "report"
+            return alt.vconcat(
+                *(
+                    DIA._plot_lstsq(
+                        df,
+                        x,
+                        target,
+                        add_bias,
+                        max_points,
+                        filter_by,
+                        title_comments=f"Segment = {key if len(key) > 1 else key[0]}",
+                    )
+                    for key, df in self._frame.collect().partition_by(by, as_dict=True).items()
                 )
-            )
-            .unnest("report")
-            .select(
-                pl.all().exclude("idx")  # All but the idx column in lstsq_report
-            )
-            .collect()
-        )
-        if add_bias:
-            b1, alpha = coeffs["beta"]
-        else:
-            b1, alpha = coeffs["beta"][0], 0
-        # Get the data necessary for plotting
-        temp = temp.select(
-            pl.col(x_name).alias("x"),
-            pl.col(y_name).alias("y"),
-            (pl.col(x_name) * b1 + alpha).alias("y_pred"),
-        )  # Sample down. If len(temp) < max_points, all temp will be selected. This sample supports lazy.
-        df = sample(temp, value=max_points)
-
-        fig = go.Figure(**kwargs)
-        fig.update_layout(
-            title=f"y={y_name}, x={x_name}, y_pred = ({x_name}) * {b1:.5f} + {alpha:.5f}<br><sup>{condition_str}</sup>",
-            xaxis_title=x_name,
-            yaxis_title=y_name,
-        )
-
-        fig.add_trace(go.Scatter(x=df["x"], y=df["y"], mode="markers", name="data scatter"))
-        fig.add_trace(go.Scatter(x=df["x"], y=df["y_pred"], mode="lines", name="Least Squares"))
-        print(coeffs)
-        return fig
+            ).configure(autosize="pad")
 
     def plot_distribution(
         self,
