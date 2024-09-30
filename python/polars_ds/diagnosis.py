@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from ._utils import _IS_POLARS_V1
+
+if _IS_POLARS_V1:
+    from polars._typing import IntoExpr
+else:
+    raise ValueError("You must be on Polars >= v1.0.0 to use this module.")
+
 import altair as alt
 import polars.selectors as cs
 import polars as pl
@@ -17,13 +24,9 @@ from great_tables import GT, nanoplot_options
 from . import query_cond_entropy, query_principal_components
 from .type_alias import CorrMethod, PolarsFrame
 from .stats import corr
-from ._utils import _IS_POLARS_V1
 from .sample import sample
 
-if _IS_POLARS_V1:
-    from polars._typing import IntoExpr
-else:
-    from polars.type_aliases import IntoExpr
+alt.data_transformers.enable("vegafusion")
 
 
 # DIA = Data Inspection Assistant / DIAgonsis
@@ -34,10 +37,16 @@ class DIA:
     additional package downloads.
 
     If you cannot import this module, please try: pip install "polars_ds[plot]"
+
+    Note: most plots are sampled by default because (1) typically plots don't look good when there
+    are too many points, and (2) because of interactivity, if we don't sample, the plots will be too
+    large and won't get rendered in a reasonable amount of time. If speed of rendering is crucial and
+    you don't need interactivity, use matplotlib.
     """
 
     # --- Static / Class Methods ---
 
+    # Only a static method for convenience.
     @staticmethod
     def _plot_lstsq(
         df: pl.DataFrame | pl.LazyFrame,
@@ -47,7 +56,7 @@ class DIA:
         max_points: int = 20_000,
         filter_by: pl.Expr | None = None,
         title_comments: str = "",
-    ) -> alt.Chart:
+    ) -> alt.Chart | None:
         """
         See the method `plot_lstsq`
         """
@@ -59,11 +68,7 @@ class DIA:
 
             actual_title_comments = "" if title_comments == "" else "<" + title_comments + ">"
 
-            if _IS_POLARS_V1:
-                x_name, y_name = temp.collect_schema().names()
-            else:
-                x_name, y_name = temp.columns
-
+            x_name, y_name = temp.collect_schema().names()
             xx = pl.col(x_name)
             yy = pl.col(y_name)
 
@@ -109,30 +114,33 @@ class DIA:
             return chart + chart.mark_line().encode(
                 alt.X(x_name).scale(zero=False), alt.Y("y_pred")
             )
-        except Exception:
-            print(
-                "Failed to generate plot. Likely causes (non-exhaustive): 1. empty data due to filter condition, 2. extreme values encountered"
+        except Exception as e:
+            import warnings
+
+            warnings.warn(
+                "Failed to generate plot with following inputs:"
+                f"\nx: {x}, target: {target}, bias: {add_bias}"
+                f"\nFilter by: {filter_by}"
+                f"\nTitle comments: {title_comments}"
+                "\nLikely causes (non-exhaustive): 1. empty data due to filter condition, 2. extreme values encountered (NaN, inf, etc.)."
+                f"\nOriginal Error Message: {e}",
+                stacklevel=2,
             )
-            return alt.Chart()
+            return None
 
     # --- Methods ---
 
     def __init__(self, df: PolarsFrame):
         self._frame: pl.LazyFrame = df.lazy()
-        self.numerics: List[str] = df.select(cs.numeric()).columns
-        self.ints: List[str] = df.select(cs.integer()).columns
-        self.floats: List[str] = df.select(cs.float()).columns
-        self.strs: List[str] = df.select(cs.string()).columns
-        self.bools: List[str] = df.select(cs.boolean()).columns
-        self.cats: List[str] = df.select(cs.categorical()).columns
+        self.numerics: List[str] = df.select(cs.numeric()).collect_schema().names()
+        self.ints: List[str] = df.select(cs.integer()).collect_schema().names()
+        self.floats: List[str] = df.select(cs.float()).collect_schema().names()
+        self.strs: List[str] = df.select(cs.string()).collect_schema().names()
+        self.bools: List[str] = df.select(cs.boolean()).collect_schema().names()
+        self.cats: List[str] = df.select(cs.categorical()).collect_schema().names()
 
-        # POLARS V1
-        if _IS_POLARS_V1:
-            schema_dict = df.collect_schema()
-            columns = schema_dict.names()
-        else:
-            schema_dict = df.schema
-            columns = list(schema_dict.keys())
+        schema_dict = df.collect_schema()
+        columns = schema_dict.names()
 
         self.list_floats: List[str] = [
             c
@@ -324,10 +332,7 @@ class DIA:
         row_group_size
             The number of rows per row group
         """
-        if _IS_POLARS_V1:
-            cols = self._frame.select(subset).collect_schema().names()
-        else:
-            cols = self._frame.select(subset).columns
+        cols = self._frame.select(subset).collect_schema().names()
 
         frame = self._frame.filter(condition)
         temp = (
@@ -422,10 +427,7 @@ class DIA:
             One of ["pearson", "spearman", "xi", "kendall", "bicor"]
         """
 
-        if _IS_POLARS_V1:
-            to_check = self._frame.select(subset).collect_schema().names()
-        else:
-            to_check = self._frame.select(subset).select(cs.numeric()).columns
+        to_check = self._frame.select(subset).collect_schema().names()
 
         corrs = [
             self._frame.select(
@@ -693,19 +695,17 @@ class DIA:
         ----------
         subset
             A subset of columns to try running the dependency check. The subset input can be
-            anything that can be turned into a Polars selector. Only valid columns will be checked,
-            however.
+            anything that can be turned into a Polars selector. The df or the column subset of the df
+            may contain columns that cannot be used for dependency detection, e.g. column of list of values.
+            Only valid columns will be checked.
         """
 
         # Infer valid columns to run this detection
         valid = self.ints + self.strs + self.cats + self.bools
-
-        if _IS_POLARS_V1:
-            to_check = [x for x in self._frame.collect_schema().names() if x in valid]
-        else:
-            to_check = [x for x in self._frame.select(subset).columns if x in valid]
-
-        n_uniques = self._frame.select(pl.col(c).n_unique() for c in to_check).collect().row(0)
+        check_frame = self._frame.select(subset)
+        all_names = check_frame.collect_schema().names()
+        to_check = [x for x in all_names if x in valid]
+        n_uniques = check_frame.select(pl.col(c).n_unique() for c in to_check).collect().row(0)
 
         frame = (
             pl.DataFrame({"column": to_check, "n_unique": n_uniques})
@@ -724,8 +724,11 @@ class DIA:
                 schema={"column": pl.String, "by": pl.String, "cond_entropy": pl.Float64},
             )
 
-        # Compute conditional entropy on the rest of the columns
-        print(f"Checking dependency for columns: {check}.")
+        if len(check) != len(all_names):
+            warnings.warn(
+                f"The following columns are dropped because they cannot be used in dependency detection: {[f for f in all_names if f not in check]}",
+                stacklevel=2,
+            )
 
         ce = (
             self._frame.select(
@@ -754,7 +757,7 @@ class DIA:
         Plot dependency using the result of self.infer_dependency and positively dtermines
         dependency by the threshold.
 
-        Parametersk
+        Parameters
         ----------
         threshold
             If conditional entropy is < threshold, we draw a line indicating dependency.
@@ -806,7 +809,7 @@ class DIA:
         filter_by: pl.Expr | None = None,
         title_comments: str = "",
         by: str | None = None,
-    ) -> alt.Chart:
+    ) -> alt.Chart | None:
         """
         Plots the least squares between x and target.
 
@@ -821,7 +824,14 @@ class DIA:
         max_points
             The max number of points to be displayed. Notice that this only affects the number of points
             on the plot. The linear regression will still be fit on the entire dataset.
-
+        filter_by
+            Additional filter condition to be applied. This will be applied upfront to the entire
+            dataframe if `by` is not None, and then the dataframe will be partitioned by the segments.
+            This means it is possible to filter out entire segment(s) before plots are drawn.
+        title_comments
+            Additional comments to put in the plot title.
+        by
+            Create a lstsq plot for each segment in `by`.
         """
         if by is None:
             return DIA._plot_lstsq(
@@ -834,33 +844,38 @@ class DIA:
                 title_comments,
             ).configure(autosize="pad")
         else:
-            return alt.vconcat(
-                *(
-                    DIA._plot_lstsq(
-                        df,
-                        x,
-                        target,
-                        add_bias,
-                        max_points,
-                        filter_by,
-                        title_comments=f"Segment = {key if len(key) > 1 else key[0]}",
-                    )
-                    for key, df in self._frame.collect().partition_by(by, as_dict=True).items()
-                )
-            ).configure(autosize="pad")
+            if filter_by is None:
+                frame = self._frame
+            else:
+                frame = self._frame.filter(filter_by)
 
-    def plot_distribution(
+            plots = (
+                DIA._plot_lstsq(
+                    df,
+                    x,
+                    target,
+                    add_bias,
+                    max_points,
+                    filter_by=None,
+                    title_comments=f"Segment = {key if len(key) > 1 else key[0]}",
+                )
+                for key, df in frame.collect().partition_by(by, as_dict=True).items()
+            )
+
+            return alt.vconcat(*(plot for plot in plots if plot is not None)).configure(
+                autosize="pad"
+            )
+
+    def plot_dist(
         self,
         feature: IntoExpr | Iterable[IntoExpr],
         n_bins: int | None = None,
-        by: IntoExpr | Iterable[IntoExpr] | None = None,
         density: bool = False,
-        condition: pl.Expr | None = None,
-        include_null: bool = True,
+        filter_by: pl.Expr | None = None,
         **kwargs,
-    ) -> go.Figure:
+    ) -> alt.Chart:
         """
-        Plot distribution of the feature.
+        Plot distribution(s) of the feature(s).
 
         Parameters
         ----------
@@ -868,54 +883,88 @@ class DIA:
             A polars expression to a column where a histogram makes sense
         n_bins
             The number of bins used for histograms. Not used when the feature column is categorical.
-        by
-            Optionally provide a segment to plot multiple distributions of the same features
         density
             Whether to plot a probability density or not
-        condition
+        filter_by
             An extra condition you may want to impose on the underlying dataset
         include_null
             When by is not null, whether to consider null a segment or not. If true, null values will be
             mapped to the name "__null__". The string "__null__" should not exist originally in the column.
             This is a workaround to get plotly to recognize null values.
+        max_rows
+
         kwargs
             Keyword arguments for plotly's histogram function
         """
 
-        histnorm: str | None = "probability density" if density else None
-        if condition is None:
-            frame = self._frame
+        if n_bins <= 2:
+            raise ValueError("For plot_dist, `n_bins` must be > 2.")
+
+        if filter_by is None:
+            frame = (
+                self._frame.select(feature)
+                .filter(
+                    (pl.all_horizontal(cs.numeric().is_finite())) & (pl.col(feature).is_not_null())
+                )
+                .collect()
+            )
         else:
-            frame = self._frame.filter(condition)
+            frame = (
+                self._frame.select(feature)
+                .filter(
+                    (pl.all_horizontal(cs.numeric().is_finite()))
+                    & (pl.col(feature).is_not_null())
+                    & filter_by
+                )
+                .collect()
+            )
 
-        if by is None:
-            df = frame.select(feature).collect()
-            feat = df.columns[0]
-            seg_name = ""
-        else:
-            if _IS_POLARS_V1:
-                feat, by_col_name = frame.select(feature, by).collect_schema().names()
-            else:
-                feat, by_col_name = frame.select(feature, by).columns
+        # title = f"{'Density Plot' if density else 'Histogram'}"
 
-            by_output = pl.col(by_col_name).alias("by")
-            if include_null:
-                # if data column already has a string value called __null__ it will be wrong
-                by_output = by_output.cast(pl.String).fill_null("__null__")
+        feat = frame.collect_schema().names()[0]
 
-            # The first select deals with the case when by is an expression
-            df = frame.select(feature, by).select(feat, by_output).collect()
-            seg_name = f"by {by}"
+        p5, median, mean, p95, null_cnt, length, min_, max_ = frame.select(
+            p5=pl.col(feat).quantile(0.05),
+            median=pl.col(feat).median(),
+            mean=pl.col(feat).mean(),
+            p95=pl.col(feat).quantile(0.95),
+            null_cnt=pl.col(feat).null_count(),
+            length=pl.len(),
+            min=pl.col(feat).min(),
+            max=pl.col(feat).max(),
+        ).row(0)
 
-        return px.histogram(
-            x=df[feat],
-            title=f"{feat} Distribution {seg_name}",
-            color=None if by is None else df["by"],
-            nbins=n_bins,
-            labels={"x": feat},
-            histnorm=histnorm,
-            **kwargs,
+        range_ = max_ - min_
+        cuts = [(i + 1) / n_bins for i in range(n_bins)]
+        cuts[0] -= 1e-5
+        cuts[-1] += 1e-5
+        hist, values = (
+            frame.select(
+                ((pl.col(feat) - min_) / range_)
+                .cut(breaks=cuts, left_closed=True, include_breaks=True)
+                .struct.rename_fields(["brk", "category"])
+                .struct.field("brk")
+                .value_counts(parallel=True)
+                .sort()
+                .alias("bins")
+            )
+            .unnest("bins")
+            .select(hist=pl.col("count"), values=pl.col("brk") * range_ + min_)
+            .get_columns()
         )
+
+        if density:
+            hist /= hist.sum()
+
+        df_plot = pl.DataFrame({"hist": hist, "values": values})
+        return df_plot
+        base = alt.Chart(df_plot)
+
+        dist_chart = base.mark_bar(size=10).encode(
+            alt.X("values:Q"),
+            alt.Y("hist:Q").title("density" if density else "count"),
+        )
+        return dist_chart  # + stats_chart
 
     def plot_pca(
         self,
@@ -944,10 +993,7 @@ class DIA:
         kwargs
             Anything else that will be passed to plotly's scatter function
         """
-        if _IS_POLARS_V1:
-            feats = self._frame.select(features).collect_schema().names()
-        else:
-            feats = self._frame.select(features).columns
+        feats = self._frame.select(features).collect_schema().names()
 
         if len(feats) < 2:
             raise ValueError("You must pass >= 2 features.")
