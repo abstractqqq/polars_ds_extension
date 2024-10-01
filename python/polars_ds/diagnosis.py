@@ -16,7 +16,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 import warnings
-from typing import List, Iterable, Dict
+from typing import List, Iterable, Dict, Tuple
 from functools import lru_cache
 from itertools import combinations
 from great_tables import GT, nanoplot_options
@@ -872,8 +872,9 @@ class DIA:
         n_bins: int | None = None,
         density: bool = False,
         filter_by: pl.Expr | None = None,
+        show_bad_values: bool = True,
         **kwargs,
-    ) -> alt.Chart:
+    ) -> Tuple[pl.DataFrame, alt.Chart]:
         """
         Plot distribution(s) of the feature(s).
 
@@ -901,47 +902,36 @@ class DIA:
             raise ValueError("For plot_dist, `n_bins` must be > 2.")
 
         if filter_by is None:
-            frame = (
-                self._frame.select(feature)
-                .filter(
-                    (pl.all_horizontal(cs.numeric().is_finite())) & (pl.col(feature).is_not_null())
-                )
-                .collect()
-            )
+            frame_with_filter = self._frame.select(feature)
         else:
-            frame = (
-                self._frame.select(feature)
-                .filter(
-                    (pl.all_horizontal(cs.numeric().is_finite()))
-                    & (pl.col(feature).is_not_null())
-                    & filter_by
-                )
-                .collect()
-            )
+            frame_with_filter = self._frame.select(feature).filter(filter_by)
+
+        frame = frame_with_filter.filter(
+            pl.all_horizontal(cs.numeric().is_finite(), cs.numeric().is_not_null())
+        ).collect()
 
         # title = f"{'Density Plot' if density else 'Histogram'}"
 
         feat = frame.collect_schema().names()[0]
+        if feat not in self.numerics:
+            raise ValueError("Non-numerics features are not supported by this.")
 
-        p5, median, mean, p95, null_cnt, length, min_, max_ = frame.select(
+        p5, median, mean, p95, min_, max_ = frame.select(
             p5=pl.col(feat).quantile(0.05),
             median=pl.col(feat).median(),
             mean=pl.col(feat).mean(),
             p95=pl.col(feat).quantile(0.95),
-            null_cnt=pl.col(feat).null_count(),
-            length=pl.len(),
             min=pl.col(feat).min(),
             max=pl.col(feat).max(),
         ).row(0)
 
         range_ = max_ - min_
-        cuts = [(i + 1) / n_bins for i in range(n_bins)]
-        cuts[0] -= 1e-5
-        cuts[-1] += 1e-5
-        hist, values = (
+        recip = 1 / n_bins
+        cuts = [recip * (i + 0.5) for i in range(1, n_bins + 1)]
+        cnt, values = (
             frame.select(
                 ((pl.col(feat) - min_) / range_)
-                .cut(breaks=cuts, left_closed=True, include_breaks=True)
+                .cut(breaks=cuts, include_breaks=True)
                 .struct.rename_fields(["brk", "category"])
                 .struct.field("brk")
                 .value_counts(parallel=True)
@@ -949,22 +939,65 @@ class DIA:
                 .alias("bins")
             )
             .unnest("bins")
-            .select(hist=pl.col("count"), values=pl.col("brk") * range_ + min_)
+            .select(cnt=pl.col("count"), values=pl.col("brk") * range_ + min_)
             .get_columns()
         )
 
+        df_plot = pl.DataFrame({"counts": cnt, "cuts": values})
+        density_str = "density" if density else "counts"
+        alt_y = alt.Y(f"{density_str}:Q", scale=alt.Scale(domainMin=0)).title(density_str)
         if density:
-            hist /= hist.sum()
+            df_plot = df_plot.with_columns(density=pl.col("counts") / pl.col("counts").sum())
 
-        df_plot = pl.DataFrame({"hist": hist, "values": values})
-        return df_plot
-        base = alt.Chart(df_plot)
-
-        dist_chart = base.mark_bar(size=10).encode(
-            alt.X("values:Q"),
-            alt.Y("hist:Q").title("density" if density else "count"),
+        base = alt.Chart(df_plot, title=f"Distribution for {feat}")
+        dist_chart = base.mark_bar(size=15).encode(
+            alt.X("cuts:Q", axis=alt.Axis(tickCount=n_bins // 2, grid=False)),
+            alt_y,
+            tooltip=[
+                alt.Tooltip("cuts:Q", title="CutValue"),
+                alt.Tooltip(f"{density_str}:Q", title=density_str),
+            ],
         )
-        return dist_chart  # + stats_chart
+
+        df_stats = pl.DataFrame(
+            {"names": ["p5", "p50", "avg", "p95"], "stats": [p5, median, mean, p95]}
+        )
+
+        stats_base = alt.Chart(df_stats)
+        stats_chart = stats_base.mark_rule(color="red").encode(
+            x=alt.X("stats").title(""),
+            tooltip=[
+                alt.Tooltip("names:N", title="Stats"),
+                alt.Tooltip("stats:Q", title="Value"),
+            ],
+        )
+
+        if show_bad_values:
+            bad_pct = (
+                frame_with_filter.select(
+                    pl.any_horizontal(pl.col(feat).is_null(), ~pl.col(feat).is_finite()).sum()
+                    / pl.len()
+                )
+                .collect()
+                .item(0, 0)
+            )
+
+            df_bad = pl.DataFrame({"Null/NaN/Inf%": [bad_pct]})
+            bad_chart = (
+                alt.Chart(df_bad)
+                .mark_bar(opacity=0.5)
+                .encode(
+                    alt.X("Null/NaN/Inf%:Q", scale=alt.Scale(domain=[0, 1])),
+                    tooltip=[
+                        alt.Tooltip("Null/NaN/Inf%:Q", title="Null/NaN/Inf%"),
+                    ],
+                )
+            )
+            chart = alt.vconcat(dist_chart + stats_chart, bad_chart)
+        else:
+            chart = dist_chart + stats_chart
+
+        return df_plot, chart
 
     def plot_pca(
         self,
