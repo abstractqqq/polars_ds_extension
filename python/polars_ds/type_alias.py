@@ -12,7 +12,7 @@ else:  # 3.9, 3.8
 DetrendMethod: TypeAlias = Literal["linear", "mean"]
 Alternative: TypeAlias = Literal["two-sided", "less", "greater"]
 Distance: TypeAlias = Literal["l1", "l2", "sql2", "inf", "cosine", "haversine"]
-KdtDistance: TypeAlias = Literal["l1", "l2", "sql2", "inf", "cosine"]
+KdtDistance: TypeAlias = Literal["l1", "l2", "sql2", "inf"]
 ConvMode: TypeAlias = Literal["same", "left", "right", "full", "valid"]
 ConvMethod: TypeAlias = Literal["fft", "direct"]
 CorrMethod: TypeAlias = Literal["pearson", "spearman", "xi", "kendall", "bicor"]

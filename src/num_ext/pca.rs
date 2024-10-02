@@ -13,8 +13,8 @@ pub fn singular_values_output(_: &[Field]) -> PolarsResult<Field> {
 }
 
 pub fn pca_output(_: &[Field]) -> PolarsResult<Field> {
-    let singular_value = Field::new("singular_value", DataType::Float64);
-    let weights = Field::new("weight_vector", DataType::List(Box::new(DataType::Float64)));
+    let singular_value = Field::new("singular_value".into(), DataType::Float64);
+    let weights = Field::new("weight_vector".into(), DataType::List(Box::new(DataType::Float64)));
     Ok(Field::new(
         "pca",
         DataType::Struct(vec![singular_value, weights]),
@@ -26,7 +26,7 @@ pub fn principal_components_output(fields: &[Field]) -> PolarsResult<Field> {
         .map(|i| Field::new(format!("pc{}", i + 1).as_ref(), DataType::Float64))
         .collect();
     Ok(Field::new(
-        "principal_components",
+        "principal_components".into(),
         DataType::Struct(components),
     ))
 }

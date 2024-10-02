@@ -37,10 +37,12 @@ class KDTree:
         X
             The data matrix. The rows will be the points.
         distance
-            One of 'l1', 'l2', 'sql2', 'inf', or 'cosine'
+            One of 'l1', 'l2', 'sql2', 'inf'
         """
         if X.ndim != 2:
             raise ValueError("Input `X` is not a matrix.")
+        if distance not in ("l1", "l2", "sql2", "inf"):
+            raise ValueError(f"The given distance `{distance}` is not supported.")
 
         if X.flags["C_CONTIGUOUS"]:
             self.kdt = PyKDT(X, distance=distance)

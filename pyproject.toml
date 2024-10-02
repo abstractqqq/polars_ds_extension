@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "polars_ds"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 version = "0.6.0"
 
 license = { file = "LICENSE.txt" }
@@ -24,9 +24,9 @@ dependencies = [
 keywords = ["polars-extension", "scientific-computing", "data-science"]
 
 [project.optional-dependencies]
-plot = ["great-tables>=0.9", "graphviz>=0.20", "plotly>=5.0,<6"]
+plot = ["great-tables>=0.9", "graphviz>=0.20", "altair >= 5.4.0", "vegafusion[embed]"]
 models = ["numpy>=1.16"]
-all = ["great-tables>=0.9", "graphviz>=0.20", "plotly>=5.0,<6", "numpy>=1.16"]
+all = ["great-tables>=0.9", "graphviz>=0.20", "numpy>=1.16", "altair >= 5.4.0", "vegafusion[embed]"]
 
 [tool.maturin]
 strip = true

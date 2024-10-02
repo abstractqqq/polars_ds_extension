@@ -13,5 +13,6 @@ category_encoders
 copent
 astropy
 graphviz
-plotly
+altair
+vegafusion[embed]
 great-tables>=0.9

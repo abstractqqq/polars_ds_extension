@@ -10,7 +10,7 @@ fn combo_output(_: &[Field]) -> PolarsResult<Field> {
     let f = Field::new("f", DataType::Float64);
     let avg_precision = Field::new("avg_precision", DataType::Float64);
     let v: Vec<Field> = vec![precision, recall, f, avg_precision, roc_auc];
-    Ok(Field::new("", DataType::Struct(v)))
+    Ok(Field::new("".into(), DataType::Struct(v)))
 }
 
 fn tp_fp_frame(

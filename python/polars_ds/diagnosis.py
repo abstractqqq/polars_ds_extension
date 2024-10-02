@@ -1,26 +1,29 @@
 from __future__ import annotations
 
-import polars.selectors as cs
-import polars as pl
-import graphviz
-import plotly.express as px
-import plotly.graph_objects as go
-import warnings
-from typing import List, Iterable
-from functools import lru_cache
-from itertools import combinations
-from great_tables import GT, nanoplot_options
-
-from . import query_cond_entropy, query_principal_components, query_lstsq_report
-from .type_alias import CorrMethod, PolarsFrame
-from .stats import corr
 from ._utils import _IS_POLARS_V1
-from .sample import sample
 
 if _IS_POLARS_V1:
     from polars._typing import IntoExpr
 else:
-    from polars.type_aliases import IntoExpr
+    raise ValueError("You must be on Polars >= v1.0.0 to use this module.")
+
+import altair as alt
+import polars.selectors as cs
+import polars as pl
+import graphviz
+
+import warnings
+from typing import List, Iterable, Dict, Tuple, Sequence
+from functools import lru_cache
+from itertools import combinations
+from great_tables import GT, nanoplot_options
+
+from . import query_cond_entropy, query_principal_components, query_r2
+from .type_alias import CorrMethod, PolarsFrame
+from .stats import corr
+from .sample import sample
+
+alt.data_transformers.enable("vegafusion")
 
 
 # DIA = Data Inspection Assistant / DIAgonsis
@@ -31,24 +34,114 @@ class DIA:
     additional package downloads.
 
     If you cannot import this module, please try: pip install "polars_ds[plot]"
+
+    Note: most plots are sampled by default because (1) typically plots don't look good when there
+    are too many points, and (2) because of interactivity, if we don't sample, the plots will be too
+    large and won't get rendered in a reasonable amount of time. If speed of rendering is crucial and
+    you don't need interactivity, use matplotlib.
     """
+
+    # --- Static / Class Methods ---
+
+    # Only a static method for convenience.
+    @staticmethod
+    def _plot_lstsq(
+        df: pl.DataFrame | pl.LazyFrame,
+        x: IntoExpr | Iterable[IntoExpr],
+        target: IntoExpr | Iterable[IntoExpr],
+        add_bias: bool = False,
+        max_points: int = 20_000,
+        filter_by: pl.Expr | None = None,
+        title_comments: str = "",
+    ) -> alt.Chart | None:
+        """
+        See the method `plot_lstsq`
+        """
+        try:
+            if filter_by is None:
+                temp = df.lazy().select(x, target)
+            else:
+                temp = df.lazy().filter(filter_by).select(x, target)
+
+            actual_title_comments = "" if title_comments == "" else "<" + title_comments + ">"
+
+            x_name, y_name = temp.collect_schema().names()
+            xx = pl.col(x_name)
+            yy = pl.col(y_name)
+
+            if add_bias:
+                x_mean = xx.mean()
+                y_mean = yy.mean()
+                beta = (xx - x_mean).dot(yy - y_mean) / (xx - x_mean).dot(xx - x_mean)
+                alpha = y_mean - x_mean * beta
+            else:
+                beta = xx.dot(yy) / xx.dot(xx)
+                alpha = pl.lit(0, dtype=pl.Float64)
+
+            beta, alpha, r2 = (
+                temp.select(beta, alpha, query_r2(yy, xx * beta + alpha)).collect().row(0)
+            )
+
+            df_need = temp.select(
+                xx,
+                yy,
+                (xx * beta + alpha).alias("y_pred"),
+            )
+            # Sample down. If len(temp) < max_points, all temp will be selected. This sample supports lazy.
+            df_sampled = sample(df_need, value=max_points)
+
+            if add_bias and alpha > 0:
+                subtitle = (
+                    f"y = {beta:.4f} * x + {round(alpha, 4) if add_bias else ''}, r2 = {r2:.4f}"
+                )
+            elif add_bias and alpha < 0:
+                subtitle = f"y = {beta:.4f} * x - {abs(round(alpha, 4)) if add_bias else ''}, r2 = {r2:.4f}"
+            else:
+                subtitle = f"y = {beta:.4f} * x, r2 = {r2:.4f}"
+
+            title = alt.Title(
+                text=[
+                    f"Linear Regression: {y_name} ~ {x_name} {'+ bias' if add_bias else ''}",
+                    actual_title_comments,
+                ],
+                subtitle=subtitle,
+                align="center",
+            )
+            chart = (
+                alt.Chart(df_sampled, title=title)
+                .mark_point()
+                .encode(alt.X(x_name).scale(zero=False), alt.Y(y_name))
+            )
+            return chart + chart.mark_line().encode(
+                alt.X(x_name).scale(zero=False), alt.Y("y_pred")
+            )
+        except Exception as e:
+            import warnings
+
+            warnings.warn(
+                "Failed to generate plot with following inputs:"
+                f"\nx: {x}, target: {target}, bias: {add_bias}"
+                f"\nFilter by: {filter_by}"
+                f"\nTitle comments: {title_comments}"
+                "\nLikely causes (non-exhaustive): 1. empty data due to filter condition, 2. extreme values encountered (NaN, inf, etc.)."
+                f"\nOriginal Error Message: {e}",
+                stacklevel=2,
+            )
+            return None
+
+    # --- Methods ---
 
     def __init__(self, df: PolarsFrame):
         self._frame: pl.LazyFrame = df.lazy()
-        self.numerics: List[str] = df.select(cs.numeric()).columns
-        self.ints: List[str] = df.select(cs.integer()).columns
-        self.floats: List[str] = df.select(cs.float()).columns
-        self.strs: List[str] = df.select(cs.string()).columns
-        self.bools: List[str] = df.select(cs.boolean()).columns
-        self.cats: List[str] = df.select(cs.categorical()).columns
+        self.numerics: List[str] = df.select(cs.numeric()).collect_schema().names()
+        self.ints: List[str] = df.select(cs.integer()).collect_schema().names()
+        self.floats: List[str] = df.select(cs.float()).collect_schema().names()
+        self.strs: List[str] = df.select(cs.string()).collect_schema().names()
+        self.bools: List[str] = df.select(cs.boolean()).collect_schema().names()
+        self.cats: List[str] = df.select(cs.categorical()).collect_schema().names()
 
-        # POLARS V1
-        if _IS_POLARS_V1:
-            schema_dict = df.collect_schema()
-            columns = schema_dict.names()
-        else:
-            schema_dict = df.schema
-            columns = list(schema_dict.keys())
+        schema_dict = df.collect_schema()
+        columns = schema_dict.names()
 
         self.list_floats: List[str] = [
             c
@@ -106,7 +199,7 @@ class DIA:
 
     def numeric_profile(
         self, n_bins: int = 20, iqr_multiplier: float = 1.5, histogram: bool = True, gt: bool = True
-    ) -> GT:
+    ) -> GT | pl.DataFrame:
         """
         Creates a numerical profile with a histogram plot. Notice that the histograms may have
         completely different scales on the x-axis.
@@ -221,8 +314,10 @@ class DIA:
     def plot_null_distribution(
         self,
         subset: IntoExpr | Iterable[IntoExpr] = pl.all(),
-        condition: pl.Expr = pl.lit(True),
-        n_bins: int = 50,
+        filter_by: pl.Expr | None = None,
+        sort: IntoExpr | Iterable[IntoExpr] | None = None,
+        descending: bool | Sequence[bool] = False,
+        row_group_size: int = 10_000,
     ) -> GT:
         """
         Checks the null percentages per row group. Row groups are consecutive rows grouped by row number,
@@ -235,20 +330,29 @@ class DIA:
         ----------
         subset
             Anything that can be put into a Polars .select statement. Defaults to pl.all()
-        condition
+        filter_by
             A boolean expression
-        n_bins
-            The number of bins to group the rows
+        sort
+            Whether to sort the dataframe first by some other expression.
+        descending
+            Only used when sort is not none. Sort in descending order.
+        row_group_size
+            The number of rows per row group
         """
-        if _IS_POLARS_V1:
-            cols = self._frame.select(subset).collect_schema().names()
-        else:
-            cols = self._frame.select(subset).columns
 
-        frame = self._frame.filter(condition)
+        cols = self._frame.select(subset).collect_schema().names()
+
+        if filter_by is None:
+            frame = self._frame
+        else:
+            frame = self._frame.filter(filter_by)
+
+        if sort is not None:
+            frame = frame.sort(sort, descending=descending)
+
         temp = (
             frame.with_row_index(name="row_group")
-            .group_by((pl.col("row_group") // (pl.len() // n_bins)).alias("row_group"))
+            .group_by((pl.col("row_group") // row_group_size).alias("row_group"))
             .agg(pl.col(cols).null_count() / pl.len())
             .sort("row_group")
             .select(
@@ -258,7 +362,6 @@ class DIA:
         )
         # Values for plot. The first n are list[f64] used in nanoplot. The rest are overall null rates
         percentages = temp.row(0)
-
         temp2 = frame.select(pl.len(), pl.col(cols).null_count() / pl.len()).collect()
         row = temp2.row(0)
         total = row[0]
@@ -282,11 +385,11 @@ class DIA:
             .fmt_nanoplot(
                 columns="percentages in row groups",
                 plot_type="bar",
-                options=nanoplot_options(data_bar_fill_color="red"),
+                options=nanoplot_options(data_bar_fill_color=None),  # "red"
             )
         )
 
-    def meta(self):
+    def meta(self) -> Dict:
         """
         Returns internal data in this class as a dictionary.
         """
@@ -294,7 +397,7 @@ class DIA:
         out.pop("_frame")
         return out
 
-    def str_stats(self):
+    def str_stats(self) -> pl.DataFrame:
         """
         Returns basic statistics about the string columns.
         """
@@ -338,10 +441,7 @@ class DIA:
             One of ["pearson", "spearman", "xi", "kendall", "bicor"]
         """
 
-        if _IS_POLARS_V1:
-            to_check = self._frame.select(subset).collect_schema().names()
-        else:
-            to_check = self._frame.select(subset).select(cs.numeric()).columns
+        to_check = self._frame.select(subset).collect_schema().names()
 
         corrs = [
             self._frame.select(
@@ -609,19 +709,17 @@ class DIA:
         ----------
         subset
             A subset of columns to try running the dependency check. The subset input can be
-            anything that can be turned into a Polars selector. Only valid columns will be checked,
-            however.
+            anything that can be turned into a Polars selector. The df or the column subset of the df
+            may contain columns that cannot be used for dependency detection, e.g. column of list of values.
+            Only valid columns will be checked.
         """
 
         # Infer valid columns to run this detection
         valid = self.ints + self.strs + self.cats + self.bools
-
-        if _IS_POLARS_V1:
-            to_check = [x for x in self._frame.collect_schema().names() if x in valid]
-        else:
-            to_check = [x for x in self._frame.select(subset).columns if x in valid]
-
-        n_uniques = self._frame.select(pl.col(c).n_unique() for c in to_check).collect().row(0)
+        check_frame = self._frame.select(subset)
+        all_names = check_frame.collect_schema().names()
+        to_check = [x for x in all_names if x in valid]
+        n_uniques = check_frame.select(pl.col(c).n_unique() for c in to_check).collect().row(0)
 
         frame = (
             pl.DataFrame({"column": to_check, "n_unique": n_uniques})
@@ -640,8 +738,11 @@ class DIA:
                 schema={"column": pl.String, "by": pl.String, "cond_entropy": pl.Float64},
             )
 
-        # Compute conditional entropy on the rest of the columns
-        print(f"Checking dependency for columns: {check}.")
+        if len(check) != len(all_names):
+            warnings.warn(
+                f"The following columns are dropped because they cannot be used in dependency detection: {[f for f in all_names if f not in check]}",
+                stacklevel=2,
+            )
 
         ce = (
             self._frame.select(
@@ -718,10 +819,11 @@ class DIA:
         x: IntoExpr | Iterable[IntoExpr],
         target: IntoExpr | Iterable[IntoExpr],
         add_bias: bool = False,
-        condition: pl.Expr | None = None,
         max_points: int = 20_000,
-        **kwargs,
-    ) -> go.Figure:
+        by: str | None = None,
+        title_comments: str = "",
+        filter_by: pl.Expr | None = None,
+    ) -> alt.Chart | None:
         """
         Plots the least squares between x and target.
 
@@ -733,129 +835,281 @@ class DIA:
             The target variable
         add_bias
             Whether to add bias in the linear regression
-        condition
-            An additional filter condition you want to apply before runing lstsq on the data. This must
-            be a boolean expression. If none, run this on the entire dataset. (The frame used to initialize DIA.)
         max_points
-            The max number of points to be displayed. If data > this limit, the data will be sampled
-        kwargs
-            Kwargs to be passed to Plotly's Figure object
+            The max number of points to be displayed. Notice that this only affects the number of points
+            on the plot. The linear regression will still be fit on the entire dataset.
+        title_comments
+            Additional comments to put in the plot title.
+        by
+            Create a lstsq plot for each segment in `by`.
+        filter_by
+            Additional filter condition to be applied. This will be applied upfront to the entire
+            dataframe, and then the dataframe will be partitioned by the segments.
+            This means it is possible to filter out entire segment(s) before plots are drawn.
         """
-        if condition is None:
-            temp = self._frame.select(x, target)
-            condition_str = ""
+        if by is None:
+            return DIA._plot_lstsq(
+                self._frame,
+                x,
+                target,
+                add_bias,
+                max_points,
+                filter_by,
+                title_comments,
+            ).configure(autosize="pad")
         else:
-            temp = self._frame.filter(condition).select(x, target)
-            condition_str = "\nCondition: " + str(condition)
+            if filter_by is None:
+                frame = self._frame
+            else:
+                frame = self._frame.filter(filter_by)
 
-        if _IS_POLARS_V1:
-            x_name, y_name = temp.collect_schema().names()
-        else:
-            x_name, y_name = temp.columns
-
-        coeffs = (
-            temp.select(
-                query_lstsq_report(pl.col(x_name), target=pl.col(y_name), add_bias=add_bias).alias(
-                    "report"
+            plots = (
+                DIA._plot_lstsq(
+                    df,
+                    x,
+                    target,
+                    add_bias,
+                    max_points,
+                    filter_by=None,
+                    title_comments=f"Segment = {key if len(key) > 1 else key[0]}",
                 )
+                for key, df in frame.collect().partition_by(by, as_dict=True).items()
             )
-            .unnest("report")
-            .select(
-                pl.all().exclude("idx")  # All but the idx column in lstsq_report
+
+            return alt.vconcat(*(plot for plot in plots if plot is not None)).configure(
+                autosize="pad"
             )
-            .collect()
-        )
-        if add_bias:
-            b1, alpha = coeffs["beta"]
-        else:
-            b1, alpha = coeffs["beta"][0], 0
-        # Get the data necessary for plotting
-        temp = temp.select(
-            pl.col(x_name).alias("x"),
-            pl.col(y_name).alias("y"),
-            (pl.col(x_name) * b1 + alpha).alias("y_pred"),
-        )  # Sample down. If len(temp) < max_points, all temp will be selected. This sample supports lazy.
-        df = sample(temp, value=max_points)
 
-        fig = go.Figure(**kwargs)
-        fig.update_layout(
-            title=f"y={y_name}, x={x_name}, y_pred = ({x_name}) * {b1:.5f} + {alpha:.5f}<br><sup>{condition_str}</sup>",
-            xaxis_title=x_name,
-            yaxis_title=y_name,
-        )
-
-        fig.add_trace(go.Scatter(x=df["x"], y=df["y"], mode="markers", name="data scatter"))
-        fig.add_trace(go.Scatter(x=df["x"], y=df["y_pred"], mode="lines", name="Least Squares"))
-        print(coeffs)
-        return fig
-
-    def plot_distribution(
+    def plot_dist(
         self,
-        feature: IntoExpr | Iterable[IntoExpr],
+        feature: str,
         n_bins: int | None = None,
-        by: IntoExpr | Iterable[IntoExpr] | None = None,
         density: bool = False,
-        condition: pl.Expr | None = None,
-        include_null: bool = True,
+        show_bad_values: bool = True,
+        filter_by: pl.Expr | None = None,
         **kwargs,
-    ) -> go.Figure:
+    ) -> Tuple[pl.DataFrame, alt.Chart]:
         """
-        Plot distribution of the feature.
+        Plot distribution of the feature with a few statistical details.
 
         Parameters
         ----------
         feature
-            A polars expression to a column where a histogram makes sense
+            A string representing a column name
         n_bins
             The number of bins used for histograms. Not used when the feature column is categorical.
-        by
-            Optionally provide a segment to plot multiple distributions of the same features
         density
             Whether to plot a probability density or not
-        condition
+        filter_by
             An extra condition you may want to impose on the underlying dataset
         include_null
             When by is not null, whether to consider null a segment or not. If true, null values will be
             mapped to the name "__null__". The string "__null__" should not exist originally in the column.
             This is a workaround to get plotly to recognize null values.
+        max_rows
+
         kwargs
             Keyword arguments for plotly's histogram function
         """
 
-        histnorm: str | None = "probability density" if density else None
-        if condition is None:
-            frame = self._frame
+        if n_bins <= 2:
+            raise ValueError("For plot_dist, `n_bins` must be > 2.")
+        if feature not in self.numerics:
+            raise ValueError("Input feature must be numeric.")
+
+        if filter_by is None:
+            frame_with_filter = self._frame.select(feature)
         else:
-            frame = self._frame.filter(condition)
+            frame_with_filter = self._frame.select(feature).filter(filter_by)
 
-        if by is None:
-            df = frame.select(feature).collect()
-            feat = df.columns[0]
-            seg_name = ""
-        else:
-            if _IS_POLARS_V1:
-                feat, by_col_name = frame.select(feature, by).collect_schema().names()
-            else:
-                feat, by_col_name = frame.select(feature, by).columns
+        frame = frame_with_filter.filter(
+            pl.all_horizontal(pl.col(feature).is_finite(), pl.col(feature).is_not_null())
+        ).collect()
 
-            by_output = pl.col(by_col_name).alias("by")
-            if include_null:
-                # if data column already has a string value called __null__ it will be wrong
-                by_output = by_output.cast(pl.String).fill_null("__null__")
+        p5, median, mean, p95, min_, max_ = frame.select(
+            p5=pl.col(feature).quantile(0.05),
+            median=pl.col(feature).median(),
+            mean=pl.col(feature).mean(),
+            p95=pl.col(feature).quantile(0.95),
+            min=pl.col(feature).min(),
+            max=pl.col(feature).max(),
+        ).row(0)
 
-            # The first select deals with the case when by is an expression
-            df = frame.select(feature, by).select(feat, by_output).collect()
-            seg_name = f"by {by}"
-
-        return px.histogram(
-            x=df[feat],
-            title=f"{feat} Distribution {seg_name}",
-            color=None if by is None else df["by"],
-            nbins=n_bins,
-            labels={"x": feat},
-            histnorm=histnorm,
-            **kwargs,
+        # bin computation
+        range_ = max_ - min_
+        recip = 1 / n_bins
+        cuts = [recip * (i + 0.5) for i in range(1, n_bins + 1)]
+        cnt, values = (
+            frame.select(
+                ((pl.col(feature) - min_) / range_)
+                .cut(breaks=cuts, include_breaks=True)
+                .struct.rename_fields(["brk", "category"])
+                .struct.field("brk")
+                .value_counts(parallel=True)
+                .sort()
+                .alias("bins")
+            )
+            .unnest("bins")
+            .select(cnt=pl.col("count"), values=pl.col("brk") * range_ + min_)
+            .get_columns()
         )
+        # histgram plot
+        df_plot = pl.DataFrame({"counts": cnt, "cuts": values})
+        density_str = "density" if density else "counts"
+        alt_y = alt.Y(f"{density_str}:Q", scale=alt.Scale(domainMin=0)).title(density_str)
+        if density:
+            df_plot = df_plot.with_columns(density=pl.col("counts") / pl.col("counts").sum())
+
+        base = alt.Chart(df_plot, title=f"Distribution for {feature}")
+        dist_chart = base.mark_bar(size=15).encode(
+            alt.X("cuts:Q", axis=alt.Axis(tickCount=n_bins // 2, grid=False)),
+            alt_y,
+            tooltip=[
+                alt.Tooltip("cuts:Q", title="CutValue"),
+                alt.Tooltip(f"{density_str}:Q", title=density_str),
+            ],
+        )
+        # stats overlay
+        df_stats = pl.DataFrame(
+            {"names": ["p5", "p50", "avg", "p95"], "stats": [p5, median, mean, p95]}
+        )
+
+        stats_base = alt.Chart(df_stats)
+        stats_chart = stats_base.mark_rule(color="red").encode(
+            x=alt.X("stats").title(""),
+            tooltip=[
+                alt.Tooltip("names:N", title="Stats"),
+                alt.Tooltip("stats:Q", title="Value"),
+            ],
+        )
+        # null, inf, nan percentages bar
+        if show_bad_values:
+            bad_pct = (
+                frame_with_filter.select(
+                    pl.any_horizontal(pl.col(feature).is_null(), ~pl.col(feature).is_finite()).sum()
+                    / pl.len()
+                )
+                .collect()
+                .item(0, 0)
+            )
+
+            df_bad = pl.DataFrame({"Null/NaN/Inf%": [bad_pct]})
+            bad_chart = (
+                alt.Chart(df_bad)
+                .mark_bar(opacity=0.5)
+                .encode(
+                    alt.X("Null/NaN/Inf%:Q", scale=alt.Scale(domain=[0, 1])),
+                    tooltip=[
+                        alt.Tooltip("Null/NaN/Inf%:Q", title="Null/NaN/Inf%"),
+                    ],
+                )
+            )
+            chart = alt.vconcat(dist_chart + stats_chart, bad_chart)
+        else:
+            chart = dist_chart + stats_chart
+
+        return df_plot, chart
+
+    def compare_dist_on_segment(
+        self,
+        feature: str,
+        by: IntoExpr,
+        n_bins: int = 30,
+        density: bool = True,
+        filter_by: pl.Expr | None = None,
+    ) -> alt.Chart:
+        """
+        Compare the distribution of a feature on a segment.
+
+        Parameters
+        ----------
+        feature
+            A string representing a column name
+        by
+            The segment. Anything that evaluates to a column that can be casted to string and used as dicrete segments.
+            Null values in this segment column will be mapped to '__null__'.
+        n_bins
+            The max number of bins for the plot.
+        density
+            Whether to show a histogram or a density plot
+        filter_by
+            An optional filter. If not none, this will be applied to the entire data upfront before the segmentation.
+        """
+
+        feat, segment = self._frame.select(feature, by).collect_schema().names()
+        if filter_by is None:
+            frame = (
+                self._frame.filter(
+                    pl.all_horizontal(pl.col(feat).is_not_null(), pl.col(feat).is_finite())
+                )
+                .select(feat, by)
+                .collect()
+            )
+        else:
+            frame = (
+                self._frame.filter(
+                    pl.all_horizontal(
+                        pl.col(feat).is_not_null(), pl.col(feat).is_finite(), filter_by
+                    )
+                )
+                .select(feat, by)
+                .collect()
+            )
+
+        selection = alt.selection_point(fields=[segment], bind="legend")
+        # Null will be a group in Altair's chart, but it breaks the predicate evaluation, making
+        # toggling the null group impossible. (This is likely a Altair bug). We
+        # map nulls to a special string '__null__' to avoid that issue
+        frame = frame.with_columns(pl.col(segment).cast(pl.String).fill_null(pl.lit("__null__")))
+        base = alt.Chart(frame, title=f"Distribution of {feat} on segment {segment}")
+        if density:
+            dist_chart = (
+                base.transform_density(
+                    feat,
+                    groupby=[segment],
+                    as_=[feat, "density"],
+                )
+                .mark_bar(opacity=0.55, binSpacing=0)
+                .encode(
+                    alt.X(f"{feat}:Q"),
+                    alt.Y("density:Q", scale=alt.Scale(domainMin=0)).stack(None),
+                    color=f"{segment}:N",
+                    opacity=alt.condition(selection, alt.value(0.55), alt.value(0.0)),
+                )
+                .add_selection(selection)
+            )
+        else:
+            dist_chart = (
+                base.mark_bar(opacity=0.55, binSpacing=0)
+                .encode(
+                    alt.X(f"{feat}:Q"),
+                    alt.Y("count()", scale=alt.Scale(domainMin=0)).stack(None),
+                    color=f"{segment}:N",
+                    opacity=alt.condition(selection, alt.value(0.55), alt.value(0.0)),
+                )
+                .add_selection(selection)
+            )
+
+        df_temp = self._frame if filter_by is None else self._frame.filter(filter_by)
+        df_bad = (
+            df_temp.group_by(by)
+            .agg(bad_rate=(pl.col(feat).is_null() | (~pl.col(feat).is_finite())).sum() / pl.len())
+            .with_columns(pl.col(segment).fill_null(pl.lit("__null__")))
+            .collect()
+        )
+        bad_chart = (
+            alt.Chart(df_bad)
+            .mark_bar(opacity=0.5)
+            .encode(
+                alt.X("bad_rate:Q", scale=alt.Scale(domain=[0, 1])).title("Null/NaN/Inf%"),
+                alt.Y(f"{segment}:N"),
+                color=f"{segment}:N",
+                tooltip=[
+                    alt.Tooltip("bad_rate:Q", title="Null/NaN/Inf%"),
+                ],
+            )
+        )
+        return alt.vconcat(dist_chart, bad_chart)
 
     def plot_pca(
         self,
@@ -863,9 +1117,10 @@ class DIA:
         by: IntoExpr,
         center: bool = True,
         dim: int = 2,
-        max_points: int = 20_000,
+        filter_by: pl.Expr | None = None,
+        max_points: int = 10_000,
         **kwargs,
-    ) -> go.Figure:
+    ) -> alt.Chart:
         """
         Creates a scatter plot based on the reduced dimensions via PCA, and color it by `by`.
 
@@ -878,44 +1133,45 @@ class DIA:
         center
             Whether to automatically center the features
         dim
-            Either 2 or 3. Plot either a 2d principal component plot or a 3d one.
+            Only 2 principal components plot can be done at this moment.
+        filter_by
+            A boolean expression
         max_points
             The max number of points to be displayed. If data > this limit, the data will be sampled.
         kwargs
             Anything else that will be passed to plotly's scatter function
         """
-        if _IS_POLARS_V1:
-            feats = self._frame.select(features).collect_schema().names()
-        else:
-            feats = self._frame.select(features).columns
+        feats = self._frame.select(features).collect_schema().names()
 
         if len(feats) < 2:
             raise ValueError("You must pass >= 2 features.")
-        if dim < 2 or dim > 3:
-            raise ValueError("Input `dim` must either be 2 or 3.")
+        if dim != 2:
+            raise NotImplementedError
+        # if dim < 2 or dim > 3:
+        #     raise ValueError("Input `dim` must either be 2 or 3.")
 
-        temp = self._frame.select(
+        if filter_by is None:
+            frame = self._frame
+        else:
+            frame = self._frame.filter(filter_by)
+
+        temp = frame.select(
             query_principal_components(*feats, center=center, k=dim).alias("pc"), by
         )
         df = sample(temp, value=max_points).unnest("pc")
 
         if dim == 2:
-            fig = px.scatter(
-                x=df["pc1"],
-                y=df["pc2"],
-                color=df[by],
-                labels={"x": "pc1", "y": "pc2"},
-                title="2 Principal Components",
-                **kwargs,
+            selection = alt.selection_point(fields=[by], bind="legend")
+            return (
+                alt.Chart(df, title="PC2 Plot")
+                .mark_point()
+                .encode(
+                    alt.X("pc1:Q"),
+                    alt.Y("pc2:Q"),
+                    alt.Color(f"{by}:N"),
+                    opacity=alt.condition(selection, alt.value(1), alt.value(0.1)),
+                )
+                .add_params(selection)
             )
         else:
-            fig = px.scatter_3d(
-                x=df["pc1"],
-                y=df["pc2"],
-                z=df["pc3"],
-                color=df[by],
-                labels={"x": "pc1", "y": "pc2", "z": "pc3"},
-                title="3 Principal Components",
-                **kwargs,
-            )
-        return fig
+            raise NotImplementedError
