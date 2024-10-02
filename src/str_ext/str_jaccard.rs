@@ -5,6 +5,7 @@ use pyo3_polars::{
     derive::{polars_expr, CallerContext},
     export::polars_core::{
         utils::rayon::prelude::{IntoParallelIterator, ParallelIterator},
+        error::PolarsError,
         POOL,
     },
 };

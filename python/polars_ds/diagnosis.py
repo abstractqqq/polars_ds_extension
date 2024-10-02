@@ -12,16 +12,13 @@ import polars.selectors as cs
 import polars as pl
 import graphviz
 
-import plotly.express as px
-import plotly.graph_objects as go
-
 import warnings
-from typing import List, Iterable, Dict, Tuple
+from typing import List, Iterable, Dict, Tuple, Sequence
 from functools import lru_cache
 from itertools import combinations
 from great_tables import GT, nanoplot_options
 
-from . import query_cond_entropy, query_principal_components
+from . import query_cond_entropy, query_principal_components, query_r2
 from .type_alias import CorrMethod, PolarsFrame
 from .stats import corr
 from .sample import sample
@@ -81,7 +78,9 @@ class DIA:
                 beta = xx.dot(yy) / xx.dot(xx)
                 alpha = pl.lit(0, dtype=pl.Float64)
 
-            beta, alpha = temp.select(beta, alpha).collect().row(0)
+            beta, alpha, r2 = (
+                temp.select(beta, alpha, query_r2(yy, xx * beta + alpha)).collect().row(0)
+            )
 
             df_need = temp.select(
                 xx,
@@ -92,11 +91,13 @@ class DIA:
             df_sampled = sample(df_need, value=max_points)
 
             if add_bias and alpha > 0:
-                subtitle = f"y = {beta:.4f} * x + {round(alpha, 4) if add_bias else ''}"
+                subtitle = (
+                    f"y = {beta:.4f} * x + {round(alpha, 4) if add_bias else ''}, r2 = {r2:.4f}"
+                )
             elif add_bias and alpha < 0:
-                subtitle = f"y = {beta:.4f} * x - {abs(round(alpha, 4)) if add_bias else ''}"
+                subtitle = f"y = {beta:.4f} * x - {abs(round(alpha, 4)) if add_bias else ''}, r2 = {r2:.4f}"
             else:
-                subtitle = f"y = {beta:.4f} * x"
+                subtitle = f"y = {beta:.4f} * x, r2 = {r2:.4f}"
 
             title = alt.Title(
                 text=[
@@ -313,8 +314,10 @@ class DIA:
     def plot_null_distribution(
         self,
         subset: IntoExpr | Iterable[IntoExpr] = pl.all(),
-        condition: pl.Expr = pl.lit(True),
-        row_group_size: int = 50,
+        filter_by: pl.Expr | None = None,
+        sort: IntoExpr | Iterable[IntoExpr] | None = None,
+        descending: bool | Sequence[bool] = False,
+        row_group_size: int = 10_000,
     ) -> GT:
         """
         Checks the null percentages per row group. Row groups are consecutive rows grouped by row number,
@@ -327,17 +330,29 @@ class DIA:
         ----------
         subset
             Anything that can be put into a Polars .select statement. Defaults to pl.all()
-        condition
+        filter_by
             A boolean expression
+        sort
+            Whether to sort the dataframe first by some other expression.
+        descending
+            Only used when sort is not none. Sort in descending order.
         row_group_size
             The number of rows per row group
         """
+
         cols = self._frame.select(subset).collect_schema().names()
 
-        frame = self._frame.filter(condition)
+        if filter_by is None:
+            frame = self._frame
+        else:
+            frame = self._frame.filter(filter_by)
+
+        if sort is not None:
+            frame = frame.sort(sort, descending=descending)
+
         temp = (
             frame.with_row_index(name="row_group")
-            .group_by((pl.col("row_group") // (pl.len() // row_group_size)).alias("row_group"))
+            .group_by((pl.col("row_group") // row_group_size).alias("row_group"))
             .agg(pl.col(cols).null_count() / pl.len())
             .sort("row_group")
             .select(
@@ -347,7 +362,6 @@ class DIA:
         )
         # Values for plot. The first n are list[f64] used in nanoplot. The rest are overall null rates
         percentages = temp.row(0)
-
         temp2 = frame.select(pl.len(), pl.col(cols).null_count() / pl.len()).collect()
         row = temp2.row(0)
         total = row[0]
@@ -371,7 +385,7 @@ class DIA:
             .fmt_nanoplot(
                 columns="percentages in row groups",
                 plot_type="bar",
-                options=nanoplot_options(data_bar_fill_color="red"),
+                options=nanoplot_options(data_bar_fill_color=None),  # "red"
             )
         )
 
@@ -806,9 +820,9 @@ class DIA:
         target: IntoExpr | Iterable[IntoExpr],
         add_bias: bool = False,
         max_points: int = 20_000,
-        filter_by: pl.Expr | None = None,
-        title_comments: str = "",
         by: str | None = None,
+        title_comments: str = "",
+        filter_by: pl.Expr | None = None,
     ) -> alt.Chart | None:
         """
         Plots the least squares between x and target.
@@ -824,14 +838,14 @@ class DIA:
         max_points
             The max number of points to be displayed. Notice that this only affects the number of points
             on the plot. The linear regression will still be fit on the entire dataset.
-        filter_by
-            Additional filter condition to be applied. This will be applied upfront to the entire
-            dataframe if `by` is not None, and then the dataframe will be partitioned by the segments.
-            This means it is possible to filter out entire segment(s) before plots are drawn.
         title_comments
             Additional comments to put in the plot title.
         by
             Create a lstsq plot for each segment in `by`.
+        filter_by
+            Additional filter condition to be applied. This will be applied upfront to the entire
+            dataframe, and then the dataframe will be partitioned by the segments.
+            This means it is possible to filter out entire segment(s) before plots are drawn.
         """
         if by is None:
             return DIA._plot_lstsq(
@@ -868,20 +882,20 @@ class DIA:
 
     def plot_dist(
         self,
-        feature: IntoExpr | Iterable[IntoExpr],
+        feature: str,
         n_bins: int | None = None,
         density: bool = False,
-        filter_by: pl.Expr | None = None,
         show_bad_values: bool = True,
+        filter_by: pl.Expr | None = None,
         **kwargs,
     ) -> Tuple[pl.DataFrame, alt.Chart]:
         """
-        Plot distribution(s) of the feature(s).
+        Plot distribution of the feature with a few statistical details.
 
         Parameters
         ----------
         feature
-            A polars expression to a column where a histogram makes sense
+            A string representing a column name
         n_bins
             The number of bins used for histograms. Not used when the feature column is categorical.
         density
@@ -900,6 +914,8 @@ class DIA:
 
         if n_bins <= 2:
             raise ValueError("For plot_dist, `n_bins` must be > 2.")
+        if feature not in self.numerics:
+            raise ValueError("Input feature must be numeric.")
 
         if filter_by is None:
             frame_with_filter = self._frame.select(feature)
@@ -907,30 +923,25 @@ class DIA:
             frame_with_filter = self._frame.select(feature).filter(filter_by)
 
         frame = frame_with_filter.filter(
-            pl.all_horizontal(cs.numeric().is_finite(), cs.numeric().is_not_null())
+            pl.all_horizontal(pl.col(feature).is_finite(), pl.col(feature).is_not_null())
         ).collect()
 
-        # title = f"{'Density Plot' if density else 'Histogram'}"
-
-        feat = frame.collect_schema().names()[0]
-        if feat not in self.numerics:
-            raise ValueError("Non-numerics features are not supported by this.")
-
         p5, median, mean, p95, min_, max_ = frame.select(
-            p5=pl.col(feat).quantile(0.05),
-            median=pl.col(feat).median(),
-            mean=pl.col(feat).mean(),
-            p95=pl.col(feat).quantile(0.95),
-            min=pl.col(feat).min(),
-            max=pl.col(feat).max(),
+            p5=pl.col(feature).quantile(0.05),
+            median=pl.col(feature).median(),
+            mean=pl.col(feature).mean(),
+            p95=pl.col(feature).quantile(0.95),
+            min=pl.col(feature).min(),
+            max=pl.col(feature).max(),
         ).row(0)
 
+        # bin computation
         range_ = max_ - min_
         recip = 1 / n_bins
         cuts = [recip * (i + 0.5) for i in range(1, n_bins + 1)]
         cnt, values = (
             frame.select(
-                ((pl.col(feat) - min_) / range_)
+                ((pl.col(feature) - min_) / range_)
                 .cut(breaks=cuts, include_breaks=True)
                 .struct.rename_fields(["brk", "category"])
                 .struct.field("brk")
@@ -942,14 +953,14 @@ class DIA:
             .select(cnt=pl.col("count"), values=pl.col("brk") * range_ + min_)
             .get_columns()
         )
-
+        # histgram plot
         df_plot = pl.DataFrame({"counts": cnt, "cuts": values})
         density_str = "density" if density else "counts"
         alt_y = alt.Y(f"{density_str}:Q", scale=alt.Scale(domainMin=0)).title(density_str)
         if density:
             df_plot = df_plot.with_columns(density=pl.col("counts") / pl.col("counts").sum())
 
-        base = alt.Chart(df_plot, title=f"Distribution for {feat}")
+        base = alt.Chart(df_plot, title=f"Distribution for {feature}")
         dist_chart = base.mark_bar(size=15).encode(
             alt.X("cuts:Q", axis=alt.Axis(tickCount=n_bins // 2, grid=False)),
             alt_y,
@@ -958,7 +969,7 @@ class DIA:
                 alt.Tooltip(f"{density_str}:Q", title=density_str),
             ],
         )
-
+        # stats overlay
         df_stats = pl.DataFrame(
             {"names": ["p5", "p50", "avg", "p95"], "stats": [p5, median, mean, p95]}
         )
@@ -971,11 +982,11 @@ class DIA:
                 alt.Tooltip("stats:Q", title="Value"),
             ],
         )
-
+        # null, inf, nan percentages bar
         if show_bad_values:
             bad_pct = (
                 frame_with_filter.select(
-                    pl.any_horizontal(pl.col(feat).is_null(), ~pl.col(feat).is_finite()).sum()
+                    pl.any_horizontal(pl.col(feature).is_null(), ~pl.col(feature).is_finite()).sum()
                     / pl.len()
                 )
                 .collect()
@@ -999,15 +1010,117 @@ class DIA:
 
         return df_plot, chart
 
+    def compare_dist_on_segment(
+        self,
+        feature: str,
+        by: IntoExpr,
+        n_bins: int = 30,
+        density: bool = True,
+        filter_by: pl.Expr | None = None,
+    ) -> alt.Chart:
+        """
+        Compare the distribution of a feature on a segment.
+
+        Parameters
+        ----------
+        feature
+            A string representing a column name
+        by
+            The segment. Anything that evaluates to a column that can be casted to string and used as dicrete segments.
+            Null values in this segment column will be mapped to '__null__'.
+        n_bins
+            The max number of bins for the plot.
+        density
+            Whether to show a histogram or a density plot
+        filter_by
+            An optional filter. If not none, this will be applied to the entire data upfront before the segmentation.
+        """
+
+        feat, segment = self._frame.select(feature, by).collect_schema().names()
+        if filter_by is None:
+            frame = (
+                self._frame.filter(
+                    pl.all_horizontal(pl.col(feat).is_not_null(), pl.col(feat).is_finite())
+                )
+                .select(feat, by)
+                .collect()
+            )
+        else:
+            frame = (
+                self._frame.filter(
+                    pl.all_horizontal(
+                        pl.col(feat).is_not_null(), pl.col(feat).is_finite(), filter_by
+                    )
+                )
+                .select(feat, by)
+                .collect()
+            )
+
+        selection = alt.selection_point(fields=[segment], bind="legend")
+        # Null will be a group in Altair's chart, but it breaks the predicate evaluation, making
+        # toggling the null group impossible. (This is likely a Altair bug). We
+        # map nulls to a special string '__null__' to avoid that issue
+        frame = frame.with_columns(pl.col(segment).cast(pl.String).fill_null(pl.lit("__null__")))
+        base = alt.Chart(frame, title=f"Distribution of {feat} on segment {segment}")
+        if density:
+            dist_chart = (
+                base.transform_density(
+                    feat,
+                    groupby=[segment],
+                    as_=[feat, "density"],
+                )
+                .mark_bar(opacity=0.55, binSpacing=0)
+                .encode(
+                    alt.X(f"{feat}:Q"),
+                    alt.Y("density:Q", scale=alt.Scale(domainMin=0)).stack(None),
+                    color=f"{segment}:N",
+                    opacity=alt.condition(selection, alt.value(0.55), alt.value(0.0)),
+                )
+                .add_selection(selection)
+            )
+        else:
+            dist_chart = (
+                base.mark_bar(opacity=0.55, binSpacing=0)
+                .encode(
+                    alt.X(f"{feat}:Q"),
+                    alt.Y("count()", scale=alt.Scale(domainMin=0)).stack(None),
+                    color=f"{segment}:N",
+                    opacity=alt.condition(selection, alt.value(0.55), alt.value(0.0)),
+                )
+                .add_selection(selection)
+            )
+
+        df_temp = self._frame if filter_by is None else self._frame.filter(filter_by)
+        df_bad = (
+            df_temp.group_by(by)
+            .agg(bad_rate=(pl.col(feat).is_null() | (~pl.col(feat).is_finite())).sum() / pl.len())
+            .with_columns(pl.col(segment).fill_null(pl.lit("__null__")))
+            .collect()
+        )
+        bad_chart = (
+            alt.Chart(df_bad)
+            .mark_bar(opacity=0.5)
+            .encode(
+                alt.X("bad_rate:Q", scale=alt.Scale(domain=[0, 1])).title("Null/NaN/Inf%"),
+                alt.Y(f"{segment}:N"),
+                color=f"{segment}:N",
+                tooltip=[
+                    alt.Tooltip("bad_rate:Q", title="Null/NaN/Inf%"),
+                ],
+            )
+        )
+        return alt.vconcat(dist_chart, bad_chart)
+
     def plot_pca(
         self,
         *features: IntoExpr | Iterable[IntoExpr],
         by: IntoExpr,
         center: bool = True,
         dim: int = 2,
-        max_points: int = 20_000,
+        filter_by: pl.Expr | None = None,
+        max_points: int = 10_000,
         **kwargs,
-    ) -> go.Figure:
+    ) -> alt.Chart:
         """
         Creates a scatter plot based on the reduced dimensions via PCA, and color it by `by`.
 
@@ -1020,7 +1133,9 @@ class DIA:
         center
             Whether to automatically center the features
         dim
-            Either 2 or 3. Plot either a 2d principal component plot or a 3d one.
+            Only 2 principal components plot can be done at this moment.
+        filter_by
+            A boolean expression
         max_points
             The max number of points to be displayed. If data > this limit, the data will be sampled.
         kwargs
@@ -1030,31 +1145,33 @@ class DIA:
 
         if len(feats) < 2:
             raise ValueError("You must pass >= 2 features.")
-        if dim < 2 or dim > 3:
-            raise ValueError("Input `dim` must either be 2 or 3.")
+        if dim != 2:
+            raise NotImplementedError
+        # if dim < 2 or dim > 3:
+        #     raise ValueError("Input `dim` must either be 2 or 3.")
 
-        temp = self._frame.select(
+        if filter_by is None:
+            frame = self._frame
+        else:
+            frame = self._frame.filter(filter_by)
+
+        temp = frame.select(
             query_principal_components(*feats, center=center, k=dim).alias("pc"), by
         )
         df = sample(temp, value=max_points).unnest("pc")
 
         if dim == 2:
-            fig = px.scatter(
-                x=df["pc1"],
-                y=df["pc2"],
-                color=df[by],
-                labels={"x": "pc1", "y": "pc2"},
-                title="2 Principal Components",
-                **kwargs,
+            selection = alt.selection_point(fields=[by], bind="legend")
+            return (
+                alt.Chart(df, title="PC2 Plot")
+                .mark_point()
+                .encode(
+                    alt.X("pc1:Q"),
+                    alt.Y("pc2:Q"),
+                    alt.Color(f"{by}:N"),
+                    opacity=alt.condition(selection, alt.value(1), alt.value(0.1)),
+                )
+                .add_params(selection)
             )
         else:
-            fig = px.scatter_3d(
-                x=df["pc1"],
-                y=df["pc2"],
-                z=df["pc3"],
-                color=df[by],
-                labels={"x": "pc1", "y": "pc2", "z": "pc3"},
-                title="3 Principal Components",
-                **kwargs,
-            )
-        return fig
+            raise NotImplementedError

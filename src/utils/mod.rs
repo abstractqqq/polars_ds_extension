@@ -163,28 +163,28 @@ pub fn first_field_output(fields: &[Field]) -> PolarsResult<Field> {
 
 pub fn list_u32_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
-        "nodes",
+        "nodes".into(),
         DataType::List(Box::new(DataType::UInt32)),
     ))
 }
 
 pub fn list_f64_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
-        "floats",
+        "floats".into(),
         DataType::List(Box::new(DataType::Float64)),
     ))
 }
 
 pub fn complex_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
-        "complex",
+        "complex".into(),
         DataType::Array(Box::new(DataType::Float64), 2),
     ))
 }
 
 pub fn list_str_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
-        "list_str",
+        "list_str".into(),
         DataType::List(Box::new(DataType::String)),
     ))
 }
