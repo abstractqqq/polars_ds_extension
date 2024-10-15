@@ -1,4 +1,4 @@
-use crate::utils::rechunk_to_frame;
+use crate::utils::to_f64_matrix_without_nulls;
 use faer::dyn_stack::{GlobalPodBuffer, PodStack};
 use faer::prelude::*;
 use faer_ext::IntoFaer;
@@ -33,8 +33,7 @@ pub fn principal_components_output(fields: &[Field]) -> PolarsResult<Field> {
 
 #[polars_expr(output_type_func=singular_values_output)]
 fn pl_singular_values(inputs: &[Series]) -> PolarsResult<Series> {
-    let df = rechunk_to_frame(inputs)?.drop_nulls::<String>(None)?;
-    let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
+    let mat = to_f64_matrix_without_nulls(inputs, IndexOrder::Fortran)?;
     let mat = mat.view().into_faer();
 
     let dim = Ord::min(mat.nrows(), mat.ncols());
@@ -74,43 +73,50 @@ fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
     let k = inputs[0].u32()?;
     let k = k.get(0).unwrap() as usize;
 
-    let df = rechunk_to_frame(&inputs[1..])?.drop_nulls::<String>(None)?;
-    let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
+    let mat = to_f64_matrix_without_nulls(&inputs[1..], IndexOrder::Fortran)?;
     let mat = mat.view().into_faer();
-    let dim = Ord::min(mat.nrows(), mat.ncols());
-    let mut s = Col::zeros(dim);
-    let mut v = Mat::<f64>::zeros(dim, dim);
-    let parallelism = faer::Parallelism::Rayon(0); // use current num threads
-    let params = Default::default();
-    faer::linalg::svd::compute_svd(
-        mat.canonicalize().0,
-        s.as_mut(),
-        None,
-        Some(v.as_mut()),
-        parallelism,
-        PodStack::new(&mut GlobalPodBuffer::new(
-            faer::linalg::svd::compute_svd_req::<f64>(
-                mat.nrows(),
-                mat.ncols(),
-                faer::linalg::svd::ComputeVectors::No,
-                faer::linalg::svd::ComputeVectors::Thin,
-                parallelism,
-                params,
-            )
-            .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?,
-        )),
-        params,
-    );
 
-    let components = mat * v;
+    let series = if mat.nrows() < k {
+        (0..k)
+            .map(|i| {
+                let name = format!("pc{}", i + 1);
+                Series::from_vec(name.as_ref(), vec![f64::NAN])
+            }).collect::<Vec<_>>()
+    } else {
+        let dim = Ord::min(mat.nrows(), mat.ncols());
+        let mut s = Col::zeros(dim);
+        let mut v = Mat::<f64>::zeros(dim, dim);
+        let parallelism = faer::Parallelism::Rayon(0); // use current num threads
+        let params = Default::default();
+        faer::linalg::svd::compute_svd(
+            mat.canonicalize().0,
+            s.as_mut(),
+            None,
+            Some(v.as_mut()),
+            parallelism,
+            PodStack::new(&mut GlobalPodBuffer::new(
+                faer::linalg::svd::compute_svd_req::<f64>(
+                    mat.nrows(),
+                    mat.ncols(),
+                    faer::linalg::svd::ComputeVectors::No,
+                    faer::linalg::svd::ComputeVectors::Thin,
+                    parallelism,
+                    params,
+                )
+                .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?,
+            )),
+            params,
+        );
+    
+        let components = mat * v;
 
-    let series: Vec<_> = (0..k)
-        .map(|i| {
+        (0..k).map(|i| {
             let name = format!("pc{}", i + 1);
             let s = Float64Chunked::from_slice(name.as_ref(), components.col_as_slice(i));
             s.into_series()
-        })
-        .collect();
+        }).collect::<Vec<_>>()
+
+    };
 
     let ca = StructChunked::new("principal_components", &series)?;
     Ok(ca.into_series())
@@ -118,8 +124,7 @@ fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type_func=pca_output)]
 fn pl_pca(inputs: &[Series]) -> PolarsResult<Series> {
-    let df = rechunk_to_frame(inputs)?.drop_nulls::<String>(None)?;
-    let mat = df.to_ndarray::<Float64Type>(IndexOrder::Fortran)?;
+    let mat = to_f64_matrix_without_nulls(inputs, IndexOrder::Fortran)?;
     let mat = mat.view().into_faer();
     let dim = Ord::min(mat.nrows(), mat.ncols());
     let mut s = Col::zeros(dim);

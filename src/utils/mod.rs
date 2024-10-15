@@ -1,4 +1,5 @@
 use cfavml::safe_trait_distance_ops::DistanceOps;
+use ndarray::Array2;
 use num::Float;
 use polars::{
     datatypes::{DataType, Field},
@@ -20,6 +21,12 @@ pub fn rechunk_to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
     let mut df = DataFrame::new(inputs.to_vec())?;
     df = df.align_chunks().clone(); // ref count, cheap clone
     Ok(df)
+}
+
+#[inline(always)]
+pub fn to_f64_matrix_without_nulls(inputs: &[Series], order: IndexOrder) -> PolarsResult<Array2<f64>> {
+    let mut df = DataFrame::new(inputs.to_vec())?.drop_nulls::<String>(None)?;
+    df.to_ndarray::<Float64Type>(order)
 }
 
 #[inline(always)]
