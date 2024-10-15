@@ -356,7 +356,9 @@ def winsorize(
     )
 
 
-def perturb(x: str | pl.Expr, epsilon: float, positive: bool = False):
+def perturb(
+    x: str | pl.Expr, epsilon: float = 1e-5, positive: bool = False, seed: int | None = None
+) -> pl.Expr:
     """
     Perturb the var by a small amount. This only applies to float columns.
 
@@ -369,6 +371,8 @@ def perturb(x: str | pl.Expr, epsilon: float, positive: bool = False):
     positive
         If true, randomly add a small amount in [0, epsilon). If false, it will use the range
         [-epsilon/2, epsilon/2)
+    seed
+        A random seed
     """
     if math.isinf(epsilon) or math.isnan(epsilon):
         raise ValueError("Input `epsilon should be a valid finite value.`")
@@ -384,12 +388,12 @@ def perturb(x: str | pl.Expr, epsilon: float, positive: bool = False):
 
     return pl_plugin(
         symbol="pl_perturb",
-        args=[str_to_expr(x), lo, hi],
+        args=[str_to_expr(x), lo, hi, pl.lit(seed, dtype=pl.UInt64)],
         is_elementwise=True,
     )
 
 
-def jitter(x: str | pl.Expr, std: float | pl.Expr = 1.0) -> pl.Expr:
+def jitter(x: str | pl.Expr, std: float | pl.Expr = 1.0, seed: int | None = None) -> pl.Expr:
     """
     Adds a Gaussian noise of N(0, std) to the column.
 
@@ -399,6 +403,8 @@ def jitter(x: str | pl.Expr, std: float | pl.Expr = 1.0) -> pl.Expr:
         Either the name of the column or a Polars expression
     std
         The std of the Gaussian noise.
+    seed
+        A random seed
     """
     if isinstance(std, float):
         if std < 0:
@@ -412,7 +418,7 @@ def jitter(x: str | pl.Expr, std: float | pl.Expr = 1.0) -> pl.Expr:
 
     return pl_plugin(
         symbol="pl_jitter",
-        args=[str_to_expr(x), s],
+        args=[str_to_expr(x), s, pl.lit(seed, dtype=pl.UInt64)],
         is_elementwise=True,
     )
 
@@ -429,7 +435,7 @@ def add_noise(x: str | pl.Expr, noise_type: Noise = "gaussian", **kwargs) -> pl.
         Either "gaussian" or "uniform"
     kwargs
         If noise_type = "gaussian", this accepts kwargs to "jitter" and if "uniform", this
-        accepts kwargs to "perturb".
+        accepts kwargs to "perturb". You may set a seed via the kwargs.
     """
     if noise_type == "gaussian":
         return jitter(x, **kwargs)
