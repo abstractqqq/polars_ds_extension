@@ -194,7 +194,9 @@ def query_pca(
     else:
         actual_inputs = feats
 
-    return pl_plugin(symbol="pl_pca", args=actual_inputs, changes_length=True)
+    return pl_plugin(
+        symbol="pl_pca", args=actual_inputs, changes_length=True, pass_name_to_apply=True
+    )
 
 
 def query_principal_components(
@@ -203,7 +205,8 @@ def query_principal_components(
     center: bool = True,
 ) -> pl.Expr:
     """
-    Transforms the features to get the first k principal components.
+    Transforms the features to get the first k principal components. This returns NaN if the number
+    of rows is less than `k`.
 
     Paramters
     ---------
@@ -217,13 +220,13 @@ def query_principal_components(
     if k > len(feats) or k <= 0:
         raise ValueError("Input `k` should be between 1 and the number of features inclusive.")
 
-    actual_inputs = [pl.lit(k, dtype=pl.UInt32).alias("principal_components")]
+    actual_inputs = [pl.lit(k, dtype=pl.UInt32)]
     if center:
         actual_inputs.extend(f - f.mean() for f in feats)
     else:
         actual_inputs.extend(feats)
 
-    return pl_plugin(symbol="pl_principal_components", args=actual_inputs)
+    return pl_plugin(symbol="pl_principal_components", args=actual_inputs, pass_name_to_apply=True)
 
 
 def query_jaccard_row(first: str | pl.Expr, second: str | pl.Expr) -> pl.Expr:

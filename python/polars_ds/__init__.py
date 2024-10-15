@@ -12,7 +12,7 @@ from polars_ds.query_linear import *  # noqa: F403
 # from polars_ds.query_balltree import *  # noqa: F403
 
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 
 def l_inf_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
