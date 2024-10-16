@@ -8,6 +8,13 @@ use rand::SeedableRng;
 use rand::{distributions::DistString, Rng};
 use rand_distr::{Alphanumeric, Binomial, Distribution, Exp, Exp1, Normal, StandardNormal};
 
+fn rng_from_seed(seed:Option<u64>) -> StdRng {
+    match seed {
+        Some(s) => StdRng::seed_from_u64(s),
+        _ => StdRng::from_entropy()
+    }
+}
+
 #[polars_expr(output_type=Int32)]
 fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
     let n = inputs[0].u32()?;
@@ -23,13 +30,8 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
         std::mem::swap(&mut low, &mut high);
     }
     let seed = inputs[3].u64()?;
-    let seed = seed.get(0);
     let dist = Uniform::new(low, high);
-    let mut rng = if let Some(s) = seed {
-        StdRng::seed_from_u64(s)
-    } else {
-        StdRng::from_entropy()
-    };
+    let mut rng = rng_from_seed(seed.get(0));
     let out = Int32Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(n));
     Ok(out.into_series())
 }
@@ -43,14 +45,9 @@ fn pl_rand_binomial(inputs: &[Series]) -> PolarsResult<Series> {
     let p = inputs[2].f64()?;
     let p = p.get(0).unwrap();
     let seed = inputs[3].u64()?;
-    let seed = seed.get(0);
+    let mut rng = rng_from_seed(seed.get(0));
     let dist =
         Binomial::new(n.into(), p).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
-    let mut rng = if let Some(s) = seed {
-        StdRng::seed_from_u64(s)
-    } else {
-        StdRng::from_entropy()
-    };
     let out = UInt64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(len));
     Ok(out.into_series())
 }
@@ -63,12 +60,7 @@ fn pl_rand_exp(inputs: &[Series]) -> PolarsResult<Series> {
     let lambda = lambda.get(0).unwrap();
 
     let seed = inputs[2].u64()?;
-    let seed = seed.get(0);
-    let mut rng = if let Some(s) = seed {
-        StdRng::seed_from_u64(s)
-    } else {
-        StdRng::from_entropy()
-    };
+    let mut rng = rng_from_seed(seed.get(0));
     if lambda == 1.0 {
         let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(Exp1).take(len));
         Ok(out.into_series())
@@ -88,13 +80,8 @@ fn pl_random(inputs: &[Series]) -> PolarsResult<Series> {
     let high = inputs[2].f64()?;
     let high = high.get(0).unwrap();
     let seed = inputs[3].u64()?;
-    let seed = seed.get(0);
+    let mut rng = rng_from_seed(seed.get(0));
     let dist = Uniform::new(low, high);
-    let mut rng = if let Some(s) = seed {
-        StdRng::seed_from_u64(s)
-    } else {
-        StdRng::from_entropy()
-    };
     let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(len));
     Ok(out.into_series())
 }
@@ -108,10 +95,12 @@ fn pl_perturb(inputs: &[Series]) -> PolarsResult<Series> {
     let low = low.get(0).unwrap();
     let high = inputs[2].f64()?;
     let high = high.get(0).unwrap();
+    let seed = inputs[3].u64()?;
+    let mut rng = rng_from_seed(seed.get(0));
+
     match reference.dtype() {
         DataType::Float32 => {
             let dist: Uniform<f32> = Uniform::new(low as f32, high as f32);
-            let mut rng = rand::thread_rng();
             let ca = reference.f32().unwrap();
             // Have to use _generic here to avoid the Copy trait
             let out: Float32Chunked = ca.apply_values_generic(|x| x + dist.sample(&mut rng));
@@ -119,7 +108,6 @@ fn pl_perturb(inputs: &[Series]) -> PolarsResult<Series> {
         }
         DataType::Float64 => {
             let dist: Uniform<f64> = Uniform::new(low, high);
-            let mut rng = rand::thread_rng();
             let ca = reference.f64().unwrap();
             // Have to use _generic here to avoid the Copy trait
             let out: Float64Chunked = ca.apply_values_generic(|x| x + dist.sample(&mut rng));
@@ -136,28 +124,19 @@ fn pl_jitter(inputs: &[Series]) -> PolarsResult<Series> {
     let reference = &inputs[0];
     let std_ = inputs[1].f64()?;
     let std_ = std_.get(0).unwrap();
+    let seed = inputs[2].u64()?;
+    let mut rng = rng_from_seed(seed.get(0));
 
     match reference.dtype() {
         DataType::Float32 => {
             let std_ = std_ as f32;
-            let mut rng = rand::thread_rng();
             let ca = reference.f32().unwrap();
-            let out: Float32Chunked = if std_ == 1.0 {
-                // Avoid extra multiplication
-                ca.apply_values_generic(|x| x + rng.sample::<f32, _>(StandardNormal))
-            } else {
-                ca.apply_values_generic(|x| x + std_ * rng.sample::<f32, _>(StandardNormal))
-            };
+            let out: Float32Chunked = ca.apply_values_generic(|x| x + std_ * rng.sample::<f32, _>(StandardNormal));
             Ok(out.into_series())
         }
         DataType::Float64 => {
-            let mut rng = rand::thread_rng();
             let ca = reference.f64().unwrap();
-            let out: Float64Chunked = if std_ == 1.0 {
-                ca.apply_values_generic(|x| x + rng.sample::<f64, _>(StandardNormal))
-            } else {
-                ca.apply_values_generic(|x| x + std_ * rng.sample::<f64, _>(StandardNormal))
-            };
+            let out: Float64Chunked = ca.apply_values_generic(|x| x + std_ * rng.sample::<f64, _>(StandardNormal));
             Ok(out.into_series())
         }
         _ => Err(PolarsError::ComputeError(
@@ -176,12 +155,7 @@ fn pl_rand_normal(inputs: &[Series]) -> PolarsResult<Series> {
     let std_ = std_.get(0).unwrap_or(1.);
 
     let seed = inputs[3].u64()?;
-    let seed = seed.get(0);
-    let mut rng = if let Some(s) = seed {
-        StdRng::seed_from_u64(s)
-    } else {
-        StdRng::from_entropy()
-    };
+    let mut rng = rng_from_seed(seed.get(0));
     if mean == 0. && std_ == 1.0 {
         let out =
             Float64Chunked::from_iter_values("", (&mut rng).sample_iter(StandardNormal).take(len));
@@ -202,14 +176,9 @@ fn pl_rand_str(inputs: &[Series]) -> PolarsResult<Series> {
     let max_size = inputs[2].u32()?;
     let max_size = max_size.get(0).unwrap() as usize;
     let seed = inputs[3].u64()?;
-    let seed = seed.get(0);
+    let mut rng = rng_from_seed(seed.get(0));
 
     let dist = Uniform::new_inclusive(min_size, max_size);
-    let mut rng = if let Some(s) = seed {
-        StdRng::seed_from_u64(s)
-    } else {
-        StdRng::from_entropy()
-    };
 
     let sample = (0..len).map(|_| {
         let length = rng.sample(dist);
