@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 use super::LinalgErrors;
-use faer::{prelude::*, Side};
 use core::f64;
+use faer::{prelude::*, Side};
 use std::ops::Neg;
 
 #[derive(Clone, Copy, Default)]
@@ -153,7 +153,7 @@ pub trait LinearRegression {
                         *result.get_mut_unchecked(i, 0) += bias;
                     }
                 }
-            } 
+            }
             Ok(result)
         }
     }
@@ -218,14 +218,16 @@ impl LinearRegression for LR {
             let new = faer::concat![[X, ones]];
             match self.method {
                 ClosedFormLRMethods::Normal => faer_solve_lstsq(new.as_ref(), y, self.solver),
-                ClosedFormLRMethods::L2 => 
+                ClosedFormLRMethods::L2 => {
                     faer_solve_ridge(new.as_ref(), y, self.lambda, self.fit_bias, self.solver)
+                }
             }
         } else {
             match self.method {
                 ClosedFormLRMethods::Normal => faer_solve_lstsq(X, y, self.solver),
-                ClosedFormLRMethods::L2 => 
+                ClosedFormLRMethods::L2 => {
                     faer_solve_ridge(X, y, self.lambda, self.fit_bias, self.solver)
+                }
             }
         };
         if self.fit_bias {
@@ -238,8 +240,6 @@ impl LinearRegression for LR {
             self.coefficients = all_coefficients;
         }
     }
-
-
 }
 
 /// A struct that handles online linear regression
@@ -334,7 +334,6 @@ impl LinearRegression for OnlineLR {
             }
         };
     }
-
 }
 
 /// A struct that handles regular linear regression and Ridge regression.
@@ -345,11 +344,11 @@ pub struct ElasticNet {
     pub fit_bias: bool,
     pub bias: f64,
     pub tol: f64,
-    pub max_iter: usize
+    pub max_iter: usize,
 }
 
 impl ElasticNet {
-    pub fn new(l1_reg:f64, l2_reg:f64, fit_bias: bool, tol:f64, max_iter:usize) -> Self {
+    pub fn new(l1_reg: f64, l2_reg: f64, fit_bias: bool, tol: f64, max_iter: usize) -> Self {
         ElasticNet {
             l1_reg: l1_reg,
             l2_reg: l2_reg,
@@ -357,7 +356,7 @@ impl ElasticNet {
             fit_bias: fit_bias,
             bias: 0.,
             tol: tol,
-            max_iter: max_iter
+            max_iter: max_iter,
         }
     }
 
@@ -369,7 +368,7 @@ impl ElasticNet {
             fit_bias: bias.abs() > f64::EPSILON,
             bias: bias,
             tol: 1e-5,
-            max_iter: 2000
+            max_iter: 2000,
         }
     }
 
@@ -401,9 +400,25 @@ impl LinearRegression for ElasticNet {
         let all_coefficients = if self.fit_bias {
             let ones = Mat::full(X.nrows(), 1, 1.0);
             let new_x = faer::concat![[X, ones]];
-            faer_coordinate_descent(new_x.as_ref(), y, self.l1_reg, self.l2_reg, self.fit_bias, self.tol, self.max_iter)
+            faer_coordinate_descent(
+                new_x.as_ref(),
+                y,
+                self.l1_reg,
+                self.l2_reg,
+                self.fit_bias,
+                self.tol,
+                self.max_iter,
+            )
         } else {
-            faer_coordinate_descent(X, y, self.l1_reg, self.l2_reg, self.fit_bias, self.tol, self.max_iter)
+            faer_coordinate_descent(
+                X,
+                y,
+                self.l1_reg,
+                self.l2_reg,
+                self.fit_bias,
+                self.tol,
+                self.max_iter,
+            )
         };
 
         if self.fit_bias {
@@ -427,8 +442,6 @@ impl LinearRegression for ElasticNet {
         Ok(())
     }
 }
-
-
 
 //------------------------------------ The Basic Functions ---------------------------------------
 
@@ -702,7 +715,9 @@ pub fn faer_coordinate_descent(
     }
 
     if !converge {
-        println!("Lasso regression: Max number of iterations have passed and result hasn't converged.")
+        println!(
+            "Lasso regression: Max number of iterations have passed and result hasn't converged."
+        )
     }
 
     beta

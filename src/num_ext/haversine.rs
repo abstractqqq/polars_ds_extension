@@ -1,5 +1,5 @@
-use num::Float;
 use crate::utils::haversine_elementwise;
+use num::Float;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 

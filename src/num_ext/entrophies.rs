@@ -8,9 +8,7 @@ use polars_core::POOL;
 use pyo3_polars::derive::{polars_expr, CallerContext};
 use pyo3_polars::export::polars_core::{
     error::PolarsError,
-    utils::rayon::iter::{
-        IntoParallelIterator, ParallelIterator,
-    }
+    utils::rayon::iter::{IntoParallelIterator, ParallelIterator},
 };
 use rayon::prelude::*;
 

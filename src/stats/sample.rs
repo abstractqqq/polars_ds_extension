@@ -8,10 +8,10 @@ use rand::SeedableRng;
 use rand::{distributions::DistString, Rng};
 use rand_distr::{Alphanumeric, Binomial, Distribution, Exp, Exp1, Normal, StandardNormal};
 
-fn rng_from_seed(seed:Option<u64>) -> StdRng {
+fn rng_from_seed(seed: Option<u64>) -> StdRng {
     match seed {
         Some(s) => StdRng::seed_from_u64(s),
-        _ => StdRng::from_entropy()
+        _ => StdRng::from_entropy(),
     }
 }
 
@@ -131,12 +131,14 @@ fn pl_jitter(inputs: &[Series]) -> PolarsResult<Series> {
         DataType::Float32 => {
             let std_ = std_ as f32;
             let ca = reference.f32().unwrap();
-            let out: Float32Chunked = ca.apply_values_generic(|x| x + std_ * rng.sample::<f32, _>(StandardNormal));
+            let out: Float32Chunked =
+                ca.apply_values_generic(|x| x + std_ * rng.sample::<f32, _>(StandardNormal));
             Ok(out.into_series())
         }
         DataType::Float64 => {
             let ca = reference.f64().unwrap();
-            let out: Float64Chunked = ca.apply_values_generic(|x| x + std_ * rng.sample::<f64, _>(StandardNormal));
+            let out: Float64Chunked =
+                ca.apply_values_generic(|x| x + std_ * rng.sample::<f64, _>(StandardNormal));
             Ok(out.into_series())
         }
         _ => Err(PolarsError::ComputeError(

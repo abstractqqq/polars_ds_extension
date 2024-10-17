@@ -3,6 +3,7 @@ import polars as pl
 import warnings
 from .type_alias import LRSolverMethods, NullPolicy
 from ._utils import pl_plugin
+from typing import List
 
 __all__ = [
     "query_lstsq",
@@ -26,7 +27,7 @@ def lr_formula(s: str | pl.Expr) -> pl.Expr:
 
 def query_lstsq(
     *x: str | pl.Expr,
-    target: str | pl.Expr,
+    target: str | pl.Expr | List[str | pl.Expr],
     add_bias: bool = False,
     weights: str | pl.Expr | None = None,
     return_pred: bool = False,
@@ -37,13 +38,10 @@ def query_lstsq(
     null_policy: NullPolicy = "skip",
 ) -> pl.Expr:
     """
-    Computes least squares solution to the equation Ax = y where y is the target. If l1_reg is > 0,
-    then this performs Lasso regression. If l2_reg is > 0, this performs Ridge regression. If both are
-    > 0, then this is elastic net regression. If none of the cases above is true, as is the default case,
+    Computes least squares solution to the equation Ax = y where y is the target (or multiple targets).
+    If l1_reg is > 0, then this performs Lasso regression. If l2_reg is > 0, this performs Ridge regression.
+    If both are > 0, then this is elastic net regression. If none of the cases above is true, as is the default case,
     then a normal regression will be performed.
-
-    All positional arguments should be expressions representing predictive variables. This
-    does not support composite expressions like pl.col(["a", "b"]), pl.all(), etc.
 
     If add_bias is true, it will be the last coefficient in the output
     and output will have len(variables) + 1.
@@ -55,23 +53,23 @@ def query_lstsq(
     x : str | pl.Expr
         The variables used to predict target
     target : str | pl.Expr
-        The target variable
+        The target variable, or a list of targets for a multi-target linear regression
     add_bias
         Whether to add a bias term
     weights
         Whether to perform a weighted least squares or not. If this is weighted, then it will ignore
-        l1_reg or l2_reg parameters.
+        l1_reg or l2_reg parameters. This doesn't work if this is multi-target.
     return_pred
         If true, return prediction and residue. If false, return coefficients. Note that
         for coefficients, it reduces to one output (like max/min), but for predictions and
         residue, it will return the same number of rows as in input.
     l1_reg
-        Regularization factor for Lasso. Should be nonzero when method = l1.
+        Regularization factor for Lasso. Should be nonzero when method = l1. This is ignored if this is multi-target.
     l2_reg
         Regularization factor for Ridge. Should be nonzero when method = l2.
     tol
         For Lasso or elastic net regression, if maximum coordinate update is < tol, the algorithm is considered
-        to have converged. If not, it will run for at most 2000 iterations.
+        to have converged. If not, it will run for at most 2000 iterations. This doesn't work if this is multi-target.
     solver
         Only applies when this is normal or l2 regression. One of ['svd', 'qr', 'cholesky'].
         Both 'svd' and 'qr' can handle rank deficient cases relatively well, while cholesky may fail or
@@ -80,42 +78,85 @@ def query_lstsq(
         One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
         the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
-        columns.
+        columns. If this is multi-target, fill will fail if there are nulls in any of the targets.
     """
-    weighted = weights is not None
 
-    lr_kwargs = {
-        "bias": add_bias,
-        "null_policy": null_policy,
-        "l1_reg": l1_reg,
-        "l2_reg": l2_reg,
-        "solver": solver,
-        "tol": tol,
-        "weighted": weighted,
-    }
-
-    if weighted:
-        cols = [lr_formula(weights).cast(pl.Float64).rechunk(), lr_formula(target)]
+    if isinstance(target, list):
+        n_targets = len(target)
+        if n_targets == 0:
+            raise ValueError("If `target` is a list, it cannot be empty.")
+        elif n_targets == 1:
+            return query_lstsq(
+                *x,
+                target=target[0],
+                add_bias=add_bias,
+                weights=weights,
+                return_pred=return_pred,
+                l1_reg=l1_reg,
+                l2_reg=l2_reg,
+                tol=tol,
+                solver=solver,
+                null_policy=null_policy,
+            )
+        else:
+            cols = [lr_formula(t) for t in target]
+            multi_target_lr_kwargs = {
+                "bias": add_bias,
+                "null_policy": null_policy,
+                "solver": solver,
+                "last_target_idx": n_targets,
+                "l2_reg": l2_reg,
+            }
+            cols.extend(lr_formula(z) for z in x)
+            if return_pred:
+                return pl_plugin(
+                    symbol="pl_lstsq_multi_pred",
+                    args=cols,
+                    kwargs=multi_target_lr_kwargs,
+                    pass_name_to_apply=True,
+                )
+            else:
+                return pl_plugin(
+                    symbol="pl_lstsq_multi",
+                    args=cols,
+                    kwargs=multi_target_lr_kwargs,
+                    returns_scalar=True,
+                    pass_name_to_apply=True,
+                )
     else:
-        cols = [lr_formula(target)]
+        weighted = weights is not None
+        lr_kwargs = {
+            "bias": add_bias,
+            "null_policy": null_policy,
+            "l1_reg": l1_reg,
+            "l2_reg": l2_reg,
+            "solver": solver,
+            "tol": tol,
+            "weighted": weighted,
+        }
 
-    cols.extend(lr_formula(z) for z in x)
+        if weighted:
+            cols = [lr_formula(weights).cast(pl.Float64).rechunk(), lr_formula(target)]
+        else:
+            cols = [lr_formula(target)]
 
-    if return_pred:
-        return pl_plugin(
-            symbol="pl_lstsq_pred",
-            args=cols,
-            kwargs=lr_kwargs,
-            pass_name_to_apply=True,
-        )
-    else:
-        return pl_plugin(
-            symbol="pl_lstsq",
-            args=cols,
-            kwargs=lr_kwargs,
-            returns_scalar=True,
-            pass_name_to_apply=True,
-        )
+        cols.extend(lr_formula(z) for z in x)
+
+        if return_pred:
+            return pl_plugin(
+                symbol="pl_lstsq_pred",
+                args=cols,
+                kwargs=lr_kwargs,
+                pass_name_to_apply=True,
+            )
+        else:
+            return pl_plugin(
+                symbol="pl_lstsq",
+                args=cols,
+                kwargs=lr_kwargs,
+                returns_scalar=True,
+                pass_name_to_apply=True,
+            )
 
 
 def query_lstsq_w_rcond(
