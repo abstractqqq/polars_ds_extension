@@ -27,6 +27,15 @@ pub(crate) struct LstsqKwargs {
     pub(crate) weighted: bool,
 }
 
+#[derive(Deserialize, Debug)]
+pub(crate) struct MultiLstsqKwargs {
+    pub(crate) bias: bool,
+    pub(crate) null_policy: String,
+    pub(crate) solver: String,
+    pub(crate) last_target_idx: usize,
+    pub(crate) l2_reg: f64,
+}
+
 // Sherman-William-Woodbury (Update, online versions) LstsqKwargs
 #[derive(Deserialize, Debug)]
 pub(crate) struct SWWLstsqKwargs {
@@ -91,11 +100,11 @@ fn series_to_mat_for_lstsq(
 
     // minus 1 because target is also in inputs. Target is at position 0.
     let y_has_null = inputs[0].has_validity();
-    let has_null = inputs[1..].iter().fold(false, |_, s| s.has_validity()) | y_has_null;
+    let has_null = inputs[1..].iter().any(|s| s.has_validity()) | y_has_null;
 
     let mut df = to_frame(inputs)?;
     if df.is_empty() {
-        return Err(PolarsError::ComputeError("Lstsq: empty data".into()));
+        return Err(PolarsError::ComputeError("Empty data".into()));
     }
     // Add a constant column if add_bias
     if add_bias {
@@ -112,9 +121,7 @@ fn series_to_mat_for_lstsq(
                 // false, because it has nulls
                 Ok((df, BooleanChunked::from_slice("", &[false])))
             }
-            NullPolicy::RAISE => Err(PolarsError::ComputeError(
-                "Lstsq: nulls found in data".into(),
-            )),
+            NullPolicy::RAISE => Err(PolarsError::ComputeError("Nulls found in data".into())),
             NullPolicy::SKIP => {
                 let init_mask = inputs[0].is_not_null(); //0 always exist
                 let mask = inputs[1..]
@@ -197,7 +204,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                 let weights = weights.cont_slice().unwrap();
                 if weights.len() != mat.nrows() {
                     return Err(PolarsError::ComputeError(
-                        "Length of weights and data in X must be the same.".into(),
+                        "Shape of weights is not the same as the data.".into(),
                     ));
                 }
                 faer_weighted_lstsq(x, y, weights, solver)
@@ -215,7 +222,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                         kwargs.l2_reg,
                         add_bias,
                         kwargs.tol,
-                        2000
+                        2000,
                     ),
                 }
             };
@@ -228,6 +235,150 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
         }
         Err(e) => Err(e),
     }
+}
+
+fn series_to_mat_for_multi_lstsq(
+    inputs: &[Series],
+    last_target_idx: usize,
+    add_bias: bool,
+    null_policy: NullPolicy,
+) -> PolarsResult<Array2<f64>> {
+    let y_has_null = inputs[..last_target_idx]
+        .iter()
+        .fold(false, |acc, s| s.has_validity() | acc);
+    let has_null = inputs[last_target_idx..].iter().any(|s| s.has_validity()) | y_has_null;
+
+    let mut df = if has_null {
+        match null_policy {
+            NullPolicy::RAISE => Err(PolarsError::ComputeError("Nulls found in data".into())),
+
+            NullPolicy::FILL(x) => {
+                let df = DataFrame::new(inputs.to_vec())?;
+                if y_has_null {
+                    // This is because for predictions, it becomes too complicated when different targets have nulls.
+                    // There will be too many masks we need to keep track of.
+                    // This can be dealt with but I won't implement it for now.
+                    Err(PolarsError::ComputeError(
+                        "Filling null doesn't work for multi-target lstsq when there are nulls in any of the targets.".into(),
+                    ))
+                } else {
+                    let y_names = inputs[..last_target_idx]
+                        .iter()
+                        .map(|s| s.name())
+                        .collect::<Vec<_>>();
+
+                    df.lazy()
+                        .with_columns([pl::col("*")
+                            .exclude(y_names)
+                            .cast(DataType::Float64)
+                            .fill_null(lit(x))])
+                        .collect()
+                }
+            }
+            _ => Err(PolarsError::ComputeError(
+                "The null policy is not supported by multi-target linear regression.".into(),
+            )),
+        }
+    } else {
+        DataFrame::new(inputs.to_vec())
+    }?;
+
+    if add_bias {
+        df = df.lazy().with_column(lit(1f64)).collect()?;
+    }
+
+    if df.is_empty() {
+        Err(PolarsError::ComputeError("Empty data".into()))
+    } else {
+        df.to_ndarray::<Float64Type>(IndexOrder::Fortran)
+    }
+}
+
+// Strictly speaking, this output type is not correct. Should be struct of last_target_idx many
+// coeff_outputs
+#[polars_expr(output_type_func=coeff_output)]
+fn pl_lstsq_multi(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsResult<Series> {
+    let add_bias = kwargs.bias;
+    let solver = kwargs.solver.as_str().into();
+    let last_target_idx = kwargs.last_target_idx;
+    let null_policy = NullPolicy::try_from(kwargs.null_policy)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+
+    let y_names = inputs[..last_target_idx]
+        .iter()
+        .map(|s| s.name())
+        .collect::<Vec<_>>();
+    let mat = series_to_mat_for_multi_lstsq(inputs, last_target_idx, add_bias, null_policy)?;
+
+    let y = mat.slice(s![.., 0..last_target_idx]).into_faer();
+    let x = mat.slice(s![.., last_target_idx..]).into_faer();
+
+    let coeffs = match LRMethods::from((0., kwargs.l2_reg)) {
+        LRMethods::Normal => Ok(faer_solve_lstsq(x, y, solver)),
+        LRMethods::L2 => Ok(faer_solve_ridge(x, y, kwargs.l2_reg, add_bias, solver)),
+        _ => Err(PolarsError::ComputeError(
+            "The method is not supported.".into(),
+        )),
+    }?;
+
+    let df_out = unsafe {
+        DataFrame::new_no_checks(
+            y_names
+                .into_iter()
+                .enumerate()
+                .map(|(i, y)| {
+                    let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
+                        ListPrimitiveChunkedBuilder::new(y, 1, coeffs.nrows(), DataType::Float64);
+                    builder.append_slice(coeffs.col_as_slice(i));
+                    let out = builder.finish();
+                    out.into_series()
+                })
+                .collect::<Vec<_>>(),
+        )
+    };
+    Ok(df_out.into_struct("coeffs").into_series())
+}
+
+// Strictly speaking, this output type is not correct.
+#[polars_expr(output_type_func=pred_residue_output)]
+fn pl_lstsq_multi_pred(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsResult<Series> {
+    let add_bias = kwargs.bias;
+    let solver = kwargs.solver.as_str().into();
+    let last_target_idx = kwargs.last_target_idx;
+    let null_policy = NullPolicy::try_from(kwargs.null_policy)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+
+    let y_names = inputs[..last_target_idx]
+        .iter()
+        .map(|s| s.name())
+        .collect::<Vec<_>>();
+    let mat = series_to_mat_for_multi_lstsq(inputs, last_target_idx, add_bias, null_policy)?;
+
+    let y = mat.slice(s![.., 0..last_target_idx]).into_faer();
+    let x = mat.slice(s![.., last_target_idx..]).into_faer();
+
+    let coeffs = match LRMethods::from((0., kwargs.l2_reg)) {
+        LRMethods::Normal => Ok(faer_solve_lstsq(x, y, solver)),
+        LRMethods::L2 => Ok(faer_solve_ridge(x, y, kwargs.l2_reg, add_bias, solver)),
+        _ => Err(PolarsError::ComputeError(
+            "The method is not supported.".into(),
+        )),
+    }?;
+
+    let pred = x * &coeffs;
+    let resid = y - &pred;
+
+    let mut s = Vec::with_capacity(y_names.len() * 2);
+    for (i, y) in y_names.into_iter().enumerate() {
+        let pred_name = format!("{}_pred", y);
+        let resid_name = format!("{}_resid", y);
+        let p = Float64Chunked::from_slice(&pred_name, pred.col_as_slice(i));
+        let r = Float64Chunked::from_slice(&resid_name, resid.col_as_slice(i));
+        s.push(p.into_series());
+        s.push(r.into_series());
+    }
+    let df_out = unsafe { DataFrame::new_no_checks(s) };
+    Ok(df_out.into_struct("all_preds").into_series())
 }
 
 #[polars_expr(output_type_func=coeff_singular_values_output)]
@@ -323,7 +474,7 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
                         kwargs.l2_reg,
                         add_bias,
                         kwargs.tol,
-                        2000
+                        2000,
                     ),
                 }
             };
@@ -335,6 +486,7 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             // If null policy is raise and we have nulls, we won't reach here
             // If null policy is raise and we are here, then (!&mask).any() will be false.
             // No need to check null policy here.
+            // In the mask, true means is not null. In !&mask, true means is null
             let (p, r) = if (!&mask).any() {
                 let mut p_builder: PrimitiveChunkedBuilder<Float64Type> =
                     PrimitiveChunkedBuilder::new("pred", mask.len());
@@ -606,12 +758,9 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult
             let mut pred_builder: PrimitiveChunkedBuilder<Float64Type> =
                 PrimitiveChunkedBuilder::new("pred", mat.nrows());
 
-            // Note, if has_null is true, and null policy is raise, then we won't reach here.
-            // So in the has_null branch, only possibility is that null_policy != Raise
-
             // Fill or Skip strategy can drop nulls. Fill will drop null when y has nulls.
             // Skip will drop nulls whenever there is a null in the row.
-            // Mask true means the row is good
+            // Mask true means the row doesn't have nulls
             let has_nulls = (!&mask).any();
             if has_nulls {
                 // Find the first index where we get n non-nulls.
@@ -692,11 +841,10 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
             };
             let x = mat.slice(s![.., 1..]).into_faer();
             let y = mat.slice(s![.., 0..1]).into_faer();
-            let coeffs = match should_skip {
-                true => {
-                    faer_rolling_skipping_lstsq(x, y, n, kwargs.min_size, kwargs.lambda, has_bias)
-                }
-                false => faer_rolling_lstsq(x, y, n, kwargs.lambda, has_bias),
+            let coeffs = if should_skip {
+                faer_rolling_skipping_lstsq(x, y, n, kwargs.min_size, kwargs.lambda, has_bias)
+            } else {
+                faer_rolling_lstsq(x, y, n, kwargs.lambda, has_bias)
             };
 
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
@@ -715,7 +863,6 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
                 pred_builder.append_null();
             }
 
-            // Strictly speaking I don't need this branch
             if should_skip {
                 // Skipped rows will have coeffs with shape (0, 0)
                 for (i, coefficients) in coeffs.into_iter().enumerate() {

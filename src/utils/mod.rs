@@ -16,7 +16,10 @@ use rayon::prelude::*;
 // Common, Resuable Functions
 // -------------------------------------------------------------------------------
 #[inline(always)]
-pub fn to_f64_matrix_without_nulls(inputs: &[Series], order: IndexOrder) -> PolarsResult<Array2<f64>> {
+pub fn to_f64_matrix_without_nulls(
+    inputs: &[Series],
+    order: IndexOrder,
+) -> PolarsResult<Array2<f64>> {
     let df = DataFrame::new(inputs.to_vec())?.drop_nulls::<String>(None)?;
     df.to_ndarray::<Float64Type>(order)
 }
@@ -226,7 +229,6 @@ impl TryFrom<String> for NullPolicy {
     }
 }
 
-
 // --- Distances and Distance Related Abstractions ---
 
 pub fn haversine_elementwise<T: Float>(start_lat: T, start_long: T, end_lat: T, end_long: T) -> T {
@@ -245,10 +247,9 @@ pub fn haversine_elementwise<T: Float>(start_lat: T, start_long: T, end_lat: T, 
     r_in_km * c
 }
 
-pub fn haversine<T: Float + 'static>(first:&[T], second:&[T]) -> T {
+pub fn haversine<T: Float + 'static>(first: &[T], second: &[T]) -> T {
     haversine_elementwise(first[0], first[1], second[0], second[1])
 }
-
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum DIST<T: Float + 'static> {
@@ -288,7 +289,7 @@ impl<T: Float + DistanceOps + 'static> DIST<T> {
                 } else {
                     Err("Haversine distance only works with 2-d data.".into())
                 }
-            },
+            }
             _ => Err("Unknown distance metric.".into()),
         }
     }

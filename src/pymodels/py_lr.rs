@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 /// Linear Regression Interop with Python
 use crate::linalg::{
-    lstsq::{LinearRegression, OnlineLR, LR, ElasticNet},
+    lstsq::{ElasticNet, LinearRegression, OnlineLR, LR},
     LinalgErrors,
 };
 use faer_ext::{IntoFaer, IntoNdarray};
@@ -48,7 +48,11 @@ impl PyLR {
         }
     }
 
-    pub fn set_coeffs_and_bias(&mut self, coeffs: PyReadonlyArray1<f64>, bias: f64) -> PyResult<()> {
+    pub fn set_coeffs_and_bias(
+        &mut self,
+        coeffs: PyReadonlyArray1<f64>,
+        bias: f64,
+    ) -> PyResult<()> {
         match coeffs.as_slice() {
             Ok(s) => Ok(self.lr.set_coeffs_and_bias(s, bias)),
             Err(e) => Err(e.into()),
@@ -104,16 +108,20 @@ impl PyElasticNet {
         l1_reg,
         l2_reg,
         fit_bias = false,
-        tol = 1e-5, 
+        tol = 1e-5,
         max_iter = 2000,
     ))]
-    pub fn new(l1_reg:f64, l2_reg:f64, fit_bias: bool, tol:f64, max_iter:usize) -> Self {
+    pub fn new(l1_reg: f64, l2_reg: f64, fit_bias: bool, tol: f64, max_iter: usize) -> Self {
         PyElasticNet {
             lr: ElasticNet::new(l1_reg, l2_reg, fit_bias, tol, max_iter),
         }
     }
 
-    pub fn set_coeffs_and_bias(&mut self, coeffs: PyReadonlyArray1<f64>, bias: f64) -> PyResult<()> {
+    pub fn set_coeffs_and_bias(
+        &mut self,
+        coeffs: PyReadonlyArray1<f64>,
+        bias: f64,
+    ) -> PyResult<()> {
         match coeffs.as_slice() {
             Ok(s) => Ok(self.lr.set_coeffs_and_bias(s, bias)),
             Err(e) => Err(e.into()),
@@ -218,10 +226,13 @@ impl PyOnlineLR {
         bias: f64,
     ) -> PyResult<()> {
         match coeffs.as_slice() {
-            Ok(s) => match self.lr.set_coeffs_bias_inverse(s, inv.as_array().into_faer(), bias) {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(e.into()),
-                },
+            Ok(s) => match self
+                .lr
+                .set_coeffs_bias_inverse(s, inv.as_array().into_faer(), bias)
+            {
+                Ok(_) => Ok(()),
+                Err(e) => Err(e.into()),
+            },
             Err(e) => Err(e.into()),
         }
     }

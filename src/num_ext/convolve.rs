@@ -2,12 +2,10 @@ use cfavml;
 use polars::prelude::*;
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
-    export::polars_core::{
-        utils::rayon::{
-            iter::{IndexedParallelIterator, ParallelIterator},
-            slice::ParallelSlice,
-        },
-    }
+    export::polars_core::utils::rayon::{
+        iter::{IndexedParallelIterator, ParallelIterator},
+        slice::ParallelSlice,
+    },
 };
 
 use realfft::RealFftPlanner;
