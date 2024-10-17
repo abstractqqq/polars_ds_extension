@@ -47,39 +47,58 @@ class DIA:
     @staticmethod
     def _plot_lstsq(
         df: pl.DataFrame | pl.LazyFrame,
-        x: IntoExpr | Iterable[IntoExpr],
-        target: IntoExpr | Iterable[IntoExpr],
+        x: str,
+        target: str,
         add_bias: bool = False,
+        weights: str | None = None,
         max_points: int = 20_000,
         filter_by: pl.Expr | None = None,
         title_comments: str = "",
-    ) -> alt.Chart | None:
+    ) -> alt.Chart | Exception:
         """
         See the method `plot_lstsq`
         """
         try:
+            to_select = [x, target] if weights is None else [x, target, weights]
             if filter_by is None:
-                temp = df.lazy().select(x, target)
+                temp = df.lazy().select(*to_select)
             else:
-                temp = df.lazy().filter(filter_by).select(x, target)
+                temp = df.lazy().filter(filter_by).select(*to_select)
 
             actual_title_comments = "" if title_comments == "" else "<" + title_comments + ">"
 
-            x_name, y_name = temp.collect_schema().names()
-            xx = pl.col(x_name)
-            yy = pl.col(y_name)
-
+            xx = pl.col(x)
+            yy = pl.col(target)
             if add_bias:
-                x_mean = xx.mean()
-                y_mean = yy.mean()
-                beta = (xx - x_mean).dot(yy - y_mean) / (xx - x_mean).dot(xx - x_mean)
-                alpha = y_mean - x_mean * beta
+                if weights is None:
+                    x_mean = xx.mean()
+                    y_mean = yy.mean()
+                    beta = (xx - x_mean).dot(yy - y_mean) / (xx - x_mean).dot(xx - x_mean)
+                    alpha = y_mean - beta * x_mean
+                else:
+                    w = pl.col(weights)
+                    w_sum = w.sum()
+                    x_wmean = w.dot(xx) / w_sum
+                    y_wmean = w.dot(yy) / w_sum
+                    beta = w.dot((xx - x_wmean) * (yy - y_wmean)) / (w.dot((xx - x_wmean).pow(2)))
+                    alpha = y_wmean - beta * x_wmean
             else:
-                beta = xx.dot(yy) / xx.dot(xx)
+                if weights is None:
+                    beta = xx.dot(yy) / xx.dot(xx)
+                else:
+                    w = pl.col(weights)
+                    beta = w.dot(xx * yy) / w.dot(xx.pow(2))
+
                 alpha = pl.lit(0, dtype=pl.Float64)
 
             beta, alpha, r2 = (
-                temp.select(beta, alpha, query_r2(yy, xx * beta + alpha)).collect().row(0)
+                temp.select(
+                    beta.alias("beta"),
+                    alpha.alias("alpha"),
+                    query_r2(yy, xx * beta + alpha).alias("r2"),
+                )
+                .collect()
+                .row(0)
             )
 
             df_need = temp.select(
@@ -101,7 +120,7 @@ class DIA:
 
             title = alt.Title(
                 text=[
-                    f"Linear Regression: {y_name} ~ {x_name} {'+ bias' if add_bias else ''}",
+                    f"Linear Regression: {target} ~ {x} {'+ bias' if add_bias else ''}",
                     actual_title_comments,
                 ],
                 subtitle=subtitle,
@@ -110,11 +129,9 @@ class DIA:
             chart = (
                 alt.Chart(df_sampled, title=title)
                 .mark_point()
-                .encode(alt.X(x_name).scale(zero=False), alt.Y(y_name))
+                .encode(alt.X(x).scale(zero=False), alt.Y(target))
             )
-            return chart + chart.mark_line().encode(
-                alt.X(x_name).scale(zero=False), alt.Y("y_pred")
-            )
+            return chart + chart.mark_line().encode(alt.X(x).scale(zero=False), alt.Y("y_pred"))
         except Exception as e:
             import warnings
 
@@ -124,10 +141,10 @@ class DIA:
                 f"\nFilter by: {filter_by}"
                 f"\nTitle comments: {title_comments}"
                 "\nLikely causes (non-exhaustive): 1. empty data due to filter condition, 2. extreme values encountered (NaN, inf, etc.)."
-                f"\nOriginal Error Message: {e}",
+                f"Original Error {e}",
                 stacklevel=2,
             )
-            return None
+            return e
 
     # --- Methods ---
 
@@ -816,14 +833,15 @@ class DIA:
 
     def plot_lstsq(
         self,
-        x: IntoExpr | Iterable[IntoExpr],
-        target: IntoExpr | Iterable[IntoExpr],
+        x: str,
+        target: str,
         add_bias: bool = False,
+        weights: str | None = None,
         max_points: int = 20_000,
         by: str | None = None,
         title_comments: str = "",
         filter_by: pl.Expr | None = None,
-    ) -> alt.Chart | None:
+    ) -> alt.Chart | Exception:
         """
         Plots the least squares between x and target.
 
@@ -835,6 +853,8 @@ class DIA:
             The target variable
         add_bias
             Whether to add bias in the linear regression
+        weights
+            Weights for the linear regression
         max_points
             The max number of points to be displayed. Notice that this only affects the number of points
             on the plot. The linear regression will still be fit on the entire dataset.
@@ -848,15 +868,19 @@ class DIA:
             This means it is possible to filter out entire segment(s) before plots are drawn.
         """
         if by is None:
-            return DIA._plot_lstsq(
+            plot = DIA._plot_lstsq(
                 self._frame,
                 x,
                 target,
                 add_bias,
+                weights,
                 max_points,
                 filter_by,
                 title_comments,
-            ).configure(autosize="pad")
+            )
+            if isinstance(plot, Exception):
+                return plot
+            return plot.configure(autosize="pad")
         else:
             if filter_by is None:
                 frame = self._frame
@@ -869,6 +893,7 @@ class DIA:
                     x,
                     target,
                     add_bias,
+                    weights,
                     max_points,
                     filter_by=None,
                     title_comments=f"Segment = {key if len(key) > 1 else key[0]}",
@@ -876,9 +901,9 @@ class DIA:
                 for key, df in frame.collect().partition_by(by, as_dict=True).items()
             )
 
-            return alt.vconcat(*(plot for plot in plots if plot is not None)).configure(
-                autosize="pad"
-            )
+            return alt.vconcat(
+                *(plot for plot in plots if not isinstance(plot, Exception))
+            ).configure(autosize="pad")
 
     def plot_dist(
         self,
