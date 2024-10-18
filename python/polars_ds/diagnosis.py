@@ -69,6 +69,9 @@ class DIA:
 
             xx = pl.col(x)
             yy = pl.col(target)
+            # Although using query_simple_lstsq might seem to be able to reduce some code here,
+            # it adds complexity because of output type and the r2 query.
+            # A little bit of code dup is reasonable.
             if add_bias:
                 if weights is None:
                     x_mean = xx.mean()
