@@ -7,6 +7,7 @@ from typing import List
 
 __all__ = [
     "query_lstsq",
+    "query_simple_lstsq",
     "query_lstsq_report",
     "query_rolling_lstsq",
     "query_recursive_lstsq",
@@ -23,6 +24,67 @@ def lr_formula(s: str | pl.Expr) -> pl.Expr:
         raise ValueError(
             "Input can only be str or polars expression. The str must be valid SQL strings that polars can understand."
         )
+
+
+def query_simple_lstsq(
+    x: str | pl.Expr,
+    target: str | pl.Expr,
+    add_bias: bool = False,
+    weights: str | pl.Expr | None = None,
+    return_pred: bool = False,
+) -> pl.Expr:
+    """
+    Simple least square with 1 predictive variable and 1 target.
+
+    Parameters
+    ----------
+    x : str | pl.Expr
+        The variables used to predict target
+    target : str | pl.Expr
+        The target variable
+    add_bias
+        Whether to add a bias term
+    weights
+        Whether to perform a weighted least squares or not.
+    return_pred
+        If true, return prediction and residue. If false, return coefficients. Note that
+        for coefficients, it reduces to one output (like max/min), but for predictions and
+        residue, it will return the same number of rows as in input.
+    """
+    # No test. All forumla here are mathematically correct.
+    xx = lr_formula(x)
+    yy = lr_formula(target)
+    if add_bias:
+        if weights is None:
+            x_mean = xx.mean()
+            y_mean = yy.mean()
+            beta = (xx - x_mean).dot(yy - y_mean) / (xx - x_mean).dot(xx - x_mean)
+            alpha = y_mean - beta * x_mean
+        else:
+            w = lr_formula(weights)
+            w_sum = w.sum()
+            x_wmean = w.dot(xx) / w_sum
+            y_wmean = w.dot(yy) / w_sum
+            beta = w.dot((xx - x_wmean) * (yy - y_wmean)) / (w.dot((xx - x_wmean).pow(2)))
+            alpha = y_wmean - beta * x_wmean
+
+        if return_pred:
+            return pl.struct(pred=beta * xx + alpha, resid=yy - (beta * xx + alpha)).alias(
+                "lstsq_pred"
+            )
+        else:
+            return (beta.append(alpha)).implode().alias("lstsq_coeffs")
+    else:
+        if weights is None:
+            beta = xx.dot(yy) / xx.dot(xx)
+        else:
+            w = lr_formula(weights)
+            beta = w.dot(xx * yy) / w.dot(xx.pow(2))
+
+        if return_pred:
+            return pl.struct(pred=beta * xx, resid=yy - (beta * xx)).alias("lstsq_pred")
+        else:
+            return beta.implode().alias("lstsq_coeffs")
 
 
 def query_lstsq(
@@ -43,8 +105,10 @@ def query_lstsq(
     If both are > 0, then this is elastic net regression. If none of the cases above is true, as is the default case,
     then a normal regression will be performed.
 
-    If add_bias is true, it will be the last coefficient in the output
-    and output will have len(variables) + 1.
+    If add_bias is true, it will be the last coefficient in the output and output will have len(variables) + 1.
+
+    If you only want to do simple lstsq (one predictive x variable and one target) and null policy doesn't matter,
+    then `query_simple_lstsq` is a faster alternative.
 
     Memory hint: if data takes 100MB of memory, you need to have at least 200MB of memory to run this.
 
@@ -114,7 +178,7 @@ def query_lstsq(
                     args=cols,
                     kwargs=multi_target_lr_kwargs,
                     pass_name_to_apply=True,
-                )
+                ).alias("lstsq_preds")
             else:
                 return pl_plugin(
                     symbol="pl_lstsq_multi",
@@ -122,7 +186,7 @@ def query_lstsq(
                     kwargs=multi_target_lr_kwargs,
                     returns_scalar=True,
                     pass_name_to_apply=True,
-                )
+                ).alias("lstsq_coeffs")
     else:
         weighted = weights is not None
         lr_kwargs = {
@@ -148,7 +212,7 @@ def query_lstsq(
                 args=cols,
                 kwargs=lr_kwargs,
                 pass_name_to_apply=True,
-            )
+            ).alias("lstsq_pred")
         else:
             return pl_plugin(
                 symbol="pl_lstsq",
@@ -156,7 +220,7 @@ def query_lstsq(
                 kwargs=lr_kwargs,
                 returns_scalar=True,
                 pass_name_to_apply=True,
-            )
+            ).alias("lstsq_coeffs")
 
 
 def query_lstsq_w_rcond(
