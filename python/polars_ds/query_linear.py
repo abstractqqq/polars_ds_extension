@@ -25,6 +25,14 @@ def lr_formula(s: str | pl.Expr) -> pl.Expr:
         )
 
 
+def query_simple_lstsq(
+    x: str | pl.Expr,
+    target: str | pl.Expr,
+    add_bias: bool = False,
+) -> pl.Expr:
+    pass
+
+
 def query_lstsq(
     *x: str | pl.Expr,
     target: str | pl.Expr | List[str | pl.Expr],
