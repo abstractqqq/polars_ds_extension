@@ -253,7 +253,7 @@ pub struct OnlineLR {
 }
 
 impl OnlineLR {
-    pub fn new(lambda: f64, fit_bias: bool) -> Self {
+    pub fn new(lambda: f64, fit_bias:bool) -> Self {
         OnlineLR {
             method: lambda.into(),
             lambda: lambda,
@@ -267,17 +267,16 @@ impl OnlineLR {
     pub fn set_coeffs_bias_inverse(
         &mut self,
         coeffs: &[f64],
+        bias:f64,
         inv: MatRef<f64>,
-        bias: f64,
     ) -> Result<(), LinalgErrors> {
         if coeffs.len() != inv.ncols() {
             Err(LinalgErrors::DimensionMismatch)
         } else {
+            self.bias = bias;
             self.coefficients =
                 (faer::mat::from_row_major_slice(coeffs, coeffs.len(), 1)).to_owned();
             self.inv = inv.to_owned();
-            self.bias = bias;
-            self.fit_bias = bias.abs() > f64::EPSILON;
             Ok(())
         }
     }
@@ -291,17 +290,31 @@ impl OnlineLR {
     }
 
     pub fn update_unchecked(&mut self, new_x: MatRef<f64>, new_y: MatRef<f64>, c: f64) {
-        woodbury_step(
-            self.inv.as_mut(),
-            self.coefficients.as_mut(),
-            new_x,
-            new_y,
-            c,
-        )
-    }
-
-    pub fn update(&mut self, new_x: MatRef<f64>, new_y: MatRef<f64>, c: f64) {
-        if !(new_x.has_nan() || new_y.has_nan()) {
+        if self.fit_bias() {
+            let cur_coeffs = self.coefficients();
+            let ones = Mat::full(new_x.nrows(), 1, 1.0);
+            let new_new_x = faer::concat![[new_x, ones]];
+            // Need this because of dimension issue. Coefficients doesn't contain the bias term, but
+            // during fit, it was included which resulted in +1 dimension.
+            // We need to take care of this.
+            let nfeats = cur_coeffs.nrows();
+            let mut temp_weights = Mat::<f64>::from_fn(nfeats + 1, 1, |i, j| {
+                if i < nfeats {
+                    *cur_coeffs.get(i, j)
+                } else {
+                    self.bias
+                }
+            });
+            woodbury_step(
+                self.inv.as_mut(),
+                temp_weights.as_mut(),
+                new_new_x.as_ref(),
+                new_y,
+                c,
+            );
+            self.coefficients = temp_weights.get(..nfeats, ..).to_owned();
+            self.bias = *temp_weights.get(nfeats, 0);            
+        } else {
             woodbury_step(
                 self.inv.as_mut(),
                 self.coefficients.as_mut(),
@@ -309,6 +322,12 @@ impl OnlineLR {
                 new_y,
                 c,
             )
+        }
+    }
+
+    pub fn update(&mut self, new_x: MatRef<f64>, new_y: MatRef<f64>, c: f64) {
+        if !(new_x.has_nan() || new_y.has_nan()) {
+            self.update_unchecked(new_x, new_y , c)
         }
     }
 }
@@ -327,12 +346,25 @@ impl LinearRegression for OnlineLR {
     }
 
     fn fit_unchecked(&mut self, X: MatRef<f64>, y: MatRef<f64>) {
-        (self.inv, self.coefficients) = match self.method {
-            ClosedFormLRMethods::Normal => faer_qr_lstsq_with_inv(X, y),
-            ClosedFormLRMethods::L2 => {
-                faer_cholesky_ridge_with_inv(X, y, self.lambda, self.fit_bias)
-            }
-        };
+        if self.fit_bias {
+            let actual_features = X.ncols();
+            let ones = Mat::full(X.nrows(), 1, 1.0);
+            let new_x = faer::concat![[X, ones]];
+            let (inv, all_coefficients, ) = match self.method {
+                ClosedFormLRMethods::Normal => faer_qr_lstsq_with_inv(new_x.as_ref(), y),
+                ClosedFormLRMethods::L2 => 
+                    faer_cholesky_ridge_with_inv(new_x.as_ref(), y, self.lambda, true)
+            };
+            self.inv = inv;
+            self.coefficients = all_coefficients.get(..actual_features, ..).to_owned();
+            self.bias = *all_coefficients.get(actual_features, 0);
+        } else {
+            (self.inv, self.coefficients) = match self.method {
+                ClosedFormLRMethods::Normal => faer_qr_lstsq_with_inv(X, y),
+                ClosedFormLRMethods::L2 => 
+                    faer_cholesky_ridge_with_inv(X, y, self.lambda, false)
+            };
+        }
     }
 }
 
@@ -576,7 +608,7 @@ pub fn faer_qr_lstsq_with_inv(x: MatRef<f64>, y: MatRef<f64>) -> (Mat<f64>, Mat<
     (inv, weights)
 }
 
-/// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
+/// Returns the coefficients for lstsq with l2 (Ridge) regularization atogether with the inverse of XtX
 /// By default this uses Choleskey to solve the system, and in case the matrix is not positive
 /// definite, it falls back to SVD. (I suspect the matrix in this case is always positive definite!)
 #[inline(always)]
@@ -730,7 +762,6 @@ pub fn faer_recursive_lstsq(
     y: MatRef<f64>,
     n: usize,
     lambda: f64,
-    has_bias: bool,
 ) -> Vec<Mat<f64>> {
     let xn = x.nrows();
     // x: size xn x m
@@ -741,7 +772,9 @@ pub fn faer_recursive_lstsq(
     let x0 = x.get(..n, ..);
     let y0 = y.get(..n, ..);
 
-    let mut online_lr = OnlineLR::new(lambda, has_bias);
+    // This is because if add_bias, the 1 is added to
+    // all data already. No need to let OnlineLR add the 1 for the user.
+    let mut online_lr = OnlineLR::new(lambda, false);
     online_lr.fit_unchecked(x0, y0); // safe because things are checked in plugin / python functions.
     coefficients.push(online_lr.get_coefficients());
     for j in n..xn {
@@ -761,7 +794,6 @@ pub fn faer_rolling_lstsq(
     y: MatRef<f64>,
     n: usize,
     lambda: f64,
-    has_bias: bool,
 ) -> Vec<Mat<f64>> {
     let xn = x.nrows();
     // x: size xn x m
@@ -772,7 +804,9 @@ pub fn faer_rolling_lstsq(
     let x0 = x.get(..n, ..);
     let y0 = y.get(..n, ..);
 
-    let mut online_lr = OnlineLR::new(lambda, has_bias);
+    // This is because if add_bias, the 1 is added to
+    // all data already. No need to let OnlineLR add the 1 for the user.
+    let mut online_lr = OnlineLR::new(lambda, false); 
     online_lr.fit_unchecked(x0, y0);
     coefficients.push(online_lr.get_coefficients());
 
@@ -799,7 +833,6 @@ pub fn faer_rolling_skipping_lstsq(
     n: usize,
     m: usize,
     lambda: f64,
-    has_bias: bool,
 ) -> Vec<Mat<f64>> {
     let xn = x.nrows();
     let ncols = x.ncols();
@@ -816,7 +849,9 @@ pub fn faer_rolling_skipping_lstsq(
     let mut x_slice: Vec<f64> = Vec::with_capacity(n * ncols);
     let mut y_slice: Vec<f64> = Vec::with_capacity(n);
 
-    let mut online_lr = OnlineLR::new(lambda, has_bias);
+    // This is because if add_bias, the 1 is added to
+    // all data already. No need to let OnlineLR add the 1 for the user.
+    let mut online_lr = OnlineLR::new(lambda, false);
     while right <= xn {
         // Somewhat redundant here.
         non_null_cnt_in_window = 0;
@@ -881,7 +916,7 @@ fn woodbury_step(
     weights: MatMut<f64>,
     new_x: MatRef<f64>,
     new_y: MatRef<f64>,
-    c: f64, // Should be +1 or -1, for a "update" and a "removal"
+    c: f64, // +1 or -1, for a "update" and a "removal"
 ) {
     // It is truly amazing that the C in the Woodbury identity essentially controls the update and
     // and removal of a new record (rolling)... Linear regression seems to be designed by God to work so well
@@ -889,7 +924,7 @@ fn woodbury_step(
     let left = &inverse * new_x.transpose(); // corresponding to u in the reference
                                              // right = left.transpose() by the fact that if A is symmetric, invertible, A-1 is also symmetric
     let z = (c + (new_x * &left).read(0, 0)).recip();
-    // Update the inverse
+    // Update the information matrix's inverse. Page 56 of the gatech reference
     faer::linalg::matmul::matmul(
         inverse,
         &left,
@@ -901,7 +936,7 @@ fn woodbury_step(
 
     // Difference from esitmate using prior weights vs. actual next y
     let y_diff = new_y - (new_x * &weights);
-    // Update weights
+    // Update weights. Page 56, after 'Then',.. in gatech reference
     faer::linalg::matmul::matmul(
         weights,
         left,

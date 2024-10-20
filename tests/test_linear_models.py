@@ -75,7 +75,10 @@ def test_online_lr():
     sk_lr.fit(X[:10], y[:10])
     sklearn_coeffs = sk_lr.coef_
 
-    assert np.all(np.abs(coeffs - sklearn_coeffs) < 1e-5)
+    pred = olr.predict(X[:10]).flatten()
+    sk_pred = sk_lr.predict(X[:10]).flatten()
+    assert np.all(np.abs(pred - sk_pred) < 1e-6)
+    assert np.all(np.abs(coeffs - sklearn_coeffs) < 1e-6)
 
     for i in range(10, 20):
         olr.update(X[i], y[i])
@@ -83,7 +86,7 @@ def test_online_lr():
         sk_lr = LinearRegression(fit_intercept=False)
         sk_lr.fit(X[: i + 1], y[: i + 1])
         sklearn_coeffs = sk_lr.coef_
-        assert np.all(np.abs(coeffs - sklearn_coeffs) < 1e-5)
+        assert np.all(np.abs(coeffs - sklearn_coeffs) < 1e-6)
 
 
 def test_elastic_net():

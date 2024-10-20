@@ -734,20 +734,20 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
 #[polars_expr(output_type_func=coeff_pred_output)]
 fn pl_recursive_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<Series> {
     let n = kwargs.n; // Gauranteed n >= 1
-    let has_bias = kwargs.bias;
+    let add_bias = kwargs.bias;
 
     // Gauranteed in Python that this won't be SKIP. SKIP doesn't work now.
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
     // Target y is at index 0
-    match series_to_mat_for_lstsq(inputs, has_bias, null_policy) {
+    match series_to_mat_for_lstsq(inputs, add_bias, null_policy) {
         Ok((mat, mask)) => {
             // Solving Least Square
             let x = mat.slice(s![.., 1..]).into_faer();
             let y = mat.slice(s![.., 0..1]).into_faer();
 
-            let coeffs = faer_recursive_lstsq(x, y, n, kwargs.lambda, has_bias);
+            let coeffs = faer_recursive_lstsq(x, y, n, kwargs.lambda);
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(
                     "coeffs",
@@ -820,7 +820,7 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult
 #[polars_expr(output_type_func=coeff_pred_output)] // They share the same output type
 fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<Series> {
     let n = kwargs.n; // Gauranteed n >= 2
-    let has_bias = kwargs.bias;
+    let add_bias = kwargs.bias;
 
     let mut null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
@@ -833,7 +833,7 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
     };
 
     // Target y is at index 0
-    match series_to_mat_for_lstsq(inputs, has_bias, null_policy) {
+    match series_to_mat_for_lstsq(inputs, add_bias, null_policy) {
         Ok((mat, mask)) => {
             let should_skip = match null_policy {
                 NullPolicy::SKIP_WINDOW | NullPolicy::FILL_WINDOW(_) => (!&mask).any(),
@@ -842,9 +842,9 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
             let x = mat.slice(s![.., 1..]).into_faer();
             let y = mat.slice(s![.., 0..1]).into_faer();
             let coeffs = if should_skip {
-                faer_rolling_skipping_lstsq(x, y, n, kwargs.min_size, kwargs.lambda, has_bias)
+                faer_rolling_skipping_lstsq(x, y, n, kwargs.min_size, kwargs.lambda)
             } else {
-                faer_rolling_lstsq(x, y, n, kwargs.lambda, has_bias)
+                faer_rolling_lstsq(x, y, n, kwargs.lambda)
             };
 
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =

@@ -187,6 +187,9 @@ class LR:
         """
         return self._lr.coeffs
 
+    def bias(self) -> float:
+        self._lr.bias
+
     def fit(self, X: np.ndarray, y: np.ndarray, null_policy: NullPolicy = "ignore") -> Self:
         """
         Fit the linear regression model on NumPy data.
@@ -271,7 +274,7 @@ class LR:
         X
             Data to predict on, as a matrix
         """
-        return self._lr.predict(X.reshape((1, -1)))
+        return self._lr.predict(X).reshape((-1, 1))
 
     def predict_df(self, df: PolarsFrame, name: str = "prediction") -> PolarsFrame:
         """
@@ -404,6 +407,9 @@ class ElasticNet:
         """
         return self._en.coeffs
 
+    def bias(self) -> float:
+        self._en.bias
+
     def fit(self, X: np.ndarray, y: np.ndarray, null_policy: NullPolicy = "ignore") -> Self:
         """
         Fit the Elastic Net model on NumPy data.
@@ -469,7 +475,7 @@ class ElasticNet:
         X
             Data to predict on, as a matrix
         """
-        return self._en.predict(X.reshape((1, -1)))
+        return self._en.predict(X).reshape((-1, 1))
 
     def predict_df(self, df: PolarsFrame, name: str = "prediction") -> PolarsFrame:
         """
@@ -510,37 +516,34 @@ class OnlineLR:
 
     def __init__(
         self,
-        fit_bias: bool = False,
         lambda_: float = 0.0,
+        fit_bias: bool = False,
     ):
         """
-        Parameters
-        ----------
-        fit_bias
-            Whether to add a bias term. Also known as intercept in other packages.
         lambda_
-            The regularization parameters for ridge. If this is positive, then this class will solve Ridge.
+            The L2 regularization factor
+        fit_bias
         """
-        self._lr = PyOnlineLR(fit_bias=fit_bias, lambda_=lambda_)
+        self._lr = PyOnlineLR(lambda_, fit_bias)
 
     @classmethod
-    def from_coeffs_and_inv(cls, coeffs: List[float], inv: np.ndarray, bias: float = 0.0) -> Self:
+    def from_coeffs_bias_inverse(cls, coeffs: List[float], bias: float, inv: np.ndarray) -> Self:
         """
-        Constructs an online linear regression instance from coefficients, inverse and bias. This copies
+        Constructs an online linear regression instance from coefficients, inverse. This copies
         data.
 
         Parameters
         ----------
         coeffs
             Iterable of numbers representing the coefficients
+        bias
+            The bias term
         inv
             2D NumPy matrix representing the inverse of XtX in a regression problem.
-        bias
-            Value for the bias term
         """
         coefficients = np.ascontiguousarray(coeffs, dtype=np.float64).flatten()
-        lr = cls(fit_bias=(bias != 0.0), lambda_=0.0)
-        lr._lr.set_coeffs_bias_inverse(coefficients, inv, bias)
+        lr = cls(fit_bias=(bias > 0.0), lambda_=0.0)
+        lr._lr.set_coeffs_bias_inverse(coefficients, bias, inv)
         return lr
 
     def is_fit(self) -> bool:
@@ -565,6 +568,9 @@ class OnlineLR:
         """
         return self._lr.coeffs
 
+    def bias(self) -> float:
+        self._lr.bias
+
     def inv(self) -> np.ndarray:
         """
         Returns a copy of the current inverse matrix (inverse of XtX in a linear regression).
@@ -584,7 +590,7 @@ class OnlineLR:
         """
         if np.any(np.isnan(X)) | np.any(np.isnan(y)):
             raise ValueError(
-                "Online regression currently must fit with data without null for the initial fit."
+                "Online regression currently must fit without null for the initial fit."
             )
 
         self._lr.fit(X, y)
@@ -606,6 +612,9 @@ class OnlineLR:
             the impact of the new data, and a value of -1.0 means we remove the impact of the
             data. Any other value will `scale` the impact of the data.
         """
+        if not self.is_fit():
+            raise ValueError("You cannot update before the initial fit of the matrix.")
+
         x_2d = X.reshape((1, -1))
         if isinstance(y, float):
             y_2d = np.array([[y]])
@@ -624,4 +633,4 @@ class OnlineLR:
         X
             Data to predict on, as a matrix
         """
-        return self._lr.predict(X.reshape((1, -1)))
+        return self._lr.predict(X).reshape((-1, 1))
