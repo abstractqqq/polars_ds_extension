@@ -5,7 +5,10 @@ use crate::linalg::{
     LinalgErrors,
 };
 use faer_ext::{IntoFaer, IntoNdarray};
-use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
+use numpy::{
+    IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray, PyReadonlyArray1,
+    PyReadonlyArray2,
+};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -190,10 +193,7 @@ pub struct PyOnlineLR {
 impl PyOnlineLR {
     #[new]
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature=(
-        lambda_ = 0.,
-        fit_bias = false,
-    ))]
+    #[pyo3(signature=(lambda_=0., fit_bias=false))]
     pub fn new(lambda_: f64, fit_bias: bool) -> Self {
         PyOnlineLR {
             lr: OnlineLR::new(lambda_, fit_bias),
@@ -222,13 +222,13 @@ impl PyOnlineLR {
     pub fn set_coeffs_bias_inverse(
         &mut self,
         coeffs: PyReadonlyArray1<f64>,
-        inv: PyReadonlyArray2<f64>,
         bias: f64,
+        inv: PyReadonlyArray2<f64>,
     ) -> PyResult<()> {
         match coeffs.as_slice() {
             Ok(s) => match self
                 .lr
-                .set_coeffs_bias_inverse(s, inv.as_array().into_faer(), bias)
+                .set_coeffs_bias_inverse(s, bias, inv.as_array().into_faer())
             {
                 Ok(_) => Ok(()),
                 Err(e) => Err(e.into()),
@@ -275,7 +275,7 @@ impl PyOnlineLR {
 
     #[getter]
     pub fn bias(&self) -> f64 {
-        self.lr.bias
+        self.lr.bias()
     }
 
     #[getter]
