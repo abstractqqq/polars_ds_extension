@@ -509,6 +509,9 @@ class OnlineLR:
     """
     Normal or Ridge Online Regression. This doesn't support dataframe inputs.
 
+    Because of implementation details, it is not recommended to set fit_bias = True here
+    if runtime speed is crucial.
+
     Null Behaviors:
     1. During the initial fit, no nulls/NaNs should be present
     2. During online updates, if the record has null/NaN, then it will be ignored. Nothing will be updated.
@@ -523,6 +526,7 @@ class OnlineLR:
         lambda_
             The L2 regularization factor
         fit_bias
+            Whether this should fit the bias term
         """
         self._lr = PyOnlineLR(lambda_, fit_bias)
 

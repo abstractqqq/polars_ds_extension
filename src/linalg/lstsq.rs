@@ -253,7 +253,7 @@ pub struct OnlineLR {
 }
 
 impl OnlineLR {
-    pub fn new(lambda: f64, fit_bias:bool) -> Self {
+    pub fn new(lambda: f64, fit_bias: bool) -> Self {
         OnlineLR {
             method: lambda.into(),
             lambda: lambda,
@@ -267,7 +267,7 @@ impl OnlineLR {
     pub fn set_coeffs_bias_inverse(
         &mut self,
         coeffs: &[f64],
-        bias:f64,
+        bias: f64,
         inv: MatRef<f64>,
     ) -> Result<(), LinalgErrors> {
         if coeffs.len() != inv.ncols() {
@@ -313,7 +313,7 @@ impl OnlineLR {
                 c,
             );
             self.coefficients = temp_weights.get(..nfeats, ..).to_owned();
-            self.bias = *temp_weights.get(nfeats, 0);            
+            self.bias = *temp_weights.get(nfeats, 0);
         } else {
             woodbury_step(
                 self.inv.as_mut(),
@@ -327,7 +327,7 @@ impl OnlineLR {
 
     pub fn update(&mut self, new_x: MatRef<f64>, new_y: MatRef<f64>, c: f64) {
         if !(new_x.has_nan() || new_y.has_nan()) {
-            self.update_unchecked(new_x, new_y , c)
+            self.update_unchecked(new_x, new_y, c)
         }
     }
 }
@@ -350,10 +350,11 @@ impl LinearRegression for OnlineLR {
             let actual_features = X.ncols();
             let ones = Mat::full(X.nrows(), 1, 1.0);
             let new_x = faer::concat![[X, ones]];
-            let (inv, all_coefficients, ) = match self.method {
+            let (inv, all_coefficients) = match self.method {
                 ClosedFormLRMethods::Normal => faer_qr_lstsq_with_inv(new_x.as_ref(), y),
-                ClosedFormLRMethods::L2 => 
+                ClosedFormLRMethods::L2 => {
                     faer_cholesky_ridge_with_inv(new_x.as_ref(), y, self.lambda, true)
+                }
             };
             self.inv = inv;
             self.coefficients = all_coefficients.get(..actual_features, ..).to_owned();
@@ -361,8 +362,7 @@ impl LinearRegression for OnlineLR {
         } else {
             (self.inv, self.coefficients) = match self.method {
                 ClosedFormLRMethods::Normal => faer_qr_lstsq_with_inv(X, y),
-                ClosedFormLRMethods::L2 => 
-                    faer_cholesky_ridge_with_inv(X, y, self.lambda, false)
+                ClosedFormLRMethods::L2 => faer_cholesky_ridge_with_inv(X, y, self.lambda, false),
             };
         }
     }
@@ -789,12 +789,7 @@ pub fn faer_recursive_lstsq(
 /// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
 /// This supports Normal or Ridge regression
-pub fn faer_rolling_lstsq(
-    x: MatRef<f64>,
-    y: MatRef<f64>,
-    n: usize,
-    lambda: f64,
-) -> Vec<Mat<f64>> {
+pub fn faer_rolling_lstsq(x: MatRef<f64>, y: MatRef<f64>, n: usize, lambda: f64) -> Vec<Mat<f64>> {
     let xn = x.nrows();
     // x: size xn x m
     // y: size xn x 1
@@ -806,7 +801,7 @@ pub fn faer_rolling_lstsq(
 
     // This is because if add_bias, the 1 is added to
     // all data already. No need to let OnlineLR add the 1 for the user.
-    let mut online_lr = OnlineLR::new(lambda, false); 
+    let mut online_lr = OnlineLR::new(lambda, false);
     online_lr.fit_unchecked(x0, y0);
     coefficients.push(online_lr.get_coefficients());
 
