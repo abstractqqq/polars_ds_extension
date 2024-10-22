@@ -27,6 +27,7 @@ __all__ = [
     "query_confusion_matrix",
     "query_fairness",
     "query_p_pct_score",
+    "query_mcc",
 ]
 
 
@@ -548,6 +549,34 @@ def query_cat_cross_entropy(
     if normalize:
         return -y_prob.log().sum() / a.count()
     return -y_prob.log().sum()
+
+
+def query_mcc(y_true: str | pl.Expr, y_pred: str | pl.Expr) -> pl.Expr:
+    """
+    Returns the Matthews correlation coefficient (phi coefficient). The inputs must be 0s and 1s
+    and castable to u32. If not, the result may not be correct.
+
+    Parameters
+    ----------
+    y_true
+        The true labels. Must be 0s and 1s.
+    y_pred
+        The predicted labels. Must be 0s and 1s.
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Phi_coefficient
+    """
+
+    y = str_to_expr(y_true)
+    x = str_to_expr(y_pred)
+    combined = (2 * y + x).cast(pl.UInt32)
+
+    return pl_plugin(
+        symbol="pl_mcc",
+        args=[combined],
+        returns_scalar=True,
+    )
 
 
 def query_fairness(pred: str | pl.Expr, sensitive_cond: pl.Expr) -> pl.Expr:
