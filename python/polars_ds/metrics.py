@@ -30,6 +30,9 @@ __all__ = [
     "query_mcc",
 ]
 
+# Confusion matrix based metrics should all be covered. If there is no
+# specific function for it, we can find it in query_confusion_matrix.
+
 
 def query_mad(x: str | pl.Expr, use_mean: bool = True) -> pl.Expr:
     """
@@ -554,14 +557,15 @@ def query_cat_cross_entropy(
 def query_mcc(y_true: str | pl.Expr, y_pred: str | pl.Expr) -> pl.Expr:
     """
     Returns the Matthews correlation coefficient (phi coefficient). The inputs must be 0s and 1s
-    and castable to u32. If not, the result may not be correct.
+    and castable to u32. If not, the result may not be correct. See query_confusion_matrix for querying
+    all the confusion metrics at the same time.
 
     Parameters
     ----------
     y_true
         The true labels. Must be 0s and 1s.
     y_pred
-        The predicted labels. Must be 0s and 1s.
+        The predicted labels. Must be 0s and 1s. E.g. This could be say (y_prob > 0.5).cast(pl.UInt32)
 
     Reference
     ---------

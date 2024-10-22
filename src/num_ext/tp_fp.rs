@@ -234,14 +234,14 @@ fn bcm_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
         "confusion_matrix",
         DataType::Struct(vec![
+            tp,
             tn,
             fp,
             fn_,
-            tp,
             tpr,
+            tnr,
             fpr,
             fnr,
-            tnr,
             prevalence,
             prevalence_threshold,
             informedness,
@@ -320,6 +320,33 @@ fn pl_binary_confusion_matrix(inputs: &[Series]) -> PolarsResult<Series> {
             ((col("tp") + col("tn")) / (col("p") + col("n"))).alias("acc"),
         ])
         .with_columns([(col("plr") / col("nlr")).alias("dor")])
+        .select(&[
+            col("tp"),
+            col("tn"),
+            col("fp"),
+            col("fn"),
+            col("tpr"),
+            col("tnr"),
+            col("fpr"),
+            col("fnr"),
+            col("prevalence"),
+            col("prevalence_threshold"),
+            col("informedness"),
+            col("precision"),
+            col("false_omission_rate"),
+            col("plr"),
+            col("nlr"),
+            col("acc"),
+            col("balanced_accuracy"),
+            col("f1"),
+            col("folkes_mallows_index"),
+            col("mcc"),
+            col("threat_score"),
+            col("markedness"),
+            col("fdr"),
+            col("npv"),
+            col("dor")
+        ])
         .fill_null(f64::NAN) // In Rust dividing by 0 results in Null for some reason.
         .collect()?;
 
