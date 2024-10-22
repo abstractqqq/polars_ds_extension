@@ -146,9 +146,30 @@ fn binary_confusion_matrix(combined_series: &UInt32Chunked) -> [u32; 4] {
     // no invalid indices will happen.
     let mut output = [0u32; 4];
     for i in combined_series.into_no_null_iter() {
-        output[i as usize] += 1;
+        let j = i % 4; // to make this safe
+        output[j as usize] += 1;
     }
     output
+}
+
+#[polars_expr(output_type=Float64)]
+fn pl_mcc(inputs: &[Series]) -> PolarsResult<Series> {
+    let combined_series = &inputs[0];
+    let combined_series = combined_series.u32()?;
+    let cm = binary_confusion_matrix(combined_series);
+
+    let n00 = cm[0];
+    let n01 = cm[1];
+    let n10 = cm[2];
+    let n11 = cm[3];
+
+    let n1_ = (n11 + n10) as f64;
+    let n_1 = (n11 + n01) as f64;
+    let n0_ = (n01 + n00) as f64;
+    let n_0 = (n10 + n00) as f64;
+
+    let phi = ((n11 * n00) as f64 - (n10 * n01) as f64) / (n1_ * n_1 * n0_ * n_0).sqrt();
+    Ok(Series::from_iter([phi]))
 }
 
 #[polars_expr(output_type=Float64)]
@@ -213,14 +234,14 @@ fn bcm_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
         "confusion_matrix",
         DataType::Struct(vec![
+            tp,
             tn,
             fp,
             fn_,
-            tp,
             tpr,
+            tnr,
             fpr,
             fnr,
-            tnr,
             prevalence,
             prevalence_threshold,
             informedness,
@@ -299,6 +320,33 @@ fn pl_binary_confusion_matrix(inputs: &[Series]) -> PolarsResult<Series> {
             ((col("tp") + col("tn")) / (col("p") + col("n"))).alias("acc"),
         ])
         .with_columns([(col("plr") / col("nlr")).alias("dor")])
+        .select(&[
+            col("tp"),
+            col("tn"),
+            col("fp"),
+            col("fn"),
+            col("tpr"),
+            col("tnr"),
+            col("fpr"),
+            col("fnr"),
+            col("prevalence"),
+            col("prevalence_threshold"),
+            col("informedness"),
+            col("precision"),
+            col("false_omission_rate"),
+            col("plr"),
+            col("nlr"),
+            col("acc"),
+            col("balanced_accuracy"),
+            col("f1"),
+            col("folkes_mallows_index"),
+            col("mcc"),
+            col("threat_score"),
+            col("markedness"),
+            col("fdr"),
+            col("npv"),
+            col("dor")
+        ])
         .fill_null(f64::NAN) // In Rust dividing by 0 results in Null for some reason.
         .collect()?;
 

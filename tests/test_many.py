@@ -7,6 +7,26 @@ import polars_ds as pds
 from polars.testing import assert_frame_equal, assert_series_equal
 
 
+def test_mcc():
+    from sklearn.metrics import matthews_corrcoef
+
+    df = (
+        pds.frame(size=2000)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+        )
+        .with_columns(
+            pl.col("x1").round(),
+            pl.col("x2").round(),
+        )
+    )
+
+    sklearn_result = matthews_corrcoef(df["x1"], df["x2"])
+    result = df.select(pds.query_mcc("x1", "x2")).item(0, 0)
+    assert np.isclose(result, sklearn_result)
+
+
 def test_pca():
     from sklearn.decomposition import PCA
 
