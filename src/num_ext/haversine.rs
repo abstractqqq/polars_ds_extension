@@ -1,11 +1,8 @@
-use crate::utils::haversine_elementwise;
+use crate::utils::{haversine_elementwise, float_output};
 use num::Float;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
-fn haversine_output(input_fields: &[Field]) -> PolarsResult<Field> {
-    FieldsMapper::new(input_fields).map_to_float_dtype()
-}
 
 fn naive_haversine<T>(
     x_lat: &ChunkedArray<T>,
@@ -56,7 +53,7 @@ where
     }
 }
 
-#[polars_expr(output_type_func=haversine_output)]
+#[polars_expr(output_type_func=float_output)]
 fn pl_haversine(inputs: &[Series]) -> PolarsResult<Series> {
     let out = match inputs[0].dtype() {
         DataType::Float32 => {

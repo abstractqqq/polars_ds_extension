@@ -118,25 +118,22 @@ fn pl_knn_avg(
     .map_err(|err| PolarsError::ComputeError(err.into()))?;
 
     let ca = if can_parallel {
-        POOL.install(|| {
-            let n_threads = POOL.current_num_threads();
-            let splits = split_offsets(nrows, n_threads);
-            let chunks: Vec<_> = splits
-                .into_par_iter()
-                .map(|(offset, len)| {
-                    let subslice = &data[offset * ncols..(offset + len) * ncols];
-                    let out = Float64Chunked::from_iter_options(
-                        "",
-                        subslice
-                            .chunks_exact(ncols)
-                            .map(|row| tree.knn_regress(k + 1, row, min_bound, max_bound, method)),
-                    );
-                    out.downcast_iter().cloned().collect::<Vec<_>>()
-                })
-                .collect();
-
-            Float64Chunked::from_chunk_iter("", chunks.into_iter().flatten())
-        })
+        let n_threads = POOL.current_num_threads();
+        let splits = split_offsets(nrows, n_threads);
+        let chunks_iter = splits
+            .into_par_iter()
+            .map(|(offset, len)| {
+                let subslice = &data[offset * ncols..(offset + len) * ncols];
+                let out = Float64Chunked::from_iter_options(
+                    "",
+                    subslice
+                        .chunks_exact(ncols)
+                        .map(|row| tree.knn_regress(k + 1, row, min_bound, max_bound, method)),
+                );
+                out.downcast_iter().cloned().collect::<Vec<_>>()
+            });
+        let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
+        Float64Chunked::from_chunk_iter("", chunks.into_iter().flatten())
     } else {
         Float64Chunked::from_iter_options(
             "",
@@ -151,6 +148,7 @@ fn pl_knn_avg(
 /// KNN Point-wise
 /// Always do k + 1 because this operation is in-dataframe, and this means
 /// that the point itself is always a neighbor to itself.
+/// Eval mask determines which values will be evaluated. Some can be skipped (Null will be returned) if user desires
 pub fn knn_ptwise<'a, Kdt>(
     tree: Kdt,
     eval_mask: Vec<bool>,
@@ -495,7 +493,6 @@ fn pl_query_radius_ptwise(
     let ncols = inputs[1..].len();
     let data = series_to_row_major_slice::<Float64Type>(&inputs[1..])?;
     // Building output
-
     let ca = match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
         Ok(d) => {
             let mut leaves = slice_to_leaves(&data, ncols, id);

@@ -201,7 +201,7 @@ def query_ks_2samp(
     hypothesis should be rejected. This is suitable only for large sameple sizes. See more details
     in the reference.
 
-    If either var1 or var2 has less than 20 values, a ks stats of INFINITY will be returned.
+    If either var1 or var2 has less than 30 values, a ks stats of 0 with threshold NaN will be returned.
 
     Parameters
     ----------
@@ -220,22 +220,19 @@ def query_ks_2samp(
     """
     y1, y2 = str_to_expr(var1), str_to_expr(var2)
     if is_binary:
-        z = y2.filter(y2.is_finite()).cast(pl.Float64)
-        z1 = z.filter(y1 == 1).sort()
-        z2 = z.filter(y1 == 0).sort()
-        return pl_plugin(
-            symbol="pl_ks_2samp",
-            args=[z1, z2, pl.lit(alpha, pl.Float64)],
-            returns_scalar=True,
-        )
+        z1 = y2.filter(y1 == 1)
+        z2 = y2.filter(y1 == 0)
+        z1 = z1.filter(z1.is_finite()).sort()
+        z2 = z2.filter(z2.is_finite()).sort()
     else:
         z1 = y1.filter(y1.is_finite()).sort()
         z2 = y2.filter(y2.is_finite()).sort()
-        return pl_plugin(
-            symbol="pl_ks_2samp",
-            args=[z1, z2, pl.lit(alpha, pl.Float64)],
-            returns_scalar=True,
-        )
+
+    return pl_plugin(
+        symbol="pl_ks_2samp",
+        args=[z1, z2, pl.lit(alpha, pl.Float64)],
+        returns_scalar=True,
+    )
 
 
 def query_f_test(*variables: str | pl.Expr, group: str | pl.Expr) -> pl.Expr:

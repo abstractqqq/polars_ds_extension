@@ -8,10 +8,10 @@ use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 /// Use inputs[0] as the target column (discrete, indicating the groups)
-/// and inputs[1] as the column to run F-test against the target. There should be only two columns.
+/// and inputs[i] as the column to run F-test against the target, i > 0. 
 #[polars_expr(output_type_func=simple_stats_output)]
 fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
-
+    // Use a df to make the computations parallel.
     // Column at index 0 is the target column
     let v = inputs
         .into_iter()
@@ -62,7 +62,7 @@ fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
 
     if n_classes <= 1 || n_samples <= 1 {
         return Err(PolarsError::ComputeError(
-            "F-stats: Number of classes or number of samples is either 1 or 0.".into(),
+            "F-stats: n_classes <= 1 in target or n_samples <= 1.".into(),
         ));
     }
 
