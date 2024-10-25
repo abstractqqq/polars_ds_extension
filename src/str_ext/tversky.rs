@@ -47,9 +47,9 @@ fn pl_tversky_sim(inputs: &[Series], context: CallerContext) -> PolarsResult<Ser
             let splits = split_offsets(ca1.len(), n_threads);
             let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
                 let s1 = ca1.slice(offset as i64, len);
-                let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| {
+                let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| 
                     tversky_sim(s, r, ngram, alpha, beta)
-                });
+                );
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
 

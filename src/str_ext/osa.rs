@@ -30,26 +30,24 @@ fn pl_osa(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
         let r = ca2.get(0).unwrap();
         let batched = osa::BatchComparator::new(r.chars());
         let out: UInt32Chunked = if can_parallel {
-            POOL.install(|| {
-                let n_threads = POOL.current_num_threads();
-                let splits = split_offsets(ca1.len(), n_threads);
-                let chunks: Vec<_> = splits
-                    .into_par_iter()
-                    .map(|(offset, len)| {
-                        let s1 = ca1.slice(offset as i64, len);
-                        let out: UInt32Chunked = s1
-                            .apply_nonnull_values_generic(DataType::UInt32, |s| {
-                                batched.distance(s.chars()) as u32
-                            });
-                        out.downcast_iter().cloned().collect::<Vec<_>>()
-                    })
-                    .collect();
-                UInt32Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
-            })
+            let n_threads = POOL.current_num_threads();
+            let splits = split_offsets(ca1.len(), n_threads);
+            let chunks_iter = splits
+                .into_par_iter()
+                .map(|(offset, len)| {
+                    let s1 = ca1.slice(offset as i64, len);
+                    let out: UInt32Chunked = s1
+                        .apply_nonnull_values_generic(DataType::UInt32, |s| {
+                            batched.distance(s.chars()) as u32
+                        });
+                    out.downcast_iter().cloned().collect::<Vec<_>>()
+                });
+            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
+            UInt32Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
-            ca1.apply_nonnull_values_generic(DataType::UInt32, |s| {
+            ca1.apply_nonnull_values_generic(DataType::UInt32, |s| 
                 batched.distance(s.chars()) as u32
-            })
+            )
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -90,44 +88,40 @@ fn pl_osa_sim(inputs: &[Series], context: CallerContext) -> PolarsResult<Series>
         let r = ca2.get(0).unwrap();
         let batched = osa::BatchComparator::new(r.chars());
         let out: Float64Chunked = if can_parallel {
-            POOL.install(|| {
-                let n_threads = POOL.current_num_threads();
-                let splits = split_offsets(ca1.len(), n_threads);
-                let chunks: Vec<_> = splits
-                    .into_par_iter()
-                    .map(|(offset, len)| {
-                        let s1 = ca1.slice(offset as i64, len);
-                        let out: Float64Chunked = s1
-                            .apply_nonnull_values_generic(DataType::Float64, |s| {
-                                batched.normalized_similarity(s.chars())
-                            });
-                        out.downcast_iter().cloned().collect::<Vec<_>>()
-                    })
-                    .collect();
-                Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
-            })
+            let n_threads = POOL.current_num_threads();
+            let splits = split_offsets(ca1.len(), n_threads);
+            let chunks_iter = splits
+                .into_par_iter()
+                .map(|(offset, len)| {
+                    let s1 = ca1.slice(offset as i64, len);
+                    let out: Float64Chunked = s1
+                        .apply_nonnull_values_generic(DataType::Float64, |s| 
+                            batched.normalized_similarity(s.chars())
+                        );
+                    out.downcast_iter().cloned().collect::<Vec<_>>()
+                });
+            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
+            Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
-            ca1.apply_nonnull_values_generic(DataType::Float64, |s| {
+            ca1.apply_nonnull_values_generic(DataType::Float64, |s| 
                 batched.normalized_similarity(s.chars())
-            })
+            )
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
         let out: Float64Chunked = if can_parallel {
-            POOL.install(|| {
-                let n_threads = POOL.current_num_threads();
-                let splits = split_offsets(ca1.len(), n_threads);
-                let chunks: Vec<_> = splits
-                    .into_par_iter()
-                    .map(|(offset, len)| {
-                        let s1 = ca1.slice(offset as i64, len);
-                        let s2 = ca2.slice(offset as i64, len);
-                        let out: Float64Chunked = binary_elementwise_values(&s1, &s2, osa_sim);
-                        out.downcast_iter().cloned().collect::<Vec<_>>()
-                    })
-                    .collect();
-                Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
-            })
+            let n_threads = POOL.current_num_threads();
+            let splits = split_offsets(ca1.len(), n_threads);
+            let chunks_iter = splits
+                .into_par_iter()
+                .map(|(offset, len)| {
+                    let s1 = ca1.slice(offset as i64, len);
+                    let s2 = ca2.slice(offset as i64, len);
+                    let out: Float64Chunked = binary_elementwise_values(&s1, &s2, osa_sim);
+                    out.downcast_iter().cloned().collect::<Vec<_>>()
+                });
+            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
+            Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
             binary_elementwise_values(ca1, ca2, osa_sim)
         };
