@@ -13,9 +13,9 @@ nav:
 - String Related: string.md
 - ML Metrics/Loss: metrics.md
 - Linear Models: linear_models.md
-- Lstsq Queries: query_linear.md
+- Linear Regression as Polars Expr: expr_linear.md
 - Spatial Models: spatial.md
-- KNN Queries: query_knn.md
+- KNN as Polars Expr: expr_knn.md
 - Time Series Features: features.md
 - Miscellaneous: polars_ds.md
 

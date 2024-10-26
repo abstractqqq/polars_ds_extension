@@ -1,3 +1,3 @@
 ## Linear Models Related Queries
 
-::: polars_ds.query_linear
+::: polars_ds.expr_linear

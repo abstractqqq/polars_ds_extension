@@ -1,3 +1,3 @@
 ## K Nearest Neighbor Related Queries
 
-::: polars_ds.query_knn
+::: polars_ds.expr_knn

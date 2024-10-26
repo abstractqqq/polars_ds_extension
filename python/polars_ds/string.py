@@ -15,7 +15,7 @@ __all__ = [
     "to_snake_case",
     "to_pascal_case",
     "to_constant_case",
-    "query_nearest_str",
+    "str_nearest",
     "str_snowball",
     "str_tokenize",
     "str_jaccard",
@@ -189,7 +189,7 @@ def to_constant_case(c: str | pl.Expr) -> pl.Expr:
     )
 
 
-def query_nearest_str(
+def str_nearest(
     c: str | pl.Expr,
     word: str,
     threshold: int = 100,
