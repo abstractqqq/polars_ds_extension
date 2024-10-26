@@ -16,7 +16,7 @@ nav:
 - Linear Regression as Polars Expr: expr_linear.md
 - Spatial Models: spatial.md
 - KNN as Polars Expr: expr_knn.md
-- Time Series Features: features.md
+- Time Series Features: ts_features.md
 - Miscellaneous: polars_ds.md
 
 theme:

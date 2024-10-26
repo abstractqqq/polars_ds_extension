@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 import polars as pl
-from .type_alias import str_to_expr, Distance
+from .type_alias import str_to_expr, Distance, NullPolicy
 from ._utils import pl_plugin
 from typing import Iterable, Literal
 
@@ -36,6 +36,8 @@ __all__ = [
     "query_transfer_entropy",
     "query_permute_entropy",
     "query_similar_count",
+    "query_ar_coeffs",
+    "query_auto_corr",
     # "query_psd",
 ]
 
@@ -370,6 +372,77 @@ def query_time_reversal_asymmetry_stats(x: str | pl.Expr, n_lags: int) -> pl.Exp
     one_lag = y.shift(-n_lags)
     two_lag = y.shift(-2 * n_lags)  # Nulls won't be in the mean calculation
     return (one_lag * (two_lag + y) * (two_lag - y)).mean()
+
+
+def query_auto_corr(x: str | pl.Expr, lag: int, ddof: int = 0, normalize: bool = True) -> pl.Expr:
+    """
+    Computes the auto correlation with the given lag.
+
+    Parameters
+    ----------
+    x
+        The feature
+    lag
+        The lag
+    ddof
+        The ddof for the variance
+    normalize
+        Whether to normalize the value to [-1, 1] or not.
+    """
+    xx = str_to_expr(x)
+    if normalize:
+        x_m = xx - xx.mean()
+        var = xx.var(ddof=ddof)
+        n = pl.len()
+        n_minus_lag = pl.when(n < lag).then(float("nan")).otherwise(n - lag)
+        return x_m.dot(x_m.shift(-lag)) / (n_minus_lag * var)
+    else:
+        return (xx * xx.shift(-lag)).mean()
+
+
+def query_ar_coeffs(
+    x: str | pl.Expr, lag: int, add_bias: bool = True, null_policy: NullPolicy = "raise"
+) -> pl.Expr:
+    """
+    Computes the autoregressive coefficients for the given lag. The bias/intercept term will be the last value in the
+    output.
+
+    Parameters
+    ----------
+    x
+        The feature
+    lag
+        The lag
+    add_bias
+        Whether to add a bias/intercept term
+    null_policy
+        One of "raise", "one", "zero", or a finite numeric string.
+    """
+
+    if null_policy not in ("raise", "one", "zero"):
+        try:
+            import math
+
+            z = float(null_policy)
+            if not math.isfinite(z):
+                raise
+        except Exception:
+            raise ValueError(
+                "`null_polocy` must be 'raise', 'one', 'zero' or any finite numeric string for AR coefficients."
+            )
+
+    if lag <= 0:
+        raise ValueError("`lag` must be > 0.")
+
+    from . import lin_reg
+
+    xx = str_to_expr(x)
+    return lin_reg(
+        *[xx.shift(i).slice(offset=lag).alias(str(i)) for i in range(1, lag + 1)],
+        target=xx.slice(offset=lag),
+        add_bias=add_bias,
+        null_policy=null_policy,
+    )
 
 
 # # Wrong
