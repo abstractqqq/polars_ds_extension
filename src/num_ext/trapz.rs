@@ -1,5 +1,5 @@
-use cfavml;
 /// Integration via Trapezoidal rule.
+use cfavml;
 use polars::{
     prelude::{PolarsError, PolarsResult},
     series::Series,

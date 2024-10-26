@@ -1,5 +1,5 @@
-use cfavml;
 /// Subsequence similarity related queries
+use cfavml;
 use polars::prelude::*;
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},

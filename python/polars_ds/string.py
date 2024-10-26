@@ -15,7 +15,7 @@ __all__ = [
     "to_snake_case",
     "to_pascal_case",
     "to_constant_case",
-    "query_similar_words",
+    "str_nearest",
     "str_snowball",
     "str_tokenize",
     "str_jaccard",
@@ -189,70 +189,45 @@ def to_constant_case(c: str | pl.Expr) -> pl.Expr:
     )
 
 
-def query_similar_words(
+def str_nearest(
     c: str | pl.Expr,
-    vocab: pl.Expr | List[str],
-    k: int = 1,
+    word: str,
     threshold: int = 100,
     metric: Literal["lv", "hamming"] = "lv",
-    parallel: bool = False,
 ) -> pl.Expr:
     """
-    Finds the k most similar words in vocab to each word in self. This works by computing
-    Hamming/Levenshtein distances, instead of similarity, and then taking the smallest distance
-    words as similar words. The result is correct because of the relationship between distance
-    and similarity. This will deduplicate words in vocab. In case of a tie, any one may be chosen.
+    Finds the string in the column that is nearest to the given word in the given metric.
 
-    Comment: This can be very slow due to underlying data structure problems. Setting a threshold
-    may speed up the process a little bit.
+    Note: Nearest-k strings search functionality is temporarily dropped.
 
     Parameters
     ----------
-    vocab
+    c
+        The string column or its name
+    word
         Any iterable collection of strings that can be turned into a polars Series, or an expression
-    k : int, >0
-        k most similar words will be found
     threshold : int, >0
-        Only considers words to be similar if they are within distance threshold. This is a positive integer
+        Only considers strings to be near if they are within distance threshold. This is a positive integer
         because all the distances output integers.
     metric
         Which similarity metric to use. One of `lv`, `hamming`
-    parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
     """
     if metric not in ("lv", "hamming"):
         raise ValueError(f"Unknown metric for similar_words: {metric}")
 
-    if isinstance(vocab, pl.Expr):
-        vb = vocab.unique().drop_nulls()
-    else:
-        vb = pl.Series(values=vocab, dtype=pl.String).unique().drop_nulls()
+    if threshold <= 0:
+        raise ValueError("Distance threshold must be > 0.")
 
-    if k == 1:  # k = 1, this is a fast path (no heap)
-        return pl_plugin(
-            symbol="pl_nearest_str",
-            args=[str_to_expr(c), vb],
-            kwargs={
-                "k": k,
-                "metric": str(metric).lower(),
-                "threshold": threshold,
-                "parallel": parallel,
-            },
-        )
-    elif k > 1:
-        return pl_plugin(
-            symbol="pl_knn_str",
-            args=[str_to_expr(c), vb],
-            kwargs={
-                "k": k,
-                "metric": str(metric).lower(),
-                "threshold": threshold,
-                "parallel": parallel,
-            },
-        )
-    else:
-        raise ValueError("Input `k` must be >= 1.")
+    return pl_plugin(
+        symbol="pl_nearest_str",
+        args=[str_to_expr(c)],
+        kwargs={
+            "word": word,
+            "metric": str(metric).lower(),
+            "threshold": threshold,
+        },
+        returns_scalar=True,
+    )
 
 
 def str_snowball(c: str | pl.Expr, no_stopwords: bool = True) -> pl.Expr:
@@ -912,7 +887,7 @@ def map_words(c: str | pl.Expr, mapping: Dict[str, str]) -> pl.Expr:
     c : str | pl.Expr
         The string column
     mapping : dict[str, str]
-        A dictionary of {word: replace_with}
+        A dictionary of {word: the replacement}
 
     Returns
     -------

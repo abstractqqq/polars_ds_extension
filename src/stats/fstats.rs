@@ -1,18 +1,17 @@
 /// Multiple F-statistics at once and F test
+use core::f64;
 use super::simple_stats_output;
 use crate::stats_utils::beta::fisher_snedecor_sf;
 use itertools::Itertools;
+use ndarray::Axis;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
-/// Computes the p value for the f test
-#[inline]
-fn ftest_p(x: f64, f1: f64, f2: f64) -> PolarsResult<f64> {
-    // No alternative
-    fisher_snedecor_sf(x, f1, f2).map_err(|e| PolarsError::ComputeError(e.into()))
-}
-
-fn _f_stats(inputs: &[Series]) -> PolarsResult<StructChunked> {
+/// Use inputs[0] as the target column (discrete, indicating the groups)
+/// and inputs[i] as the column to run F-test against the target, i > 0. 
+#[polars_expr(output_type_func=simple_stats_output)]
+fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
+    // Use a df to make the computations parallel.
     // Column at index 0 is the target column
     let v = inputs
         .into_iter()
@@ -63,34 +62,29 @@ fn _f_stats(inputs: &[Series]) -> PolarsResult<StructChunked> {
 
     if n_classes <= 1 || n_samples <= 1 {
         return Err(PolarsError::ComputeError(
-            "F-stats: Number of classes or number of samples is either 1 or 0.".into(),
+            "F-stats: n_classes <= 1 in target or n_samples <= 1.".into(),
         ));
     }
 
     let df_btw_class = n_classes.abs_diff(1) as f64;
     let df_in_class = n_samples.abs_diff(n_classes) as f64;
     // Note: reference is a df with 1 row. We need to get the stats out
-    // fstats is 2D
-    let fstats = reference.to_ndarray::<Float64Type>(IndexOrder::C)?;
-
+    // fstats is 2D but with 1 row.
+    
     let scale = df_in_class / df_btw_class;
 
-    let out_fstats: Vec<f64> = fstats.row(0).into_iter().map(|x| x * scale).collect();
+    let mut fstats = reference.to_ndarray::<Float64Type>(IndexOrder::C)?.remove_axis(Axis(0));
+    fstats.map_inplace(|v| *v = *v * scale);
+    let out_fstats = fstats.as_slice().unwrap(); // C order guarantees contiguous.
     let out_p: Vec<f64> = out_fstats
         .iter()
-        .map(|x| ftest_p(*x, df_btw_class, df_in_class).map_or(f64::NAN, |x| x))
+        .map(|x| fisher_snedecor_sf(*x, df_btw_class, df_in_class).unwrap_or(f64::NAN))
         .collect();
 
-    let s1 = Series::from_vec("statistic", out_fstats);
+    let s1 = Float64Chunked::from_slice("statistic", out_fstats);
+    let s1 = s1.into_series();
     let s2 = Series::from_vec("pvalue", out_p);
 
-    StructChunked::new("f-test", &[s1, s2])
-}
-
-/// Use inputs[0] as the target column (discrete, indicating the groups)
-/// and inputs[1] as the column to run F-test against the target. There should be only two columns.
-#[polars_expr(output_type_func=simple_stats_output)]
-fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
-    let out = _f_stats(inputs)?;
-    Ok(out.into_series())
+    let ca = StructChunked::new("f-test", &[s1, s2])?;
+    Ok(ca.into_series())
 }

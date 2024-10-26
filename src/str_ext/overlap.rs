@@ -38,12 +38,11 @@ fn pl_overlap_coeff(inputs: &[Series], context: CallerContext) -> PolarsResult<S
             let splits = split_offsets(ca1.len(), n_threads);
             let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
                 let s1 = ca1.slice(offset as i64, len);
-                let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| {
+                let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| 
                     overlap_coeff(s, r, ngram)
-                });
+                );
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
-
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {

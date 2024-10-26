@@ -54,17 +54,17 @@ fn pl_levenshtein(inputs: &[Series], context: CallerContext) -> PolarsResult<Ser
             let splits = split_offsets(ca1.len(), n_threads);
             let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
                 let s1 = ca1.slice(offset as i64, len);
-                let out: UInt32Chunked = s1.apply_nonnull_values_generic(DataType::UInt32, |s| {
+                let out: UInt32Chunked = s1.apply_nonnull_values_generic(DataType::UInt32, |s| 
                     batched.distance(s.chars()) as u32
-                });
+                );
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             UInt32Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
-            ca1.apply_nonnull_values_generic(DataType::UInt32, |s| {
+            ca1.apply_nonnull_values_generic(DataType::UInt32, |s| 
                 batched.distance(s.chars()) as u32
-            })
+            )
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -120,14 +120,14 @@ fn pl_levenshtein_filter(inputs: &[Series], context: CallerContext) -> PolarsRes
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             BooleanChunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
-            ca1.apply_nonnull_values_generic(DataType::Boolean, |s| {
+            ca1.apply_nonnull_values_generic(DataType::Boolean, |s| 
                 batched
                     .distance_with_args(
                         s.chars(),
                         &levenshtein::Args::default().score_cutoff(bound),
                     )
                     .is_some()
-            })
+            )
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -178,9 +178,9 @@ fn pl_levenshtein_sim(inputs: &[Series], context: CallerContext) -> PolarsResult
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
-            ca1.apply_nonnull_values_generic(DataType::Float64, |s| {
+            ca1.apply_nonnull_values_generic(DataType::Float64, |s| 
                 batched.normalized_similarity(s.chars())
-            })
+            )
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -221,18 +221,17 @@ fn pl_d_levenshtein(inputs: &[Series], context: CallerContext) -> PolarsResult<S
             let splits = split_offsets(ca1.len(), n_threads);
             let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
                 let s1 = ca1.slice(offset as i64, len);
-                let out: UInt32Chunked = s1.apply_nonnull_values_generic(DataType::UInt32, |s| {
+                let out: UInt32Chunked = s1.apply_nonnull_values_generic(DataType::UInt32, |s| 
                     batched.distance(s.chars()) as u32
-                });
+                );
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
-
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             UInt32Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
-            ca1.apply_nonnull_values_generic(DataType::UInt32, |s| {
+            ca1.apply_nonnull_values_generic(DataType::UInt32, |s| 
                 batched.distance(s.chars()) as u32
-            })
+            )
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -274,17 +273,17 @@ fn pl_d_levenshtein_sim(inputs: &[Series], context: CallerContext) -> PolarsResu
             let splits = split_offsets(ca1.len(), n_threads);
             let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
                 let s1 = ca1.slice(offset as i64, len);
-                let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| {
+                let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| 
                     batched.normalized_similarity(s.chars())
-                });
+                );
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
-            ca1.apply_nonnull_values_generic(DataType::Float64, |s| {
+            ca1.apply_nonnull_values_generic(DataType::Float64, |s| 
                 batched.normalized_similarity(s.chars())
-            })
+            )
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {

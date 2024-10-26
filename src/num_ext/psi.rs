@@ -20,6 +20,7 @@ fn psi_with_bps_helper(s: &[f64], bp: &[f64]) -> Vec<u32> {
     // bp: breakpoints
     let mut c = vec![0u32; bp.len()];
     for x in s {
+
         let i = match bp.binary_search_by(|b| b.partial_cmp(x).unwrap()) {
             Ok(j) => j,
             Err(k) => k,

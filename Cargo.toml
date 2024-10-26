@@ -12,7 +12,7 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = {version = "0.21", features = ["abi3-py39", "extension-module"]}
 pyo3-polars = {version = "0.15", features = ["derive"]}
-polars = {version = "0.41.3", features = ["performant", "cse", "lazy", 
+polars = {version = "0.41", features = ["performant", "cse", "lazy", 
 "parquet", "dtype-array", "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", 
 "cum_agg", "round_series", "nightly", "dtype-struct"]}
 num = "0.4.1"
@@ -20,11 +20,10 @@ faer = {version = "0.19", features = ["nightly"]}
 faer-ext = {version = "0.2.0", features = ["ndarray"]}
 serde = {version = "*", features=["derive"]}
 ndarray = {version="0.15.6"}
-hashbrown = {version = "0.14.2", features=["nightly"]}
+hashbrown = {version = "0.15", features=["nightly"]}
 itertools = "0.12.0"
 rand = {version = "0.8.5"}
 rand_distr = "0.4.3"
-rustfft = "6.2.0"
 realfft = "3.3.0"
 rapidfuzz = "0.5.0"
 inflections = "1.1.1"
@@ -32,8 +31,7 @@ ordered-float = "4.2.0"
 approx = "*"
 ahash = ">=0.8.5"
 unicode-normalization = "0.1.23"
-# See here: https://github.com/PyO3/rust-numpy/pull/442. Need to update this once NumPy works with pyo3==0.22
-# After that, I can update polars to 0.43+
+# Update to 0.22
 numpy = "0.21" 
 cfavml = {version = "0.3.0", features=["nightly"]}
 rayon = "1.10.0"

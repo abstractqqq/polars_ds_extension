@@ -23,27 +23,17 @@ impl TryFrom<String> for NormalForm {
     }
 }
 
-fn _remove_non_ascii(value: &str, output: &mut String) {
-    *output = value.chars().filter(char::is_ascii).collect()
-}
-
 #[polars_expr(output_type=String)]
 fn remove_non_ascii(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
-    let out = ca.apply_to_buffer(_remove_non_ascii);
-
+    let out = ca.apply_to_buffer(|s, buf| *buf = s.chars().filter(char::is_ascii).collect());
     Ok(out.into_series())
-}
-
-fn _remove_diacritics(value: &str, output: &mut String) {
-    *output = value.nfd().filter(char::is_ascii).collect()
 }
 
 #[polars_expr(output_type=String)]
 fn remove_diacritics(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
-    let out = ca.apply_to_buffer(_remove_diacritics);
-
+    let out = ca.apply_to_buffer(|s, buf| *buf = s.nfd().filter(char::is_ascii).collect());
     Ok(out.into_series())
 }
 
@@ -70,34 +60,25 @@ struct MapWordsKwargs {
     mapping: ahash::HashMap<String, String>,
 }
 
-fn _map_words(value: &str, mapping: &ahash::HashMap<String, String>, output: &mut String) {
-    let vec: Vec<&str> = value
-        .split_whitespace()
-        .map(|word| match mapping.get(word) {
-            Some(val) => val,
-            None => word,
-        })
-        .collect();
-
-    output.push_str(vec.join(" ").as_str())
-}
 
 #[polars_expr(output_type=String)]
 fn map_words(inputs: &[Series], kwargs: MapWordsKwargs) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
-    let out = ca.apply_to_buffer(|val, buf| _map_words(val, &kwargs.mapping, buf));
-
+    let mapping = kwargs.mapping;
+    let out = ca.apply_to_buffer(|s, buf|
+        buf.push_str(        
+            s.split_whitespace()
+            .map(|word| mapping.get(word).map_or(word, |v| v))
+            .join(" ")
+            .as_ref()
+        )
+    );
     Ok(out.into_series())
-}
-
-fn _normalize_whitespace(value: &str, output: &mut String) {
-    *output = value.split_whitespace().join(" ")
 }
 
 #[polars_expr(output_type=String)]
 fn normalize_whitespace(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
-    let out = ca.apply_to_buffer(_normalize_whitespace);
-
+    let out = ca.apply_to_buffer(|s, buf| *buf = s.split_whitespace().join(" "));
     Ok(out.into_series())
 }

@@ -270,56 +270,20 @@ def test_hamming_filter(df, bound, res):
 
 
 @pytest.mark.parametrize(
-    "df, vocab, k, metric, res",
+    "a, word, res",
     [
-        (
-            pl.DataFrame(
-                {
-                    "a": ["AAAAA", "AAATT", "ATTTT", "AAAAA", "AAAAA"],
-                }
-            ),
-            ["AAAAT", "AAAAA", "ATATA", "AAAAA", "TTTTT"],
-            1,
-            "hamming",
-            pl.DataFrame({"a": pl.Series(["AAAAA", "AAAAT", "TTTTT", "AAAAA", "AAAAA"])}),
-        ),
-        (
-            pl.DataFrame(
-                {
-                    "a": ["AAAAA", "AAATT", "ATTTT", "AAAAA", "AAAAA"],
-                }
-            ),
-            ["AAAAT", "AAAAA", "ATATA", "AAAAA", "TTTTT"],
-            2,
-            "hamming",
-            pl.DataFrame(
-                {
-                    "a": pl.Series(
-                        [
-                            ["AAAAA", "AAAAT"],
-                            ["AAAAT", "ATATA"],
-                            ["TTTTT", "ATATA"],
-                            ["AAAAA", "AAAAT"],
-                            ["AAAAA", "AAAAT"],
-                        ]
-                    )
-                }
-            ),
-        ),
+        (["abc", "bbb", "ccc"], "abd", "abc"),
     ],
 )
-def test_similar_words(df, vocab, k, metric, res):
-    assert_frame_equal(df.select(pds.query_similar_words("a", vocab, k=k, metric=metric)), res)
-
-    assert_frame_equal(
-        df.select(pds.query_similar_words("a", vocab, k=k, parallel=True, metric=metric)),
-        res,
+def test_nearest_str(a, word, res):
+    df = pl.DataFrame(
+        {
+            "a": a,
+        }
     )
 
-    assert_frame_equal(
-        df.lazy().select(pds.query_similar_words("a", vocab, k=k, metric=metric)).collect(),
-        res,
-    )
+    nearest = df.select(pds.str_nearest("a", word=word)).item(0, 0)
+    assert res == nearest
 
 
 @pytest.mark.parametrize(
@@ -428,31 +392,3 @@ def test_tversky(df, size, alpha, beta, res):
         .collect(),
         res,
     )
-
-
-@pytest.mark.parametrize(
-    "df, vocab, k, result",
-    [
-        (
-            pl.DataFrame(
-                {
-                    "a": ["AAAA", "AAAB", "AABB", "AACC", "AADD"],
-                }
-            ),
-            ["AAAD", "ACCC", "BBBB", "ABBB", "XXXX", "ADDA"],
-            1,
-            ["AAAD", "AAAD", "ABBB", "ACCC", "AAAD"],
-        ),
-    ],
-)
-def test_knn_str_lv(df, vocab, k, result):
-    res = df.select(
-        pds.query_similar_words(
-            "a",
-            vocab=vocab,
-            k=k,
-            metric="lv",
-        ).alias("result")
-    )
-    res = res["result"].to_list()
-    assert res == result

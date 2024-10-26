@@ -6,12 +6,17 @@ from ._utils import pl_plugin
 from typing import List
 
 __all__ = [
+    "lin_reg",
+    "lin_reg_w_rcond",
+    "simple_lin_reg",
+    "recursive_lin_reg",
+    "rolling_lin_reg",
+    "lin_reg_report",
     "query_lstsq",
-    "query_simple_lstsq",
-    "query_lstsq_report",
-    "query_rolling_lstsq",
-    "query_recursive_lstsq",
     "query_lstsq_w_rcond",
+    "query_recursive_lstsq",
+    "query_rolling_lstsq",
+    "query_lstsq_report",
 ]
 
 
@@ -26,7 +31,7 @@ def lr_formula(s: str | pl.Expr) -> pl.Expr:
         )
 
 
-def query_simple_lstsq(
+def simple_lin_reg(
     x: str | pl.Expr,
     target: str | pl.Expr,
     add_bias: bool = False,
@@ -87,7 +92,7 @@ def query_simple_lstsq(
             return beta.implode().alias("lstsq_coeffs")
 
 
-def query_lstsq(
+def lin_reg(
     *x: str | pl.Expr,
     target: str | pl.Expr | List[str | pl.Expr],
     add_bias: bool = False,
@@ -223,7 +228,39 @@ def query_lstsq(
             ).alias("lstsq_coeffs")
 
 
-def query_lstsq_w_rcond(
+def query_lstsq(
+    *x: str | pl.Expr,
+    target: str | pl.Expr | List[str | pl.Expr],
+    add_bias: bool = False,
+    weights: str | pl.Expr | None = None,
+    return_pred: bool = False,
+    l1_reg: float = 0.0,
+    l2_reg: float = 0.0,
+    tol: float = 1e-5,
+    solver: LRSolverMethods = "qr",
+    null_policy: NullPolicy = "skip",
+) -> pl.Expr:
+    warnings.warn(
+        "`query_lstsq` has been renamed to `lin_reg` and will be deprecated in future versions.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    return lin_reg(
+        *x,
+        target=target,
+        add_bias=add_bias,
+        weights=weights,
+        return_pred=return_pred,
+        l1_reg=l1_reg,
+        l2_reg=l2_reg,
+        tol=tol,
+        solver=solver,
+        null_policy=null_policy,
+    )
+
+
+def lin_reg_w_rcond(
     *x: str | pl.Expr,
     target: str | pl.Expr,
     add_bias: bool = False,
@@ -276,7 +313,26 @@ def query_lstsq_w_rcond(
     )
 
 
-def query_recursive_lstsq(
+def query_lstsq_w_rcond(
+    *x: str | pl.Expr,
+    target: str | pl.Expr,
+    add_bias: bool = False,
+    rcond: float = 0.0,
+    l2_reg: float = 0.0,
+    null_policy: NullPolicy = "raise",
+) -> pl.Expr:
+    warnings.warn(
+        "`query_lstsq_w_rcond` has been renamed to `lin_reg_w_rcond` and will be deprecated in future versions.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    return lin_reg_w_rcond(
+        *x, target=target, add_bias=add_bias, rcond=rcond, l2_reg=l2_reg, null_policy=null_policy
+    )
+
+
+def recursive_lin_reg(
     *x: str | pl.Expr,
     target: str | pl.Expr,
     start_with: int,
@@ -344,7 +400,31 @@ def query_recursive_lstsq(
     )
 
 
-def query_rolling_lstsq(
+def query_recursive_lstsq(
+    *x: str | pl.Expr,
+    target: str | pl.Expr,
+    start_with: int,
+    add_bias: bool = False,
+    l2_reg: float = 0.0,
+    null_policy: NullPolicy = "raise",
+) -> pl.Expr:
+    warnings.warn(
+        "`query_recursive_lstsq` has been renamed to `recursive_lin_reg` and will be deprecated in future versions.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    return recursive_lin_reg(
+        *x,
+        target=target,
+        start_with=start_with,
+        add_bias=add_bias,
+        l2_reg=l2_reg,
+        null_policy=null_policy,
+    )
+
+
+def rolling_lin_reg(
     *x: str | pl.Expr,
     target: str | pl.Expr,
     window_size: int,
@@ -418,7 +498,33 @@ def query_rolling_lstsq(
     )
 
 
-def query_lstsq_report(
+def query_rolling_lstsq(
+    *x: str | pl.Expr,
+    target: str | pl.Expr,
+    window_size: int,
+    add_bias: bool = False,
+    l2_reg: float = 0.0,
+    min_valid_rows: int | None = None,
+    null_policy: NullPolicy = "raise",
+) -> pl.Expr:
+    warnings.warn(
+        "`query_rolling_lstsq` has been renamed to `rolling_lin_reg` and will be deprecated in future versions.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    return rolling_lin_reg(
+        *x,
+        target=target,
+        window_size=window_size,
+        add_bias=add_bias,
+        l2_reg=l2_reg,
+        min_valid_rows=min_valid_rows,
+        null_policy=null_policy,
+    )
+
+
+def lin_reg_report(
     *x: str | pl.Expr,
     target: str | pl.Expr,
     weights: str | pl.Expr | None = None,
@@ -479,3 +585,21 @@ def query_lstsq_report(
             changes_length=True,
             pass_name_to_apply=True,
         )
+
+
+def query_lstsq_report(
+    *x: str | pl.Expr,
+    target: str | pl.Expr,
+    weights: str | pl.Expr | None = None,
+    add_bias: bool = False,
+    null_policy: NullPolicy = "raise",
+) -> pl.Expr:
+    warnings.warn(
+        "`query_lstsq_report` has been renamed to `lin_reg_report` and will be deprecated in future versions.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    return lin_reg_report(
+        *x, target=target, weights=weights, add_bias=add_bias, null_policy=null_policy
+    )

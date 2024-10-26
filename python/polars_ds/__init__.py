@@ -7,8 +7,8 @@ from polars_ds.metrics import *  # noqa: F403
 from polars_ds.stats import *  # noqa: F403
 from polars_ds.string import *  # noqa: F403
 from polars_ds.features import *  # noqa: F403
-from polars_ds.query_knn import *  # noqa: F403
-from polars_ds.query_linear import *  # noqa: F403
+from polars_ds.expr_knn import *  # noqa: F403
+from polars_ds.expr_linear import *  # noqa: F403
 # from polars_ds.query_balltree import *  # noqa: F403
 
 

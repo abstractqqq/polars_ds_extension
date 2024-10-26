@@ -679,32 +679,6 @@ impl<T: Float + DistanceOps + 'static + Debug, A: Copy> OwnedKDT<T, A> {
         self.data.push(leaf);
     }
 
-    // /// Attach a new point (leaf) to the Kdtree. This disregards capacity and
-    // /// will not further split the leaf if capacity is reached. It is recommended
-    // /// to use this if most the data have been already ingested in bulk and you
-    // /// are only adding a few more points. Attaching too much can be
-    // /// bad for performance in lower dimensions.
-    // pub fn attach(&mut self, leaf: OwnedLeaf<T, A>) -> Result<(), String> {
-    //     if leaf.dim() != self.dim {
-    //         Err("Dimension does not match.".into())
-    //     } else {
-    //         Ok(self.attach_unchecked(leaf))
-    //     }
-    // }
-
-    // #[inline(always)]
-    // pub fn attach_unchecked(&mut self, leaf: OwnedLeaf<T, A>) {
-    //     if self.is_leaf() {
-    //         self.update_and_push(leaf);
-    //     } else {
-    //         if leaf.value_at(self.split_axis) < self.split_axis_value {
-    //             self.left.as_mut().unwrap().attach_unchecked(leaf)
-    //         } else {
-    //             self.right.as_mut().unwrap().attach_unchecked(leaf)
-    //         }
-    //     }
-    // }
-
     /// Add a new point (leaf) to the Kdtree. This will further split the kdtree
     /// if capacity is reached in the leaf node.
     pub fn add(&mut self, leaf: OwnedLeaf<T, A>) -> Result<(), String> {

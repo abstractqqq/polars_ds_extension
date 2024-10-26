@@ -4,7 +4,7 @@ mod hamming;
 mod inflections;
 mod is_stopword;
 mod jaro;
-mod knn_strs;
+mod nearest_str;
 mod levenshtein;
 mod osa;
 mod overlap;

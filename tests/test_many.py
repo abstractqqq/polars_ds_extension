@@ -496,7 +496,7 @@ def test_jaccard_row(df, res):
     )
 
 
-def test_lstsq_against_sklearn():
+def test_lin_reg_against_sklearn():
     # Random data + noise
     df = (
         pds.frame(size=5_000)
@@ -522,7 +522,7 @@ def test_lstsq_against_sklearn():
 
     # pds, normal, with bias
     normal_coeffs = df.select(
-        pds.query_lstsq(
+        pds.lin_reg(
             "x1",
             "x2",
             "x3",
@@ -541,7 +541,7 @@ def test_lstsq_against_sklearn():
 
     # pds, normal, with bias
     normal_coeffs = df.select(
-        pds.query_lstsq(
+        pds.lin_reg(
             "x1",
             "x2",
             "x3",
@@ -580,7 +580,7 @@ def test_lasso_regression():
 
     for lambda_ in [0.01, 0.05, 0.1, 0.2]:
         df_res = df.select(
-            pds.query_lstsq("x1", "x2", "x3", target="y", l1_reg=lambda_, add_bias=False).alias(
+            pds.lin_reg("x1", "x2", "x3", target="y", l1_reg=lambda_, add_bias=False).alias(
                 "coeffs"
             )
         ).explode("coeffs")
@@ -594,9 +594,7 @@ def test_lasso_regression():
 
     for lambda_ in [0.01, 0.05, 0.1, 0.2]:
         df_res = df.select(
-            pds.query_lstsq("x1", "x2", "x3", target="y", l1_reg=lambda_, add_bias=True).alias(
-                "coeffs"
-            )
+            pds.lin_reg("x1", "x2", "x3", target="y", l1_reg=lambda_, add_bias=True).alias("coeffs")
         ).explode("coeffs")
 
         res = df_res["coeffs"].to_numpy()
@@ -635,7 +633,7 @@ def test_elastic_net_regression():
         l2_reg = reg
 
         df_res = df.select(
-            pds.query_lstsq(
+            pds.lin_reg(
                 "x1", "x2", "x3", target="y", l1_reg=l1_reg, l2_reg=l2_reg, add_bias=False
             ).alias("coeffs")
         ).explode("coeffs")
@@ -651,7 +649,7 @@ def test_elastic_net_regression():
         assert np.all(np.abs(res_sklearn - res) < 1e-4)
 
 
-def test_recursive_lstsq():
+def test_recursive_lin_reg():
     # Test against the lstsq method with a fit whenver a new row is in the data
     size = 1_000
     df = (
@@ -673,7 +671,7 @@ def test_recursive_lstsq():
 
     df_recursive_lr = df.select(
         "y",
-        pds.query_recursive_lstsq(
+        pds.recursive_lin_reg(
             "x1",
             "x2",
             "x3",
@@ -684,7 +682,7 @@ def test_recursive_lstsq():
 
     for i in range(start_with, 30):
         coefficients = df.limit(i).select(
-            pds.query_lstsq(
+            pds.lin_reg(
                 "x1",
                 "x2",
                 "x3",
@@ -720,7 +718,7 @@ def test_recursive_ridge():
 
     df_recursive_lr = df.select(
         "y",
-        pds.query_recursive_lstsq(
+        pds.recursive_lin_reg(
             "x1",
             "x2",
             "x3",
@@ -732,7 +730,7 @@ def test_recursive_ridge():
 
     for i in range(start_with, 30):
         coefficients = df.limit(i).select(
-            pds.query_lstsq(
+            pds.lin_reg(
                 "x1",
                 "x2",
                 "x3",
@@ -747,7 +745,7 @@ def test_recursive_ridge():
         assert np.all(np.abs(normal_result - recursive_result) < 1e-5)
 
 
-def test_rolling_lstsq():
+def test_rolling_lin_reg():
     # Test rolling lstsq by comparing it with a manually rolled lstsq result.
     # Test on multiple window sizes
     size = 500
@@ -771,7 +769,7 @@ def test_rolling_lstsq():
         df_to_test = df.select(
             "id",
             "y",
-            pds.query_rolling_lstsq(
+            pds.rolling_lin_reg(
                 "x1",
                 "x2",
                 "x3",
@@ -784,9 +782,7 @@ def test_rolling_lstsq():
         results = []
         for i in range(len(df) - window_size + 1):
             temp = df.slice(i, length=window_size)
-            results.append(
-                temp.select(pds.query_lstsq("x1", "x2", "x3", target="y").alias("coeffs"))
-            )
+            results.append(temp.select(pds.lin_reg("x1", "x2", "x3", target="y").alias("coeffs")))
 
         df_answer = pl.concat(results)
         assert_frame_equal(df_to_test, df_answer)
@@ -820,7 +816,7 @@ def test_rolling_null_skips():
     min_valid_rows = 5
 
     result = df.with_columns(
-        pds.query_rolling_lstsq(
+        pds.rolling_lin_reg(
             "x1",
             "x2",
             "x3",
@@ -847,7 +843,7 @@ def test_rolling_null_skips():
 
 
 def test_rolling_ridge():
-    # Test rolling lstsq by comparing it with a manually rolled lstsq result.
+    # Test rolling linear regression by comparing it with a manually rolled result.
     # Test on multiple window sizes
     size = 500
     df = (
@@ -870,7 +866,7 @@ def test_rolling_ridge():
         df_to_test = df.select(
             "id",
             "y",
-            pds.query_rolling_lstsq(
+            pds.rolling_lin_reg(
                 "x1",
                 "x2",
                 "x3",
@@ -885,16 +881,14 @@ def test_rolling_ridge():
         for i in range(len(df) - window_size + 1):
             temp = df.slice(i, length=window_size)
             results.append(
-                temp.select(
-                    pds.query_lstsq("x1", "x2", "x3", l2_reg=0.1, target="y").alias("coeffs")
-                )
+                temp.select(pds.lin_reg("x1", "x2", "x3", l2_reg=0.1, target="y").alias("coeffs"))
             )
 
         df_answer = pl.concat(results)
         assert_frame_equal(df_to_test, df_answer)
 
 
-def test_lstsq_skip_null():
+def test_lin_reg_skip_null():
     df = pl.DataFrame(
         {
             "y": [None, 9.5, 10.5, 11.5, 12.5],
@@ -910,7 +904,7 @@ def test_lstsq_skip_null():
     )
     assert_frame_equal(
         df.select(
-            pds.query_lstsq(
+            pds.lin_reg(
                 pl.col("a"), pl.col("b"), target="y", return_pred=True, null_policy="skip"
             ).alias("result")
         ).unnest("result"),
@@ -918,7 +912,7 @@ def test_lstsq_skip_null():
     )
 
 
-def test_lstsq_in_group_by():
+def test_lin_reg_in_group_by():
     df = pl.DataFrame(
         {
             "A": [1] * 4 + [2] * 4,
@@ -929,13 +923,13 @@ def test_lstsq_in_group_by():
     )
 
     first = df.filter(pl.col("A").eq(1)).with_columns(
-        pds.query_lstsq(
+        pds.lin_reg(
             pl.col("X1"), pl.col("X2"), target=pl.col("Y"), add_bias=False, return_pred=True
         ).alias("pred")
     )
 
     second = df.filter(pl.col("A").eq(2)).with_columns(
-        pds.query_lstsq(
+        pds.lin_reg(
             pl.col("X1"), pl.col("X2"), target=pl.col("Y"), add_bias=False, return_pred=True
         ).alias("pred")
     )
@@ -946,7 +940,7 @@ def test_lstsq_in_group_by():
             "Y",
             "X1",
             "X2",
-            pds.query_lstsq(
+            pds.lin_reg(
                 pl.col("X1"), pl.col("X2"), target=pl.col("Y"), add_bias=False, return_pred=True
             ).alias("pred"),
         )
@@ -960,7 +954,7 @@ def test_lstsq_in_group_by():
     assert_frame_equal(second, test_second)
 
 
-def test_lstsq_with_rcond():
+def test_lin_reg_with_rcond():
     import numpy as np
 
     size = 5000
@@ -983,7 +977,7 @@ def test_lstsq_with_rcond():
     np_coeffs = np_coeffs.flatten()
 
     res = df.select(
-        pds.query_lstsq_w_rcond(
+        pds.lin_reg_w_rcond(
             "x1",
             "x2",
             "x3",
