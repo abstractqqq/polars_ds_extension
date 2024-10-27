@@ -140,6 +140,30 @@ def test_jaro(df, res):
 @pytest.mark.parametrize(
     "df, res",
     [
+        (  # From Wikipedia
+            pl.DataFrame(
+                {
+                    "a": ["FAREMVIEL"],
+                    "b": ["FARMVILLE"],
+                }  # longest common sebsequence is 7. Distance is max(9, 9) - 7 = 2
+            ),
+            pl.DataFrame({"a": pl.Series([2], dtype=pl.UInt32)}),
+        ),
+    ],
+)
+def test_lcs_seq(df, res):
+    assert_frame_equal(df.select(pds.str_lcs_seq("a", pl.col("b"), return_sim=False)), res)
+    assert_frame_equal(
+        df.select(pds.str_lcs_seq("a", pl.col("b"), return_sim=False, parallel=True)), res
+    )
+    assert_frame_equal(
+        df.lazy().select(pds.str_lcs_seq("a", pl.col("b"), return_sim=False)).collect(), res
+    )
+
+
+@pytest.mark.parametrize(
+    "df, res",
+    [
         (
             pl.DataFrame({"a": ["kitten", "mary", "may"], "b": ["sitting", "merry", "mayer"]}),
             pl.DataFrame({"a": pl.Series([3, 2, 2], dtype=pl.UInt32)}),

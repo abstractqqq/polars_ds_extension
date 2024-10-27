@@ -7,6 +7,7 @@ mod jaro;
 mod nearest_str;
 mod levenshtein;
 mod osa;
+mod lcs_seq;
 mod overlap;
 mod snowball;
 mod snowball_stem;
@@ -14,6 +15,7 @@ mod sorensen_dice;
 mod str_cleaning;
 mod str_jaccard;
 mod tversky;
+mod generic_str_distancer;
 
 // Hashbrown has better perf than Rust's HashSet
 use hashbrown::HashSet;
@@ -47,3 +49,4 @@ pub fn str_set_sim_helper(w1: &str, w2: &str, ngram: usize) -> (usize, usize, us
     let intersection = s1.intersection(&s2).count();
     (s1.len(), s2.len(), intersection)
 }
+

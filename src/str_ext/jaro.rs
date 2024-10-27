@@ -8,6 +8,7 @@ use pyo3_polars::{
         POOL,
     },
 };
+use super::generic_str_distancer::{generic_batched_sim, generic_binary_sim};
 use rapidfuzz::distance::{jaro, jaro_winkler};
 
 #[inline]
@@ -34,38 +35,9 @@ fn pl_jaro(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
     if ca2.len() == 1 {
         let r = ca2.get(0).unwrap();
         let batched = jaro::BatchComparator::new(r.chars());
-        let out: Float64Chunked = if can_parallel {
-            let n_threads = POOL.current_num_threads();
-            let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-                let s1 = ca1.slice(offset as i64, len);
-                let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| {
-                    batched.similarity(s.chars())
-                });
-                out.downcast_iter().cloned().collect::<Vec<_>>()
-            });
-            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
-        } else {
-            ca1.apply_nonnull_values_generic(DataType::Float64, |s| batched.similarity(s.chars()))
-        };
-        Ok(out.into_series())
+        Ok(generic_batched_sim(batched, ca1, can_parallel))
     } else if ca1.len() == ca2.len() {
-        let out: Float64Chunked = if can_parallel {
-            let n_threads = POOL.current_num_threads();
-            let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-                let s1 = ca1.slice(offset as i64, len);
-                let s2 = ca2.slice(offset as i64, len);
-                let out: Float64Chunked = binary_elementwise_values(&s1, &s2, jaro_sim);
-                out.downcast_iter().cloned().collect::<Vec<_>>()
-            });
-            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
-        } else {
-            binary_elementwise_values(ca1, ca2, jaro_sim)
-        };
-        Ok(out.into_series())
+        Ok(generic_binary_sim(jaro_sim, ca1, ca2, can_parallel))
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),
@@ -110,20 +82,21 @@ fn pl_jw(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
-        let out: Float64Chunked = if can_parallel {
+        let out: Float64Chunked = if parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-                let s1 = ca1.slice(offset as i64, len);
-                let s2 = ca2.slice(offset as i64, len);
-                let out: Float64Chunked =
-                    binary_elementwise_values(&s1, &s2, |x, y| jw_sim(x, y, weight));
-                out.downcast_iter().cloned().collect::<Vec<_>>()
-            });
+            let chunks_iter= splits
+                .into_par_iter()
+                .map(|(offset, len)| {
+                    let s1 = ca1.slice(offset as i64, len);
+                    let s2 = ca2.slice(offset as i64, len);
+                    let out: Float64Chunked = binary_elementwise_values(&s1, &s2, |s1, s2| jw_sim(s1, s2, weight));
+                    out.downcast_iter().cloned().collect::<Vec<_>>()
+                });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
         } else {
-            binary_elementwise_values(ca1, ca2, |x, y| jw_sim(x, y, weight))
+            binary_elementwise_values(ca1, ca2, |s1, s2| jw_sim(s1, s2, weight))
         };
         Ok(out.into_series())
     } else {
