@@ -1740,3 +1740,24 @@ def test_query_similar_count():
         actual_cnt += int((square_l2_distance(sl, query) < 0.1))
 
     assert cnt == actual_cnt
+
+
+def test_auto_corr():
+    def autocorr(x, lag):
+        mean = np.mean(x)
+        v = np.var(x)
+        xp = x - mean
+        return np.sum(xp[lag:] * xp[:-lag]) / ((len(x) - lag) * v)
+
+    df = pds.frame(size=2_000).select(
+        pds.random(0.0, 1.0).alias("x1"),
+    )
+    x = df["x1"].to_numpy()
+
+    pds_result = df.select(
+        *(pds.query_auto_corr("x1", lag=i).alias(str(i)) for i in range(1, 10))
+    ).row(0)
+    pds_result = np.array(pds_result)
+    np_result = np.array([autocorr(x, i) for i in range(1, 10)])
+
+    assert np.all(np.abs(pds_result - np_result) < 1e-6)
