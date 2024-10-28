@@ -26,6 +26,7 @@ __all__ = [
     "str_d_leven",
     "str_leven",
     "str_osa",
+    "str_lcs_seq",
     "str_fuzz",
     "similar_to_vocab",
     "extract_numbers",
@@ -565,6 +566,42 @@ def str_leven(
         )
 
 
+def str_lcs_seq(
+    c: str | pl.Expr,
+    other: str | pl.Expr,
+    parallel: bool = False,
+    return_sim: bool = True,
+) -> pl.Expr:
+    """
+    Computes the Longest Common Subsequence distance/similarity between this and the other str.
+    The distance is calculated as max(len1, len2) - similarity, where the similarity is the
+    the length of the longest common subsequence. Subsequences may not occupy consecutive positions.
+
+    Parameters
+    ----------
+    c
+        The string column
+    other
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
+    parallel
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
+    return_sim
+        If true, return normalized similarity.
+    """
+    if return_sim:
+        return pl_plugin(
+            symbol="pl_lcs_seq_sim",
+            args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
+        )
+    else:
+        return pl_plugin(
+            symbol="pl_lcs_seq",
+            args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
+        )
+
+
 def str_osa(
     c: str | pl.Expr,
     other: str | pl.Expr,
@@ -601,7 +638,8 @@ def str_osa(
 
 def str_fuzz(c: str | pl.Expr, other: str | pl.Expr, parallel: bool = False) -> pl.Expr:
     """
-    A string similarity based on Longest Common Subsequence.
+    Calculates the normalized Indel similarity. (See the package rapidfuzz, fuzz.ratio for more
+    information.)
 
     Parameters
     ----------

@@ -7,6 +7,12 @@ use pyo3_polars::{
         POOL,
     },
 };
+use super::generic_str_distancer::{
+    generic_batched_distance, 
+    generic_batched_sim,
+    generic_binary_distance,
+    generic_binary_sim
+};
 use rapidfuzz::distance::{damerau_levenshtein, levenshtein};
 
 #[inline(always)]
@@ -49,40 +55,9 @@ fn pl_levenshtein(inputs: &[Series], context: CallerContext) -> PolarsResult<Ser
     if ca2.len() == 1 {
         let r = ca2.get(0).unwrap();
         let batched = levenshtein::BatchComparator::new(r.chars());
-        let out: UInt32Chunked = if can_parallel {
-            let n_threads = POOL.current_num_threads();
-            let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-                let s1 = ca1.slice(offset as i64, len);
-                let out: UInt32Chunked = s1.apply_nonnull_values_generic(DataType::UInt32, |s| 
-                    batched.distance(s.chars()) as u32
-                );
-                out.downcast_iter().cloned().collect::<Vec<_>>()
-            });
-            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            UInt32Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
-        } else {
-            ca1.apply_nonnull_values_generic(DataType::UInt32, |s| 
-                batched.distance(s.chars()) as u32
-            )
-        };
-        Ok(out.into_series())
+        Ok(generic_batched_distance(batched, ca1, can_parallel))
     } else if ca1.len() == ca2.len() {
-        let out: UInt32Chunked = if can_parallel {
-            let n_threads = POOL.current_num_threads();
-            let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-                let s1 = ca1.slice(offset as i64, len);
-                let s2 = ca2.slice(offset as i64, len);
-                let out: UInt32Chunked = binary_elementwise_values(&s1, &s2, levenshtein);
-                out.downcast_iter().cloned().collect::<Vec<_>>()
-            });
-            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            UInt32Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
-        } else {
-            binary_elementwise_values(ca1, ca2, levenshtein)
-        };
-        Ok(out.into_series())
+        Ok(generic_binary_distance(levenshtein, ca1, ca2, can_parallel))
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),
@@ -165,40 +140,9 @@ fn pl_levenshtein_sim(inputs: &[Series], context: CallerContext) -> PolarsResult
     if ca2.len() == 1 {
         let r = ca2.get(0).unwrap();
         let batched = levenshtein::BatchComparator::new(r.chars());
-        let out: Float64Chunked = if can_parallel {
-            let n_threads = POOL.current_num_threads();
-            let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-                let s1 = ca1.slice(offset as i64, len);
-                let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| {
-                    batched.normalized_similarity(s.chars())
-                });
-                out.downcast_iter().cloned().collect::<Vec<_>>()
-            });
-            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
-        } else {
-            ca1.apply_nonnull_values_generic(DataType::Float64, |s| 
-                batched.normalized_similarity(s.chars())
-            )
-        };
-        Ok(out.into_series())
+        Ok(generic_batched_sim(batched, ca1, can_parallel))
     } else if ca1.len() == ca2.len() {
-        let out: Float64Chunked = if can_parallel {
-            let n_threads = POOL.current_num_threads();
-            let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-                let s1 = ca1.slice(offset as i64, len);
-                let s2 = ca2.slice(offset as i64, len);
-                let out: Float64Chunked = binary_elementwise_values(&s1, &s2, levenshtein_sim);
-                out.downcast_iter().cloned().collect::<Vec<_>>()
-            });
-            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
-        } else {
-            binary_elementwise_values(ca1, ca2, levenshtein_sim)
-        };
-        Ok(out.into_series())
+        Ok(generic_binary_sim(levenshtein_sim, ca1, ca2, can_parallel))
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),
@@ -216,41 +160,9 @@ fn pl_d_levenshtein(inputs: &[Series], context: CallerContext) -> PolarsResult<S
     if ca2.len() == 1 {
         let r = ca2.get(0).unwrap();
         let batched = damerau_levenshtein::BatchComparator::new(r.chars());
-        let out: UInt32Chunked = if can_parallel {
-            let n_threads = POOL.current_num_threads();
-            let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-                let s1 = ca1.slice(offset as i64, len);
-                let out: UInt32Chunked = s1.apply_nonnull_values_generic(DataType::UInt32, |s| 
-                    batched.distance(s.chars()) as u32
-                );
-                out.downcast_iter().cloned().collect::<Vec<_>>()
-            });
-            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            UInt32Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
-        } else {
-            ca1.apply_nonnull_values_generic(DataType::UInt32, |s| 
-                batched.distance(s.chars()) as u32
-            )
-        };
-        Ok(out.into_series())
+        Ok(generic_batched_distance(batched, ca1, can_parallel))
     } else if ca1.len() == ca2.len() {
-        let out: UInt32Chunked = if can_parallel {
-            let n_threads = POOL.current_num_threads();
-            let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-                let s1 = ca1.slice(offset as i64, len);
-                let s2 = ca2.slice(offset as i64, len);
-                let out: UInt32Chunked = binary_elementwise_values(&s1, &s2, d_levenshtein);
-                out.downcast_iter().cloned().collect::<Vec<_>>()
-            });
-
-            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            UInt32Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
-        } else {
-            binary_elementwise_values(ca1, ca2, d_levenshtein)
-        };
-        Ok(out.into_series())
+        Ok(generic_binary_distance(d_levenshtein, ca1, ca2, can_parallel))
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),
@@ -268,40 +180,9 @@ fn pl_d_levenshtein_sim(inputs: &[Series], context: CallerContext) -> PolarsResu
     if ca2.len() == 1 {
         let r = ca2.get(0).unwrap();
         let batched = damerau_levenshtein::BatchComparator::new(r.chars());
-        let out: Float64Chunked = if can_parallel {
-            let n_threads = POOL.current_num_threads();
-            let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-                let s1 = ca1.slice(offset as i64, len);
-                let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| 
-                    batched.normalized_similarity(s.chars())
-                );
-                out.downcast_iter().cloned().collect::<Vec<_>>()
-            });
-            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
-        } else {
-            ca1.apply_nonnull_values_generic(DataType::Float64, |s| 
-                batched.normalized_similarity(s.chars())
-            )
-        };
-        Ok(out.into_series())
+        Ok(generic_batched_sim(batched, ca1, can_parallel))
     } else if ca1.len() == ca2.len() {
-        let out: Float64Chunked = if can_parallel {
-            let n_threads = POOL.current_num_threads();
-            let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-                let s1 = ca1.slice(offset as i64, len);
-                let s2 = ca2.slice(offset as i64, len);
-                let out: Float64Chunked = binary_elementwise_values(&s1, &s2, d_levenshtein_sim);
-                out.downcast_iter().cloned().collect::<Vec<_>>()
-            });
-            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
-        } else {
-            binary_elementwise_values(ca1, ca2, d_levenshtein_sim)
-        };
-        Ok(out.into_series())
+        Ok(generic_binary_sim(d_levenshtein_sim, ca1, ca2, can_parallel))
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),
