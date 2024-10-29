@@ -63,9 +63,9 @@ fn pl_chi2(inputs: &[Series]) -> PolarsResult<Series> {
         p?
     };
     // Get output
-    let s = Series::from_vec("statistic", vec![stats]);
-    let p = Series::from_vec("pvalue", vec![p]);
-    let out = StructChunked::new("", &[s, p])?;
+    let s = Series::from_vec("statistic".into(), vec![stats]);
+    let p = Series::from_vec("pvalue".into(), vec![p]);
 
+    let out = StructChunked::from_series("xi_corr".into(), 1, [&s, &p].into_iter())?;
     Ok(out.into_series())
 }

@@ -3,6 +3,7 @@ use super::simple_stats_output;
 use crate::stats::StatsResult;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
+use polars::frame::column::Column;
 
 #[inline(always)]
 fn binary_search_right<T: PartialOrd>(arr: &[T], t: &T) -> Option<usize> {
@@ -65,9 +66,9 @@ fn pl_ks_2samp(inputs: &[Series]) -> PolarsResult<Series> {
     let alpha = alpha.get(0).unwrap();
 
     if (s1.len() <= 30) || (s2.len() <= 30) {
-        let s = Series::from_vec("statistic", vec![0f64]);
-        let p = Series::from_vec("threshold", vec![f64::NAN]);
-        let out = StructChunked::new("ks", &[s, p])?;
+        let s = Series::from_vec("statistic".into(), vec![0f64]);
+        let p = Series::from_vec("threshold".into(), vec![f64::NAN]);
+        let out = StructChunked::from_series("ks".into(), 1, [&s, &p].into_iter())?;
         return Ok(out.into_series());
     }
 
@@ -76,10 +77,10 @@ fn pl_ks_2samp(inputs: &[Series]) -> PolarsResult<Series> {
 
     let res = ks_2samp(v1, v2, alpha);
 
-    let statistic = Series::from_vec("statistic", vec![res.statistic]);
-    let pval = Float64Chunked::from_slice_options("threshold", &[res.p]);
+    let statistic = Series::from_vec("statistic".into(), vec![res.statistic]);
+    let pval = Float64Chunked::from_slice_options("threshold".into(), &[res.p]);
     let pval = pval.into_series();
 
-    let out = StructChunked::new("ks", &[statistic, pval])?;
+    let out = StructChunked::from_series("ks".into(), 1, [&statistic, &pval].into_iter())?;
     Ok(out.into_series())
 }

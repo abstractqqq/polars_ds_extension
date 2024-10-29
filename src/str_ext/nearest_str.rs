@@ -72,7 +72,7 @@ pub fn pl_nearest_str(
         "hamming" => hamming_nearest,
         _ => levenshtein_nearest,
     };
-    let mut builder = StringChunkedBuilder::new(s.name(), 1);
+    let mut builder = StringChunkedBuilder::new(s.name().clone(), 1);
     builder.append_option(func(s, cutoff, word));
     let ca = builder.finish();
     Ok(ca.into_series())

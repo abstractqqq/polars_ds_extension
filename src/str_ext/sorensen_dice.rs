@@ -44,7 +44,7 @@ fn pl_sorensen_dice(inputs: &[Series], context: CallerContext) -> PolarsResult<S
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
+            Float64Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
             ca1.apply_nonnull_values_generic(DataType::Float64, |s| sorensen_dice(s, r, ngram))
         };
@@ -61,7 +61,7 @@ fn pl_sorensen_dice(inputs: &[Series], context: CallerContext) -> PolarsResult<S
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
+            Float64Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
             binary_elementwise_values(ca1, ca2, |x, y| sorensen_dice(x, y, ngram))
         };

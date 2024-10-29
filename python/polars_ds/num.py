@@ -369,11 +369,11 @@ def query_psi_discrete(
 
     Parameters
     ----------
-    x
+    new
         The feature
     baseline
         An expression, or any iterable that can be turned into a Polars series. Usually this should
-        be x's historical values
+        be the historical values
     return_report
         Whether to return a PSI report or not.
 
@@ -424,16 +424,17 @@ def query_psi_w_breakpoints(
 
     Parameters
     ----------
+    new
+        The data representing the new observed data. Any sequence of numerical values that
+        can be turned into a Polars'series, or an expression representing a column will work
     baseline
         The data representing the baseline data. Any sequence of numerical values that
-        can be turned into a Polars'series, or an expression representing a column will work
-    actual
-        The data representing the actual, observed data. Any sequence of numerical values that
         can be turned into a Polars'series, or an expression representing a column will work
     breakpoints
         The data that represents breakpoints. Input must be sorted, distinct, finite numeric values.
         This function will not cleanse the breakpoints for the user. E.g. [0.1, 0.5, 0.9] will create
-        four bins: (-inf. 0.1], (0.1, 0.5], (0.5, 0.9] and (0.9, inf).
+        four bins: (-inf. 0.1], (0.1, 0.5], (0.5, 0.9] and (0.9, inf). Please do not pass inf or NaN values
+        as breakpoints.
     """
     if isinstance(baseline, (str, pl.Expr)):
         x: pl.Expr = str_to_expr(baseline)

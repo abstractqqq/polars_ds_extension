@@ -2,6 +2,7 @@ use super::simple_stats_output;
 use crate::stats_utils::normal;
 use polars::{prelude::*, series::ops::NullBehavior};
 use pyo3_polars::derive::polars_expr;
+use std::iter::ExactSizeIterator;
 
 fn _xi_corr(inputs: &[Series]) -> PolarsResult<Series> {
     // Input 0 should be x.rank(method="random")
@@ -39,7 +40,7 @@ pub fn pl_xi_corr_w_p(inputs: &[Series]) -> PolarsResult<Series> {
         // Two sided
         normal::sf_unchecked(sqrt_n * c.abs() / (0.4f64).sqrt(), 0., 1.0) * 2.0
     };
-    let p = Series::from_vec("pvalue", vec![p]);
-    let out = StructChunked::new("xi_corr", &[corr, p])?;
+    let p = Series::from_vec("pvalue".into(), vec![p]);
+    let out = StructChunked::from_series("xi_corr".into(), 1, [&corr, &p].into_iter())?;
     Ok(out.into_series())
 }

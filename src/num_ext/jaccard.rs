@@ -95,7 +95,7 @@ fn pl_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
     let (s1, s2) = (inputs[0].clone(), inputs[1].clone());
 
     let adj = if count_null {
-        (s1.has_validity() && s2.has_validity()) as usize // adjust for null
+        (s1.has_nulls() && s2.has_nulls()) as usize // adjust for null
     } else {
         0
     };

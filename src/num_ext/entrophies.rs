@@ -35,7 +35,7 @@ fn pl_approximate_entropy(
     let nrows = data.len() / ncols;
 
     if (nrows < ncols) || (r <= 0.) || (!r.is_finite()) {
-        return Ok(Series::from_vec(name, vec![f64::NAN]));
+        return Ok(Series::from_vec(name.clone(), vec![f64::NAN]));
     }
     let can_parallel = kwargs.parallel && !context.parallel();
 
@@ -93,7 +93,7 @@ fn pl_approximate_entropy(
             / nrows_minus_1 as f64
     };
     // Output
-    Ok(Series::from_vec(name, vec![(phi_m1 - phi_m).abs()]))
+    Ok(Series::from_vec(name.clone(), vec![(phi_m1 - phi_m).abs()]))
 }
 
 #[polars_expr(output_type=Float64)]
@@ -116,7 +116,7 @@ fn pl_sample_entropy(
     let nrows = data.len() / ncols;
 
     if (nrows < ncols) || (r <= 0.) || (!r.is_finite()) {
-        return Ok(Series::from_vec(name, vec![f64::NAN]));
+        return Ok(Series::from_vec(name.clone(), vec![f64::NAN]));
     }
     let parallel = kwargs.parallel;
     let can_parallel = parallel && !context.parallel();
@@ -169,7 +169,7 @@ fn pl_sample_entropy(
             - nrows_minus_1 as f64
     };
     // Output
-    Ok(Series::from_vec(name, vec![(b / a).ln()]))
+    Ok(Series::from_vec(name.clone(), vec![(b / a).ln()]))
 }
 
 /// Comptues the logd part of the KNN entropy
@@ -225,7 +225,7 @@ fn pl_knn_entropy(
     let nrows = data.len() / ncols;
 
     if nrows <= k {
-        return Ok(Series::from_vec(name, vec![f64::NAN]));
+        return Ok(Series::from_vec(name.clone(), vec![f64::NAN]));
     }
 
     let metric_str = kwargs.metric.as_str();
@@ -252,6 +252,6 @@ fn pl_knn_entropy(
         ));
     };
 
-    let ca = Float64Chunked::from_slice(name, &[g1 + cd.ln() + log_d * d / n]);
+    let ca = Float64Chunked::from_slice(name.clone(), &[g1 + cd.ln() + log_d * d / n]);
     Ok(ca.into_series())
 }

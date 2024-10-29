@@ -11,10 +11,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = {version = "0.21", features = ["abi3-py39", "extension-module"]}
-pyo3-polars = {version = "0.15", features = ["derive"]}
-polars = {version = "0.41", features = ["performant", "cse", "lazy", 
-"parquet", "dtype-array", "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", 
-"cum_agg", "round_series", "nightly", "dtype-struct"]}
+pyo3-polars = {version = "0.18", features = ["derive", "dtype-array", "dtype-struct"]}
+polars = {version = "0.44", features = ["performant", "cse", "lazy", 
+"parquet", "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", 
+"cum_agg", "round_series", "nightly","dtype-array", "dtype-struct"], default-features = false}
 num = "0.4.1"
 faer = {version = "0.19", features = ["nightly"]}
 faer-ext = {version = "0.2.0", features = ["ndarray"]}
@@ -22,7 +22,7 @@ serde = {version = "*", features=["derive"]}
 ndarray = {version="0.15.6"}
 hashbrown = {version = "0.15", features=["nightly"]}
 itertools = "0.12.0"
-rand = {version = "0.8.5"}
+rand = "0.8.5"
 rand_distr = "0.4.3"
 realfft = "3.3.0"
 rapidfuzz = "0.5.0"
@@ -43,9 +43,4 @@ jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }
 [profile.release]
 codegen-units = 1
 strip = "symbols" 
-# lto = "fat"
-
-
-[dev-dependencies]
-rand = "0.8"
-rand_chacha = "0.3"
+lto = "fat"

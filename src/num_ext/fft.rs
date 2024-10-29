@@ -50,7 +50,7 @@ fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
     };
 
     let mut builder =
-        ListPrimitiveChunkedBuilder::<Float64Type>::new("complex", n, 2, DataType::Float64);
+        ListPrimitiveChunkedBuilder::<Float64Type>::new("complex".into(), n, 2, DataType::Float64);
 
     if return_full {
         for c in spectrum.iter() {

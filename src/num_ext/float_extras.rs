@@ -174,28 +174,23 @@ fn pl_trunc(inputs: &[Series]) -> PolarsResult<Series> {
     }
 }
 
-#[polars_expr(output_type_func=first_field_output)]
+#[polars_expr(output_type_func=float_output)]
 fn pl_fract(inputs: &[Series]) -> PolarsResult<Series> {
     let s = &inputs[0];
-    match s.dtype() {
-        DataType::UInt8 => Ok(Series::from_vec(s.name(), vec![0_u8; s.len()])),
-        DataType::UInt16 => Ok(Series::from_vec(s.name(), vec![0_u16; s.len()])),
-        DataType::UInt32 => Ok(Series::from_vec(s.name(), vec![0_u32; s.len()])),
-        DataType::UInt64 => Ok(Series::from_vec(s.name(), vec![0_u64; s.len()])),
-        DataType::Int8 => Ok(Series::from_vec(s.name(), vec![0_i8; s.len()])),
-        DataType::Int16 => Ok(Series::from_vec(s.name(), vec![0_i16; s.len()])),
-        DataType::Int32 => Ok(Series::from_vec(s.name(), vec![0_i32; s.len()])),
-        DataType::Int64 => Ok(Series::from_vec(s.name(), vec![0_i64; s.len()])),
-        DataType::Float64 => {
+    if s.dtype().is_integer() {
+        Ok(Series::from_vec(s.name().clone(), vec![0f64; s.len()]))
+    } else {
+        if s.dtype() == &DataType::Float64 {
             let ca = s.f64().unwrap();
             Ok(ca.apply_values(f64::fract).into_series())
-        }
-        DataType::Float32 => {
+        } else if s.dtype() == &DataType::Float32 {
             let ca = s.f32().unwrap();
             Ok(ca.apply_values(f32::fract).into_series())
+        } else {
+            Err(PolarsError::ComputeError(
+                "Input column must be numerical.".into(),
+            ))
         }
-        _ => Err(PolarsError::ComputeError(
-            "Input column must be numerical.".into(),
-        )),
     }
+
 }
