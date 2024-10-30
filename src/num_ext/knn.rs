@@ -426,7 +426,7 @@ fn pl_knn_ptwise_w_dist(
 
     let out = StructChunked::from_series(
         "knn_dist".into(), 
-        1, 
+        ca_nb.len(), 
         [&ca_nb.into_series(), &ca_dist.into_series()].into_iter()
     )?;
     Ok(out.into_series())
