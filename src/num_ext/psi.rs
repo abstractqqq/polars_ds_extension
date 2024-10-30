@@ -2,12 +2,12 @@ use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 fn psi_report_output(_: &[Field]) -> PolarsResult<Field> {
-    let breakpoints = Field::new("cnt<=", DataType::Float64);
-    let baseline_pct = Field::new("baseline_pct", DataType::Float64);
-    let actual_pct = Field::new("actual_pct", DataType::Float64);
-    let psi_bins = Field::new("psi_bin", DataType::Float64);
+    let breakpoints = Field::new("cnt<=".into(), DataType::Float64);
+    let baseline_pct = Field::new("baseline_pct".into(), DataType::Float64);
+    let actual_pct = Field::new("actual_pct".into(), DataType::Float64);
+    let psi_bins = Field::new("psi_bin".into(), DataType::Float64);
     let v: Vec<Field> = vec![breakpoints, baseline_pct, actual_pct, psi_bins];
-    Ok(Field::new("psi_report", DataType::Struct(v)))
+    Ok(Field::new("psi_report".into(), DataType::Struct(v)))
 }
 
 /// Computes counts in each bucket given by the breakpoints in
@@ -33,9 +33,9 @@ fn psi_with_bps_helper(s: &[f64], bp: &[f64]) -> Vec<u32> {
 /// Helper function to create PSI reports for numeric PSI computations.
 #[inline(always)]
 fn psi_frame(bp: &[f64], bp_name: &str, cnt1: &[u32], cnt2: &[u32]) -> PolarsResult<LazyFrame> {
-    let b = Float64Chunked::from_slice("", bp);
-    let c1 = UInt32Chunked::from_slice("", cnt1);
-    let c2 = UInt32Chunked::from_slice("", cnt2);
+    let b = Float64Chunked::from_slice("".into(), bp);
+    let c1 = UInt32Chunked::from_slice("".into(), cnt1);
+    let c2 = UInt32Chunked::from_slice("".into(), cnt2);
 
     let df = df!(
         bp_name => b,
@@ -80,7 +80,7 @@ fn pl_psi_w_bps(inputs: &[Series]) -> PolarsResult<Series> {
     let c2 = psi_with_bps_helper(s2, bp);
 
     let psi_report = psi_frame(bp, "cnt<=", &c1, &c2)?.collect()?;
-    Ok(psi_report.into_struct("").into_series())
+    Ok(psi_report.into_struct("".into()).into_series())
 }
 
 /// Numeric PSI report
@@ -100,7 +100,7 @@ fn pl_psi_report(inputs: &[Series]) -> PolarsResult<Series> {
     let new_cnt = psi_with_bps_helper(data_new, ref_brk);
     let psi_report = psi_frame(ref_brk, "cnt<=", ref_cnt, &new_cnt)?.collect()?;
 
-    Ok(psi_report.into_struct("").into_series())
+    Ok(psi_report.into_struct("".into()).into_series())
 }
 
 /// Discrete PSI report
@@ -148,5 +148,5 @@ fn pl_psi_discrete_report(inputs: &[Series]) -> PolarsResult<Series> {
         ])
         .collect()?;
 
-    Ok(psi_report.into_struct("").into_series())
+    Ok(psi_report.into_struct("".into()).into_series())
 }

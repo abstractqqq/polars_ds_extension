@@ -2,7 +2,6 @@ use super::simple_stats_output;
 use crate::stats_utils::normal;
 use polars::{prelude::*, series::ops::NullBehavior};
 use pyo3_polars::derive::polars_expr;
-use std::iter::ExactSizeIterator;
 
 fn _xi_corr(inputs: &[Series]) -> PolarsResult<Series> {
     // Input 0 should be x.rank(method="random")
@@ -10,7 +9,8 @@ fn _xi_corr(inputs: &[Series]) -> PolarsResult<Series> {
     // Input 2 should be (-y).rank(method="max").cast(pl.Float64).alias("l")
 
     let df = df!("x_rk" => &inputs[0], "r" => &inputs[1], "l" => &inputs[2])?.lazy();
-    Ok(df
+    Ok(
+        df
         .sort(["x_rk"], Default::default())
         .select([(lit(1.0)
             - ((len().cast(DataType::Float64) / lit(2.0))
@@ -19,7 +19,10 @@ fn _xi_corr(inputs: &[Series]) -> PolarsResult<Series> {
         .alias("statistic")])
         .collect()?
         .drop_in_place("statistic")
-        .unwrap())
+        .unwrap()
+        .as_materialized_series()
+        .clone()
+    )
 }
 
 #[polars_expr(output_type=Float64)]

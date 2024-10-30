@@ -23,5 +23,5 @@ fn pl_conditional_entropy(inputs: &[Series]) -> PolarsResult<Series> {
         .alias("H(x|y)")])
         .collect()?;
 
-    out.drop_in_place("H(x|y)").map(|s| s.as_materialized_series())
+    out.drop_in_place("H(x|y)").map(|s| s.as_materialized_series().clone())
 }

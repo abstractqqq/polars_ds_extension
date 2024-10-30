@@ -1,5 +1,5 @@
 /// Mann-Whitney U Statistics
-use super::{simple_stats_output, Alternative};
+use super::{simple_stats_output, generic_stats_output, Alternative};
 use crate::stats_utils::normal;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
@@ -57,9 +57,5 @@ fn pl_mann_whitney_u(inputs: &[Series]) -> PolarsResult<Series> {
         // -0.5 is some continuity adjustment. See Scipy's impl
         (factor * normal::sf_unchecked(u, mean + 0.5, std_)).clamp(0., 1.)
     };
-
-    let s = Series::from_vec("statistic", vec![u1]);
-    let p = Series::from_vec("pvalue", vec![p]);
-    let out = StructChunked::new("", &[s, p])?;
-    Ok(out.into_series())
+    generic_stats_output(u1, p)
 }

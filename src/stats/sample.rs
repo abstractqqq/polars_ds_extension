@@ -24,7 +24,7 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
     let high = inputs[2].i32()?;
     let mut high = high.get(0).unwrap();
     if low == high {
-        let out = Int32Chunked::from_vec("", vec![low; n]);
+        let out = Int32Chunked::from_vec("".into(), vec![low; n]);
         return Ok(out.into_series());
     } else if high < low {
         std::mem::swap(&mut low, &mut high);
@@ -32,7 +32,7 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
     let seed = inputs[3].u64()?;
     let dist = Uniform::new(low, high);
     let mut rng = rng_from_seed(seed.get(0));
-    let out = Int32Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(n));
+    let out = Int32Chunked::from_iter_values("".into(), (&mut rng).sample_iter(dist).take(n));
     Ok(out.into_series())
 }
 
@@ -48,7 +48,7 @@ fn pl_rand_binomial(inputs: &[Series]) -> PolarsResult<Series> {
     let mut rng = rng_from_seed(seed.get(0));
     let dist =
         Binomial::new(n.into(), p).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
-    let out = UInt64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(len));
+    let out = UInt64Chunked::from_iter_values("".into(), (&mut rng).sample_iter(dist).take(len));
     Ok(out.into_series())
 }
 
@@ -62,11 +62,11 @@ fn pl_rand_exp(inputs: &[Series]) -> PolarsResult<Series> {
     let seed = inputs[2].u64()?;
     let mut rng = rng_from_seed(seed.get(0));
     if lambda == 1.0 {
-        let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(Exp1).take(len));
+        let out = Float64Chunked::from_iter_values("".into(), (&mut rng).sample_iter(Exp1).take(len));
         Ok(out.into_series())
     } else {
         let dist = Exp::new(lambda).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
-        let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(len));
+        let out = Float64Chunked::from_iter_values("".into(), (&mut rng).sample_iter(dist).take(len));
         Ok(out.into_series())
     }
 }
@@ -82,7 +82,7 @@ fn pl_random(inputs: &[Series]) -> PolarsResult<Series> {
     let seed = inputs[3].u64()?;
     let mut rng = rng_from_seed(seed.get(0));
     let dist = Uniform::new(low, high);
-    let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(len));
+    let out = Float64Chunked::from_iter_values("".into(), (&mut rng).sample_iter(dist).take(len));
     Ok(out.into_series())
 }
 
@@ -103,14 +103,14 @@ fn pl_perturb(inputs: &[Series]) -> PolarsResult<Series> {
             let dist: Uniform<f32> = Uniform::new(low as f32, high as f32);
             let ca = reference.f32().unwrap();
             // Have to use _generic here to avoid the Copy trait
-            let out: Float32Chunked = ca.apply_values_generic(|x| x + dist.sample(&mut rng));
+            let out: Float32Chunked = ca.apply_nonnull_values_generic(DataType::Float32, |x| x + dist.sample(&mut rng));
             Ok(out.into_series())
         }
         DataType::Float64 => {
             let dist: Uniform<f64> = Uniform::new(low, high);
             let ca = reference.f64().unwrap();
             // Have to use _generic here to avoid the Copy trait
-            let out: Float64Chunked = ca.apply_values_generic(|x| x + dist.sample(&mut rng));
+            let out: Float64Chunked = ca.apply_nonnull_values_generic(DataType::Float64, |x| x + dist.sample(&mut rng));
             Ok(out.into_series())
         }
         _ => Err(PolarsError::ComputeError(
@@ -132,13 +132,13 @@ fn pl_jitter(inputs: &[Series]) -> PolarsResult<Series> {
             let std_ = std_ as f32;
             let ca = reference.f32().unwrap();
             let out: Float32Chunked =
-                ca.apply_values_generic(|x| x + std_ * rng.sample::<f32, _>(StandardNormal));
+                ca.apply_nonnull_values_generic(DataType::Float32, |x| x + std_ * rng.sample::<f32, _>(StandardNormal));
             Ok(out.into_series())
         }
         DataType::Float64 => {
             let ca = reference.f64().unwrap();
             let out: Float64Chunked =
-                ca.apply_values_generic(|x| x + std_ * rng.sample::<f64, _>(StandardNormal));
+                ca.apply_nonnull_values_generic(DataType::Float64, |x| x + std_ * rng.sample::<f64, _>(StandardNormal));
             Ok(out.into_series())
         }
         _ => Err(PolarsError::ComputeError(
@@ -160,11 +160,11 @@ fn pl_rand_normal(inputs: &[Series]) -> PolarsResult<Series> {
     let mut rng = rng_from_seed(seed.get(0));
     if mean == 0. && std_ == 1.0 {
         let out =
-            Float64Chunked::from_iter_values("", (&mut rng).sample_iter(StandardNormal).take(len));
+            Float64Chunked::from_iter_values("".into(), (&mut rng).sample_iter(StandardNormal).take(len));
         Ok(out.into_series())
     } else {
         let dist = Normal::new(mean, std_).unwrap();
-        let out = Float64Chunked::from_iter_values("", (&mut rng).sample_iter(dist).take(len));
+        let out = Float64Chunked::from_iter_values("".into(), (&mut rng).sample_iter(dist).take(len));
         Ok(out.into_series())
     }
 }
@@ -186,6 +186,6 @@ fn pl_rand_str(inputs: &[Series]) -> PolarsResult<Series> {
         let length = rng.sample(dist);
         Alphanumeric.sample_string(&mut rng, length)
     });
-    let out = StringChunked::from_iter_values("", sample);
+    let out = StringChunked::from_iter_values("".into(), sample);
     Ok(out.into_series())
 }

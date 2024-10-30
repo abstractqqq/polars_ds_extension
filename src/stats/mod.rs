@@ -11,31 +11,10 @@ mod xi_corr;
 use polars::prelude::*;
 
 pub fn simple_stats_output(_: &[Field]) -> PolarsResult<Field> {
-    let s = Field::new("statistic", DataType::Float64);
-    let p = Field::new("pvalue", DataType::Float64);
+    let s = Field::new("statistic".into(), DataType::Float64);
+    let p = Field::new("pvalue".into(), DataType::Float64);
     let v: Vec<Field> = vec![s, p];
-    Ok(Field::new("", DataType::Struct(v)))
-}
-
-struct StatsResult {
-    pub statistic: f64,
-    pub p: Option<f64>,
-}
-
-impl StatsResult {
-    pub fn new(s: f64, p: f64) -> StatsResult {
-        StatsResult {
-            statistic: s,
-            p: Some(p),
-        }
-    }
-
-    pub fn from_stats(s: f64) -> StatsResult {
-        StatsResult {
-            statistic: s,
-            p: None,
-        }
-    }
+    Ok(Field::new("".into(), DataType::Struct(v)))
 }
 
 pub enum Alternative {
@@ -53,4 +32,12 @@ impl From<&str> for Alternative {
             _ => Alternative::TwoSided,
         }
     }
+}
+
+#[inline]
+fn generic_stats_output(statistic:f64, pvalue:f64) -> PolarsResult<Series> {
+    let s = Series::from_vec("statistic".into(), vec![statistic]);
+    let p = Series::from_vec("pvalue".into(), vec![pvalue]);
+    let out = StructChunked::from_series("".into(), 1, [&s, &p].into_iter())?;
+    Ok(out.into_series())
 }

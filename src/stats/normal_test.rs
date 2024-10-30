@@ -7,7 +7,7 @@
 /// [1] D'Agostino, R. B. (1971), "An omnibus test of normality for
 ///     moderate and large sample size", Biometrika, 58, 341-348
 /// [2] https://www.stata.com/manuals/rsktest.pdf
-use super::simple_stats_output;
+use super::{simple_stats_output, generic_stats_output};
 use crate::stats_utils::gamma;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
@@ -77,9 +77,5 @@ fn pl_normal_test(inputs: &[Series]) -> PolarsResult<Series> {
     // Shape = (degree of freedom (2) / 2, rate = 0.5)
     let (shape, rate) = (1., 0.5);
     let p = gamma::sf(k2, shape, rate).map_err(|e| PolarsError::ComputeError(e.into()))?;
-
-    let s = Series::from_vec("statistic", vec![k2]);
-    let p = Series::from_vec("pvalue", vec![p]);
-    let out = StructChunked::new("", &[s, p])?;
-    Ok(out.into_series())
+    generic_stats_output(k2, p)
 }

@@ -1,19 +1,18 @@
-use core::f64;
-
 /// Student's t test and Welch's t test.
-use super::{simple_stats_output, Alternative, StatsResult};
+use core::f64;
+use super::{simple_stats_output, generic_stats_output, Alternative};
 use crate::{stats, stats_utils::beta};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 #[inline]
-fn ttest_ind(m1: f64, m2: f64, v1: f64, v2: f64, n: f64, alt: Alternative) -> StatsResult {
+fn ttest_ind(m1: f64, m2: f64, v1: f64, v2: f64, n: f64, alt: Alternative) -> (f64, f64) {
     let num = m1 - m2;
     // ((var1 + var2) / 2 ).sqrt() * (2./n).sqrt() can be simplified as below
     let denom = ((v1 + v2) / n).sqrt();
     if denom == 0. {
         println!("T Test: Division by 0 encountered.");
-        StatsResult::new(f64::NAN, f64::NAN)
+        (f64::NAN, f64::NAN)
     } else {
         let t = num / denom;
         let df = 2. * n - 2.;
@@ -25,7 +24,7 @@ fn ttest_ind(m1: f64, m2: f64, v1: f64, v2: f64, n: f64, alt: Alternative) -> St
                 Err(_) => f64::NAN,
             },
         };
-        StatsResult::new(t, p)
+        (t, p)
     }
 }
 
@@ -36,7 +35,7 @@ fn ttest_1samp(
     var: f64,
     n: f64,
     alt: Alternative,
-) -> Result<StatsResult, String> {
+) -> Result<(f64, f64), String> {
     let num = mean - pop_mean;
     let denom = (var / n).sqrt();
     if denom == 0. {
@@ -53,7 +52,7 @@ fn ttest_1samp(
             },
         };
         let p = p?;
-        Ok(StatsResult::new(t, p))
+        Ok((t, p))
     }
 }
 
@@ -66,7 +65,7 @@ fn welch_t(
     n1: f64,
     n2: f64,
     alt: Alternative,
-) -> Result<StatsResult, String> {
+) -> Result<(f64, f64), String> {
     let num = m1 - m2;
     let vn1 = v1 / n1;
     let vn2 = v2 / n2;
@@ -86,7 +85,7 @@ fn welch_t(
             },
         };
         let p = p?;
-        Ok(StatsResult::new(t, p))
+        Ok((t, p))
     }
 }
 
@@ -113,14 +112,8 @@ fn pl_ttest_2samp(inputs: &[Series]) -> PolarsResult<Series> {
             "T Test: Sample Mean/Std is found to be NaN or Inf.".into(),
         ));
     }
-
-    let res = ttest_ind(mean1, mean2, var1, var2, n, alt);
-
-    let s = Series::from_vec("statistic", vec![res.statistic]);
-    let pchunked = Float64Chunked::from_iter_options("pvalue", [res.p].into_iter());
-    let p = pchunked.into_series();
-    let out = StructChunked::new("", &[s, p])?;
-    Ok(out.into_series())
+    let (t, p) = ttest_ind(mean1, mean2, var1, var2, n, alt);
+    generic_stats_output(t, p)
 }
 
 #[polars_expr(output_type_func=simple_stats_output)]
@@ -144,14 +137,10 @@ fn pl_welch_t(inputs: &[Series]) -> PolarsResult<Series> {
 
     // No need to check for validity because input is sanitized.
 
-    let res = welch_t(mean1, mean2, var1, var2, n1, n2, alt)
+    let (t, p) = welch_t(mean1, mean2, var1, var2, n1, n2, alt)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
-    let s = Series::from_vec("statistic", vec![res.statistic]);
-    let pchunked = Float64Chunked::from_iter_options("pvalue", [res.p].into_iter());
-    let p = pchunked.into_series();
-    let out = StructChunked::new("", &[s, p])?;
-    Ok(out.into_series())
+    generic_stats_output(t, p)
 }
 
 #[polars_expr(output_type_func=simple_stats_output)]
@@ -171,12 +160,8 @@ fn pl_ttest_1samp(inputs: &[Series]) -> PolarsResult<Series> {
 
     // No need to check for validity because input is sanitized.
 
-    let res = ttest_1samp(mean, pop_mean, var, n, alt)
+    let (t, p) = ttest_1samp(mean, pop_mean, var, n, alt)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
-    let s = Series::from_vec("statistic", vec![res.statistic]);
-    let pchunked = Float64Chunked::from_iter_options("pvalue", [res.p].into_iter());
-    let p = pchunked.into_series();
-    let out = StructChunked::new("", &[s, p])?;
-    Ok(out.into_series())
+    generic_stats_output(t, p)
 }
