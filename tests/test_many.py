@@ -1572,10 +1572,10 @@ def test_radius_ptwise(df, dist, res):
 def test_nb_cnt(df, r, dist, res):
     test = df.select(
         pds.query_nb_cnt(
-            r,
             pl.col("x"),
             pl.col("y"),
             pl.col("z"),  # Columns used as the coordinates in n-d space
+            r=r,
             dist=dist,
         )
         .cast(pl.UInt32)

@@ -215,6 +215,6 @@ fn pl_convolve(
         ConvMethod::FFT => fft_convolve(input, kernel, mode),
         ConvMethod::DIRECT => convolve(input, kernel, mode, par),
     }?;
-    let ca = Float64Chunked::from_vec(s1.name(), out);
+    let ca = Float64Chunked::from_vec(s1.name().clone(), out);
     Ok(ca.into_series())
 }

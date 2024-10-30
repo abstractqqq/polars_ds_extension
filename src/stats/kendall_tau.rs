@@ -16,7 +16,7 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
 
     let n = df.height();
     if n <= 1 {
-        return Ok(Series::from_vec(name, vec![f64::NAN]));
+        return Ok(Series::from_vec(name.clone(), vec![f64::NAN]));
     }
 
     let n_pairs = ((n * (n - 1)) >> 1) as i64;
@@ -122,5 +122,5 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
     // Prevent overflow
     let denom = (((n_pairs - tied_x) as f64) * ((n_pairs - tied_y) as f64)).sqrt();
     let out = nc_m_nd as f64 / denom;
-    Ok(Series::from_vec(name, vec![out]))
+    Ok(Series::from_vec(name.clone(), vec![out]))
 }

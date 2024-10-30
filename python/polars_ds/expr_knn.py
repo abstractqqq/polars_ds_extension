@@ -5,7 +5,7 @@ KNN related queries within a dataframe.
 from __future__ import annotations
 import polars as pl
 from typing import Iterable, List
-from .type_alias import StrOrExpr, str_to_expr, Distance
+from .type_alias import str_to_expr, Distance
 from ._utils import pl_plugin
 
 __all__ = [
@@ -21,8 +21,8 @@ __all__ = [
 
 
 def query_knn_ptwise(
-    *features: StrOrExpr,
-    index: StrOrExpr,
+    *features: str | pl.Expr,
+    index: str | pl.Expr,
     k: int,
     dist: Distance = "sql2",
     parallel: bool = False,
@@ -126,8 +126,8 @@ def query_knn_ptwise(
 
 
 def query_knn_freq_cnt(
-    *features: StrOrExpr,
-    index: StrOrExpr,
+    *features: str | pl.Expr,
+    index: str | pl.Expr,
     k: int,
     dist: Distance = "sql2",
     parallel: bool = False,
@@ -260,7 +260,7 @@ def query_knn_avg(
 
 
 def within_dist_from(
-    *features: StrOrExpr,
+    *features: str | pl.Expr,
     pt: Iterable[float],
     r: float | pl.Expr,
     dist: Distance = "sql2",
@@ -482,8 +482,8 @@ def query_radius_freq_cnt(
 
 
 def query_nb_cnt(
-    r: float | str | pl.Expr | Iterable[float],
     *features: str | pl.Expr,
+    r: float | str | pl.Expr | Iterable[float],
     dist: Distance = "sql2",
     parallel: bool = False,
 ) -> pl.Expr:
@@ -493,13 +493,13 @@ def query_nb_cnt(
 
     Parameters
     ----------
+    *features : str | pl.Expr
+        Other columns used as features
     r : float | Iterable[float] | pl.Expr | str
         If this is a scalar, then it will run the query with fixed radius for all rows. If
         this is a list, then it must have the same height as the dataframe. If
         this is an expression, it must be an expression representing radius. If this is a str,
         it must be the name of a column
-    *features : str | pl.Expr
-        Other columns used as features
     dist : Literal[`l1`, `l2`, `sql2`, `inf`]
         Note `sql2` stands for squared l2.
     parallel : bool
@@ -507,7 +507,7 @@ def query_nb_cnt(
         are running only this expression, and not in group_by() or over() context.
     """
     if dist in ("cosine", "h", "haversine"):
-        raise ValueError(f"Distance {dist} doesn't work with current implementation.")
+        raise ValueError(f"Distance `{dist}` doesn't work with current implementation.")
 
     if isinstance(r, (float, int)):
         rad = pl.lit(pl.Series(values=[r], dtype=pl.Float64))

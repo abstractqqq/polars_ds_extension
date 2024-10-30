@@ -2,17 +2,17 @@ use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 fn woe_output(_: &[Field]) -> PolarsResult<Field> {
-    let value = Field::new("value", DataType::String);
-    let woe: Field = Field::new("woe", DataType::Float64);
+    let value = Field::new("value".into(), DataType::String);
+    let woe: Field = Field::new("woe".into(), DataType::Float64);
     let v: Vec<Field> = vec![value, woe];
-    Ok(Field::new("woe_output", DataType::Struct(v)))
+    Ok(Field::new("woe_output".into(), DataType::Struct(v)))
 }
 
 fn iv_output(_: &[Field]) -> PolarsResult<Field> {
-    let value = Field::new("value", DataType::String);
-    let iv: Field = Field::new("iv", DataType::Float64);
+    let value = Field::new("value".into(), DataType::String);
+    let iv: Field = Field::new("iv".into(), DataType::Float64);
     let v: Vec<Field> = vec![value, iv];
-    Ok(Field::new("iv_output", DataType::Struct(v)))
+    Ok(Field::new("iv_output".into(), DataType::Struct(v)))
 }
 
 /// Get a lazyframe needed to compute Weight Of Evidence.
@@ -30,14 +30,17 @@ fn get_woe_frame(discrete_col: &Series, target: &Series) -> PolarsResult<LazyFra
         .lazy()
         .drop_nulls(None)
         .group_by([col("value")])
-        .agg([len().alias("cnt"), col("target").sum().alias("goods")])
+        .agg([
+            len().cast(DataType::Float64).alias("cnt"), 
+            col("target").sum().cast(DataType::Float64).alias("goods")
+            ])
         .select([
             col("value"),
-            ((col("goods") + lit(1)).cast(DataType::Float64)
-                / (col("goods").sum() + lit(2)).cast(DataType::Float64))
+            ((col("goods") + lit(1f64))
+                / (col("goods").sum() + lit(2f64)))
             .alias("good_pct"),
-            ((col("cnt") - col("goods") + lit(1)).cast(DataType::Float64)
-                / (col("cnt").sum() - col("goods").sum() + lit(2)).cast(DataType::Float64))
+            ((col("cnt") - col("goods") + lit(1f64))
+                / (col("cnt").sum() - col("goods").sum() + lit(2f64)))
             .alias("bad_pct"),
         ])
         .with_column(
@@ -55,7 +58,7 @@ fn pl_woe_discrete(inputs: &[Series]) -> PolarsResult<Series> {
         .select([col("value"), col("woe")])
         .collect()?;
 
-    Ok(df.into_struct("woe_output").into_series())
+    Ok(df.into_struct("woe_output".into()).into_series())
 }
 
 /// Information Value for each bin/category
@@ -69,5 +72,5 @@ fn pl_iv(inputs: &[Series]) -> PolarsResult<Series> {
         ])
         .collect()?;
 
-    Ok(df.into_struct("iv_output").into_series())
+    Ok(df.into_struct("iv_output".into()).into_series())
 }

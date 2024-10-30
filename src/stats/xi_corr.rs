@@ -9,7 +9,8 @@ fn _xi_corr(inputs: &[Series]) -> PolarsResult<Series> {
     // Input 2 should be (-y).rank(method="max").cast(pl.Float64).alias("l")
 
     let df = df!("x_rk" => &inputs[0], "r" => &inputs[1], "l" => &inputs[2])?.lazy();
-    Ok(df
+    Ok(
+        df
         .sort(["x_rk"], Default::default())
         .select([(lit(1.0)
             - ((len().cast(DataType::Float64) / lit(2.0))
@@ -18,7 +19,10 @@ fn _xi_corr(inputs: &[Series]) -> PolarsResult<Series> {
         .alias("statistic")])
         .collect()?
         .drop_in_place("statistic")
-        .unwrap())
+        .unwrap()
+        .as_materialized_series()
+        .clone()
+    )
 }
 
 #[polars_expr(output_type=Float64)]
@@ -39,7 +43,7 @@ pub fn pl_xi_corr_w_p(inputs: &[Series]) -> PolarsResult<Series> {
         // Two sided
         normal::sf_unchecked(sqrt_n * c.abs() / (0.4f64).sqrt(), 0., 1.0) * 2.0
     };
-    let p = Series::from_vec("pvalue", vec![p]);
-    let out = StructChunked::new("xi_corr", &[corr, p])?;
+    let p = Series::from_vec("pvalue".into(), vec![p]);
+    let out = StructChunked::from_series("xi_corr".into(), 1, [&corr, &p].into_iter())?;
     Ok(out.into_series())
 }

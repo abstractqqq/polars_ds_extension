@@ -4,6 +4,7 @@ use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 fn first_digit<T: Integer + Copy>(u: T) -> T {
+    // Does the compiler know how to optimize this?
     let ten = (0..10).fold(T::zero(), |acc: T, _| acc + T::one());
     let mut v = u;
     let mut d = T::zero();
@@ -109,7 +110,7 @@ fn pl_benford_law(inputs: &[Series]) -> PolarsResult<Series> {
     }
 
     let mut list_builder: ListPrimitiveChunkedBuilder<UInt32Type> =
-        ListPrimitiveChunkedBuilder::new("first_digit_count", 1, 9, DataType::UInt32);
+        ListPrimitiveChunkedBuilder::new("first_digit_count".into(), 1, 9, DataType::UInt32);
 
     list_builder.append_slice(&out[1..]);
     let out = list_builder.finish();

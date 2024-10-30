@@ -6,7 +6,7 @@ use crate::linalg::{
 };
 use faer_ext::{IntoFaer, IntoNdarray};
 use numpy::{
-    IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray, PyReadonlyArray1,
+    IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1,
     PyReadonlyArray2,
 };
 use pyo3::exceptions::PyValueError;

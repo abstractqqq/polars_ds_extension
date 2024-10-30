@@ -26,14 +26,14 @@ impl TryFrom<String> for NormalForm {
 #[polars_expr(output_type=String)]
 fn remove_non_ascii(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
-    let out = ca.apply_to_buffer(|s, buf| *buf = s.chars().filter(char::is_ascii).collect());
+    let out = ca.apply_into_string_amortized(|s, buf| *buf = s.chars().filter(char::is_ascii).collect());
     Ok(out.into_series())
 }
 
 #[polars_expr(output_type=String)]
 fn remove_diacritics(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
-    let out = ca.apply_to_buffer(|s, buf| *buf = s.nfd().filter(char::is_ascii).collect());
+    let out = ca.apply_into_string_amortized(|s, buf| *buf = s.nfd().filter(char::is_ascii).collect());
     Ok(out.into_series())
 }
 
@@ -47,10 +47,10 @@ fn normalize_string(inputs: &[Series], kwargs: NormalizeKwargs) -> PolarsResult<
     let ca = inputs[0].str()?;
     let form: NormalForm = kwargs.form.try_into()?;
     let out = match form {
-        NormalForm::NFC => ca.apply_to_buffer(|val, buf| *buf = val.nfc().collect()),
-        NormalForm::NFKC => ca.apply_to_buffer(|val, buf| *buf = val.nfkc().collect()),
-        NormalForm::NFD => ca.apply_to_buffer(|val, buf| *buf = val.nfd().collect()),
-        NormalForm::NFKD => ca.apply_to_buffer(|val, buf| *buf = val.nfkd().collect()),
+        NormalForm::NFC => ca.apply_into_string_amortized(|val, buf| *buf = val.nfc().collect()),
+        NormalForm::NFKC => ca.apply_into_string_amortized(|val, buf| *buf = val.nfkc().collect()),
+        NormalForm::NFD => ca.apply_into_string_amortized(|val, buf| *buf = val.nfd().collect()),
+        NormalForm::NFKD => ca.apply_into_string_amortized(|val, buf| *buf = val.nfkd().collect()),
     };
     Ok(out.into_series())
 }
@@ -65,7 +65,7 @@ struct MapWordsKwargs {
 fn map_words(inputs: &[Series], kwargs: MapWordsKwargs) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
     let mapping = kwargs.mapping;
-    let out = ca.apply_to_buffer(|s, buf|
+    let out = ca.apply_into_string_amortized(|s, buf|
         buf.push_str(        
             s.split_whitespace()
             .map(|word| mapping.get(word).map_or(word, |v| v))
@@ -79,6 +79,6 @@ fn map_words(inputs: &[Series], kwargs: MapWordsKwargs) -> PolarsResult<Series> 
 #[polars_expr(output_type=String)]
 fn normalize_whitespace(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
-    let out = ca.apply_to_buffer(|s, buf| *buf = s.split_whitespace().join(" "));
+    let out = ca.apply_into_string_amortized(|s, buf| *buf = s.split_whitespace().join(" "));
     Ok(out.into_series())
 }

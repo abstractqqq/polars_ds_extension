@@ -29,5 +29,7 @@ pre-commit: .venv
 	pre-commit run --all-files
 
 clean:
-	rm examples/*.json
-	rm examples/*.pickle
+	rm -f examples/*.json
+	rm -f examples/*.pickle
+	rm -rf .ruff_cache/
+	rm -rf .pytest_cache/

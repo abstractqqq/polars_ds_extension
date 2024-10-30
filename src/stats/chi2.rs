@@ -1,4 +1,4 @@
-use super::simple_stats_output;
+use super::{simple_stats_output, generic_stats_output};
 use crate::stats_utils::gamma;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
@@ -62,10 +62,5 @@ fn pl_chi2(inputs: &[Series]) -> PolarsResult<Series> {
         let p = gamma::sf(stats, shape, rate).map_err(|e| PolarsError::ComputeError(e.into()));
         p?
     };
-    // Get output
-    let s = Series::from_vec("statistic", vec![stats]);
-    let p = Series::from_vec("pvalue", vec![p]);
-    let out = StructChunked::new("", &[s, p])?;
-
-    Ok(out.into_series())
+    generic_stats_output(stats, p)
 }

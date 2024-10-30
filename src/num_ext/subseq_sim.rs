@@ -61,7 +61,7 @@ fn pl_subseq_sim_cnt_l2(
         }
     };
 
-    let output = UInt32Chunked::from_slice("", &[n]);
+    let output = UInt32Chunked::from_slice("".into(), &[n]);
     Ok(output.into_series())
 }
 
@@ -118,6 +118,6 @@ fn pl_subseq_sim_cnt_zl2(
             })
     };
 
-    let output = UInt32Chunked::from_slice("", &[n]);
+    let output = UInt32Chunked::from_slice("".into(), &[n]);
     Ok(output.into_series())
 }

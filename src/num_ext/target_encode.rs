@@ -3,10 +3,10 @@ use pyo3_polars::derive::polars_expr;
 use serde::Deserialize;
 
 fn target_encode_output(_: &[Field]) -> PolarsResult<Field> {
-    let values = Field::new("value", DataType::String);
-    let to = Field::new("to", DataType::Float64);
+    let values = Field::new("value".into(), DataType::String);
+    let to = Field::new("to".into(), DataType::Float64);
     let v: Vec<Field> = vec![values, to];
-    Ok(Field::new("target_encoded", DataType::Struct(v)))
+    Ok(Field::new("target_encoded".into(), DataType::Struct(v)))
 }
 
 #[derive(Deserialize, Debug)]
@@ -67,5 +67,5 @@ fn pl_target_encode(inputs: &[Series], kwargs: TargetEncodeKwargs) -> PolarsResu
     )?
     .collect()?;
 
-    Ok(encoding_frame.into_struct("target_encoded").into_series())
+    Ok(encoding_frame.into_struct("target_encoded".into()).into_series())
 }

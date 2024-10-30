@@ -36,25 +36,25 @@ fn pl_hamming(inputs: &[Series], context: CallerContext) -> PolarsResult<Series>
                 .into_par_iter()
                 .map(|(offset, len)| {
                     let s1 = ca1.slice(offset as i64, len);
-                    let out: UInt32Chunked = s1.apply_generic(|op_s| {
+                    let out: UInt32Chunked = s1.into_iter().map(|op_s| {
                         let s = op_s?;
                         match batched.distance(s.chars()) {
                             Ok(d) => Some(d as u32),
                             _ => None
                         }
-                    });
+                    }).collect();
                     out.downcast_iter().cloned().collect::<Vec<_>>()
                 });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            UInt32Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
+            UInt32Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
-            ca1.apply_generic(|op_s| {
+            ca1.into_iter().map(|op_s| {
                 let s = op_s?;
                 match batched.distance(s.chars()) {
                     Ok(d) => Some(d as u32),
-                    _ => None,
+                    _ => None
                 }
-            })
+            }).collect()
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -83,7 +83,7 @@ fn pl_hamming(inputs: &[Series], context: CallerContext) -> PolarsResult<Series>
                     out.downcast_iter().cloned().collect::<Vec<_>>()
                 });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            UInt32Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
+            UInt32Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
             ca1.into_iter()
                 .zip(ca2.into_iter())
@@ -135,7 +135,7 @@ fn pl_hamming_padded(inputs: &[Series], context: CallerContext) -> PolarsResult<
                     out.downcast_iter().cloned().collect::<Vec<_>>()
                 });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            UInt32Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
+            UInt32Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
             ca1.apply_nonnull_values_generic(DataType::UInt32, |s| {
                 batched.distance_with_args(s.chars(), &padding) as u32
@@ -161,7 +161,7 @@ fn pl_hamming_padded(inputs: &[Series], context: CallerContext) -> PolarsResult<
                     out.downcast_iter().cloned().collect::<Vec<_>>()
                 });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            UInt32Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
+            UInt32Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
             binary_elementwise_values(ca1, ca2, |x, y| {
                 hamming::distance_with_args(
@@ -214,7 +214,7 @@ fn pl_hamming_filter(inputs: &[Series], context: CallerContext) -> PolarsResult<
                         out.downcast_iter().cloned().collect::<Vec<_>>()
                     })
                     .collect();
-                BooleanChunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
+                BooleanChunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
             })
         } else {
             ca1.apply_nonnull_values_generic(DataType::Boolean, |s| 
@@ -239,7 +239,7 @@ fn pl_hamming_filter(inputs: &[Series], context: CallerContext) -> PolarsResult<
                     out.downcast_iter().cloned().collect::<Vec<_>>()
                 });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            BooleanChunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
+            BooleanChunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
             binary_elementwise_values(ca1, ca2, |x, y| hamming_within_bound(x, y, bound))
         };

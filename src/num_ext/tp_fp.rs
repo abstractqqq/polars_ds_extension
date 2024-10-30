@@ -4,11 +4,11 @@ use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 fn combo_output(_: &[Field]) -> PolarsResult<Field> {
-    let roc_auc = Field::new("roc_auc", DataType::Float64);
-    let precision = Field::new("precision", DataType::Float64);
-    let recall = Field::new("recall", DataType::Float64);
-    let f = Field::new("f", DataType::Float64);
-    let avg_precision = Field::new("avg_precision", DataType::Float64);
+    let roc_auc = Field::new("roc_auc".into(), DataType::Float64);
+    let precision = Field::new("precision".into(), DataType::Float64);
+    let recall = Field::new("recall".into(), DataType::Float64);
+    let f = Field::new("f".into(), DataType::Float64);
+    let avg_precision = Field::new("avg_precision".into(), DataType::Float64);
     let v: Vec<Field> = vec![precision, recall, f, avg_precision, roc_auc];
     Ok(Field::new("".into(), DataType::Struct(v)))
 }
@@ -117,7 +117,7 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     let x = x.cont_slice()?; // Zero copy
 
     let roc_auc: f64 = -super::trapz::trapz(y, x);
-    let roc_auc: Series = Series::from_vec("roc_auc", vec![roc_auc]);
+    let roc_auc: Series = Series::from_vec("roc_auc".into(), vec![roc_auc]);
 
     // Average Precision
     let ap: f64 = -1.0
@@ -125,17 +125,17 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
             .zip(y.iter().skip(1))
             .zip(precision)
             .fold(0., |acc, ((y, y_next), p)| (y_next - y).mul_add(*p, acc));
-    let ap: Series = Series::from_vec("average_precision", vec![ap]);
+    let ap: Series = Series::from_vec("average_precision".into(), vec![ap]);
 
     // Precision & Recall & F
     let recall = y[index];
     let precision = precision[index];
     let f: f64 = 2.0 * (precision * recall) / (precision + recall);
-    let recall: Series = Series::from_vec("recall", vec![recall]);
-    let precision: Series = Series::from_vec("precision", vec![precision]);
-    let f: Series = Series::from_vec("f", vec![f]);
+    let recall: Series = Series::from_vec("recall".into(), vec![recall]);
+    let precision: Series = Series::from_vec("precision".into(), vec![precision]);
+    let f: Series = Series::from_vec("f".into(), vec![f]);
 
-    let out = StructChunked::new("metrics", &[precision, recall, f, ap, roc_auc])?;
+    let out = StructChunked::from_series("metrics".into(), 1, [&precision, &recall, &f, &ap, &roc_auc].into_iter())?;
     Ok(out.into_series())
 }
 
@@ -204,35 +204,35 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
 
 // bcm = binary confusion matrix
 fn bcm_output(_: &[Field]) -> PolarsResult<Field> {
-    let tp = Field::new("tp", DataType::UInt32);
-    let fp = Field::new("fp", DataType::UInt32);
-    let tn = Field::new("tn", DataType::UInt32);
-    let fn_ = Field::new("fn", DataType::UInt32);
+    let tp = Field::new("tp".into(), DataType::UInt32);
+    let fp = Field::new("fp".into(), DataType::UInt32);
+    let tn = Field::new("tn".into(), DataType::UInt32);
+    let fn_ = Field::new("fn".into(), DataType::UInt32);
 
-    let fpr = Field::new("fpr", DataType::Float64);
-    let fnr = Field::new("fnr", DataType::Float64);
-    let tnr = Field::new("tnr", DataType::Float64);
-    let prevalence = Field::new("prevalence", DataType::Float64);
-    let prevalence_threshold = Field::new("prevalence_threshold", DataType::Float64);
-    let tpr = Field::new("tpr", DataType::Float64);
-    let informedness = Field::new("informedness", DataType::Float64);
-    let precision = Field::new("precision", DataType::Float64);
-    let false_omission_rate = Field::new("false_omission_rate", DataType::Float64);
-    let plr = Field::new("plr", DataType::Float64);
-    let nlr = Field::new("nlr", DataType::Float64);
-    let acc = Field::new("acc", DataType::Float64);
-    let balanced_accuracy = Field::new("balanced_accuracy", DataType::Float64);
-    let f1 = Field::new("f1", DataType::Float64);
-    let folkes_mallows_index = Field::new("folkes_mallows_index", DataType::Float64);
-    let mcc = Field::new("mcc", DataType::Float64);
-    let threat_score = Field::new("threat_score", DataType::Float64);
-    let markedness = Field::new("markedness", DataType::Float64);
-    let fdr = Field::new("fdr", DataType::Float64);
-    let npv = Field::new("npv", DataType::Float64);
-    let dor = Field::new("dor", DataType::Float64);
+    let fpr = Field::new("fpr".into(), DataType::Float64);
+    let fnr = Field::new("fnr".into(), DataType::Float64);
+    let tnr = Field::new("tnr".into(), DataType::Float64);
+    let prevalence = Field::new("prevalence".into(), DataType::Float64);
+    let prevalence_threshold = Field::new("prevalence_threshold".into(), DataType::Float64);
+    let tpr = Field::new("tpr".into(), DataType::Float64);
+    let informedness = Field::new("informedness".into(), DataType::Float64);
+    let precision = Field::new("precision".into(), DataType::Float64);
+    let false_omission_rate = Field::new("false_omission_rate".into(), DataType::Float64);
+    let plr = Field::new("plr".into(), DataType::Float64);
+    let nlr = Field::new("nlr".into(), DataType::Float64);
+    let acc = Field::new("acc".into(), DataType::Float64);
+    let balanced_accuracy = Field::new("balanced_accuracy".into(), DataType::Float64);
+    let f1 = Field::new("f1".into(), DataType::Float64);
+    let folkes_mallows_index = Field::new("folkes_mallows_index".into(), DataType::Float64);
+    let mcc = Field::new("mcc".into(), DataType::Float64);
+    let threat_score = Field::new("threat_score".into(), DataType::Float64);
+    let markedness = Field::new("markedness".into(), DataType::Float64);
+    let fdr = Field::new("fdr".into(), DataType::Float64);
+    let npv = Field::new("npv".into(), DataType::Float64);
+    let dor = Field::new("dor".into(), DataType::Float64);
 
     Ok(Field::new(
-        "confusion_matrix",
+        "confusion_matrix".into(),
         DataType::Struct(vec![
             tp,
             tn,
@@ -269,19 +269,20 @@ fn pl_binary_confusion_matrix(inputs: &[Series]) -> PolarsResult<Series> {
     // 0 is tn, 1 is fp, 2 is fn, 3 is tp
     let combined_series = inputs[0].u32()?;
     let confusion = binary_confusion_matrix(combined_series);
-    let tn = UInt32Chunked::from_vec("tn", vec![confusion[0]]);
-    let tn = tn.into_series();
+    let tn = UInt32Chunked::from_vec("tn".into(), vec![confusion[0]]);
+    let tn = Column::Series(tn.into_series());
 
-    let fp = UInt32Chunked::from_vec("fp", vec![confusion[1]]);
-    let fp = fp.into_series();
+    let fp = UInt32Chunked::from_vec("fp".into(), vec![confusion[1]]);
+    let fp = Column::Series(fp.into_series());
 
-    let fn_ = UInt32Chunked::from_vec("fn", vec![confusion[2]]);
-    let fn_ = fn_.into_series();
+    let fn_ = UInt32Chunked::from_vec("fn".into(), vec![confusion[2]]);
+    let fn_ = Column::Series(fn_.into_series());
 
-    let tp = UInt32Chunked::from_vec("tp", vec![confusion[3]]);
-    let tp = tp.into_series();
+    let tp = UInt32Chunked::from_vec("tp".into(), vec![confusion[3]]);
+    let tp = Column::Series(tp.into_series());
     // All series have length 1 and no duplicate names
-    let df = unsafe { DataFrame::new_no_checks(vec![tn, fp, fn_, tp]) };
+    
+    let df = DataFrame::new(vec![tn, fp, fn_, tp])?;
 
     let result = df
         .lazy()
@@ -350,6 +351,6 @@ fn pl_binary_confusion_matrix(inputs: &[Series]) -> PolarsResult<Series> {
         .fill_null(f64::NAN) // In Rust dividing by 0 results in Null for some reason.
         .collect()?;
 
-    let out = result.into_struct("confusion_matrix");
+    let out = result.into_struct("confusion_matrix".into());
     Ok(out.into_series())
 }

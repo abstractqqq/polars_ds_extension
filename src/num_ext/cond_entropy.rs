@@ -3,17 +3,14 @@ use pyo3_polars::derive::polars_expr;
 
 #[polars_expr(output_type=Float64)]
 fn pl_conditional_entropy(inputs: &[Series]) -> PolarsResult<Series> {
-    let x = "x";
-    let y = "y";
-    let out_name = "H(x|y)";
 
-    let df = df!(x => inputs[0].clone(), y => inputs[1].clone())?;
+    let df = df!("x" => inputs[0].clone(), "y" => inputs[1].clone())?;
     let mut out = df
         .lazy()
-        .group_by([col(x), col(y)])
+        .group_by([col("x"), col("y")])
         .agg([len().alias("cnt")])
         .with_columns([
-            (col("cnt").sum().cast(DataType::Float64).over([col(y)])
+            (col("cnt").sum().cast(DataType::Float64).over([col("y")])
                 / col("cnt").sum().cast(DataType::Float64))
             .alias("p(y)"),
             (col("cnt").cast(DataType::Float64) / col("cnt").sum().cast(DataType::Float64))
@@ -23,8 +20,8 @@ fn pl_conditional_entropy(inputs: &[Series]) -> PolarsResult<Series> {
             * ((col("p(x,y)") / col("p(y)"))
                 .log(std::f64::consts::E)
                 .dot(col("p(x,y)"))))
-        .alias(out_name)])
+        .alias("H(x|y)")])
         .collect()?;
 
-    out.drop_in_place(out_name)
+    out.drop_in_place("H(x|y)").map(|s| s.as_materialized_series().clone())
 }

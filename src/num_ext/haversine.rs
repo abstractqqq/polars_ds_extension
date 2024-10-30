@@ -26,7 +26,7 @@ where
                 Some(haversine_elementwise(x_lat, x_long, e_lat, e_long))
             })
             .collect();
-        Ok(out.with_name(x_lat.name()))
+        Ok(out)
     } else if x_lat.len() == x_long.len()
         && x_long.len() == y_lat.len()
         && y_lat.len() == y_long.len()
@@ -45,7 +45,7 @@ where
             })
             .collect();
 
-        Ok(out.with_name(x_lat.name()))
+        Ok(out)
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),

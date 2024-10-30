@@ -47,44 +47,44 @@ pub(crate) struct SWWLstsqKwargs {
 }
 
 fn report_output(_: &[Field]) -> PolarsResult<Field> {
-    let features = Field::new("features", DataType::String); // index of feature
-    let beta = Field::new("beta", DataType::Float64); // estimated value for this coefficient
-    let stderr = Field::new("std_err", DataType::Float64); // Std Err for this coefficient
-    let t = Field::new("t", DataType::Float64); // t value for this coefficient
-    let p = Field::new("p>|t|", DataType::Float64); // p value for this coefficient
-    let ci_lower = Field::new("0.025", DataType::Float64); // CI lower bound at 0.025
-    let ci_upper = Field::new("0.975", DataType::Float64); // CI upper bound at 0.975
+    let features = Field::new("features".into(), DataType::String); // index of feature
+    let beta = Field::new("beta".into(), DataType::Float64); // estimated value for this coefficient
+    let stderr = Field::new("std_err".into(), DataType::Float64); // Std Err for this coefficient
+    let t = Field::new("t".into(), DataType::Float64); // t value for this coefficient
+    let p = Field::new("p>|t|".into(), DataType::Float64); // p value for this coefficient
+    let ci_lower = Field::new("0.025".into(), DataType::Float64); // CI lower bound at 0.025
+    let ci_upper = Field::new("0.975".into(), DataType::Float64); // CI upper bound at 0.975
     let v: Vec<Field> = vec![features, beta, stderr, t, p, ci_lower, ci_upper]; //  ci_lower, ci_upper
-    Ok(Field::new("lstsq_report", DataType::Struct(v)))
+    Ok(Field::new("lstsq_report".into(), DataType::Struct(v)))
 }
 
 fn pred_residue_output(_: &[Field]) -> PolarsResult<Field> {
-    let pred = Field::new("pred", DataType::Float64);
-    let residue = Field::new("resid", DataType::Float64);
+    let pred = Field::new("pred".into(), DataType::Float64);
+    let residue = Field::new("resid".into(), DataType::Float64);
     let v = vec![pred, residue];
-    Ok(Field::new("pred", DataType::Struct(v)))
+    Ok(Field::new("pred".into(), DataType::Struct(v)))
 }
 
 fn coeff_pred_output(_: &[Field]) -> PolarsResult<Field> {
-    let coeffs = Field::new("coeffs", DataType::List(Box::new(DataType::Float64)));
-    let pred = Field::new("prediction", DataType::Float64);
+    let coeffs = Field::new("coeffs".into(), DataType::List(Box::new(DataType::Float64)));
+    let pred = Field::new("prediction".into(), DataType::Float64);
     let v: Vec<Field> = vec![coeffs, pred];
-    Ok(Field::new("", DataType::Struct(v)))
+    Ok(Field::new("".into(), DataType::Struct(v)))
 }
 
 fn coeff_singular_values_output(_: &[Field]) -> PolarsResult<Field> {
-    let coeffs = Field::new("coeffs", DataType::List(Box::new(DataType::Float64)));
+    let coeffs = Field::new("coeffs".into(), DataType::List(Box::new(DataType::Float64)));
     let singular_values = Field::new(
-        "singular_values",
+        "singular_values".into(),
         DataType::List(Box::new(DataType::Float64)),
     );
     let v: Vec<Field> = vec![coeffs, singular_values];
-    Ok(Field::new("", DataType::Struct(v)))
+    Ok(Field::new("".into(), DataType::Struct(v)))
 }
 
 fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
-        "coeffs",
+        "coeffs".into(),
         DataType::List(Box::new(DataType::Float64)),
     ))
 }
@@ -99,8 +99,8 @@ fn series_to_mat_for_lstsq(
     let n_features = inputs.len().abs_diff(1);
 
     // minus 1 because target is also in inputs. Target is at position 0.
-    let y_has_null = inputs[0].has_validity();
-    let has_null = inputs[1..].iter().any(|s| s.has_validity()) | y_has_null;
+    let y_has_null = inputs[0].has_nulls();
+    let has_null = inputs[1..].iter().any(|s| s.has_nulls()) | y_has_null;
 
     let mut df = to_frame(inputs)?;
     if df.is_empty() {
@@ -119,7 +119,7 @@ fn series_to_mat_for_lstsq(
             // Like ignore, skip_window takes the raw data. The actual skip is done in the underlying function in linalg.
             NullPolicy::IGNORE | NullPolicy::SKIP_WINDOW => {
                 // false, because it has nulls
-                Ok((df, BooleanChunked::from_slice("", &[false])))
+                Ok((df, BooleanChunked::from_slice("".into(), &[false])))
             }
             NullPolicy::RAISE => Err(PolarsError::ComputeError("Nulls found in data".into())),
             NullPolicy::SKIP => {
@@ -135,7 +135,7 @@ fn series_to_mat_for_lstsq(
                 df = df
                     .lazy()
                     .with_columns([pl::col("*")
-                        .exclude([y_name])
+                        .exclude([y_name.clone()])
                         .cast(DataType::Float64)
                         .fill_null(lit(x))])
                     .collect()?;
@@ -145,7 +145,7 @@ fn series_to_mat_for_lstsq(
                     Ok((df, init_mask))
                 } else {
                     // all filled, no nulls
-                    let mask = BooleanChunked::from_slice("", &[true]);
+                    let mask = BooleanChunked::from_slice("".into(), &[true]);
                     Ok((df, mask))
                 }
             }
@@ -153,24 +153,24 @@ fn series_to_mat_for_lstsq(
                 df = df
                     .lazy()
                     .with_columns([pl::col("*")
-                        .exclude([y_name])
+                        .exclude([y_name.clone()])
                         .cast(DataType::Float64)
                         .fill_null(lit(x))])
                     .collect()?;
 
                 if y_has_null {
                     // Unlike fill, this doesn't drop y's nulls
-                    Ok((df, BooleanChunked::from_slice("", &[false])))
+                    Ok((df, BooleanChunked::from_slice("".into(), &[false])))
                 } else {
                     // all filled, no nulls
-                    let mask = BooleanChunked::from_slice("", &[true]);
+                    let mask = BooleanChunked::from_slice("".into(), &[true]);
                     Ok((df, mask))
                 }
             }
         }
     } else {
         // In this case, the (!mask).any() is never true, which means there is no null.
-        let mask = BooleanChunked::from_slice("", &[true]);
+        let mask = BooleanChunked::from_slice("".into(), &[true]);
         Ok((df, mask))
     }?;
 
@@ -227,7 +227,7 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                 }
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                ListPrimitiveChunkedBuilder::new("coeffs", 1, coeffs.nrows(), DataType::Float64);
+                ListPrimitiveChunkedBuilder::new("coeffs".into(), 1, coeffs.nrows(), DataType::Float64);
 
             builder.append_slice(coeffs.col_as_slice(0));
             let out = builder.finish();
@@ -245,15 +245,15 @@ fn series_to_mat_for_multi_lstsq(
 ) -> PolarsResult<Array2<f64>> {
     let y_has_null = inputs[..last_target_idx]
         .iter()
-        .fold(false, |acc, s| s.has_validity() | acc);
-    let has_null = inputs[last_target_idx..].iter().any(|s| s.has_validity()) | y_has_null;
+        .fold(false, |acc, s| s.has_nulls() | acc);
+    let has_null = inputs[last_target_idx..].iter().any(|s| s.has_nulls()) | y_has_null;
 
     let mut df = if has_null {
         match null_policy {
             NullPolicy::RAISE => Err(PolarsError::ComputeError("Nulls found in data".into())),
 
             NullPolicy::FILL(x) => {
-                let df = DataFrame::new(inputs.to_vec())?;
+                let df = DataFrame::new(inputs.iter().map(|s| s.clone().into_column()).collect())?;
                 if y_has_null {
                     // This is because for predictions, it becomes too complicated when different targets have nulls.
                     // There will be too many masks we need to keep track of.
@@ -264,7 +264,7 @@ fn series_to_mat_for_multi_lstsq(
                 } else {
                     let y_names = inputs[..last_target_idx]
                         .iter()
-                        .map(|s| s.name())
+                        .map(|s| s.name().clone())
                         .collect::<Vec<_>>();
 
                     df.lazy()
@@ -280,7 +280,7 @@ fn series_to_mat_for_multi_lstsq(
             )),
         }
     } else {
-        DataFrame::new(inputs.to_vec())
+        DataFrame::new(inputs.iter().map(|s| s.clone().into_column()).collect())
     }?;
 
     if add_bias {
@@ -323,20 +323,21 @@ fn pl_lstsq_multi(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsResult<S
 
     let df_out = unsafe {
         DataFrame::new_no_checks(
-            y_names
+            x.nrows()
+            , y_names
                 .into_iter()
                 .enumerate()
                 .map(|(i, y)| {
                     let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                        ListPrimitiveChunkedBuilder::new(y, 1, coeffs.nrows(), DataType::Float64);
+                        ListPrimitiveChunkedBuilder::new(y.clone(), 1, coeffs.nrows(), DataType::Float64);
                     builder.append_slice(coeffs.col_as_slice(i));
                     let out = builder.finish();
-                    out.into_series()
+                    out.into_column()
                 })
                 .collect::<Vec<_>>(),
         )
     };
-    Ok(df_out.into_struct("coeffs").into_series())
+    Ok(df_out.into_struct("coeffs".into()).into_series())
 }
 
 // Strictly speaking, this output type is not correct.
@@ -372,13 +373,13 @@ fn pl_lstsq_multi_pred(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsRes
     for (i, y) in y_names.into_iter().enumerate() {
         let pred_name = format!("{}_pred", y);
         let resid_name = format!("{}_resid", y);
-        let p = Float64Chunked::from_slice(&pred_name, pred.col_as_slice(i));
-        let r = Float64Chunked::from_slice(&resid_name, resid.col_as_slice(i));
-        s.push(p.into_series());
-        s.push(r.into_series());
+        let p = Float64Chunked::from_slice(pred_name.into(), pred.col_as_slice(i));
+        let r = Float64Chunked::from_slice(resid_name.into(), resid.col_as_slice(i));
+        s.push(p.into_column());
+        s.push(r.into_column());
     }
-    let df_out = unsafe { DataFrame::new_no_checks(s) };
-    Ok(df_out.into_struct("all_preds").into_series())
+    let df_out = unsafe { DataFrame::new_no_checks(pred.nrows(), s) };
+    Ok(df_out.into_struct("all_preds".into()).into_series())
 }
 
 #[polars_expr(output_type_func=coeff_singular_values_output)]
@@ -414,14 +415,14 @@ fn pl_lstsq_w_rcond(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Seri
             };
 
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                ListPrimitiveChunkedBuilder::new("coeffs", 1, coeffs.nrows(), DataType::Float64);
+                ListPrimitiveChunkedBuilder::new("coeffs".into(), 1, coeffs.nrows(), DataType::Float64);
 
             builder.append_slice(coeffs.col_as_slice(0));
             let coeffs_ca = builder.finish();
 
             let mut sv_builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(
-                    "singular_values",
+                    "singular_values".into(),
                     1,
                     singular_values.len(),
                     DataType::Float64,
@@ -430,7 +431,11 @@ fn pl_lstsq_w_rcond(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Seri
             sv_builder.append_slice(&singular_values);
             let coeffs_sv = sv_builder.finish();
 
-            let ca = StructChunked::new("", &[coeffs_ca.into_series(), coeffs_sv.into_series()])?;
+            let ca = StructChunked::from_columns(
+                "".into(), 
+                coeffs_sv.len(),
+                &[coeffs_ca.into_column(), coeffs_sv.into_column()]
+            )?;
             Ok(ca.into_series())
         }
         Err(e) => Err(e),
@@ -489,9 +494,9 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             // In the mask, true means is not null. In !&mask, true means is null
             let (p, r) = if (!&mask).any() {
                 let mut p_builder: PrimitiveChunkedBuilder<Float64Type> =
-                    PrimitiveChunkedBuilder::new("pred", mask.len());
+                    PrimitiveChunkedBuilder::new("pred".into(), mask.len());
                 let mut r_builder: PrimitiveChunkedBuilder<Float64Type> =
-                    PrimitiveChunkedBuilder::new("resid", mask.len());
+                    PrimitiveChunkedBuilder::new("resid".into(), mask.len());
                 let mut i: usize = 0;
                 for mm in mask.into_no_null_iter() {
                     // mask is always non-null, mm = true means it is not null
@@ -506,13 +511,13 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
                 }
                 (p_builder.finish(), r_builder.finish())
             } else {
-                let pred = Float64Chunked::from_slice("pred", pred);
-                let residue = Float64Chunked::from_slice("resid", resid);
+                let pred = Float64Chunked::from_slice("pred".into(), pred);
+                let residue = Float64Chunked::from_slice("resid".into(), resid);
                 (pred, residue)
             };
             let p = p.into_series();
             let r = r.into_series();
-            let out = StructChunked::new("", &[p, r])?;
+            let out = StructChunked::from_series("".into(), p.len(), [&p, &r].into_iter())?;
             Ok(out.into_series())
         }
         Err(e) => Err(e),
@@ -526,7 +531,7 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
     // index 0 is target y. Skip
     let mut name_builder =
-        StringChunkedBuilder::new("features", inputs.len() + (add_bias) as usize);
+        StringChunkedBuilder::new("features".into(), inputs.len() + (add_bias) as usize);
     for s in inputs[1..].iter().map(|s| s.name()) {
         name_builder.append_value(s);
     }
@@ -590,29 +595,30 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
             // Finalize
             let names_ca = name_builder.finish();
             let names_series = names_ca.into_series();
-            let coeffs_series = Float64Chunked::from_slice("beta", betas);
+            let coeffs_series = Float64Chunked::from_slice("beta".into(), betas);
             let coeffs_series = coeffs_series.into_series();
-            let stderr_series = Float64Chunked::from_vec("std_err", std_err);
+            let stderr_series = Float64Chunked::from_vec("std_err".into(), std_err);
             let stderr_series = stderr_series.into_series();
-            let t_series = Float64Chunked::from_vec("t", t_values);
+            let t_series = Float64Chunked::from_vec("t".into(), t_values);
             let t_series = t_series.into_series();
-            let p_series = Float64Chunked::from_vec("p>|t|", p_values);
+            let p_series = Float64Chunked::from_vec("p>|t|".into(), p_values);
             let p_series = p_series.into_series();
-            let lower = Float64Chunked::from_vec("0.025", ci_lower);
+            let lower = Float64Chunked::from_vec("0.025".into(), ci_lower);
             let lower = lower.into_series();
-            let upper = Float64Chunked::from_vec("0.975", ci_upper);
+            let upper = Float64Chunked::from_vec("0.975".into(), ci_upper);
             let upper = upper.into_series();
-            let out = StructChunked::new(
-                "lstsq_report",
-                &[
-                    names_series,
-                    coeffs_series,
-                    stderr_series,
-                    t_series,
-                    p_series,
-                    lower,
-                    upper,
-                ],
+            let out = StructChunked::from_series(
+                "lstsq_report".into(),
+                names_series.len(),
+                [
+                    &names_series,
+                    &coeffs_series,
+                    &stderr_series,
+                    &t_series,
+                    &p_series,
+                    &lower,
+                    &upper,
+                ].into_iter(),
             )?;
             Ok(out.into_series())
         }
@@ -630,7 +636,7 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
     let weights = weights.cont_slice().unwrap();
     // index 0 is weights, 1 is target y. Skip them
     let mut name_builder =
-        StringChunkedBuilder::new("features", inputs.len() + (add_bias) as usize);
+        StringChunkedBuilder::new("features".into(), inputs.len() + (add_bias) as usize);
     for s in inputs[2..].iter().map(|s| s.name()) {
         name_builder.append_value(s);
     }
@@ -699,29 +705,30 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             // Finalize
             let names_ca = name_builder.finish();
             let names_series = names_ca.into_series();
-            let coeffs_series = Float64Chunked::from_slice("beta", betas);
+            let coeffs_series = Float64Chunked::from_slice("beta".into(), betas);
             let coeffs_series = coeffs_series.into_series();
-            let stderr_series = Float64Chunked::from_vec("std_err", std_err);
+            let stderr_series = Float64Chunked::from_vec("std_err".into(), std_err);
             let stderr_series = stderr_series.into_series();
-            let t_series = Float64Chunked::from_vec("t", t_values);
+            let t_series = Float64Chunked::from_vec("t".into(), t_values);
             let t_series = t_series.into_series();
-            let p_series = Float64Chunked::from_vec("p>|t|", p_values);
+            let p_series = Float64Chunked::from_vec("p>|t|".into(), p_values);
             let p_series = p_series.into_series();
-            let lower = Float64Chunked::from_vec("0.025", ci_lower);
+            let lower = Float64Chunked::from_vec("0.025".into(), ci_lower);
             let lower = lower.into_series();
-            let upper = Float64Chunked::from_vec("0.975", ci_upper);
+            let upper = Float64Chunked::from_vec("0.975".into(), ci_upper);
             let upper = upper.into_series();
-            let out = StructChunked::new(
-                "lstsq_report",
-                &[
-                    names_series,
-                    coeffs_series,
-                    stderr_series,
-                    t_series,
-                    p_series,
-                    lower,
-                    upper,
-                ],
+            let out = StructChunked::from_series(
+                "lstsq_report".into(),
+                names_series.len(),
+                [
+                    &names_series,
+                    &coeffs_series,
+                    &stderr_series,
+                    &t_series,
+                    &p_series,
+                    &lower,
+                    &upper,
+                ].into_iter(),
             )?;
             Ok(out.into_series())
         }
@@ -750,13 +757,13 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult
             let coeffs = faer_recursive_lstsq(x, y, n, kwargs.lambda);
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(
-                    "coeffs",
+                    "coeffs".into(),
                     mat.nrows(),
                     mat.ncols(),
                     DataType::Float64,
                 );
             let mut pred_builder: PrimitiveChunkedBuilder<Float64Type> =
-                PrimitiveChunkedBuilder::new("pred", mat.nrows());
+                PrimitiveChunkedBuilder::new("pred".into(), mat.nrows());
 
             // Fill or Skip strategy can drop nulls. Fill will drop null when y has nulls.
             // Skip will drop nulls whenever there is a null in the row.
@@ -810,7 +817,10 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult
 
             let coef_out = builder.finish();
             let pred_out = pred_builder.finish();
-            let ca = StructChunked::new("", &[coef_out.into_series(), pred_out.into_series()])?;
+            let ca = StructChunked::from_series(
+                "".into(), 
+                coef_out.len(), 
+                [&coef_out.into_series(), &pred_out.into_series()].into_iter())?;
             Ok(ca.into_series())
         }
         Err(e) => Err(e),
@@ -849,13 +859,13 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
 
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(
-                    "coeffs",
+                    "coeffs".into(),
                     mat.nrows(),
                     mat.ncols(),
                     DataType::Float64,
                 );
             let mut pred_builder: PrimitiveChunkedBuilder<Float64Type> =
-                PrimitiveChunkedBuilder::new("pred", mat.nrows());
+                PrimitiveChunkedBuilder::new("pred".into(), mat.nrows());
 
             let m = n - 1; // n >= 2 guaranteed in Python
             for _ in 0..m {
@@ -890,7 +900,10 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
 
             let coef_out = builder.finish();
             let pred_out = pred_builder.finish();
-            let ca = StructChunked::new("", &[coef_out.into_series(), pred_out.into_series()])?;
+            let ca = StructChunked::from_series(
+                "".into(), 
+                coef_out.len(),
+                [&coef_out.into_series(), &pred_out.into_series()].into_iter())?;
             Ok(ca.into_series())
         }
         Err(e) => Err(e),

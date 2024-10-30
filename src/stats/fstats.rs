@@ -5,6 +5,7 @@ use crate::stats_utils::beta::fisher_snedecor_sf;
 use itertools::Itertools;
 use ndarray::Axis;
 use polars::prelude::*;
+use polars::frame::column::Column;
 use pyo3_polars::derive::polars_expr;
 
 /// Use inputs[0] as the target column (discrete, indicating the groups)
@@ -16,7 +17,7 @@ fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
     let v = inputs
         .into_iter()
         .enumerate()
-        .map(|(i, s)| s.clone().with_name(i.to_string().as_str()))
+        .map(|(i, s)| Column::new(i.to_string().into(), s)) 
         .collect_vec();
     let n_cols = v.len();
 
@@ -81,10 +82,9 @@ fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
         .map(|x| fisher_snedecor_sf(*x, df_btw_class, df_in_class).unwrap_or(f64::NAN))
         .collect();
 
-    let s1 = Float64Chunked::from_slice("statistic", out_fstats);
-    let s1 = s1.into_series();
-    let s2 = Series::from_vec("pvalue", out_p);
+    let s1 = Column::new("statistic".into(), out_fstats);
+    let s2 = Column::new("pvalue".into(), out_p);
 
-    let ca = StructChunked::new("f-test", &[s1, s2])?;
+    let ca = StructChunked::from_columns("f-test".into(), s1.len(), &[s1, s2])?;
     Ok(ca.into_series())
 }

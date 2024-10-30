@@ -19,6 +19,6 @@ fn pl_snowball_stem(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
     let no_stop = inputs[1].bool()?;
     let no_stop = no_stop.get(0).unwrap();
-    let out = ca.apply_to_buffer(|s, buf| snowball(s, no_stop, buf));
+    let out = ca.apply_into_string_amortized(|s, buf| snowball(s, no_stop, buf));
     Ok(out.into_series())
 }

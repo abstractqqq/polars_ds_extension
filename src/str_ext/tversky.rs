@@ -54,7 +54,7 @@ fn pl_tversky_sim(inputs: &[Series], context: CallerContext) -> PolarsResult<Ser
             });
 
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
+            Float64Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
             ca1.apply_nonnull_values_generic(DataType::Float64, |s| {
                 tversky_sim(s, r, ngram, alpha, beta)
@@ -75,7 +75,7 @@ fn pl_tversky_sim(inputs: &[Series], context: CallerContext) -> PolarsResult<Ser
             });
 
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            Float64Chunked::from_chunk_iter(ca1.name(), chunks.into_iter().flatten())
+            Float64Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
             binary_elementwise_values(ca1, ca2, |x, y| tversky_sim(x, y, ngram, alpha, beta))
         };

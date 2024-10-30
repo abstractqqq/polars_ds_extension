@@ -20,10 +20,10 @@ use pyo3_polars::{
 use serde::Deserialize;
 
 pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
-    let idx = Field::new("idx", DataType::List(Box::new(DataType::UInt32)));
-    let dist = Field::new("dist", DataType::List(Box::new(DataType::Float64)));
+    let idx = Field::new("idx".into(), DataType::List(Box::new(DataType::UInt32)));
+    let dist = Field::new("dist".into(), DataType::List(Box::new(DataType::Float64)));
     let v = vec![idx, dist];
-    Ok(Field::new("knn_dist", DataType::Struct(v)))
+    Ok(Field::new("knn_dist".into(), DataType::Struct(v)))
 }
 
 #[derive(Deserialize)]
@@ -125,7 +125,7 @@ fn pl_knn_avg(
             .map(|(offset, len)| {
                 let subslice = &data[offset * ncols..(offset + len) * ncols];
                 let out = Float64Chunked::from_iter_options(
-                    "",
+                    "".into(),
                     subslice
                         .chunks_exact(ncols)
                         .map(|row| tree.knn_regress(k + 1, row, min_bound, max_bound, method)),
@@ -133,10 +133,10 @@ fn pl_knn_avg(
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-        Float64Chunked::from_chunk_iter("", chunks.into_iter().flatten())
+        Float64Chunked::from_chunk_iter("".into(), chunks.into_iter().flatten())
     } else {
         Float64Chunked::from_iter_options(
-            "",
+            "".into(),
             data.chunks_exact(ncols)
                 .map(|row| tree.knn_regress(k + 1, row, min_bound, max_bound, method)),
         )
@@ -168,7 +168,7 @@ where
         let splits = split_offsets(nrows, n_threads);
         let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
             let mut builder =
-                ListPrimitiveChunkedBuilder::<UInt32Type>::new("", len, k + 1, DataType::UInt32);
+                ListPrimitiveChunkedBuilder::<UInt32Type>::new("".into(), len, k + 1, DataType::UInt32);
 
             let subslice = &data[offset * ncols..(offset + len) * ncols];
             let mask = &eval_mask[offset..offset + len];
@@ -188,10 +188,10 @@ where
             ca.downcast_iter().cloned().collect::<Vec<_>>()
         });
         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-        ListChunked::from_chunk_iter("knn", chunks.into_iter().flatten())
+        ListChunked::from_chunk_iter("knn".into(), chunks.into_iter().flatten())
     } else {
         let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
-            "knn",
+            "knn".into(),
             eval_mask.len(),
             k + 1,
             DataType::UInt32,
@@ -287,13 +287,13 @@ where
                 .into_par_iter()
                 .map(|(offset, len)| {
                     let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
-                        "",
+                        "".into(),
                         len,
                         k + 1,
                         DataType::UInt32,
                     );
                     let mut dist_builder = ListPrimitiveChunkedBuilder::<Float64Type>::new(
-                        "",
+                        "".into(),
                         len,
                         k + 1,
                         DataType::Float64,
@@ -332,15 +332,15 @@ where
                 })
                 .collect();
 
-            let ca_nb = ListChunked::from_chunk_iter("idx", chunks.0.into_iter().flatten());
-            let ca_dist = ListChunked::from_chunk_iter("dist", chunks.1.into_iter().flatten());
+            let ca_nb = ListChunked::from_chunk_iter("idx".into(), chunks.0.into_iter().flatten());
+            let ca_dist = ListChunked::from_chunk_iter("dist".into(), chunks.1.into_iter().flatten());
             (ca_nb, ca_dist)
         })
     } else {
         let mut builder =
-            ListPrimitiveChunkedBuilder::<UInt32Type>::new("idx", nrows, k + 1, DataType::UInt32);
+            ListPrimitiveChunkedBuilder::<UInt32Type>::new("idx".into(), nrows, k + 1, DataType::UInt32);
         let mut dist_builder = ListPrimitiveChunkedBuilder::<Float64Type>::new(
-            "dist",
+            "dist".into(),
             nrows,
             k + 1,
             DataType::Float64,
@@ -424,7 +424,11 @@ fn pl_knn_ptwise_w_dist(
     }
     .map_err(|err| PolarsError::ComputeError(err.into()))?;
 
-    let out = StructChunked::new("knn_dist", &[ca_nb.into_series(), ca_dist.into_series()])?;
+    let out = StructChunked::from_series(
+        "knn_dist".into(), 
+        ca_nb.len(), 
+        [&ca_nb.into_series(), &ca_dist.into_series()].into_iter()
+    )?;
     Ok(out.into_series())
 }
 
@@ -445,7 +449,7 @@ where
         let splits = split_offsets(nrows, n_threads);
         let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
             let mut builder =
-                ListPrimitiveChunkedBuilder::<UInt32Type>::new("", len, 16, DataType::UInt32);
+                ListPrimitiveChunkedBuilder::<UInt32Type>::new("".into(), len, 16, DataType::UInt32);
 
             let subslice = &data[offset * ncols..(offset + len) * ncols];
             for p in subslice.chunks_exact(ncols) {
@@ -459,10 +463,10 @@ where
             ca.downcast_iter().cloned().collect::<Vec<_>>()
         });
         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-        ListChunked::from_chunk_iter("", chunks.into_iter().flatten())
+        ListChunked::from_chunk_iter("".into(), chunks.into_iter().flatten())
     } else {
         let mut builder =
-            ListPrimitiveChunkedBuilder::<UInt32Type>::new("", data.len(), 16, DataType::UInt32);
+            ListPrimitiveChunkedBuilder::<UInt32Type>::new("".into(), data.len(), 16, DataType::UInt32);
 
         for p in data.chunks_exact(ncols) {
             // C order (row major) makes sure rows are contiguous
@@ -522,7 +526,7 @@ where
         let splits = split_offsets(nrows, POOL.current_num_threads());
         let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
             let mut builder: PrimitiveChunkedBuilder<UInt32Type> =
-                PrimitiveChunkedBuilder::new("", nrows);
+                PrimitiveChunkedBuilder::new("".into(), nrows);
 
             let subslice = &data[offset * ncols..(offset + len) * ncols];
             for row in subslice.chunks_exact(ncols) {
@@ -532,10 +536,10 @@ where
             ca.downcast_iter().cloned().collect::<Vec<_>>()
         });
         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-        UInt32Chunked::from_chunk_iter("cnt", chunks.into_iter().flatten())
+        UInt32Chunked::from_chunk_iter("cnt".into(), chunks.into_iter().flatten())
     } else {
         UInt32Chunked::from_iter_options(
-            "cnt",
+            "cnt".into(),
             data.chunks_exact(ncols)
                 .map(|row| tree.within_count(row, r)),
         )
@@ -560,7 +564,7 @@ where
         let splits = split_offsets(nrows, n_threads);
         let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
             let mut builder: PrimitiveChunkedBuilder<UInt32Type> =
-                PrimitiveChunkedBuilder::new("", nrows);
+                PrimitiveChunkedBuilder::new("".into(), nrows);
             let subslice = &data[offset * ncols..(offset + len) * ncols];
             let rad = &radius[offset..offset + len];
             for (row, r) in subslice.chunks_exact(ncols).zip(rad.iter()) {
@@ -573,10 +577,10 @@ where
             ca.downcast_iter().cloned().collect::<Vec<_>>()
         });
         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-        UInt32Chunked::from_chunk_iter("cnt", chunks.into_iter().flatten())
+        UInt32Chunked::from_chunk_iter("cnt".into(), chunks.into_iter().flatten())
     } else {
         UInt32Chunked::from_iter_options(
-            "cnt",
+            "cnt".into(),
             data.chunks_exact(ncols)
                 .zip(radius.into_iter())
                 .map(|(row, r)| match r {
@@ -609,7 +613,7 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
             Err(e) => Err(e),
         }
         .map_err(|err| PolarsError::ComputeError(err.into()))?;
-        Ok(ca.with_name("cnt").into_series())
+        Ok(ca.with_name("cnt".into()).into_series())
     } else if radius.len() == nrows {
         let ca = match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
             Ok(d) => {
@@ -620,7 +624,7 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
             Err(e) => Err(e),
         }
         .map_err(|err| PolarsError::ComputeError(err.into()))?;
-        Ok(ca.with_name("cnt").into_series())
+        Ok(ca.with_name("cnt".into()).into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),

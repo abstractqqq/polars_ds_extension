@@ -1,9 +1,6 @@
 /// Integration via Trapezoidal rule.
 use cfavml;
-use polars::{
-    prelude::{PolarsError, PolarsResult},
-    series::Series,
-};
+use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 #[inline(always)]
@@ -26,9 +23,10 @@ fn pl_trapz(inputs: &[Series]) -> PolarsResult<Series> {
     let y = inputs[0].f64()?;
     let x = inputs[1].f64()?;
     if y.len() < 2 {
-        return Ok(Series::from_iter([f64::NAN]));
+        let ca = Float64Chunked::from_slice("".into(), &[f64::NAN]);
+        return Ok(ca.into_series())
     }
-    if x.has_validity() || y.has_validity() {
+    if x.has_nulls() || y.has_nulls() {
         return Err(PolarsError::ComputeError(
             "For trapezoidal integration to work, x and y must not contain nulls.".into(),
         ));
@@ -36,10 +34,12 @@ fn pl_trapz(inputs: &[Series]) -> PolarsResult<Series> {
     let y = y.cont_slice()?;
     if x.len() == 1 {
         let dx = x.get(0).unwrap();
-        Ok(Series::from_iter([trapz_dx(y, dx)]))
+        let ca = Float64Chunked::from_slice("".into(), &[trapz_dx(y, dx)]);
+        Ok(ca.into_series())
     } else if x.len() == y.len() {
         let x = x.cont_slice()?;
-        Ok(Series::from_iter([trapz(y, x)]))
+        let ca = Float64Chunked::from_slice("".into(), &[trapz(y, x)]);
+        Ok(ca.into_series())
     } else {
         Err(PolarsError::ComputeError(
             "Input must have the same length or x must be a scalar.".into(),
