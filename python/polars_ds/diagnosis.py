@@ -21,14 +21,13 @@ from great_tables import GT, nanoplot_options
 from . import query_cond_entropy, query_principal_components, query_r2
 from .type_alias import CorrMethod, PolarsFrame
 from .stats import corr
-from .sample import sample
+from .sample_and_split import sample
 
 alt.data_transformers.enable("vegafusion")
 
 
 # DIA = Data Inspection Assistant / DIAgonsis
 class DIA:
-
     """
     Data Inspection Assistant. Most plots are powered by plotly/great_tables. Plotly may require
     additional package downloads.
