@@ -7,7 +7,7 @@ nav:
 - Home: index.md
 - Diagnosis: dia.md
 - Pipeline: pipeline.md
-- Sample: sample.md
+- Sample and Splits: sample_and_splits.md
 - Numerical Functions: num.md
 - Statistics: stats.md
 - String Related: string.md
