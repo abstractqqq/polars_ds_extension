@@ -56,6 +56,7 @@ jobs:
           python -c 'from polars_ds import linear_models'
           python -c 'from polars_ds.ts_features import *'
           python -c 'from polars_ds.spatial import *'
+          python -c 'from polars_ds.sample_and_split import *'
 
       - name: Upload sdist
         uses: actions/upload-artifact@v4

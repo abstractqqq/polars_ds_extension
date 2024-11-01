@@ -12,11 +12,15 @@ def _sampler_expr(value: float | int, seed: int | None = None) -> pl.Expr:
     if isinstance(value, float):
         if value >= 1.0 or value <= 0.0:
             raise ValueError("Sample rate must be in (0, 1) range.")
-        return pl.int_range(0, pl.len()).shuffle(seed) < pl.len() * value
+        return pl.int_range(0, pl.len(), dtype=pl.UInt32).shuffle(seed) < (pl.len() * value).cast(
+            pl.UInt32
+        )
     elif isinstance(value, int):
         if value <= 0:
             raise ValueError("Sample count must be > 0.")
-        return pl.int_range(0, pl.len()).shuffle(seed) < value
+        return pl.int_range(0, pl.len(), dtype=pl.UInt32).shuffle(seed) < pl.lit(
+            value, dtype=pl.UInt32
+        )
     elif isinstance(value, pl.Expr):
         return NotImplemented
     else:
@@ -183,3 +187,68 @@ def random_cols(
     n = random.randrange(0, math.comb(pool_size, k))
     rand_cols = next(islice(to_sample, n, None), None)
     return out + list(rand_cols)
+
+
+def split_by_ratio(
+    df: PolarsFrame, split_ratio: float | List[float], seed: int | None = None
+) -> List[pl.DataFrame]:
+    """
+    Split the dataframe into multiple. If split_ratio is a single number, it is treated as the
+    ratio for the "train" set and the second is always the "test" set. If split_ratio is a list
+    of floats, then they must sum to 1 and the return will be dataframes split into the corresponding
+    ratios. Please avoid using floating point values with too many decimal places, which may cause
+    the splits to be off by a 1 row.
+
+    This will collect your LazyFrames.
+
+    Parameters
+    ----------
+    df
+        Either a lazy or eager Polars dataframe
+    split_ratio
+        Either a single float or a list of floats.
+    seed
+        The random seed
+    """
+
+    if isinstance(split_ratio, float):
+        if split_ratio <= 0.0 or split_ratio >= 1:
+            raise ValueError("Split ratio must be > 0 and < 1.")
+
+        frames = (
+            df.lazy()
+            .with_row_index(name="__id")
+            .collect()
+            .with_columns(
+                (pl.col("__id").shuffle(seed=seed) < (pl.len() * split_ratio).cast(pl.Int64)).alias(
+                    "__tt"
+                )
+            )
+            .partition_by("__tt", as_dict=True)
+        )
+        train = frames[(True,)].select(pl.col("*").exclude(["__id", "__tt"]))
+        test = frames[(False,)].select(pl.col("*").exclude(["__id", "__tt"]))
+        return [train, test]
+    else:
+        if sum(split_ratio) != 1:
+            raise ValueError("Sum of the ratios is not 1.")
+
+        df_eager = (
+            df.with_row_index(name="__id")
+            .with_columns(pl.col("__id").shuffle(seed=seed).alias("__tt"))
+            .sort("__tt")
+            .lazy()
+            .collect()
+        )
+
+        n = len(df_eager)
+        start = 0
+        dfs = []
+        for v in split_ratio:
+            length = int(n * v)
+            dfs.append(
+                df_eager.slice(start, length=length).select(pl.col("*").exclude(["__id", "__tt"]))
+            )
+            start += length
+
+        return dfs
