@@ -23,8 +23,9 @@ fn tp_fp_frame(
     if (actual.len() != predicted.len())
         || actual.is_empty()
         || predicted.is_empty()
-        || !predicted.dtype().is_numeric()
-        || ((actual.null_count() + predicted.null_count()) > 0)
+        || (!predicted.dtype().is_numeric())
+        || actual.has_nulls()
+        || predicted.has_nulls()
     {
         return Err(PolarsError::ComputeError(
             "ROC AUC: Input columns must be the same length, non-empty, numeric, and shouldn't contain nulls."
@@ -116,8 +117,13 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     let y = y.cont_slice()?; // Zero copy
     let x = x.cont_slice()?; // Zero copy
 
-    let roc_auc: f64 = -super::trapz::trapz(y, x);
-    let roc_auc: Series = Series::from_vec("roc_auc".into(), vec![roc_auc]);
+    let auc = if x.len() == 1 {
+        // x[0] >= 0. Inserting a 0 on the left means we don't need the - sign like the case below
+        super::trapz::trapz(&[0., y[0]], &[0., x[0]])
+    } else {
+        -super::trapz::trapz(y, x)
+    };
+    let auc: Series = Series::from_vec("roc_auc".into(), vec![auc]);
 
     // Average Precision
     let ap: f64 = -1.0
@@ -135,7 +141,7 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     let precision: Series = Series::from_vec("precision".into(), vec![precision]);
     let f: Series = Series::from_vec("f".into(), vec![f]);
 
-    let out = StructChunked::from_series("metrics".into(), 1, [&precision, &recall, &f, &ap, &roc_auc].into_iter())?;
+    let out = StructChunked::from_series("metrics".into(), 1, [&precision, &recall, &f, &ap, &auc].into_iter())?;
     Ok(out.into_series())
 }
 
@@ -198,8 +204,14 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
     let y = y.cont_slice()?;
     let x = x.cont_slice()?;
 
-    let out: f64 = -super::trapz::trapz(y, x);
-    Ok(Series::from_iter([out]))
+    let auc = if x.len() == 1 {
+        // x[0] >= 0. Inserting a 0 on the left means we don't need the - sign like the case below
+        super::trapz::trapz(&[0., y[0]], &[0., x[0]])
+    } else {
+        -super::trapz::trapz(y, x)
+    };
+    // let auc: f64 = -super::trapz::trapz(y, x);
+    Ok(Series::from_vec("roc_auc".into(), vec![auc]))
 }
 
 // bcm = binary confusion matrix
