@@ -141,6 +141,15 @@ def test_roc_auc():
 
     assert np.isnan(nan_roc)
 
+    # This is an edge case where we have only one value for predicted prob.
+    # This is just guessing at random so 0.5 is the right output.
+    # Technical reason:
+    # (TPR, FPR becomes 1 value, which messes up the trapz calculation, and we need to fill
+    # a 0 at the beginning to make sure the trapz calculation is always valid)
+    df = pl.DataFrame({"a": [0, 1], "b": [0.5, 0.5]})
+    result = df.select(pds.query_roc_auc(pl.col("a"), pl.col("b"))).item(0, 0)
+    assert result == 0.5
+
 
 def test_multiclass_roc_auc():
     from sklearn.metrics import roc_auc_score
