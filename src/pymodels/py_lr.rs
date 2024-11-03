@@ -5,10 +5,7 @@ use crate::linalg::{
     LinalgErrors,
 };
 use faer_ext::{IntoFaer, IntoNdarray};
-use numpy::{
-    IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1,
-    PyReadonlyArray2,
-};
+use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 

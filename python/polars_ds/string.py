@@ -1,3 +1,5 @@
+"""String-related utils, including edit distances, simple cleaning, etc."""
+
 from __future__ import annotations
 
 from typing import List, Literal, Dict

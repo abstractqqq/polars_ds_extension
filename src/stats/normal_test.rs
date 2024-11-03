@@ -7,7 +7,7 @@
 /// [1] D'Agostino, R. B. (1971), "An omnibus test of normality for
 ///     moderate and large sample size", Biometrika, 58, 341-348
 /// [2] https://www.stata.com/manuals/rsktest.pdf
-use super::{simple_stats_output, generic_stats_output};
+use super::{generic_stats_output, simple_stats_output};
 use crate::stats_utils::gamma;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;

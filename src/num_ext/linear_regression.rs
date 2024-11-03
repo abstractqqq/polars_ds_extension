@@ -227,7 +227,12 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                 }
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                ListPrimitiveChunkedBuilder::new("coeffs".into(), 1, coeffs.nrows(), DataType::Float64);
+                ListPrimitiveChunkedBuilder::new(
+                    "coeffs".into(),
+                    1,
+                    coeffs.nrows(),
+                    DataType::Float64,
+                );
 
             builder.append_slice(coeffs.col_as_slice(0));
             let out = builder.finish();
@@ -323,13 +328,18 @@ fn pl_lstsq_multi(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsResult<S
 
     let df_out = unsafe {
         DataFrame::new_no_checks(
-            x.nrows()
-            , y_names
+            x.nrows(),
+            y_names
                 .into_iter()
                 .enumerate()
                 .map(|(i, y)| {
                     let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                        ListPrimitiveChunkedBuilder::new(y.clone(), 1, coeffs.nrows(), DataType::Float64);
+                        ListPrimitiveChunkedBuilder::new(
+                            y.clone(),
+                            1,
+                            coeffs.nrows(),
+                            DataType::Float64,
+                        );
                     builder.append_slice(coeffs.col_as_slice(i));
                     let out = builder.finish();
                     out.into_column()
@@ -415,7 +425,12 @@ fn pl_lstsq_w_rcond(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Seri
             };
 
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                ListPrimitiveChunkedBuilder::new("coeffs".into(), 1, coeffs.nrows(), DataType::Float64);
+                ListPrimitiveChunkedBuilder::new(
+                    "coeffs".into(),
+                    1,
+                    coeffs.nrows(),
+                    DataType::Float64,
+                );
 
             builder.append_slice(coeffs.col_as_slice(0));
             let coeffs_ca = builder.finish();
@@ -432,9 +447,9 @@ fn pl_lstsq_w_rcond(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Seri
             let coeffs_sv = sv_builder.finish();
 
             let ca = StructChunked::from_columns(
-                "".into(), 
+                "".into(),
                 coeffs_sv.len(),
-                &[coeffs_ca.into_column(), coeffs_sv.into_column()]
+                &[coeffs_ca.into_column(), coeffs_sv.into_column()],
             )?;
             Ok(ca.into_series())
         }
@@ -618,7 +633,8 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
                     &p_series,
                     &lower,
                     &upper,
-                ].into_iter(),
+                ]
+                .into_iter(),
             )?;
             Ok(out.into_series())
         }
@@ -728,7 +744,8 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
                     &p_series,
                     &lower,
                     &upper,
-                ].into_iter(),
+                ]
+                .into_iter(),
             )?;
             Ok(out.into_series())
         }
@@ -818,9 +835,10 @@ fn pl_recursive_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult
             let coef_out = builder.finish();
             let pred_out = pred_builder.finish();
             let ca = StructChunked::from_series(
-                "".into(), 
-                coef_out.len(), 
-                [&coef_out.into_series(), &pred_out.into_series()].into_iter())?;
+                "".into(),
+                coef_out.len(),
+                [&coef_out.into_series(), &pred_out.into_series()].into_iter(),
+            )?;
             Ok(ca.into_series())
         }
         Err(e) => Err(e),
@@ -901,9 +919,10 @@ fn pl_rolling_lstsq(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<S
             let coef_out = builder.finish();
             let pred_out = pred_builder.finish();
             let ca = StructChunked::from_series(
-                "".into(), 
+                "".into(),
                 coef_out.len(),
-                [&coef_out.into_series(), &pred_out.into_series()].into_iter())?;
+                [&coef_out.into_series(), &pred_out.into_series()].into_iter(),
+            )?;
             Ok(ca.into_series())
         }
         Err(e) => Err(e),

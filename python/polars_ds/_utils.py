@@ -1,3 +1,5 @@
+"""Not meant for outside use."""
+
 import polars as pl
 from typing import Any, Optional, List, Dict, Union
 from pathlib import Path

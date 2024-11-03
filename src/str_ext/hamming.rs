@@ -15,7 +15,9 @@ fn hamming_within_bound(x: &str, y: &str, bound: usize) -> bool {
         x.chars(),
         y.chars(),
         &hamming::Args::default().score_cutoff(bound),
-    ).map(|op_dist| op_dist.is_some()).unwrap_or(false)
+    )
+    .map(|op_dist| op_dist.is_some())
+    .unwrap_or(false)
     // If result is Option<usize>, return true if is some. Every other case return false
 }
 
@@ -32,56 +34,57 @@ fn pl_hamming(inputs: &[Series], context: CallerContext) -> PolarsResult<Series>
         let out: UInt32Chunked = if can_parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits
-                .into_par_iter()
-                .map(|(offset, len)| {
-                    let s1 = ca1.slice(offset as i64, len);
-                    let out: UInt32Chunked = s1.into_iter().map(|op_s| {
+            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let s1 = ca1.slice(offset as i64, len);
+                let out: UInt32Chunked = s1
+                    .into_iter()
+                    .map(|op_s| {
                         let s = op_s?;
                         match batched.distance(s.chars()) {
                             Ok(d) => Some(d as u32),
-                            _ => None
+                            _ => None,
                         }
-                    }).collect();
-                    out.downcast_iter().cloned().collect::<Vec<_>>()
-                });
+                    })
+                    .collect();
+                out.downcast_iter().cloned().collect::<Vec<_>>()
+            });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             UInt32Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
-            ca1.into_iter().map(|op_s| {
-                let s = op_s?;
-                match batched.distance(s.chars()) {
-                    Ok(d) => Some(d as u32),
-                    _ => None
-                }
-            }).collect()
+            ca1.into_iter()
+                .map(|op_s| {
+                    let s = op_s?;
+                    match batched.distance(s.chars()) {
+                        Ok(d) => Some(d as u32),
+                        _ => None,
+                    }
+                })
+                .collect()
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
         let out: UInt32Chunked = if can_parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits
-                .into_par_iter()
-                .map(|(offset, len)| {
-                    let s1 = ca1.slice(offset as i64, len);
-                    let s2 = ca2.slice(offset as i64, len);
-                    let out: UInt32Chunked = s1
-                        .into_iter()
-                        .zip(s2.into_iter())
-                        .map(|(op_s1, op_s2)| {
-                            if let (Some(s1), Some(s2)) = (op_s1, op_s2) {
-                                match hamming::distance(s1.chars(), s2.chars()) {
-                                    Ok(d) => Some(d as u32),
-                                    Err(_) => None,
-                                }
-                            } else {
-                                None
+            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let s1 = ca1.slice(offset as i64, len);
+                let s2 = ca2.slice(offset as i64, len);
+                let out: UInt32Chunked = s1
+                    .into_iter()
+                    .zip(s2.into_iter())
+                    .map(|(op_s1, op_s2)| {
+                        if let (Some(s1), Some(s2)) = (op_s1, op_s2) {
+                            match hamming::distance(s1.chars(), s2.chars()) {
+                                Ok(d) => Some(d as u32),
+                                Err(_) => None,
                             }
-                        })
-                        .collect();
-                    out.downcast_iter().cloned().collect::<Vec<_>>()
-                });
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                out.downcast_iter().cloned().collect::<Vec<_>>()
+            });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             UInt32Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
@@ -121,19 +124,13 @@ fn pl_hamming_padded(inputs: &[Series], context: CallerContext) -> PolarsResult<
         let out: UInt32Chunked = if can_parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits
-                .into_par_iter()
-                .map(|(offset, len)| {
-                    let s1 = ca1.slice(offset as i64, len);
-                    let out: UInt32Chunked =
-                        s1.apply_nonnull_values_generic(DataType::UInt32, |s| {
-                            batched.distance_with_args(
-                                s.chars(),
-                                &padding,
-                            ) as u32
-                        });
-                    out.downcast_iter().cloned().collect::<Vec<_>>()
+            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let s1 = ca1.slice(offset as i64, len);
+                let out: UInt32Chunked = s1.apply_nonnull_values_generic(DataType::UInt32, |s| {
+                    batched.distance_with_args(s.chars(), &padding) as u32
                 });
+                out.downcast_iter().cloned().collect::<Vec<_>>()
+            });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             UInt32Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
@@ -146,29 +143,19 @@ fn pl_hamming_padded(inputs: &[Series], context: CallerContext) -> PolarsResult<
         let out: UInt32Chunked = if can_parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits
-                .into_par_iter()
-                .map(|(offset, len)| {
-                    let s1 = ca1.slice(offset as i64, len);
-                    let s2 = ca2.slice(offset as i64, len);
-                    let out: UInt32Chunked = binary_elementwise_values(&s1, &s2, |x, y| {
-                        hamming::distance_with_args(
-                            x.chars(),
-                            y.chars(),
-                            &padding,
-                        ) as u32
-                    });
-                    out.downcast_iter().cloned().collect::<Vec<_>>()
+            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let s1 = ca1.slice(offset as i64, len);
+                let s2 = ca2.slice(offset as i64, len);
+                let out: UInt32Chunked = binary_elementwise_values(&s1, &s2, |x, y| {
+                    hamming::distance_with_args(x.chars(), y.chars(), &padding) as u32
                 });
+                out.downcast_iter().cloned().collect::<Vec<_>>()
+            });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             UInt32Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
             binary_elementwise_values(ca1, ca2, |x, y| {
-                hamming::distance_with_args(
-                    x.chars(),
-                    y.chars(),
-                    &padding,
-                ) as u32
+                hamming::distance_with_args(x.chars(), y.chars(), &padding) as u32
             })
         };
         Ok(out.into_series())
@@ -217,27 +204,25 @@ fn pl_hamming_filter(inputs: &[Series], context: CallerContext) -> PolarsResult<
                 BooleanChunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
             })
         } else {
-            ca1.apply_nonnull_values_generic(DataType::Boolean, |s| 
+            ca1.apply_nonnull_values_generic(DataType::Boolean, |s| {
                 batched
                     .distance_with_args(s.chars(), &hamming::Args::default().score_cutoff(bound))
-                    .map(|op_dist| op_dist.is_some()).unwrap_or(false)
-            )
+                    .map(|op_dist| op_dist.is_some())
+                    .unwrap_or(false)
+            })
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
         let out: BooleanChunked = if can_parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter = splits
-                .into_par_iter()
-                .map(|(offset, len)| {
-                    let s1 = ca1.slice(offset as i64, len);
-                    let s2 = ca2.slice(offset as i64, len);
-                    let out: BooleanChunked = binary_elementwise_values(&s1, &s2, |x, y| {
-                        hamming_within_bound(x, y, bound)
-                    });
-                    out.downcast_iter().cloned().collect::<Vec<_>>()
-                });
+            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let s1 = ca1.slice(offset as i64, len);
+                let s2 = ca2.slice(offset as i64, len);
+                let out: BooleanChunked =
+                    binary_elementwise_values(&s1, &s2, |x, y| hamming_within_bound(x, y, bound));
+                out.downcast_iter().cloned().collect::<Vec<_>>()
+            });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             BooleanChunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {

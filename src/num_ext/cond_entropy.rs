@@ -3,7 +3,6 @@ use pyo3_polars::derive::polars_expr;
 
 #[polars_expr(output_type=Float64)]
 fn pl_conditional_entropy(inputs: &[Series]) -> PolarsResult<Series> {
-
     let df = df!("x" => inputs[0].clone(), "y" => inputs[1].clone())?;
     let mut out = df
         .lazy()
@@ -23,5 +22,6 @@ fn pl_conditional_entropy(inputs: &[Series]) -> PolarsResult<Series> {
         .alias("H(x|y)")])
         .collect()?;
 
-    out.drop_in_place("H(x|y)").map(|s| s.as_materialized_series().clone())
+    out.drop_in_place("H(x|y)")
+        .map(|s| s.as_materialized_series().clone())
 }

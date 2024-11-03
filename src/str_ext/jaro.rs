@@ -1,3 +1,4 @@
+use super::generic_str_distancer::{generic_batched_sim, generic_binary_sim};
 use crate::utils::split_offsets;
 use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
@@ -8,7 +9,6 @@ use pyo3_polars::{
         POOL,
     },
 };
-use super::generic_str_distancer::{generic_batched_sim, generic_binary_sim};
 use rapidfuzz::distance::{jaro, jaro_winkler};
 
 #[inline]
@@ -85,14 +85,13 @@ fn pl_jw(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
         let out: Float64Chunked = if parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
-            let chunks_iter= splits
-                .into_par_iter()
-                .map(|(offset, len)| {
-                    let s1 = ca1.slice(offset as i64, len);
-                    let s2 = ca2.slice(offset as i64, len);
-                    let out: Float64Chunked = binary_elementwise_values(&s1, &s2, |s1, s2| jw_sim(s1, s2, weight));
-                    out.downcast_iter().cloned().collect::<Vec<_>>()
-                });
+            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let s1 = ca1.slice(offset as i64, len);
+                let s2 = ca2.slice(offset as i64, len);
+                let out: Float64Chunked =
+                    binary_elementwise_values(&s1, &s2, |s1, s2| jw_sim(s1, s2, weight));
+                out.downcast_iter().cloned().collect::<Vec<_>>()
+            });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             Float64Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {

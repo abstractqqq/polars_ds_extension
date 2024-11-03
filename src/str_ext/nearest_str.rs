@@ -1,4 +1,3 @@
-
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use rapidfuzz::distance::{hamming, levenshtein};
@@ -21,7 +20,7 @@ fn levenshtein_nearest<'a>(s: &'a StringChunked, cutoff: usize, word: String) ->
         for w in arr.values_iter() {
             if let Some(d) = batched.distance_with_args(w.chars(), &actual_cutoff) {
                 if d == 0 {
-                    return Some(w)
+                    return Some(w);
                 } else if d < best {
                     best = d;
                     nearest_str = Some(w);
@@ -41,12 +40,10 @@ fn hamming_nearest<'a>(s: &'a StringChunked, cutoff: usize, word: String) -> Opt
 
     for arr in s.downcast_iter() {
         for w in arr.values_iter() {
-            if let Ok(ss) = batched
-                .distance_with_args(w.chars(), &actual_cutoff)
-            {
+            if let Ok(ss) = batched.distance_with_args(w.chars(), &actual_cutoff) {
                 if let Some(d) = ss {
                     if d == 0 {
-                        return Some(w)
+                        return Some(w);
                     } else if d < best {
                         best = d;
                         nearest_str = Some(w);
@@ -59,12 +56,8 @@ fn hamming_nearest<'a>(s: &'a StringChunked, cutoff: usize, word: String) -> Opt
     nearest_str
 }
 
-
 #[polars_expr(output_type=String)]
-pub fn pl_nearest_str(
-    inputs: &[Series],
-    kwargs: NearestStrKwargs,
-) -> PolarsResult<Series> {
+pub fn pl_nearest_str(inputs: &[Series], kwargs: NearestStrKwargs) -> PolarsResult<Series> {
     let s = inputs[0].str()?;
     let word = kwargs.word;
     let cutoff = kwargs.threshold;
@@ -77,4 +70,3 @@ pub fn pl_nearest_str(
     let ca = builder.finish();
     Ok(ca.into_series())
 }
-

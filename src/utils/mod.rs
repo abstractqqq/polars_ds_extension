@@ -30,21 +30,21 @@ pub fn to_f64_matrix_fail_on_nulls(
     inputs: &[Series],
     order: IndexOrder,
 ) -> PolarsResult<Array2<f64>> {
-    
     if inputs.iter().any(|s| s.has_nulls()) {
-        Err(PolarsError::ComputeError("Nulls are found in data and this method doesn't allow nulls.".into()))
+        Err(PolarsError::ComputeError(
+            "Nulls are found in data and this method doesn't allow nulls.".into(),
+        ))
     } else {
         let df = DataFrame::from_iter(inputs.iter().map(|s| Column::Series(s.clone())));
         df.to_ndarray::<Float64Type>(order)
     }
-
 }
 
 #[inline(always)]
 pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
-    Ok(
-        DataFrame::from_iter(inputs.iter().map(|s| Column::Series(s.clone())))
-    )
+    Ok(DataFrame::from_iter(
+        inputs.iter().map(|s| Column::Series(s.clone())),
+    ))
 }
 
 // #[inline(always)]

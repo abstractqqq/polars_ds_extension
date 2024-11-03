@@ -1,3 +1,7 @@
+"""
+Data Inspection Assistant and Visualizations for Polars Dataframe.
+"""
+
 from __future__ import annotations
 
 from ._utils import _IS_POLARS_V1
@@ -18,7 +22,7 @@ from functools import lru_cache
 from itertools import combinations
 from great_tables import GT, nanoplot_options
 
-from . import query_cond_entropy, query_principal_components, query_r2
+from . import query_cond_entropy, principal_components, query_r2
 from .type_alias import CorrMethod, PolarsFrame
 from .stats import corr
 from .sample_and_split import sample
@@ -1174,9 +1178,7 @@ class DIA:
         else:
             frame = self._frame.filter(filter_by)
 
-        temp = frame.select(
-            query_principal_components(*feats, center=center, k=dim).alias("pc"), by
-        )
+        temp = frame.select(principal_components(*feats, center=center, k=dim).alias("pc"), by)
         df = sample(temp, value=max_points).unnest("pc")
 
         if dim == 2:

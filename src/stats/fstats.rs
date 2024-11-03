@@ -1,15 +1,15 @@
-/// Multiple F-statistics at once and F test
-use core::f64;
 use super::simple_stats_output;
 use crate::stats_utils::beta::fisher_snedecor_sf;
+/// Multiple F-statistics at once and F test
+use core::f64;
 use itertools::Itertools;
 use ndarray::Axis;
-use polars::prelude::*;
 use polars::frame::column::Column;
+use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 /// Use inputs[0] as the target column (discrete, indicating the groups)
-/// and inputs[i] as the column to run F-test against the target, i > 0. 
+/// and inputs[i] as the column to run F-test against the target, i > 0.
 #[polars_expr(output_type_func=simple_stats_output)]
 fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
     // Use a df to make the computations parallel.
@@ -17,7 +17,7 @@ fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
     let v = inputs
         .into_iter()
         .enumerate()
-        .map(|(i, s)| Column::new(i.to_string().into(), s)) 
+        .map(|(i, s)| Column::new(i.to_string().into(), s))
         .collect_vec();
     let n_cols = v.len();
 
@@ -71,10 +71,12 @@ fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
     let df_in_class = n_samples.abs_diff(n_classes) as f64;
     // Note: reference is a df with 1 row. We need to get the stats out
     // fstats is 2D but with 1 row.
-    
+
     let scale = df_in_class / df_btw_class;
 
-    let mut fstats = reference.to_ndarray::<Float64Type>(IndexOrder::C)?.remove_axis(Axis(0));
+    let mut fstats = reference
+        .to_ndarray::<Float64Type>(IndexOrder::C)?
+        .remove_axis(Axis(0));
     fstats.map_inplace(|v| *v = *v * scale);
     let out_fstats = fstats.as_slice().unwrap(); // C order guarantees contiguous.
     let out_p: Vec<f64> = out_fstats

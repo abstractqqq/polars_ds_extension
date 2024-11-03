@@ -9,7 +9,9 @@ use numpy::{
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use rayon::prelude::*;
+use pyo3_polars::export::polars_core::utils::rayon::prelude::{
+    IndexedParallelIterator, IntoParallelIterator, ParallelIterator,
+};
 
 #[pyclass(subclass)]
 pub struct PyKDT {

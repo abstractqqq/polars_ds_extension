@@ -1,5 +1,5 @@
 """
-KNN related queries within a dataframe.
+KNN related query expressions in Polars.
 """
 
 from __future__ import annotations

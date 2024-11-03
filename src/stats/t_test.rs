@@ -1,7 +1,7 @@
+use super::{generic_stats_output, simple_stats_output, Alternative};
+use crate::{stats, stats_utils::beta};
 /// Student's t test and Welch's t test.
 use core::f64;
-use super::{simple_stats_output, generic_stats_output, Alternative};
-use crate::{stats, stats_utils::beta};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 

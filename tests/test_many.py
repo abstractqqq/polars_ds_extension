@@ -36,7 +36,7 @@ def test_pca():
         pds.random(0.0, 1.0).alias("x3"),
     )
 
-    singular_values = df.select(pds.query_singular_values("x1", "x2", "x3").alias("res"))["res"][
+    singular_values = df.select(pds.singular_values("x1", "x2", "x3").alias("res"))["res"][
         0
     ].to_numpy()
 
@@ -47,11 +47,11 @@ def test_pca():
 
     assert np.isclose(singular_values, ans_singular_values).all()
 
-    singular_values = df.select(pds.query_singular_values("x1", "x2", "x3").alias("res"))["res"][
+    singular_values = df.select(pds.singular_values("x1", "x2", "x3").alias("res"))["res"][
         0
     ].to_numpy()
 
-    vectors = df.select(pds.query_pca("x1", "x2", "x3").alias("vectors")).unnest("vectors")[
+    vectors = df.select(pds.pca("x1", "x2", "x3").alias("vectors")).unnest("vectors")[
         "weight_vector"
     ]
 
@@ -489,11 +489,9 @@ def test_cross_entropy(df, res):
     ],
 )
 def test_jaccard_row(df, res):
-    assert_frame_equal(df.select(pds.query_jaccard_row("a", "b").alias("res")), res)
+    assert_frame_equal(df.select(pds.jaccard_row("a", "b").alias("res")), res)
 
-    assert_frame_equal(
-        df.lazy().select(pds.query_jaccard_row("a", "b").alias("res")).collect(), res
-    )
+    assert_frame_equal(df.lazy().select(pds.jaccard_row("a", "b").alias("res")).collect(), res)
 
 
 def test_lin_reg_against_sklearn():
@@ -1002,10 +1000,10 @@ def test_lin_reg_with_rcond():
     ],
 )
 def test_jaccard_col(df, res):
-    assert_frame_equal(df.select(pds.query_jaccard_col("a", "b").alias("j")), res)
+    assert_frame_equal(df.select(pds.jaccard_col("a", "b").alias("j")), res)
 
     assert_frame_equal(
-        df.lazy().select(df.select(pds.query_jaccard_col("a", "b").alias("j"))).collect(), res
+        df.lazy().select(df.select(pds.jaccard_col("a", "b").alias("j"))).collect(), res
     )
 
 

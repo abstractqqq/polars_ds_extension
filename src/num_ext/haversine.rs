@@ -1,8 +1,7 @@
-use crate::utils::{haversine_elementwise, float_output};
+use crate::utils::{float_output, haversine_elementwise};
 use num::Float;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
-
 
 fn naive_haversine<T>(
     x_lat: &ChunkedArray<T>,
