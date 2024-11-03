@@ -12,7 +12,7 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = {version = "0.21", features = ["abi3-py39", "extension-module"]}
 pyo3-polars = {version = "0.18", features = ["derive", "dtype-array", "dtype-struct"]}
-polars = {version = "0.44", features = ["performant", "cse", "lazy", 
+polars = {version = "0.44.2", features = ["performant", "cse", "lazy", 
 "parquet", "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", 
 "cum_agg", "round_series", "nightly","dtype-array", "dtype-struct"], default-features = false}
 num = "0.4.1"

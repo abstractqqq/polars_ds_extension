@@ -14,19 +14,19 @@ __all__ = [
     "query_singular_values",
     "query_principal_components",
     "softmax",
-    "query_gcd",
-    "query_lcm",
+    "gcd",
+    "lcm",
     "haversine",
     "query_pca",
     "query_jaccard_row",
     "query_jaccard_col",
-    "query_psi",
-    "query_psi_w_breakpoints",
-    "query_psi_discrete",
-    "query_woe",
-    "query_woe_discrete",
-    "query_iv",
-    "query_iv_discrete",
+    "psi",
+    "psi_w_breakpoints",
+    "psi_discrete",
+    "woe",
+    "woe_discrete",
+    "info_value",
+    "info_value_discrete",
     "integrate_trapz",
     "convolve",
     "list_amax",
@@ -56,7 +56,7 @@ def softmax(x: str | pl.Expr) -> pl.Expr:
     return xx.exp() / (xx.exp().sum())
 
 
-def query_gcd(x: str | pl.Expr, y: int | str | pl.Expr) -> pl.Expr:
+def gcd(x: str | pl.Expr, y: int | str | pl.Expr) -> pl.Expr:
     """
     Computes GCD of two integer columns. This will try to cast everything to int32.
 
@@ -79,7 +79,7 @@ def query_gcd(x: str | pl.Expr, y: int | str | pl.Expr) -> pl.Expr:
     )
 
 
-def query_lcm(x: str | pl.Expr, y: Union[int, str, pl.Expr]) -> pl.Expr:
+def lcm(x: str | pl.Expr, y: Union[int, str, pl.Expr]) -> pl.Expr:
     """
     Computes LCM of two integer columns. This will try to cast everything to int32.
 
@@ -272,7 +272,7 @@ def query_jaccard_col(
     )
 
 
-def query_psi(
+def psi(
     new: str | pl.expr | Iterable[float],
     baseline: str | pl.expr | Iterable[float],
     n_bins: int = 10,
@@ -351,7 +351,7 @@ def query_psi(
     return psi_report.struct.field("psi_bin").sum()
 
 
-def query_psi_discrete(
+def psi_discrete(
     new: str | pl.expr | Iterable[float],
     baseline: str | pl.expr | Iterable[float],
     return_report: bool = False,
@@ -414,7 +414,7 @@ def query_psi_discrete(
     return psi_report.struct.field("psi_bin").sum()
 
 
-def query_psi_w_breakpoints(
+def psi_w_breakpoints(
     new: str | pl.expr | Iterable[float],
     baseline: str | pl.expr | Iterable[float],
     breakpoints: List[float],
@@ -461,9 +461,7 @@ def query_psi_w_breakpoints(
     ).alias("psi_report")
 
 
-def query_woe(
-    x: str | pl.Expr, target: str | pl.expr | Iterable[float], n_bins: int = 10
-) -> pl.Expr:
+def woe(x: str | pl.Expr, target: str | pl.expr | Iterable[float], n_bins: int = 10) -> pl.Expr:
     """
     Compute the Weight of Evidence for x with respect to target. This assumes x
     is continuous. A value of 1 is added to all events/non-events
@@ -494,7 +492,7 @@ def query_woe(
     return pl_plugin(symbol="pl_woe_discrete", args=[brk, t], changes_length=True)
 
 
-def query_woe_discrete(
+def woe_discrete(
     x: str | pl.Expr,
     target: Union[str | pl.Expr, Iterable[int]],
 ) -> pl.Expr:
@@ -525,7 +523,7 @@ def query_woe_discrete(
     )
 
 
-def query_iv(
+def info_value(
     x: str | pl.Expr,
     target: str | pl.expr | Iterable[float],
     n_bins: int = 10,
@@ -565,7 +563,7 @@ def query_iv(
     return out.struct.field("iv").sum() if return_sum else out
 
 
-def query_iv_discrete(
+def info_value_discrete(
     x: str | pl.Expr, target: str | pl.Expr | Iterable[int], return_sum: bool = True
 ) -> pl.Expr:
     """

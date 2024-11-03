@@ -385,9 +385,9 @@ def test_fract(df, res):
     ],
 )
 def test_gcd(df, other, res):
-    assert_frame_equal(df.select(pds.query_gcd("a", other).cast(pl.Int64)), res)
+    assert_frame_equal(df.select(pds.gcd("a", other).cast(pl.Int64)), res)
 
-    assert_frame_equal(df.lazy().select(pds.query_gcd("a", other).cast(pl.Int64)).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.gcd("a", other).cast(pl.Int64)).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -406,9 +406,9 @@ def test_gcd(df, other, res):
     ],
 )
 def test_lcm(df, other, res):
-    assert_frame_equal(df.select(pds.query_lcm("a", other).cast(pl.Int64)), res)
+    assert_frame_equal(df.select(pds.lcm("a", other).cast(pl.Int64)), res)
 
-    assert_frame_equal(df.lazy().select(pds.query_lcm("a", other).cast(pl.Int64)).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.lcm("a", other).cast(pl.Int64)).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -1671,7 +1671,7 @@ def test_approximate_entropy_edge_cases():
     ],
 )
 def test_psi(df, n_bins, res):
-    ans = df.select(pds.query_psi("act", pl.col("ref"), n_bins=n_bins)).item(0, 0)
+    ans = df.select(pds.psi("act", pl.col("ref"), n_bins=n_bins)).item(0, 0)
     assert np.isclose(ans, res)
 
 
@@ -1699,7 +1699,7 @@ def test_psi(df, n_bins, res):
     ],
 )
 def test_psi_discrete(df, res):
-    ans = df.select(pds.query_psi_discrete("act", pl.col("ref"))).item(0, 0)
+    ans = df.select(pds.psi_discrete("act", pl.col("ref"))).item(0, 0)
     assert np.isclose(ans, res)
 
 
