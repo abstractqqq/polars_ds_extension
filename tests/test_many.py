@@ -1759,3 +1759,36 @@ def test_auto_corr():
     np_result = np.array([autocorr(x, i) for i in range(1, 10)])
 
     assert np.all(np.abs(pds_result - np_result) < 1e-6)
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "a": [1.5, 1.0, 4.0, 6.0, 5.7, 5.0, 7.8, 9.0, 7.5, 9.5, 9.0],
+                    "b": [1, 1, 2, 2, 1, 1, 3, 3, 1, 1, 1],
+                }
+            )
+        ),
+    ],
+)
+def test_isotonic(df):
+    from scipy.optimize import isotonic_regression
+
+    pds_no_weights = df.select(res=pds.isotonic_regression(pl.col("a"), weights=None))[
+        "res"
+    ].to_numpy()
+
+    scipy_no_weights = isotonic_regression(df["a"].to_numpy()).x
+
+    assert np.all(pds_no_weights == scipy_no_weights)
+
+    pds_w_weights = df.select(res=pds.isotonic_regression(pl.col("a"), weights=pl.col("b")))[
+        "res"
+    ].to_numpy()
+
+    scipy_w_weights = isotonic_regression(df["a"].to_numpy(), weights=df["b"].to_numpy()).x
+
+    assert np.all(pds_w_weights == scipy_w_weights)

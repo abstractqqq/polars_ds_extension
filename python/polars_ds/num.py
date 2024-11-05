@@ -43,6 +43,7 @@ __all__ = [
     "fract",
     "center",
     "z_normalize",
+    "isotonic_regression",
 ]
 
 
@@ -874,4 +875,41 @@ def target_encode(
         args=[str_to_expr(s), t, t.mean()],
         kwargs={"min_samples_leaf": float(min_samples_leaf), "smoothing": smoothing},
         changes_length=True,
+    )
+
+
+def isotonic_regression(
+    y: str | pl.Expr,
+    weights: str | pl.Expr | None = None,
+    # , increasing: bool = True
+) -> pl.Expr:
+    """
+    Performs isotonic regression on the data. This is the same as scipy.optimize.isotonic_regression.
+
+    Parameters
+    ----------
+    y
+        The response variable
+    weights
+        The weights for the response
+    """
+    # increasing
+    #     If true, output will be monotonically inreasing. If false, it will be monotonically
+    #     decreasing.
+    #
+    # Doesn't work really. Not sure why
+
+    yy = str_to_expr(y)
+    args = [yy]
+    has_weights = weights is not None
+    if has_weights:
+        args.append(str_to_expr(weights).cast(pl.Float64))
+
+    return pl_plugin(
+        symbol="pl_isotonic_regression",
+        args=args,
+        kwargs={
+            "has_weights": has_weights,
+            "increasing": True,
+        },
     )

@@ -9,8 +9,10 @@ use polars::{
     prelude::*,
     series::Series,
 };
-use pyo3_polars::export::polars_core::POOL;
-use rayon::prelude::*;
+use pyo3_polars::export::polars_core::{
+    utils::rayon::iter::{IntoParallelRefIterator, IndexedParallelIterator, ParallelIterator},
+    POOL,
+};
 
 // -------------------------------------------------------------------------------
 // Common, Resuable Functions
