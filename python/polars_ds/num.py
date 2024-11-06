@@ -879,9 +879,7 @@ def target_encode(
 
 
 def isotonic_regression(
-    y: str | pl.Expr,
-    weights: str | pl.Expr | None = None,
-    # , increasing: bool = True
+    y: str | pl.Expr, weights: str | pl.Expr | None = None, increasing: bool = True
 ) -> pl.Expr:
     """
     Performs isotonic regression on the data. This is the same as scipy.optimize.isotonic_regression.
@@ -892,12 +890,18 @@ def isotonic_regression(
         The response variable
     weights
         The weights for the response
+    increasing
+        If true, output will be monotonically inreasing. If false, it will be monotonically
+        decreasing.
     """
-    # increasing
-    #     If true, output will be monotonically inreasing. If false, it will be monotonically
-    #     decreasing.
-    #
-    # Doesn't work really. Not sure why
+
+    import warnings
+
+    warnings.warn(
+        "Isotonic seems to work but is not getting the same results as SciPy. It's being marked as experimental and use with caution.",
+        UserWarning,
+        stacklevel=2,
+    )
 
     yy = str_to_expr(y).cast(pl.Float64)
     args = [yy]
@@ -910,7 +914,7 @@ def isotonic_regression(
         args=args,
         kwargs={
             "has_weights": has_weights,
-            "increasing": True,
+            "increasing": increasing,
         },
         is_elementwise=True,
     )

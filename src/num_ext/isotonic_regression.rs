@@ -55,7 +55,7 @@ fn isotonic_regression(
         w[b] = w_pre;
 
         r[b + 1] = i + 1;
-        println!("{:?}", x);
+        // println!("{:?}", x);
     }
 
     let mut f = n - 1;
@@ -67,7 +67,7 @@ fn isotonic_regression(
         }
         f = t - 1;
     }
-    println!("{:?}", x);
+    // println!("{:?}", x);
 
 }
 
