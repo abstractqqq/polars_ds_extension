@@ -899,7 +899,7 @@ def isotonic_regression(
     #
     # Doesn't work really. Not sure why
 
-    yy = str_to_expr(y)
+    yy = str_to_expr(y).cast(pl.Float64)
     args = [yy]
     has_weights = weights is not None
     if has_weights:
@@ -912,4 +912,5 @@ def isotonic_regression(
             "has_weights": has_weights,
             "increasing": True,
         },
+        is_elementwise=True,
     )

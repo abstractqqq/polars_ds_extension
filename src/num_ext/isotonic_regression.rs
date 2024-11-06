@@ -26,27 +26,26 @@ fn isotonic_regression(
     let mut x_pre = x[b];
     let mut w_pre = w[b];
 
-    for i in 1..n {
+    for mut i in 1..n {
         b += 1;
         let mut xb = x[i];
         let mut wb = w[i];
-        let mut j = i;
         if x_pre >= xb {
             b -= 1;
-            let mut s = w_pre * x_pre + wb * xb;
+            let mut sb = w_pre * x_pre + wb * xb;
             wb += w_pre;
-            xb = s / wb;
-            while j + 1 < n && xb >= x[j + 1] {
-                j += 1;
-                s += w[j] * x[j];
-                wb += w[j];
-                xb = s / wb;
+            xb = sb / wb;
+            while i + 1 < n && xb >= x[i + 1] {
+                i += 1;
+                sb += w[i] * x[i];
+                wb += w[i];
+                xb = sb / wb;
             }
             while b > 0 && x[b - 1] >= xb {
                 b -= 1;
-                s += w[b] * x[b];
+                sb += w[b] * x[b];
                 wb += w[b];
-                xb = s / wb;
+                xb = sb / wb;
             }
         }
         x_pre = xb;
@@ -54,18 +53,21 @@ fn isotonic_regression(
 
         w_pre = wb;
         w[b] = w_pre;
-        r[b + 1] = j + 1; // i + 1;
+
+        r[b + 1] = i + 1;
+        println!("{:?}", x);
     }
 
     let mut f = n - 1;
     for k in (0..=b).rev() {
         let t = r[k];
         let xk = x[k];
-        for i in (t..=f).rev() {
+        for i in t..=f {
             x[i] = xk;
         }
         f = t - 1;
     }
+    println!("{:?}", x);
 
 }
 
@@ -76,7 +78,7 @@ fn pl_isotonic_regression(inputs: &[Series], kwargs: IsotonicRegKwargs) -> Polar
     let y = inputs[0].f64()?;
     let increasing = kwargs.increasing; 
 
-    if y.len() == 1 {
+    if y.len() <= 1 {
         return Ok(y.clone().into_series())
     }
 
@@ -109,7 +111,7 @@ fn pl_isotonic_regression(inputs: &[Series], kwargs: IsotonicRegKwargs) -> Polar
 
     if !increasing {
         y.reverse();
-    }    
+    }
 
     let mut r = vec![y.len() - 1; y.len() + 1];
     isotonic_regression(&mut y, &mut w, &mut r);
