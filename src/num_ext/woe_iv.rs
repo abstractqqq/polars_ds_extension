@@ -31,14 +31,12 @@ fn get_woe_frame(discrete_col: &Series, target: &Series) -> PolarsResult<LazyFra
         .drop_nulls(None)
         .group_by([col("value")])
         .agg([
-            len().cast(DataType::Float64).alias("cnt"), 
-            col("target").sum().cast(DataType::Float64).alias("goods")
-            ])
+            len().cast(DataType::Float64).alias("cnt"),
+            col("target").sum().cast(DataType::Float64).alias("goods"),
+        ])
         .select([
             col("value"),
-            ((col("goods") + lit(1f64))
-                / (col("goods").sum() + lit(2f64)))
-            .alias("good_pct"),
+            ((col("goods") + lit(1f64)) / (col("goods").sum() + lit(2f64))).alias("good_pct"),
             ((col("cnt") - col("goods") + lit(1f64))
                 / (col("cnt").sum() - col("goods").sum() + lit(2f64)))
             .alias("bad_pct"),

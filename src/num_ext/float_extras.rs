@@ -192,5 +192,4 @@ fn pl_fract(inputs: &[Series]) -> PolarsResult<Series> {
             ))
         }
     }
-
 }

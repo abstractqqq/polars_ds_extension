@@ -3,6 +3,7 @@ This module provides classic ML dataset transforms. Note all functions here are 
 that the data learned (e.g. mean value in mean imputation) will not be preserved. For pipeline usage, which
 preserves the learned values and optimizes the transform query, see pipeline.py.
 """
+
 from __future__ import annotations
 
 import polars as pl
@@ -489,7 +490,7 @@ def woe_encode(
     default_value = _encoder_default_value(temp, default=default, target=target)
 
     temp = temp.select(
-        pds_num.query_woe_discrete(c, target).implode() for c in valid_cols
+        pds_num.woe_discrete(c, target).implode() for c in valid_cols
     ).collect()  # add collect config..
     # POLARS_V1
     if _IS_POLARS_V1:
@@ -558,7 +559,7 @@ def iv_encode(
     default_value = _encoder_default_value(temp, default=default, target=target)
 
     temp = temp.select(
-        pds_num.query_iv_discrete(c, target, return_sum=False).implode() for c in valid_cols
+        pds_num.info_value_discrete(c, target, return_sum=False).implode() for c in valid_cols
     ).collect()  # add collect config..
     # POLARS_V1
     if _IS_POLARS_V1:

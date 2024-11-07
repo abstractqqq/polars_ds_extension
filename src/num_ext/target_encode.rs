@@ -67,5 +67,7 @@ fn pl_target_encode(inputs: &[Series], kwargs: TargetEncodeKwargs) -> PolarsResu
     )?
     .collect()?;
 
-    Ok(encoding_frame.into_struct("target_encoded".into()).into_series())
+    Ok(encoding_frame
+        .into_struct("target_encoded".into())
+        .into_series())
 }

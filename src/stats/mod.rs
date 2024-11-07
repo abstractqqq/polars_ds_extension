@@ -35,7 +35,7 @@ impl From<&str> for Alternative {
 }
 
 #[inline]
-fn generic_stats_output(statistic:f64, pvalue:f64) -> PolarsResult<Series> {
+fn generic_stats_output(statistic: f64, pvalue: f64) -> PolarsResult<Series> {
     let s = Series::from_vec("statistic".into(), vec![statistic]);
     let p = Series::from_vec("pvalue".into(), vec![pvalue]);
     let out = StructChunked::from_series("".into(), 1, [&s, &p].into_iter())?;

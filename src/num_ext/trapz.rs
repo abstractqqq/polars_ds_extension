@@ -24,7 +24,7 @@ fn pl_trapz(inputs: &[Series]) -> PolarsResult<Series> {
     let x = inputs[1].f64()?;
     if y.len() < 2 {
         let ca = Float64Chunked::from_slice("".into(), &[f64::NAN]);
-        return Ok(ca.into_series())
+        return Ok(ca.into_series());
     }
     if x.has_nulls() || y.has_nulls() {
         return Err(PolarsError::ComputeError(

@@ -1,3 +1,6 @@
+use super::generic_str_distancer::{
+    generic_batched_distance, generic_batched_sim, generic_binary_distance, generic_binary_sim,
+};
 use crate::utils::split_offsets;
 use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
@@ -6,12 +9,6 @@ use pyo3_polars::{
         utils::rayon::prelude::{IntoParallelIterator, ParallelIterator},
         POOL,
     },
-};
-use super::generic_str_distancer::{
-    generic_batched_distance, 
-    generic_batched_sim,
-    generic_binary_distance,
-    generic_binary_sim
 };
 use rapidfuzz::distance::{damerau_levenshtein, levenshtein};
 
@@ -95,14 +92,14 @@ fn pl_levenshtein_filter(inputs: &[Series], context: CallerContext) -> PolarsRes
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             BooleanChunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
-            ca1.apply_nonnull_values_generic(DataType::Boolean, |s| 
+            ca1.apply_nonnull_values_generic(DataType::Boolean, |s| {
                 batched
                     .distance_with_args(
                         s.chars(),
                         &levenshtein::Args::default().score_cutoff(bound),
                     )
                     .is_some()
-            )
+            })
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -162,7 +159,12 @@ fn pl_d_levenshtein(inputs: &[Series], context: CallerContext) -> PolarsResult<S
         let batched = damerau_levenshtein::BatchComparator::new(r.chars());
         Ok(generic_batched_distance(batched, ca1, can_parallel))
     } else if ca1.len() == ca2.len() {
-        Ok(generic_binary_distance(d_levenshtein, ca1, ca2, can_parallel))
+        Ok(generic_binary_distance(
+            d_levenshtein,
+            ca1,
+            ca2,
+            can_parallel,
+        ))
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),
@@ -182,7 +184,12 @@ fn pl_d_levenshtein_sim(inputs: &[Series], context: CallerContext) -> PolarsResu
         let batched = damerau_levenshtein::BatchComparator::new(r.chars());
         Ok(generic_batched_sim(batched, ca1, can_parallel))
     } else if ca1.len() == ca2.len() {
-        Ok(generic_binary_sim(d_levenshtein_sim, ca1, ca2, can_parallel))
+        Ok(generic_binary_sim(
+            d_levenshtein_sim,
+            ca1,
+            ca2,
+            can_parallel,
+        ))
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),

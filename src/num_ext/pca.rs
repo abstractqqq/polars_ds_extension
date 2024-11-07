@@ -82,9 +82,7 @@ fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
 
     let columns = if mat.nrows() < k {
         (0..k)
-            .map(|i| 
-                Series::from_vec(format!("pc{}", i + 1).into(), vec![f64::NAN]).into_column()
-            )
+            .map(|i| Series::from_vec(format!("pc{}", i + 1).into(), vec![f64::NAN]).into_column())
             .collect::<Vec<Column>>()
     } else {
         let dim = Ord::min(mat.nrows(), mat.ncols());
@@ -169,9 +167,9 @@ fn pl_pca(inputs: &[Series]) -> PolarsResult<Series> {
     let out1 = builder.finish();
     let out2 = list_builder.finish();
     let out = StructChunked::from_series(
-        "pca".into(), 
+        "pca".into(),
         out1.len(),
-        [&out1.into_series(), &out2.into_series()].into_iter()
+        [&out1.into_series(), &out2.into_series()].into_iter(),
     )?;
     Ok(out.into_series())
 }

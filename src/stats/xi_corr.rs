@@ -9,8 +9,7 @@ fn _xi_corr(inputs: &[Series]) -> PolarsResult<Series> {
     // Input 2 should be (-y).rank(method="max").cast(pl.Float64).alias("l")
 
     let df = df!("x_rk" => &inputs[0], "r" => &inputs[1], "l" => &inputs[2])?.lazy();
-    Ok(
-        df
+    Ok(df
         .sort(["x_rk"], Default::default())
         .select([(lit(1.0)
             - ((len().cast(DataType::Float64) / lit(2.0))
@@ -21,8 +20,7 @@ fn _xi_corr(inputs: &[Series]) -> PolarsResult<Series> {
         .drop_in_place("statistic")
         .unwrap()
         .as_materialized_series()
-        .clone()
-    )
+        .clone())
 }
 
 #[polars_expr(output_type=Float64)]

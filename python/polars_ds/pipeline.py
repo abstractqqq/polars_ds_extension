@@ -1,3 +1,5 @@
+"""Tabular Machine Learning Pipelines with native Polars support."""
+
 from __future__ import annotations
 
 import polars as pl

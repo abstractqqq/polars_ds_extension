@@ -12,8 +12,8 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = {version = "0.21", features = ["abi3-py39", "extension-module"]}
 pyo3-polars = {version = "0.18", features = ["derive", "dtype-array", "dtype-struct"]}
-polars = {version = "0.44", features = ["performant", "cse", "lazy", 
-"parquet", "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", 
+polars = {version = "0.44.2", features = ["performant", "lazy", 
+"diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", 
 "cum_agg", "round_series", "nightly","dtype-array", "dtype-struct"], default-features = false}
 num = "0.4.1"
 faer = {version = "0.19", features = ["nightly"]}
@@ -31,10 +31,9 @@ ordered-float = "4.2.0"
 approx = "*"
 ahash = ">=0.8.5"
 unicode-normalization = "0.1.23"
-# Update to 0.22
+# Update to 0.22, when pyo3-polars supports pyo3 0.22
 numpy = "0.21" 
 cfavml = {version = "0.3.0", features=["nightly"]}
-rayon = "1.10.0"
 
 # Remove this part once I update polars dependency
 [target.'cfg(target_os = "linux")'.dependencies]

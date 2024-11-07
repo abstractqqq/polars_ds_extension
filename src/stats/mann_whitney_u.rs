@@ -1,5 +1,5 @@
 /// Mann-Whitney U Statistics
-use super::{simple_stats_output, generic_stats_output, Alternative};
+use super::{generic_stats_output, simple_stats_output, Alternative};
 use crate::stats_utils::normal;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;

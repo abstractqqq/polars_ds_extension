@@ -36,7 +36,7 @@ def test_pca():
         pds.random(0.0, 1.0).alias("x3"),
     )
 
-    singular_values = df.select(pds.query_singular_values("x1", "x2", "x3").alias("res"))["res"][
+    singular_values = df.select(pds.singular_values("x1", "x2", "x3").alias("res"))["res"][
         0
     ].to_numpy()
 
@@ -47,11 +47,11 @@ def test_pca():
 
     assert np.isclose(singular_values, ans_singular_values).all()
 
-    singular_values = df.select(pds.query_singular_values("x1", "x2", "x3").alias("res"))["res"][
+    singular_values = df.select(pds.singular_values("x1", "x2", "x3").alias("res"))["res"][
         0
     ].to_numpy()
 
-    vectors = df.select(pds.query_pca("x1", "x2", "x3").alias("vectors")).unnest("vectors")[
+    vectors = df.select(pds.pca("x1", "x2", "x3").alias("vectors")).unnest("vectors")[
         "weight_vector"
     ]
 
@@ -385,9 +385,9 @@ def test_fract(df, res):
     ],
 )
 def test_gcd(df, other, res):
-    assert_frame_equal(df.select(pds.query_gcd("a", other).cast(pl.Int64)), res)
+    assert_frame_equal(df.select(pds.gcd("a", other).cast(pl.Int64)), res)
 
-    assert_frame_equal(df.lazy().select(pds.query_gcd("a", other).cast(pl.Int64)).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.gcd("a", other).cast(pl.Int64)).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -406,9 +406,9 @@ def test_gcd(df, other, res):
     ],
 )
 def test_lcm(df, other, res):
-    assert_frame_equal(df.select(pds.query_lcm("a", other).cast(pl.Int64)), res)
+    assert_frame_equal(df.select(pds.lcm("a", other).cast(pl.Int64)), res)
 
-    assert_frame_equal(df.lazy().select(pds.query_lcm("a", other).cast(pl.Int64)).collect(), res)
+    assert_frame_equal(df.lazy().select(pds.lcm("a", other).cast(pl.Int64)).collect(), res)
 
 
 @pytest.mark.parametrize(
@@ -489,11 +489,9 @@ def test_cross_entropy(df, res):
     ],
 )
 def test_jaccard_row(df, res):
-    assert_frame_equal(df.select(pds.query_jaccard_row("a", "b").alias("res")), res)
+    assert_frame_equal(df.select(pds.jaccard_row("a", "b").alias("res")), res)
 
-    assert_frame_equal(
-        df.lazy().select(pds.query_jaccard_row("a", "b").alias("res")).collect(), res
-    )
+    assert_frame_equal(df.lazy().select(pds.jaccard_row("a", "b").alias("res")).collect(), res)
 
 
 def test_lin_reg_against_sklearn():
@@ -1002,10 +1000,10 @@ def test_lin_reg_with_rcond():
     ],
 )
 def test_jaccard_col(df, res):
-    assert_frame_equal(df.select(pds.query_jaccard_col("a", "b").alias("j")), res)
+    assert_frame_equal(df.select(pds.jaccard_col("a", "b").alias("j")), res)
 
     assert_frame_equal(
-        df.lazy().select(df.select(pds.query_jaccard_col("a", "b").alias("j"))).collect(), res
+        df.lazy().select(df.select(pds.jaccard_col("a", "b").alias("j"))).collect(), res
     )
 
 
@@ -1671,7 +1669,7 @@ def test_approximate_entropy_edge_cases():
     ],
 )
 def test_psi(df, n_bins, res):
-    ans = df.select(pds.query_psi("act", pl.col("ref"), n_bins=n_bins)).item(0, 0)
+    ans = df.select(pds.psi("act", pl.col("ref"), n_bins=n_bins)).item(0, 0)
     assert np.isclose(ans, res)
 
 
@@ -1699,7 +1697,7 @@ def test_psi(df, n_bins, res):
     ],
 )
 def test_psi_discrete(df, res):
-    ans = df.select(pds.query_psi_discrete("act", pl.col("ref"))).item(0, 0)
+    ans = df.select(pds.psi_discrete("act", pl.col("ref"))).item(0, 0)
     assert np.isclose(ans, res)
 
 
@@ -1761,3 +1759,36 @@ def test_auto_corr():
     np_result = np.array([autocorr(x, i) for i in range(1, 10)])
 
     assert np.all(np.abs(pds_result - np_result) < 1e-6)
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        (
+            pl.DataFrame(
+                {
+                    "a": [1.5, 1.0, 4.0, 6.0, 5.7, 5.0, 7.8, 9.0, 7.5, 9.5, 9.0],
+                    "b": [1, 1, 2, 2, 1, 1, 3, 3, 1, 1, 1],
+                }
+            )
+        ),
+    ],
+)
+def test_isotonic(df):
+    from scipy.optimize import isotonic_regression
+
+    pds_no_weights = df.select(res=pds.isotonic_regression(pl.col("a"), weights=None))[
+        "res"
+    ].to_numpy()
+
+    scipy_no_weights = isotonic_regression(df["a"].to_numpy()).x
+
+    assert np.all(pds_no_weights == scipy_no_weights)
+
+    pds_w_weights = df.select(res=pds.isotonic_regression(pl.col("a"), weights=pl.col("b")))[
+        "res"
+    ].to_numpy()
+
+    scipy_w_weights = isotonic_regression(df["a"].to_numpy(), weights=df["b"].to_numpy()).x
+
+    assert np.all(pds_w_weights == scipy_w_weights)

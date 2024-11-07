@@ -1,11 +1,8 @@
+use super::generic_str_distancer::{
+    generic_batched_distance, generic_batched_sim, generic_binary_distance, generic_binary_sim,
+};
 use polars::prelude::*;
 use pyo3_polars::derive::{polars_expr, CallerContext};
-use super::generic_str_distancer::{
-    generic_batched_distance, 
-    generic_batched_sim,
-    generic_binary_distance,
-    generic_binary_sim
-};
 use rapidfuzz::distance::lcs_seq;
 
 #[inline(always)]

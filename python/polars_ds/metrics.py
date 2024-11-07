@@ -1,10 +1,11 @@
+"""Machine Learning / Time series Loss and Evaluation Metrics"""
+
 from __future__ import annotations
 
 import polars as pl
 
 from ._utils import pl_plugin
 from .type_alias import MultiAUCStrategy, str_to_expr
-
 
 __all__ = [
     "query_r2",

@@ -1,6 +1,5 @@
-"""
-Common feature engineering queries and time series features as Polars queries. 
-"""
+"""Time series features."""
+
 from __future__ import annotations
 
 import math

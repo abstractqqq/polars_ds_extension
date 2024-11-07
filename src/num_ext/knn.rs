@@ -120,18 +120,16 @@ fn pl_knn_avg(
     let ca = if can_parallel {
         let n_threads = POOL.current_num_threads();
         let splits = split_offsets(nrows, n_threads);
-        let chunks_iter = splits
-            .into_par_iter()
-            .map(|(offset, len)| {
-                let subslice = &data[offset * ncols..(offset + len) * ncols];
-                let out = Float64Chunked::from_iter_options(
-                    "".into(),
-                    subslice
-                        .chunks_exact(ncols)
-                        .map(|row| tree.knn_regress(k + 1, row, min_bound, max_bound, method)),
-                );
-                out.downcast_iter().cloned().collect::<Vec<_>>()
-            });
+        let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+            let subslice = &data[offset * ncols..(offset + len) * ncols];
+            let out = Float64Chunked::from_iter_options(
+                "".into(),
+                subslice
+                    .chunks_exact(ncols)
+                    .map(|row| tree.knn_regress(k + 1, row, min_bound, max_bound, method)),
+            );
+            out.downcast_iter().cloned().collect::<Vec<_>>()
+        });
         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
         Float64Chunked::from_chunk_iter("".into(), chunks.into_iter().flatten())
     } else {
@@ -167,8 +165,12 @@ where
         let n_threads = POOL.current_num_threads();
         let splits = split_offsets(nrows, n_threads);
         let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-            let mut builder =
-                ListPrimitiveChunkedBuilder::<UInt32Type>::new("".into(), len, k + 1, DataType::UInt32);
+            let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
+                "".into(),
+                len,
+                k + 1,
+                DataType::UInt32,
+            );
 
             let subslice = &data[offset * ncols..(offset + len) * ncols];
             let mask = &eval_mask[offset..offset + len];
@@ -333,12 +335,17 @@ where
                 .collect();
 
             let ca_nb = ListChunked::from_chunk_iter("idx".into(), chunks.0.into_iter().flatten());
-            let ca_dist = ListChunked::from_chunk_iter("dist".into(), chunks.1.into_iter().flatten());
+            let ca_dist =
+                ListChunked::from_chunk_iter("dist".into(), chunks.1.into_iter().flatten());
             (ca_nb, ca_dist)
         })
     } else {
-        let mut builder =
-            ListPrimitiveChunkedBuilder::<UInt32Type>::new("idx".into(), nrows, k + 1, DataType::UInt32);
+        let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
+            "idx".into(),
+            nrows,
+            k + 1,
+            DataType::UInt32,
+        );
         let mut dist_builder = ListPrimitiveChunkedBuilder::<Float64Type>::new(
             "dist".into(),
             nrows,
@@ -425,9 +432,9 @@ fn pl_knn_ptwise_w_dist(
     .map_err(|err| PolarsError::ComputeError(err.into()))?;
 
     let out = StructChunked::from_series(
-        "knn_dist".into(), 
-        ca_nb.len(), 
-        [&ca_nb.into_series(), &ca_dist.into_series()].into_iter()
+        "knn_dist".into(),
+        ca_nb.len(),
+        [&ca_nb.into_series(), &ca_dist.into_series()].into_iter(),
     )?;
     Ok(out.into_series())
 }
@@ -448,8 +455,12 @@ where
         let n_threads = POOL.current_num_threads();
         let splits = split_offsets(nrows, n_threads);
         let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-            let mut builder =
-                ListPrimitiveChunkedBuilder::<UInt32Type>::new("".into(), len, 16, DataType::UInt32);
+            let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
+                "".into(),
+                len,
+                16,
+                DataType::UInt32,
+            );
 
             let subslice = &data[offset * ncols..(offset + len) * ncols];
             for p in subslice.chunks_exact(ncols) {
@@ -465,8 +476,12 @@ where
         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
         ListChunked::from_chunk_iter("".into(), chunks.into_iter().flatten())
     } else {
-        let mut builder =
-            ListPrimitiveChunkedBuilder::<UInt32Type>::new("".into(), data.len(), 16, DataType::UInt32);
+        let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
+            "".into(),
+            data.len(),
+            16,
+            DataType::UInt32,
+        );
 
         for p in data.chunks_exact(ncols) {
             // C order (row major) makes sure rows are contiguous

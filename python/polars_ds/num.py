@@ -1,7 +1,9 @@
+"""Miscallaneous Numerical Functions and Transforms."""
+
 from __future__ import annotations
 import math
 import polars as pl
-from typing import Union, List, Iterable
+from typing import List, Iterable
 from .type_alias import (
     DetrendMethod,
     ConvMode,
@@ -11,22 +13,22 @@ from .type_alias import (
 from ._utils import pl_plugin
 
 __all__ = [
-    "query_singular_values",
-    "query_principal_components",
+    "singular_values",
+    "principal_components",
+    "pca",
     "softmax",
-    "query_gcd",
-    "query_lcm",
+    "gcd",
+    "lcm",
     "haversine",
-    "query_pca",
-    "query_jaccard_row",
-    "query_jaccard_col",
-    "query_psi",
-    "query_psi_w_breakpoints",
-    "query_psi_discrete",
-    "query_woe",
-    "query_woe_discrete",
-    "query_iv",
-    "query_iv_discrete",
+    "jaccard_row",
+    "jaccard_col",
+    "psi",
+    "psi_w_breakpoints",
+    "psi_discrete",
+    "woe",
+    "woe_discrete",
+    "info_value",
+    "info_value_discrete",
     "integrate_trapz",
     "convolve",
     "list_amax",
@@ -39,7 +41,34 @@ __all__ = [
     "detrend",
     "rfft",
     "fract",
+    "center",
+    "z_normalize",
+    "isotonic_regression",
 ]
+
+
+def center(x: str | pl.Expr) -> pl.Expr:
+    """
+    Centers the column.
+
+    This is only a short cut for a standard feature transform, and is not recommended
+    to be used in settings where the means need to be persisted.
+    """
+    xx = str_to_expr(x)
+    return xx - xx.mean()
+
+
+def z_normalize(x: str | pl.Expr) -> pl.Expr:
+    """
+    Z-normalizes the column.
+
+    This is only a short cut for a standard feature transform, and is not recommended
+    to be used in settings where the means/stds need to be persisted.
+    """
+    xx = str_to_expr(x)
+    mean = xx.mean()
+    std = xx.std()
+    return (xx - mean) / std
 
 
 def softmax(x: str | pl.Expr) -> pl.Expr:
@@ -56,7 +85,7 @@ def softmax(x: str | pl.Expr) -> pl.Expr:
     return xx.exp() / (xx.exp().sum())
 
 
-def query_gcd(x: str | pl.Expr, y: int | str | pl.Expr) -> pl.Expr:
+def gcd(x: str | pl.Expr, y: int | str | pl.Expr) -> pl.Expr:
     """
     Computes GCD of two integer columns. This will try to cast everything to int32.
 
@@ -79,7 +108,7 @@ def query_gcd(x: str | pl.Expr, y: int | str | pl.Expr) -> pl.Expr:
     )
 
 
-def query_lcm(x: str | pl.Expr, y: Union[int, str, pl.Expr]) -> pl.Expr:
+def lcm(x: str | pl.Expr, y: int | str | pl.Expr) -> pl.Expr:
     """
     Computes LCM of two integer columns. This will try to cast everything to int32.
 
@@ -105,8 +134,8 @@ def query_lcm(x: str | pl.Expr, y: Union[int, str, pl.Expr]) -> pl.Expr:
 def haversine(
     x_lat: str | pl.Expr,
     x_long: str | pl.Expr,
-    y_lat: Union[float, str, pl.Expr],
-    y_long: Union[float, str, pl.Expr],
+    y_lat: float | str | pl.Expr,
+    y_long: float | str | pl.Expr,
 ) -> pl.Expr:
     """
     Computes haversine distance using the naive method. The output unit is km.
@@ -134,7 +163,7 @@ def haversine(
     )
 
 
-def query_singular_values(
+def singular_values(
     *features: str | pl.Expr,
     center: bool = True,
     as_explained_var: bool = False,
@@ -173,7 +202,7 @@ def query_singular_values(
     return out
 
 
-def query_pca(
+def pca(
     *features: str | pl.Expr,
     center: bool = True,
 ) -> pl.Expr:
@@ -199,7 +228,7 @@ def query_pca(
     )
 
 
-def query_principal_components(
+def principal_components(
     *features: str | pl.Expr,
     k: int = 2,
     center: bool = True,
@@ -229,7 +258,7 @@ def query_principal_components(
     return pl_plugin(symbol="pl_principal_components", args=actual_inputs, pass_name_to_apply=True)
 
 
-def query_jaccard_row(first: str | pl.Expr, second: str | pl.Expr) -> pl.Expr:
+def jaccard_row(first: str | pl.Expr, second: str | pl.Expr) -> pl.Expr:
     """
     Computes jaccard similarity pairwise between this and the other column. The type of
     each column must be list and the lists must have the same inner type. The inner type
@@ -249,9 +278,7 @@ def query_jaccard_row(first: str | pl.Expr, second: str | pl.Expr) -> pl.Expr:
     )
 
 
-def query_jaccard_col(
-    first: str | pl.Expr, second: str | pl.Expr, count_null: bool = False
-) -> pl.Expr:
+def jaccard_col(first: str | pl.Expr, second: str | pl.Expr, count_null: bool = False) -> pl.Expr:
     """
     Computes jaccard similarity column-wise. This will hash entire columns and compares the two
     hashsets. Note: only integer/str columns can be compared.
@@ -272,7 +299,7 @@ def query_jaccard_col(
     )
 
 
-def query_psi(
+def psi(
     new: str | pl.expr | Iterable[float],
     baseline: str | pl.expr | Iterable[float],
     n_bins: int = 10,
@@ -315,17 +342,17 @@ def query_psi(
 
     if isinstance(new, (str, pl.Expr)):
         new_ = str_to_expr(new)
-        valid_new: Union[pl.Series, pl.Expr] = new_.filter(new_.is_finite()).cast(pl.Float64)
+        valid_new: pl.Series | pl.Expr = new_.filter(new_.is_finite()).cast(pl.Float64)
     else:
         temp = pl.Series(values=new, dtype=pl.Float64)
-        valid_new: Union[pl.Series, pl.Expr] = temp.filter(temp.is_finite())
+        valid_new: pl.Series | pl.Expr = temp.filter(temp.is_finite())
 
     if isinstance(baseline, (str, pl.Expr)):
         base = str_to_expr(baseline)
-        valid_ref: Union[pl.Series, pl.Expr] = base.filter(base.is_finite()).cast(pl.Float64)
+        valid_ref: pl.Series | pl.Expr = base.filter(base.is_finite()).cast(pl.Float64)
     else:
         temp = pl.Series(values=baseline, dtype=pl.Float64)
-        valid_ref: Union[pl.Series, pl.Expr] = temp.filter(temp.is_finite())
+        valid_ref: pl.Series | pl.Expr = temp.filter(temp.is_finite())
 
     vc = (
         valid_ref.qcut(n_bins, left_closed=False, allow_duplicates=True, include_breaks=True)
@@ -351,7 +378,7 @@ def query_psi(
     return psi_report.struct.field("psi_bin").sum()
 
 
-def query_psi_discrete(
+def psi_discrete(
     new: str | pl.expr | Iterable[float],
     baseline: str | pl.expr | Iterable[float],
     return_report: bool = False,
@@ -384,24 +411,24 @@ def query_psi_discrete(
     if isinstance(new, (str, pl.Expr)):
         new_ = str_to_expr(new)
         temp = new_.value_counts().struct.rename_fields(["", "count"])
-        new_cnt: Union[pl.Series, pl.Expr] = temp.struct.field("count")
-        new_cat: Union[pl.Series, pl.Expr] = temp.struct.field("")
+        new_cnt: pl.Series | pl.Expr = temp.struct.field("count")
+        new_cat: pl.Series | pl.Expr = temp.struct.field("")
     else:
         temp = pl.Series(values=new)
         temp: pl.DataFrame = temp.value_counts()  # This is a df in this case
-        ref_cnt: Union[pl.Series, pl.Expr] = temp.drop_in_place("count")
-        ref_cat: Union[pl.Series, pl.Expr] = temp[temp.columns[0]]
+        ref_cnt: pl.Series | pl.Expr = temp.drop_in_place("count")
+        ref_cat: pl.Series | pl.Expr = temp[temp.columns[0]]
 
     if isinstance(baseline, (str, pl.Expr)):
         base = str_to_expr(baseline)
         temp = base.value_counts().struct.rename_fields(["", "count"])
-        ref_cnt: Union[pl.Series, pl.Expr] = temp.struct.field("count")
-        ref_cat: Union[pl.Series, pl.Expr] = temp.struct.field("")
+        ref_cnt: pl.Series | pl.Expr = temp.struct.field("count")
+        ref_cat: pl.Series | pl.Expr = temp.struct.field("")
     else:
         temp = pl.Series(values=baseline)
         temp: pl.DataFrame = temp.value_counts()  # This is a df in this case
-        ref_cnt: Union[pl.Series, pl.Expr] = temp.drop_in_place("count")
-        ref_cat: Union[pl.Series, pl.Expr] = temp[temp.columns[0]]
+        ref_cnt: pl.Series | pl.Expr = temp.drop_in_place("count")
+        ref_cat: pl.Series | pl.Expr = temp[temp.columns[0]]
 
     psi_report = pl_plugin(
         symbol="pl_psi_discrete_report",
@@ -414,7 +441,7 @@ def query_psi_discrete(
     return psi_report.struct.field("psi_bin").sum()
 
 
-def query_psi_w_breakpoints(
+def psi_w_breakpoints(
     new: str | pl.expr | Iterable[float],
     baseline: str | pl.expr | Iterable[float],
     breakpoints: List[float],
@@ -461,9 +488,7 @@ def query_psi_w_breakpoints(
     ).alias("psi_report")
 
 
-def query_woe(
-    x: str | pl.Expr, target: str | pl.expr | Iterable[float], n_bins: int = 10
-) -> pl.Expr:
+def woe(x: str | pl.Expr, target: str | pl.expr | Iterable[float], n_bins: int = 10) -> pl.Expr:
     """
     Compute the Weight of Evidence for x with respect to target. This assumes x
     is continuous. A value of 1 is added to all events/non-events
@@ -494,9 +519,9 @@ def query_woe(
     return pl_plugin(symbol="pl_woe_discrete", args=[brk, t], changes_length=True)
 
 
-def query_woe_discrete(
+def woe_discrete(
     x: str | pl.Expr,
-    target: Union[str | pl.Expr, Iterable[int]],
+    target: str | pl.Expr | Iterable[int],
 ) -> pl.Expr:
     """
     Compute the Weight of Evidence for x with respect to target. This assumes x
@@ -525,7 +550,7 @@ def query_woe_discrete(
     )
 
 
-def query_iv(
+def info_value(
     x: str | pl.Expr,
     target: str | pl.expr | Iterable[float],
     n_bins: int = 10,
@@ -565,7 +590,7 @@ def query_iv(
     return out.struct.field("iv").sum() if return_sum else out
 
 
-def query_iv_discrete(
+def info_value_discrete(
     x: str | pl.Expr, target: str | pl.Expr | Iterable[int], return_sum: bool = True
 ) -> pl.Expr:
     """
@@ -625,7 +650,7 @@ def integrate_trapz(y: str | pl.Expr, x: float | pl.Expr) -> pl.Expr:
 def convolve(
     x: str | pl.Expr,
     kernel: List[float] | "np.ndarray" | pl.Series | pl.Expr,  # noqa: F821
-    fill_value: Union[float, pl.Expr] = 0.0,
+    fill_value: float | pl.Expr = 0.0,
     method: ConvMethod = "direct",
     mode: ConvMode = "full",
     parallel: bool = False,
@@ -662,7 +687,7 @@ def convolve(
     https://en.wikipedia.org/wiki/Convolution
     """
     xx = str_to_expr(x).fill_null(fill_value).cast(pl.Float64).rechunk()  # One cont slice
-    f: Union[pl.Expr, pl.Series]
+    f: pl.Expr | pl.Series
     if isinstance(kernel, pl.Expr):
         f = kernel.filter(kernel.is_finite()).rechunk()  # One cont slice
     else:
@@ -850,4 +875,38 @@ def target_encode(
         args=[str_to_expr(s), t, t.mean()],
         kwargs={"min_samples_leaf": float(min_samples_leaf), "smoothing": smoothing},
         changes_length=True,
+    )
+
+
+def isotonic_regression(
+    y: str | pl.Expr, weights: str | pl.Expr | None = None, increasing: bool = True
+) -> pl.Expr:
+    """
+    Performs isotonic regression on the data. This is the same as scipy.optimize.isotonic_regression.
+
+    Parameters
+    ----------
+    y
+        The response variable
+    weights
+        The weights for the response
+    increasing
+        If true, output will be monotonically inreasing. If false, it will be monotonically
+        decreasing.
+    """
+
+    yy = str_to_expr(y).cast(pl.Float64)
+    args = [yy]
+    has_weights = weights is not None
+    if has_weights:
+        args.append(str_to_expr(weights).cast(pl.Float64))
+
+    return pl_plugin(
+        symbol="pl_isotonic_regression",
+        args=args,
+        kwargs={
+            "has_weights": has_weights,
+            "increasing": increasing,
+        },
+        is_elementwise=True,
     )

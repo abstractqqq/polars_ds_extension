@@ -141,7 +141,11 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     let precision: Series = Series::from_vec("precision".into(), vec![precision]);
     let f: Series = Series::from_vec("f".into(), vec![f]);
 
-    let out = StructChunked::from_series("metrics".into(), 1, [&precision, &recall, &f, &ap, &auc].into_iter())?;
+    let out = StructChunked::from_series(
+        "metrics".into(),
+        1,
+        [&precision, &recall, &f, &ap, &auc].into_iter(),
+    )?;
     Ok(out.into_series())
 }
 
@@ -293,7 +297,7 @@ fn pl_binary_confusion_matrix(inputs: &[Series]) -> PolarsResult<Series> {
     let tp = UInt32Chunked::from_vec("tp".into(), vec![confusion[3]]);
     let tp = Column::Series(tp.into_series());
     // All series have length 1 and no duplicate names
-    
+
     let df = DataFrame::new(vec![tn, fp, fn_, tp])?;
 
     let result = df
@@ -358,7 +362,7 @@ fn pl_binary_confusion_matrix(inputs: &[Series]) -> PolarsResult<Series> {
             col("markedness"),
             col("fdr"),
             col("npv"),
-            col("dor")
+            col("dor"),
         ])
         .fill_null(f64::NAN) // In Rust dividing by 0 results in Null for some reason.
         .collect()?;

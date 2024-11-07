@@ -62,11 +62,13 @@ fn pl_rand_exp(inputs: &[Series]) -> PolarsResult<Series> {
     let seed = inputs[2].u64()?;
     let mut rng = rng_from_seed(seed.get(0));
     if lambda == 1.0 {
-        let out = Float64Chunked::from_iter_values("".into(), (&mut rng).sample_iter(Exp1).take(len));
+        let out =
+            Float64Chunked::from_iter_values("".into(), (&mut rng).sample_iter(Exp1).take(len));
         Ok(out.into_series())
     } else {
         let dist = Exp::new(lambda).map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
-        let out = Float64Chunked::from_iter_values("".into(), (&mut rng).sample_iter(dist).take(len));
+        let out =
+            Float64Chunked::from_iter_values("".into(), (&mut rng).sample_iter(dist).take(len));
         Ok(out.into_series())
     }
 }
@@ -103,14 +105,16 @@ fn pl_perturb(inputs: &[Series]) -> PolarsResult<Series> {
             let dist: Uniform<f32> = Uniform::new(low as f32, high as f32);
             let ca = reference.f32().unwrap();
             // Have to use _generic here to avoid the Copy trait
-            let out: Float32Chunked = ca.apply_nonnull_values_generic(DataType::Float32, |x| x + dist.sample(&mut rng));
+            let out: Float32Chunked =
+                ca.apply_nonnull_values_generic(DataType::Float32, |x| x + dist.sample(&mut rng));
             Ok(out.into_series())
         }
         DataType::Float64 => {
             let dist: Uniform<f64> = Uniform::new(low, high);
             let ca = reference.f64().unwrap();
             // Have to use _generic here to avoid the Copy trait
-            let out: Float64Chunked = ca.apply_nonnull_values_generic(DataType::Float64, |x| x + dist.sample(&mut rng));
+            let out: Float64Chunked =
+                ca.apply_nonnull_values_generic(DataType::Float64, |x| x + dist.sample(&mut rng));
             Ok(out.into_series())
         }
         _ => Err(PolarsError::ComputeError(
@@ -131,14 +135,16 @@ fn pl_jitter(inputs: &[Series]) -> PolarsResult<Series> {
         DataType::Float32 => {
             let std_ = std_ as f32;
             let ca = reference.f32().unwrap();
-            let out: Float32Chunked =
-                ca.apply_nonnull_values_generic(DataType::Float32, |x| x + std_ * rng.sample::<f32, _>(StandardNormal));
+            let out: Float32Chunked = ca.apply_nonnull_values_generic(DataType::Float32, |x| {
+                x + std_ * rng.sample::<f32, _>(StandardNormal)
+            });
             Ok(out.into_series())
         }
         DataType::Float64 => {
             let ca = reference.f64().unwrap();
-            let out: Float64Chunked =
-                ca.apply_nonnull_values_generic(DataType::Float64, |x| x + std_ * rng.sample::<f64, _>(StandardNormal));
+            let out: Float64Chunked = ca.apply_nonnull_values_generic(DataType::Float64, |x| {
+                x + std_ * rng.sample::<f64, _>(StandardNormal)
+            });
             Ok(out.into_series())
         }
         _ => Err(PolarsError::ComputeError(
@@ -159,12 +165,15 @@ fn pl_rand_normal(inputs: &[Series]) -> PolarsResult<Series> {
     let seed = inputs[3].u64()?;
     let mut rng = rng_from_seed(seed.get(0));
     if mean == 0. && std_ == 1.0 {
-        let out =
-            Float64Chunked::from_iter_values("".into(), (&mut rng).sample_iter(StandardNormal).take(len));
+        let out = Float64Chunked::from_iter_values(
+            "".into(),
+            (&mut rng).sample_iter(StandardNormal).take(len),
+        );
         Ok(out.into_series())
     } else {
         let dist = Normal::new(mean, std_).unwrap();
-        let out = Float64Chunked::from_iter_values("".into(), (&mut rng).sample_iter(dist).take(len));
+        let out =
+            Float64Chunked::from_iter_values("".into(), (&mut rng).sample_iter(dist).take(len));
         Ok(out.into_series())
     }
 }

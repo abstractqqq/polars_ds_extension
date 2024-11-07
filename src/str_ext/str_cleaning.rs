@@ -26,14 +26,16 @@ impl TryFrom<String> for NormalForm {
 #[polars_expr(output_type=String)]
 fn remove_non_ascii(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
-    let out = ca.apply_into_string_amortized(|s, buf| *buf = s.chars().filter(char::is_ascii).collect());
+    let out =
+        ca.apply_into_string_amortized(|s, buf| *buf = s.chars().filter(char::is_ascii).collect());
     Ok(out.into_series())
 }
 
 #[polars_expr(output_type=String)]
 fn remove_diacritics(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
-    let out = ca.apply_into_string_amortized(|s, buf| *buf = s.nfd().filter(char::is_ascii).collect());
+    let out =
+        ca.apply_into_string_amortized(|s, buf| *buf = s.nfd().filter(char::is_ascii).collect());
     Ok(out.into_series())
 }
 
@@ -60,19 +62,18 @@ struct MapWordsKwargs {
     mapping: ahash::HashMap<String, String>,
 }
 
-
 #[polars_expr(output_type=String)]
 fn map_words(inputs: &[Series], kwargs: MapWordsKwargs) -> PolarsResult<Series> {
     let ca = inputs[0].str()?;
     let mapping = kwargs.mapping;
-    let out = ca.apply_into_string_amortized(|s, buf|
-        buf.push_str(        
+    let out = ca.apply_into_string_amortized(|s, buf| {
+        buf.push_str(
             s.split_whitespace()
-            .map(|word| mapping.get(word).map_or(word, |v| v))
-            .join(" ")
-            .as_ref()
+                .map(|word| mapping.get(word).map_or(word, |v| v))
+                .join(" ")
+                .as_ref(),
         )
-    );
+    });
     Ok(out.into_series())
 }
 

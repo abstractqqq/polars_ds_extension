@@ -1,4 +1,4 @@
-use super::{simple_stats_output, generic_stats_output};
+use super::{generic_stats_output, simple_stats_output};
 use crate::stats_utils::gamma;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;

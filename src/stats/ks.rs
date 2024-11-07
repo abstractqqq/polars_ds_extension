@@ -1,5 +1,5 @@
 /// KS statistics.
-use super::{simple_stats_output, generic_stats_output};
+use super::{generic_stats_output, simple_stats_output};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
@@ -70,5 +70,4 @@ fn pl_ks_2samp(inputs: &[Series]) -> PolarsResult<Series> {
         let (s, p) = ks_2samp(v1, v2, alpha);
         generic_stats_output(s, p)
     }
-
 }
