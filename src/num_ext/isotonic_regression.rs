@@ -23,17 +23,19 @@ fn isotonic_regression(
     r[0] = 0;
     r[1] = 1;
     let mut b:usize = 0;
-    let mut x_pre = x[b];
-    let mut w_pre = w[b];
+    let mut xb_pre = x[b];
+    let mut wb_pre = w[b];
 
-    for mut i in 1..n {
+    let mut i: usize = 1;
+
+    while i < n {
         b += 1;
         let mut xb = x[i];
         let mut wb = w[i];
-        if x_pre >= xb {
+        if xb_pre >= xb {
             b -= 1;
-            let mut sb = w_pre * x_pre + wb * xb;
-            wb += w_pre;
+            let mut sb = wb_pre * xb_pre + wb * xb;
+            wb += wb_pre;
             xb = sb / wb;
             while i + 1 < n && xb >= x[i + 1] {
                 i += 1;
@@ -48,18 +50,20 @@ fn isotonic_regression(
                 xb = sb / wb;
             }
         }
-        x_pre = xb;
-        x[b] = x_pre;
+        xb_pre = xb;
+        x[b] = xb;
 
-        w_pre = wb;
-        w[b] = w_pre;
+        wb_pre = wb;
+        w[b] = wb;
 
         r[b + 1] = i + 1;
-        // println!("{:?}", x);
+
+        i += 1;
     }
 
     let mut f = n - 1;
     for k in (0..=b).rev() {
+        // println!("{}", k);
         let t = r[k];
         let xk = x[k];
         for i in t..=f {
@@ -67,7 +71,6 @@ fn isotonic_regression(
         }
         f = t - 1;
     }
-    // println!("{:?}", x);
 
 }
 

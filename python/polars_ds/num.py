@@ -895,14 +895,6 @@ def isotonic_regression(
         decreasing.
     """
 
-    import warnings
-
-    warnings.warn(
-        "Isotonic seems to work but is not getting the same results as SciPy. It's being marked as experimental and use with caution.",
-        UserWarning,
-        stacklevel=2,
-    )
-
     yy = str_to_expr(y).cast(pl.Float64)
     args = [yy]
     has_weights = weights is not None
