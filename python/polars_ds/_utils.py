@@ -1,5 +1,7 @@
 """Not meant for outside use."""
 
+from __future__ import annotations
+
 import polars as pl
 from typing import Any, Optional, List, Dict, Union
 from pathlib import Path
@@ -33,3 +35,21 @@ def pl_plugin(
         cast_to_supertype=cast_to_supertype,
         pass_name_to_apply=pass_name_to_apply,
     )
+
+
+# Auxiliary functions for type conversions
+def str_to_expr(e: str | pl.Expr) -> pl.Expr:
+    """
+    Turns a string into an expression
+
+    Parameters
+    ----------
+    e
+        Either a str represeting a column name or an expression
+    """
+    if isinstance(e, str):
+        return pl.col(e)
+    elif isinstance(e, pl.Expr):
+        return e
+    else:
+        raise ValueError("Input must either be a string or a Polars expression.")

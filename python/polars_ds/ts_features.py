@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import math
 import polars as pl
-from .type_alias import str_to_expr, Distance, NullPolicy
-from ._utils import pl_plugin
+from .type_alias import Distance, NullPolicy
+from ._utils import pl_plugin, str_to_expr
 from typing import Iterable, Literal
 
 __all__ = [

@@ -8,9 +8,8 @@ from .type_alias import (
     DetrendMethod,
     ConvMode,
     ConvMethod,
-    str_to_expr,
 )
-from ._utils import pl_plugin
+from ._utils import pl_plugin, str_to_expr
 
 __all__ = [
     "singular_values",
@@ -44,7 +43,44 @@ __all__ = [
     "center",
     "z_normalize",
     "isotonic_regression",
+    "is_increasing",
+    "is_decreasing",
 ]
+
+
+def is_increasing(x: str | pl.Expr, strict: bool = False) -> pl.Expr:
+    """
+    Checks whether the column is monotonically increasing.
+
+    Parameters
+    ----------
+    x
+        A numerical column
+    strict
+        Whether the check should be strict
+    """
+    if strict:
+        return (str_to_expr(x).diff() > 0.0).all()
+    else:
+        return (str_to_expr(x).diff() >= 0.0).all()
+
+
+def is_decreasing(x: str | pl.Expr, strict: bool = False) -> pl.Expr:
+    """
+    Checks whether the column is monotonically decreasing.
+
+    Parameters
+    ----------
+    x
+        A numerical column
+    strict
+        Whether the check should be strict
+    """
+    xx = str_to_expr(x)
+    if strict:
+        return (xx.diff() < 0.0).all()
+    else:
+        return (xx.diff() <= 0.0).all()
 
 
 def center(x: str | pl.Expr) -> pl.Expr:

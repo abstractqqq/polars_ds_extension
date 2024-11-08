@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import polars as pl
 import math
-from .type_alias import Alternative, str_to_expr, CorrMethod, Noise, QuantileMethod
-from typing import Union
-from ._utils import pl_plugin
+from .type_alias import Alternative, CorrMethod, Noise, QuantileMethod
+from ._utils import pl_plugin, str_to_expr
 
 __all__ = [
     "query_ttest_ind",
@@ -475,8 +474,8 @@ def normal_test(var: str | pl.Expr) -> pl.Expr:
 
 
 def random(
-    lower: Union[pl.Expr, float] = 0.0,
-    upper: Union[pl.Expr, float] = 1.0,
+    lower: pl.Expr | float = 0.0,
+    upper: pl.Expr | float = 1.0,
     seed: int | None = None,
 ) -> pl.Expr:
     """
@@ -523,9 +522,7 @@ def random_null(var: str | pl.Expr, pct: float, seed: int | None = None) -> pl.E
     return pl.when(to_null).then(None).otherwise(str_to_expr(var))
 
 
-def random_int(
-    lower: Union[int, pl.Expr], upper: Union[int, pl.Expr], seed: int | None = None
-) -> pl.Expr:
+def random_int(lower: int | pl.Expr, upper: int | pl.Expr, seed: int | None = None) -> pl.Expr:
     """
     Generates random integer between lower and upper.
 
@@ -631,9 +628,7 @@ def random_exp(lambda_: float, seed: int | None = None) -> pl.Expr:
     )
 
 
-def random_normal(
-    mean: Union[pl.Expr, float], std: Union[pl.Expr, float], seed: int | None = None
-) -> pl.Expr:
+def random_normal(mean: pl.Expr | float, std: pl.Expr | float, seed: int | None = None) -> pl.Expr:
     """
     Generates random number following a normal distribution.
 
@@ -756,7 +751,7 @@ def weighted_var(var: str | pl.Expr, weights: str | pl.Expr, freq_weights: bool 
     return summand / w.sum()
 
 
-def weighted_cov(x: str | pl.Expr, y: str | pl.Expr, weights: Union[pl.Expr, float]) -> pl.Expr:
+def weighted_cov(x: str | pl.Expr, y: str | pl.Expr, weights: pl.Expr | float) -> pl.Expr:
     """
     Computes the weighted covariance between x and y. The weights column must have the same
     length as both x an y.

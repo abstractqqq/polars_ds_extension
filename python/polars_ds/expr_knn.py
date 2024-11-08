@@ -5,8 +5,8 @@ KNN related query expressions in Polars.
 from __future__ import annotations
 import polars as pl
 from typing import Iterable, List
-from .type_alias import str_to_expr, Distance
-from ._utils import pl_plugin
+from .type_alias import Distance
+from ._utils import pl_plugin, str_to_expr
 
 __all__ = [
     "query_knn_ptwise",

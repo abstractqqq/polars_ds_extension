@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import List, Literal, Dict
 import polars as pl
-from ._utils import pl_plugin
-from .type_alias import str_to_expr
+from ._utils import pl_plugin, str_to_expr
 
 
 __all__ = [
