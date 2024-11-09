@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import polars as pl
 
-from ._utils import pl_plugin
-from .type_alias import MultiAUCStrategy, str_to_expr
+from ._utils import pl_plugin, str_to_expr
+from .type_alias import MultiAUCStrategy
 
 __all__ = [
     "query_r2",

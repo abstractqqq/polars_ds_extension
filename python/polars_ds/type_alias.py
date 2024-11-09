@@ -29,25 +29,6 @@ QuantileMethod: TypeAlias = Literal["nearest", "higher", "lower", "midpoint", "l
 
 # Other Custom Types
 PolarsFrame: TypeAlias = Union[pl.DataFrame, pl.LazyFrame]
-StrOrExpr: TypeAlias = Union[str, pl.Expr]
 ExprTransform: TypeAlias = Union[pl.Expr, List[pl.Expr]]
 # Need ...
 FitTransformFunc: TypeAlias = Callable[[PolarsFrame, List[str]], ExprTransform]
-
-
-# Auxiliary functions for type conversions
-def str_to_expr(e: StrOrExpr) -> pl.Expr:
-    """
-    Turns a string into an expression
-
-    Parameters
-    ----------
-    e
-        Either a str represeting a column name or an expression
-    """
-    if isinstance(e, str):
-        return pl.col(e)
-    elif isinstance(e, pl.Expr):
-        return e
-    else:
-        raise ValueError("Input must either be a string or a Polars expression.")

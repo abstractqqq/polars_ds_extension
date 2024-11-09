@@ -18,7 +18,6 @@ from .type_alias import (
     FitTransformFunc,
     SimpleImputeMethod,
     SimpleScaleMethod,
-    StrOrExpr,
     QuantileMethod,
     EncoderDefaultStrategy,
 )
@@ -405,7 +404,7 @@ class Blueprint:
         out += f"Features Expected: {self.feature_names_in_}\n"
         return out
 
-    def _get_target(self, target: str | pl.Expr | None = None) -> StrOrExpr:
+    def _get_target(self, target: str | pl.Expr | None = None) -> str | pl.Expr:
         if target is None:
             if self.target is None:
                 raise ValueError(

@@ -279,7 +279,7 @@ def test_fft(arr, n):
 def test_f_test(df):
     from sklearn.feature_selection import f_classif
 
-    res = df.select(pds.query_f_test(pl.col("a"), group=pl.col("target")))
+    res = df.select(pds.f_test(pl.col("a"), group=pl.col("target")))
     res = res.item(0, 0)  # A dictionary
     statistic = res["statistic"]
     pvalue = res["pvalue"]
@@ -308,7 +308,7 @@ def test_f_test(df):
 def test_mann_whitney_u(df):
     from scipy.stats import mannwhitneyu
 
-    res = df.select(pds.query_mann_whitney_u("x1", "x2"))
+    res = df.select(pds.mann_whitney_u("x1", "x2"))
     res = res.item(0, 0)  # A dictionary
     res_statistic = res["statistic"]
     res_pvalue = res["pvalue"]
@@ -1145,7 +1145,7 @@ def test_ks_stats():
 
     stats = ks_2samp(a, b).statistic
     # Only statistic for now
-    res = df.select(pds.query_ks_2samp("a", "b").struct.field("statistic")).item(0, 0)
+    res = df.select(pds.ks_2samp("a", "b").struct.field("statistic")).item(0, 0)
 
     assert np.isclose(stats, res)
 
@@ -1187,7 +1187,7 @@ def test_knn_entropy(df, k, dist, res):
 def test_ttest_ind(df, eq_var):
     from scipy.stats import ttest_ind
 
-    res = df.select(pds.query_ttest_ind("a", "b", equal_var=eq_var))
+    res = df.select(pds.ttest_ind("a", "b", equal_var=eq_var))
     res = res.item(0, 0)  # A dictionary
     statistic = res["statistic"]
     pvalue = res["pvalue"]
@@ -1214,7 +1214,7 @@ def test_ttest_ind(df, eq_var):
 def test_welch_t(df):
     from scipy.stats import ttest_ind
 
-    res = df.select(pds.query_ttest_ind("a", "b", equal_var=False))
+    res = df.select(pds.ttest_ind("a", "b", equal_var=False))
     res = res.item(0, 0)  # A dictionary
     statistic = res["statistic"]
     pvalue = res["pvalue"]
@@ -1244,7 +1244,7 @@ def test_chi2(df):
     import pandas as pd
     from scipy.stats import chi2_contingency
 
-    res = df.select(pds.query_chi2("x", "y")).item(0, 0)
+    res = df.select(pds.chi2("x", "y")).item(0, 0)
     stats, p = res["statistic"], res["pvalue"]
 
     df2 = df.to_pandas()

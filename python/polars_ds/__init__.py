@@ -1,6 +1,6 @@
 from __future__ import annotations
 import polars as pl
-from .type_alias import str_to_expr
+from ._utils import str_to_expr
 
 from polars_ds.num import *  # noqa: F403
 from polars_ds.metrics import *  # noqa: F403
