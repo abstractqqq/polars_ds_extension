@@ -8,13 +8,13 @@ from .type_alias import Alternative, CorrMethod, Noise, QuantileMethod
 from ._utils import pl_plugin, str_to_expr
 
 __all__ = [
-    "query_ttest_ind",
-    "query_ttest_1samp",
-    "query_ttest_ind_from_stats",
-    "query_ks_2samp",
-    "query_f_test",
-    "query_mann_whitney_u",
-    "query_chi2",
+    "ttest_ind",
+    "ttest_1samp",
+    "ttest_ind_from_stats",
+    "ks_2samp",
+    "f_test",
+    "mann_whitney_u",
+    "chi2",
     "perturb",
     "jitter",
     "add_noise",
@@ -42,7 +42,7 @@ __all__ = [
 ]
 
 
-def query_ttest_ind(
+def ttest_ind(
     var1: str | pl.Expr,
     var2: str | pl.Expr,
     alternative: Alternative = "two-sided",
@@ -100,7 +100,7 @@ def query_ttest_ind(
         )
 
 
-def query_ttest_1samp(
+def ttest_1samp(
     var1: str | pl.Expr, pop_mean: float, alternative: Alternative = "two-sided"
 ) -> pl.Expr:
     """
@@ -130,7 +130,7 @@ def query_ttest_1samp(
     )
 
 
-def query_ttest_ind_from_stats(
+def ttest_ind_from_stats(
     var1: str | pl.Expr,
     mean: float,
     var: float,
@@ -186,7 +186,7 @@ def query_ttest_ind_from_stats(
         )
 
 
-def query_ks_2samp(
+def ks_2samp(
     var1: str | pl.Expr,
     var2: str | pl.Expr,
     alpha: float = 0.05,
@@ -236,7 +236,7 @@ def query_ks_2samp(
     )
 
 
-def query_f_test(*variables: str | pl.Expr, group: str | pl.Expr) -> pl.Expr:
+def f_test(*variables: str | pl.Expr, group: str | pl.Expr) -> pl.Expr:
     """
     Performs the ANOVA F-test.
 
@@ -257,7 +257,7 @@ def query_f_test(*variables: str | pl.Expr, group: str | pl.Expr) -> pl.Expr:
         return pl_plugin(symbol="pl_f_test", args=vars_, changes_length=True)
 
 
-def query_chi2(var1: str | pl.Expr, var2: str | pl.Expr) -> pl.Expr:
+def chi2(var1: str | pl.Expr, var2: str | pl.Expr) -> pl.Expr:
     """
     Computes the Chi Squared statistic and p value between two categorical values.
 
@@ -279,7 +279,7 @@ def query_chi2(var1: str | pl.Expr, var2: str | pl.Expr) -> pl.Expr:
     )
 
 
-def query_mann_whitney_u(
+def mann_whitney_u(
     var1: str | pl.Expr,
     var2: str | pl.Expr,
     alternative: Alternative = "two-sided",
