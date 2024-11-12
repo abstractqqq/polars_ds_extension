@@ -45,6 +45,8 @@ __all__ = [
     "isotonic_regression",
     "is_increasing",
     "is_decreasing",
+    "next_up",
+    "next_down",
 ]
 
 
@@ -944,5 +946,32 @@ def isotonic_regression(
             "has_weights": has_weights,
             "increasing": increasing,
         },
+    )
+
+
+def next_up(x: str | pl.Expr) -> pl.Expr:
+    """
+    For any float, return the least number greater than itself (within the precision).
+    Intergers will be treated as f32. E.g. The next value up for 0.1 is 0.10000000000000002
+    because of precision issues. This is useful when you need to make extremely small changes
+    to certain values and you don't want to add random noise.
+    """
+    return pl_plugin(
+        symbol="pl_next_up",
+        args=[str_to_expr(x)],
+        is_elementwise=True,
+    )
+
+
+def next_down(x: str | pl.Expr) -> pl.Expr:
+    """
+    For any float, return the greatest number smaller than itself (within the precision).
+    Intergers will be treated as f32. E.g. The next value down for 0.1 is 0.09999999999999999.
+    This is useful when you need to make extremely small changes to certain values and you don't
+    want to add random noise.
+    """
+    return pl_plugin(
+        symbol="pl_next_down",
+        args=[str_to_expr(x)],
         is_elementwise=True,
     )

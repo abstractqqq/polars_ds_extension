@@ -1792,3 +1792,13 @@ def test_isotonic(df):
     scipy_w_weights = isotonic_regression(df["a"].to_numpy(), weights=df["b"].to_numpy()).x
 
     assert np.all(pds_w_weights == scipy_w_weights)
+
+
+def test_next_up_down():
+    a = np.random.random(size=100)
+    df = pl.DataFrame({"a": a})
+    a_up = df.select(pds.next_up("a"))["a"].to_numpy()
+    a_down = df.select(pds.next_down("a"))["a"].to_numpy()
+
+    assert np.all(np.nextafter(a, 1.0) == a_up)
+    assert np.all(np.nextafter(a, 0.0) == a_down)

@@ -8,9 +8,8 @@ use polars_core::POOL;
 use pyo3_polars::derive::{polars_expr, CallerContext};
 use pyo3_polars::export::polars_core::{
     error::PolarsError,
-    utils::rayon::iter::{IntoParallelIterator, ParallelIterator, ParallelBridge},
+    utils::rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator},
 };
-
 
 // https://en.wikipedia.org/wiki/Sample_entropy
 // https://en.wikipedia.org/wiki/Approximate_entropy
