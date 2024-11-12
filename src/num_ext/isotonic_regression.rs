@@ -1,6 +1,6 @@
+use itertools::Either;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
-use itertools::Either;
 use serde::Deserialize;
 
 // Reference: https://github.com/scipy/scipy/blob/v1.14.1/scipy/optimize/_isotonic.py
@@ -13,16 +13,11 @@ pub(crate) struct IsotonicRegKwargs {
     pub(crate) increasing: bool,
 }
 
-fn isotonic_regression(
-    x: &mut [f64],
-    w: &mut [f64],
-    r: &mut [usize],
-) {
-
+fn isotonic_regression(x: &mut [f64], w: &mut [f64], r: &mut [usize]) {
     let n = x.len();
     r[0] = 0;
     r[1] = 1;
-    let mut b:usize = 0;
+    let mut b: usize = 0;
     let mut xb_pre = x[b];
     let mut wb_pre = w[b];
 
@@ -71,41 +66,49 @@ fn isotonic_regression(
         }
         f = t - 1;
     }
-
 }
 
 #[polars_expr(output_type=Float64)]
 fn pl_isotonic_regression(inputs: &[Series], kwargs: IsotonicRegKwargs) -> PolarsResult<Series> {
-
     // Not sure why increasing = False doesn't give the right result
     let y = inputs[0].f64()?;
-    let increasing = kwargs.increasing; 
+    let increasing = kwargs.increasing;
 
     if y.len() <= 1 {
-        return Ok(y.clone().into_series())
+        return Ok(y.clone().into_series());
     }
 
     let mut y = match y.to_vec_null_aware() {
         Either::Left(v) => Ok(v),
-        Either::Right(_) => Err(PolarsError::ComputeError("Input should not contain nulls.".into())),
+        Either::Right(_) => Err(PolarsError::ComputeError(
+            "Input should not contain nulls.".into(),
+        )),
     }?;
-    
+
     let has_weights = kwargs.has_weights; // True then weights are given, false then use 1s.
     let mut w = if has_weights {
         let weight = inputs[1].f64()?;
         if weight.len() != y.len() {
-            Err(PolarsError::ComputeError("Weights should not contain nulls and must be the same length as y.".into()))
+            Err(PolarsError::ComputeError(
+                "Weights should not contain nulls and must be the same length as y.".into(),
+            ))
         } else {
             match weight.to_vec_null_aware() {
-                Either::Left(mut w) => if w.iter().any(|x| *x <= 0.) {
-                    Err(PolarsError::ComputeError("Weight should not contain negative values.".into()))
-                } else {
-                    if !increasing {
-                        w.reverse();
+                Either::Left(mut w) => {
+                    if w.iter().any(|x| *x <= 0.) {
+                        Err(PolarsError::ComputeError(
+                            "Weight should not contain negative values.".into(),
+                        ))
+                    } else {
+                        if !increasing {
+                            w.reverse();
+                        }
+                        Ok(w)
                     }
-                    Ok(w)
-                },
-                Either::Right(_) => Err(PolarsError::ComputeError("Weight should not contain nulls.".into())),
+                }
+                Either::Right(_) => Err(PolarsError::ComputeError(
+                    "Weight should not contain nulls.".into(),
+                )),
             }
         }
     } else {
@@ -121,7 +124,7 @@ fn pl_isotonic_regression(inputs: &[Series], kwargs: IsotonicRegKwargs) -> Polar
     if !increasing {
         y.reverse();
     }
-    
+
     let output = Float64Chunked::from_vec("".into(), y);
     Ok(output.into_series())
 }

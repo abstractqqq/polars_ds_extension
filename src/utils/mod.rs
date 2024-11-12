@@ -10,7 +10,7 @@ use polars::{
     series::Series,
 };
 use pyo3_polars::export::polars_core::{
-    utils::rayon::iter::{IntoParallelRefIterator, IndexedParallelIterator, ParallelIterator},
+    utils::rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
     POOL,
 };
 
