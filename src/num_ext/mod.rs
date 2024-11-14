@@ -19,4 +19,5 @@ mod tp_fp;
 mod trapz;
 mod welch;
 mod woe_iv;
+mod mutual_info;
 // mod ball_tree;

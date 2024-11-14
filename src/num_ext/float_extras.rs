@@ -2,9 +2,11 @@
 /// trunc, fract, exp2, logit, expit, gamma,
 /// The logit, expit and gamma functions are as defined in SciPy
 use crate::utils::{first_field_output, float_output};
+use crate::stats_utils::gamma::digamma;
 use num::traits::Float;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
+
 
 #[inline]
 fn logit<T: Float>(x: T) -> T {
@@ -46,6 +48,10 @@ fn cast_and_apply_next_up<T: PolarsNumericType>(ca: &ChunkedArray<T>) -> Float32
 
 fn cast_and_apply_next_down<T: PolarsNumericType>(ca: &ChunkedArray<T>) -> Float32Chunked {
     ca.cast_and_apply_in_place(f32::next_down)
+}
+
+fn cast_and_apply_diagamma<T: PolarsNumericType>(ca: &ChunkedArray<T>) -> Float64Chunked {
+    ca.cast_and_apply_in_place(digamma)
 }
 
 // fn cast_and_apply_sign<T: PolarsNumericType>(ca: &ChunkedArray<T>) -> Float64Chunked {
@@ -256,4 +262,30 @@ fn pl_next_down(inputs: &[Series]) -> PolarsResult<Series> {
             "Input column must be numerical.".into(),
         )),
     }
+
 }
+
+#[polars_expr(output_type=Float64)]
+fn pl_diagamma(inputs: &[Series]) -> PolarsResult<Series> {
+    let s = &inputs[0];
+
+    match s.dtype() {
+        DataType::UInt8 => Ok(cast_and_apply_diagamma(s.u8().unwrap()).into_series()),
+        DataType::UInt16 => Ok(cast_and_apply_diagamma(s.u16().unwrap()).into_series()),
+        DataType::UInt32 => Ok(cast_and_apply_diagamma(s.u32().unwrap()).into_series()),
+        DataType::UInt64 => Ok(cast_and_apply_diagamma(s.u64().unwrap()).into_series()),
+        DataType::Int8 => Ok(cast_and_apply_diagamma(s.i8().unwrap()).into_series()),
+        DataType::Int16 => Ok(cast_and_apply_diagamma(s.i16().unwrap()).into_series()),
+        DataType::Int32 => Ok(cast_and_apply_diagamma(s.i32().unwrap()).into_series()),
+        DataType::Int64 => Ok(cast_and_apply_diagamma(s.i64().unwrap()).into_series()),
+        DataType::Float32 => Ok(cast_and_apply_diagamma(s.f32().unwrap()).into_series()),
+        DataType::Float64 => {
+            let ca = s.f64().unwrap();
+            Ok(ca.apply_values(digamma).into_series())
+        },
+        _ => Err(PolarsError::ComputeError(
+            "Input column must be numerical.".into(),
+        )),
+    }
+}
+

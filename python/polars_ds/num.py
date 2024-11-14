@@ -47,6 +47,7 @@ __all__ = [
     "is_decreasing",
     "next_up",
     "next_down",
+    "digamma",
 ]
 
 
@@ -972,6 +973,17 @@ def next_down(x: str | pl.Expr) -> pl.Expr:
     """
     return pl_plugin(
         symbol="pl_next_down",
+        args=[str_to_expr(x)],
+        is_elementwise=True,
+    )
+
+
+def digamma(x: str | pl.Expr) -> pl.Expr:
+    """
+    The diagamma function
+    """
+    return pl_plugin(
+        symbol="pl_diagamma",
         args=[str_to_expr(x)],
         is_elementwise=True,
     )

@@ -977,3 +977,39 @@ def corr(x: str | pl.Expr, y: str | pl.Expr, method: CorrMethod = "pearson") -> 
         return bicor(x, y)
     else:
         raise ValueError(f"Unknown correlation method: {method}.")
+
+
+# def mutual_info_score(
+#     x: str | pl.Expr, target: str | pl.Expr, n_neighbors: int = 3, seed: int | None = None
+# ) -> pl.Expr:
+#     c = str_to_expr(x)
+#     t = str_to_expr(target)
+#     c_mean = c.mean()
+#     noise = pl_plugin(
+#         symbol="pl_rand_normal",
+#         args=[
+#             c.len(),
+#             pl.lit(0.0, dtype=pl.Float64),
+#             pl.lit(1.0, dtype=pl.Float64),
+#             pl.lit(seed, pl.UInt64),
+#         ],
+#         is_elementwise=True,
+#     ) * (1e-12 * c_mean)
+
+#     c = c + noise
+
+#     dist_from_kth_nb = pl_plugin(
+#         symbol="pl_dist_from_kth_nb",
+#         args=[c],
+#         kwargs={"k": n_neighbors},
+#     ).over(t)
+
+#     dist = pl_plugin(
+#         symbol="pl_next_down",
+#         args=[dist_from_kth_nb],
+#         is_elementwise=True,
+#     )
+
+#     label_counts = c.count().over(t)
+
+#     pass
