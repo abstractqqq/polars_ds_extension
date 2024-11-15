@@ -268,7 +268,6 @@ fn pl_next_down(inputs: &[Series]) -> PolarsResult<Series> {
 #[polars_expr(output_type=Float64)]
 fn pl_diagamma(inputs: &[Series]) -> PolarsResult<Series> {
     let s = &inputs[0];
-
     match s.dtype() {
         DataType::UInt8 => Ok(cast_and_apply_diagamma(s.u8().unwrap()).into_series()),
         DataType::UInt16 => Ok(cast_and_apply_diagamma(s.u16().unwrap()).into_series()),

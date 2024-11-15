@@ -128,6 +128,10 @@ fn pl_jitter(inputs: &[Series]) -> PolarsResult<Series> {
     let reference = &inputs[0];
     let std_ = inputs[1].f64()?;
     let std_ = std_.get(0).unwrap();
+    if !std_.is_finite() {
+        return Err(PolarsError::ComputeError("Input standard deviation is not finite.".into()))
+    }
+
     let seed = inputs[2].u64()?;
     let mut rng = rng_from_seed(seed.get(0));
 
@@ -135,16 +139,16 @@ fn pl_jitter(inputs: &[Series]) -> PolarsResult<Series> {
         DataType::Float32 => {
             let std_ = std_ as f32;
             let ca = reference.f32().unwrap();
-            let out: Float32Chunked = ca.apply_nonnull_values_generic(DataType::Float32, |x| {
+            let out: Float32Chunked = ca.apply_nonnull_values_generic(DataType::Float32, |x|
                 x + std_ * rng.sample::<f32, _>(StandardNormal)
-            });
+            );
             Ok(out.into_series())
         }
         DataType::Float64 => {
             let ca = reference.f64().unwrap();
-            let out: Float64Chunked = ca.apply_nonnull_values_generic(DataType::Float64, |x| {
+            let out: Float64Chunked = ca.apply_nonnull_values_generic(DataType::Float64, |x| 
                 x + std_ * rng.sample::<f64, _>(StandardNormal)
-            });
+            );
             Ok(out.into_series())
         }
         _ => Err(PolarsError::ComputeError(

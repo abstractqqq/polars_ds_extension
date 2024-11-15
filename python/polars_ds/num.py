@@ -48,6 +48,7 @@ __all__ = [
     "next_up",
     "next_down",
     "digamma",
+    "mutual_info_disc",
 ]
 
 
@@ -986,4 +987,99 @@ def digamma(x: str | pl.Expr) -> pl.Expr:
         symbol="pl_diagamma",
         args=[str_to_expr(x)],
         is_elementwise=True,
+    )
+
+
+def mutual_info_disc(
+    x: str | pl.Expr,
+    target: str | pl.Expr,
+    n_neighbors: int = 3,
+    seed: int | None = None,
+) -> pl.Expr:
+    """
+    Computes the mutual infomation between a continuous variable x and a discrete
+    target varaible. Note: (1) This always assume `x` is continuous. (2) if a target category
+    has less than `n_neighbors` records, then the result may not make any sense.
+
+
+    Reference
+    ---------
+    https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0087357
+    """
+
+    if n_neighbors <= 0:
+        raise ValueError("Input `n_neighbors` must be > 0.")
+
+    feat = str_to_expr(x).cast(pl.Float64)
+    feat = feat / feat.std(ddof=0)
+    t = str_to_expr(target)
+
+    scale_factor = pl.max_horizontal(pl.lit(1.0, dtype=pl.Float64), feat.abs().mean())
+
+    c = pl_plugin(
+        symbol="pl_jitter",
+        args=[feat, 1e-10 * scale_factor, pl.lit(seed, dtype=pl.UInt64)],
+        is_elementwise=True,
+    ).fill_nan(pl.lit(None))
+
+    # This is not really exposed to the user. It does `dist_from_kth_nb` and a `next_down` in one go.
+    r = pl_plugin(
+        symbol="_pl_dist_from_kth_nb_with_next_down",
+        args=[c],
+        kwargs={"k": n_neighbors, "parallel": False},
+    ).over(t)
+
+    # from sklearn.feature_selection import mutual_info_classif
+
+    label_counts = c.len().over(t)
+
+    r_valid = r.filter(label_counts > 1)
+    c_valid = c.filter(label_counts > 1)
+    label_counts_valid = label_counts.filter(label_counts > 1)
+    n_samples = (label_counts > 1).sum()
+
+    # NB Cnt contains the point itself. This is what we want
+    # This corresponds to m_i in the paper.
+    nb_cnt = pl_plugin(
+        symbol="pl_nb_cnt",
+        args=[r_valid, c_valid],
+        kwargs={
+            "k": 0,
+            "metric": "l1",  # Data is 1d, l2 metric is equal to l1, but l2 does more instructions. So use l1
+            "parallel": False,
+            "skip_eval": False,
+            "skip_data": False,
+        },
+    )
+
+    # psi in SciPy is the diagamma function
+    psi_label_counts = pl_plugin(
+        symbol="pl_diagamma",
+        args=[label_counts_valid],
+        is_elementwise=True,
+    )
+
+    psi_nb_cnt = pl_plugin(
+        symbol="pl_diagamma",
+        args=[nb_cnt],
+        is_elementwise=True,
+    )
+
+    psi_n_samples = pl_plugin(
+        symbol="pl_diagamma",
+        args=[n_samples],
+        is_elementwise=True,
+    )
+
+    psi_n_neighbors = pl_plugin(
+        symbol="pl_diagamma",
+        args=[pl.lit(n_neighbors)],
+        is_elementwise=True,
+    )
+
+    return psi_n_samples + psi_n_neighbors - (psi_label_counts + psi_nb_cnt).mean()
+
+    return pl.max_horizontal(
+        pl.lit(0.0, dtype=pl.Float64),
+        psi_n_samples + psi_n_neighbors - psi_label_counts.mean() - psi_nb_cnt.mean(),
     )

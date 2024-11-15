@@ -15,29 +15,9 @@ __all__ = [
     "query_radius_ptwise",
     "query_radius_freq_cnt",
     "query_nb_cnt",
-    "query_dist_from_kth_nb",
     "is_knn_from",
     "within_dist_from",
 ]
-
-
-def query_dist_from_kth_nb(x: str | pl.Expr, k: int) -> pl.Expr:
-    """
-    Finds the distance of each point to its kth-nearest neighbor. This only supports 1d for now.
-
-    Parameters
-    ----------
-    x
-        A numerical column
-    k
-        K-th nearest neighbor
-    """
-    z = str_to_expr(x).cast(pl.Float64).fill_nan(None)
-    return pl_plugin(
-        symbol="pl_dist_from_kth_nb",
-        args=[z],
-        kwargs={"k": k},
-    )
 
 
 def query_knn_ptwise(
