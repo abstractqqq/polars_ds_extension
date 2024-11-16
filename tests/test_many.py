@@ -1802,3 +1802,14 @@ def test_next_up_down():
 
     assert np.all(np.nextafter(a, 1.0) == a_up)
     assert np.all(np.nextafter(a, 0.0) == a_down)
+
+
+def test_digamma():
+    import scipy
+
+    a = np.random.random(size=100)
+    df = pl.DataFrame({"a": a})
+    pds_digamma = df.select(pds.digamma(pl.col("a")))["a"].to_numpy()
+    scipy_digamma = scipy.special.psi(a)
+
+    assert np.all(np.isclose(pds_digamma, scipy_digamma, atol=1e-5))

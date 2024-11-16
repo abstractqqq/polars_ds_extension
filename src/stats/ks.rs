@@ -1,26 +1,23 @@
 /// KS statistics.
 use super::{generic_stats_output, simple_stats_output};
 use polars::prelude::*;
+use ordered_float::OrderedFloat;
 use pyo3_polars::derive::polars_expr;
 
 #[inline(always)]
-fn binary_search_right<T: PartialOrd>(arr: &[T], t: &T) -> Option<usize> {
+fn binary_search_right(arr: &[OrderedFloat<f64>], t: &OrderedFloat<f64>) -> usize {
     // Can likely get rid of the partial_cmp, because I have gauranteed the values to be finite
     let mut left = 0;
     let mut right = arr.len();
 
     while left < right {
         let mid = left + ((right - left) >> 1);
-        if let Some(c) = arr[mid].partial_cmp(t) {
-            match c {
-                std::cmp::Ordering::Greater => right = mid,
-                _ => left = mid + 1,
-            }
-        } else {
-            return None;
+        match arr[mid].cmp(t) {
+            std::cmp::Ordering::Greater => right = mid,
+            _ => left = mid + 1,
         }
     }
-    Some(left)
+    left
 }
 
 /// Currently only supports two-sided. Won't be too hard to do add one-sided? I hope.
@@ -36,14 +33,22 @@ fn ks_2samp(v1: &[f64], v2: &[f64], alpha: f64) -> (f64, f64) {
     let n1: f64 = v1.len() as f64;
     let n2: f64 = v2.len() as f64;
 
+    let v1 = unsafe {
+        std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(v1)
+    };
+
+    let v2 = unsafe {
+        std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(v2)
+    };
+
     // Follow SciPy's trick to compute the difference between two CDFs
     let stats = v1
         .iter()
         .chain(v2.iter())
         .map(|x| {
             (
-                (binary_search_right(&v1, x).unwrap() as f64) / n1,
-                (binary_search_right(&v2, x).unwrap() as f64) / n2,
+                (binary_search_right(v1, x) as f64) / n1,
+                (binary_search_right(v2, x) as f64) / n2,
             )
         })
         .fold(f64::MIN, |acc, (x, y)| acc.max((x - y).abs()));
