@@ -997,7 +997,7 @@ def digamma(x: str | pl.Expr) -> pl.Expr:
 #     target: str | pl.Expr,
 #     n_neighbors: int = 3,
 #     seed: int | None = None,
-# ) -> pl.Expr:
+# ) -> float:
 #     """
 #     Computes the mutual infomation between a continuous variable x and a discrete
 #     target varaible. Note: (1) This always assume `x` is continuous. (2) Unlike Scikit-learn,
@@ -1027,11 +1027,20 @@ def digamma(x: str | pl.Expr) -> pl.Expr:
 #         is_elementwise=True,
 #     )
 
+#     kwargs = {
+#         "k": n_neighbors,
+#         "metric": "l1",
+#         "parallel": False,
+#         "skip_eval": False,
+#         "max_bound": 99999.0,
+#         "epsilon": 0.
+#     }
+
 #     # This is not really exposed to the user. It does `dist_from_kth_nb` and a `next_down` in one go.
 #     r = pl_plugin(
-#         symbol="_pl_dist_from_kth_nb",
+#         symbol="pl_dist_from_kth_nb",
 #         args=[c],
-#         kwargs={"k": n_neighbors, "parallel": False},
+#         kwargs=kwargs,
 #     ).over(t)
 
 #     label_counts = c.len().over(t)
@@ -1050,7 +1059,6 @@ def digamma(x: str | pl.Expr) -> pl.Expr:
 #         },
 #     )
 
-#     # return nb_cnt
 
 #     # psi in SciPy is the diagamma function
 #     psi_label_counts = pl_plugin(
