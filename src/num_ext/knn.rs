@@ -212,6 +212,73 @@ where
     }
 }
 
+#[polars_expr(output_type=Float64)]
+fn pl_dist_from_kth_nb(
+    inputs: &[Series],
+    context: CallerContext,
+    kwargs: KDTKwargs,
+) -> PolarsResult<Series> {
+    // Set up params
+    let k = kwargs.k;
+    let can_parallel = kwargs.parallel && !context.parallel();
+    let ncols = inputs.len();
+    let data = series_to_row_major_slice::<Float64Type>(inputs)?;
+    match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
+        Ok(d) => {
+            let mut leaves: Vec<Leaf<f64, ()>> = data
+                .chunks_exact(ncols)
+                .map(|sl| ((), sl).into())
+                .collect();
+            // let mut leaves = row_major_slice_to_leaves(&data, ncols, id, null_mask);
+            let tree = KDT::from_leaves_unchecked(&mut leaves, d);
+            let nrows = data.len() / ncols;
+            let ca = if can_parallel {
+                let n_threads = POOL.current_num_threads();
+                let splits = split_offsets(nrows, n_threads);
+                let chunks_iter = splits.into_par_iter()
+                    .map(|(i, n)| {
+                        let start = i * ncols;
+                        let end = (i + n) * ncols;
+                        let slice = &data[start..end];
+                        let mut builder: PrimitiveChunkedBuilder<Float64Type> 
+                            = PrimitiveChunkedBuilder::new("".into(), n);
+                        
+                        for point in slice.chunks_exact(ncols) {
+                            match tree.knn_bounded(k + 1, point, kwargs.max_bound, kwargs.epsilon) {
+                                Some(mut nbs) => {
+                                    builder.append_option(
+                                        nbs.pop().map(|nb| nb.to_dist())
+                                    );
+                                },
+                                _ => builder.append_null()
+                            }
+                        }
+                        let ca = builder.finish();
+                        ca.downcast_iter().cloned().collect::<Vec<_>>()
+                    });
+                let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
+                Float64Chunked::from_chunk_iter("".into(), chunks.into_iter().flatten()) 
+            } else {
+                let mut builder: PrimitiveChunkedBuilder<Float64Type> 
+                    = PrimitiveChunkedBuilder::new("".into(), nrows);
+                for point in data.chunks_exact(ncols) {
+                    match tree.knn_bounded(k + 1, point, kwargs.max_bound, kwargs.epsilon) {
+                        Some(mut nbs) => {
+                            builder.append_option(
+                                nbs.pop().map(|nb| nb.to_dist())
+                            );
+                        },
+                        _ => builder.append_null()
+                    }
+                }
+                builder.finish()
+            };
+            Ok(ca.into_series())
+        }
+        Err(e) => Err(PolarsError::ComputeError(e.into())),
+    }
+}
+
 #[polars_expr(output_type_func=list_u32_output)]
 fn pl_knn_ptwise(
     inputs: &[Series],
@@ -228,8 +295,8 @@ fn pl_knn_ptwise(
     let id = id.cont_slice()?;
     let nrows = id.len();
 
-    // True means no nulls, keep
-    let null_mask = inputs[1].bool().unwrap();
+    // True means keep
+    let keep_mask = inputs[1].bool().unwrap();
 
     let mut inputs_offset = 2;
     let eval_mask = if skip_eval {
@@ -246,9 +313,9 @@ fn pl_knn_ptwise(
     let ncols = inputs[inputs_offset..].len();
     let data = series_to_row_major_slice::<Float64Type>(&inputs[inputs_offset..])?;
 
-    let ca = match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
+    match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
         Ok(d) => {
-            let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, null_mask);
+            let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, keep_mask);
             let tree = KDT::from_leaves_unchecked(&mut leaves, d);
             Ok(knn_ptwise(
                 tree,
@@ -258,13 +325,11 @@ fn pl_knn_ptwise(
                 can_parallel,
                 kwargs.max_bound,
                 kwargs.epsilon,
-            ))
+            ).into_series())
         }
-        Err(e) => Err(e),
+        Err(e) => Err(PolarsError::ComputeError(e.into())),
     }
-    .map_err(|err| PolarsError::ComputeError(err.into()))?;
 
-    Ok(ca.into_series())
 }
 
 pub fn knn_ptwise_w_dist<'a, Kdt>(
@@ -427,9 +492,8 @@ fn pl_knn_ptwise_w_dist(
                 kwargs.epsilon,
             ))
         }
-        Err(e) => Err(e),
-    }
-    .map_err(|err| PolarsError::ComputeError(err.into()))?;
+        Err(e) => Err(PolarsError::ComputeError(e.into())),
+    }?;
 
     let out = StructChunked::from_series(
         "knn_dist".into(),
@@ -512,16 +576,14 @@ fn pl_query_radius_ptwise(
     let ncols = inputs[1..].len();
     let data = series_to_row_major_slice::<Float64Type>(&inputs[1..])?;
     // Building output
-    let ca = match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
+    match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
         Ok(d) => {
             let mut leaves = slice_to_leaves(&data, ncols, id);
             let tree = KDT::from_leaves_unchecked(&mut leaves, d);
-            Ok(query_radius_ptwise(tree, &data, radius, can_parallel, sort))
+            Ok(query_radius_ptwise(tree, &data, radius, can_parallel, sort).into_series())
         }
-        Err(e) => Err(e),
+        Err(e) => Err(PolarsError::ComputeError(e.into())),
     }
-    .map_err(|err| PolarsError::ComputeError(err.into()))?;
-    Ok(ca.into_series())
 }
 
 #[inline]
@@ -619,27 +681,31 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
 
     if radius.len() == 1 {
         let r = radius.get(0).unwrap();
-        let ca = match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
+        match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
             Ok(d) => {
                 let mut leaves = slice_to_empty_leaves(&data, ncols);
                 let tree = KDT::from_leaves_unchecked(&mut leaves, d);
-                Ok(query_nb_cnt(tree, &data, r, can_parallel))
+                Ok(
+                    query_nb_cnt(tree, &data, r, can_parallel)
+                    .with_name("cnt".into())
+                    .into_series()
+                )
             }
-            Err(e) => Err(e),
+            Err(e) => Err(PolarsError::ComputeError(e.into())),
         }
-        .map_err(|err| PolarsError::ComputeError(err.into()))?;
-        Ok(ca.with_name("cnt".into()).into_series())
     } else if radius.len() == nrows {
-        let ca = match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
+        match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
             Ok(d) => {
                 let mut leaves = slice_to_empty_leaves(&data, ncols);
                 let tree = KDT::from_leaves_unchecked(&mut leaves, d);
-                Ok(query_nb_cnt_w_radius(tree, &data, radius, can_parallel))
+                Ok(
+                    query_nb_cnt_w_radius(tree, &data, radius, can_parallel)
+                    .with_name("cnt".into())
+                    .into_series()
+                )
             }
-            Err(e) => Err(e),
+            Err(e) => Err(PolarsError::ComputeError(e.into())),
         }
-        .map_err(|err| PolarsError::ComputeError(err.into()))?;
-        Ok(ca.with_name("cnt".into()).into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),

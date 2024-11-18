@@ -15,9 +15,58 @@ __all__ = [
     "query_radius_ptwise",
     "query_radius_freq_cnt",
     "query_nb_cnt",
+    "query_dist_from_kth_nb",
     "is_knn_from",
     "within_dist_from",
 ]
+
+
+def query_dist_from_kth_nb(
+    *features: str | pl.Expr,
+    k: int,
+    dist: Distance = "sql2",
+    parallel: bool = False,
+    epsilon: float = 0.0,
+    max_bound: float = 99999.0,
+) -> pl.Expr:
+    """
+    Computes the distance of each row to its k-th closest neighbor. This is useful for outlier detection.
+    E.g. if the average distance to the 5th neighbor is 0.1, then a distance of 0.3 to the 5th neighbor might
+    indicate that the point might be far away from neighboring points, or that it occupies a sparse region in which
+    sample points typically do not appear.
+
+    This can be 10% faster and more direct than getting the result from `query_knn_ptwise` with return_distance = True.
+
+    Parameters
+    ----------
+    *features : str | pl.Expr
+        Other columns used as features
+    k : int
+        Number of neighbors to query
+    dist : Literal[`l1`, `l2`, `sql2`, `inf`]
+        Note `sql2` stands for squared l2.
+    parallel : bool
+        Whether to run the k-nearest neighbor query in parallel. This is recommended when you
+        are running only this expression, and not in group_by() or over() context.
+    epsilon
+        If > 0, then it is possible to miss a neighbor within epsilon distance away. This parameter
+        should increase as the dimension of the vector space increases because higher dimensions
+        allow for errors from more directions.
+    max_bound
+        Max distance the neighbors must be within
+    """
+    return pl_plugin(
+        symbol="pl_dist_from_kth_nb",
+        args=[str_to_expr(e) for e in features],
+        kwargs={
+            "k": k,
+            "metric": str(dist).lower(),
+            "parallel": parallel,
+            "skip_eval": False,
+            "max_bound": max_bound,
+            "epsilon": epsilon,
+        },
+    )
 
 
 def query_knn_ptwise(
@@ -107,21 +156,19 @@ def query_knn_ptwise(
         "parallel": parallel,
         "skip_eval": skip_eval,
         "max_bound": max_bound,
-        "epsilon": abs(epsilon),
+        "epsilon": 0.0,
     }
     if return_dist:
         return pl_plugin(
             symbol="pl_knn_ptwise_w_dist",
             args=cols,
             kwargs=kwargs,
-            pass_name_to_apply=True,
         )
     else:
         return pl_plugin(
             symbol="pl_knn_ptwise",
             args=cols,
             kwargs=kwargs,
-            pass_name_to_apply=True,
         )
 
 

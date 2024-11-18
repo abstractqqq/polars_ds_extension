@@ -283,7 +283,6 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
         current_max: T,
         max_dist_bound: T,
     ) {
-        // This is only called if is_leaf. Safe to unwrap.
         let mut cur_max = current_max;
         for element in self.data.iter() {
             let dist = self.d.dist(element.row_vec, point);
@@ -306,7 +305,6 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
 
     // #[inline(always)]
     fn update_nb_within(&self, neighbors: &mut Vec<NB<T, A>>, point: &[T], radius: T) {
-        // This is only called if is_leaf. Safe to unwrap.
         for element in self.data.iter() {
             let y = element.row_vec;
             let dist = self.d.dist(y, point);

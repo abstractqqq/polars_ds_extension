@@ -1813,3 +1813,35 @@ def test_digamma():
     scipy_digamma = scipy.special.psi(a)
 
     assert np.all(np.isclose(pds_digamma, scipy_digamma, atol=1e-5))
+
+
+def test_kth_nb_dist():
+    size = 2000
+    df = pl.DataFrame(
+        {
+            "id": range(size),
+        }
+    ).with_columns(
+        pds.random().alias("var1"),
+        pds.random().alias("var2"),
+        pds.random().alias("var3"),
+    )
+    # method 1 is what we want to test
+    # method 2 is assumed to be the truth.
+    test = (
+        df.select(
+            pds.query_dist_from_kth_nb("var1", "var2", "var3", dist="l1", k=3).alias(
+                "kth_nb_dist_method_1"
+            ),
+            pds.query_knn_ptwise(
+                "var1", "var2", "var3", index="id", return_dist=True, k=3, dist="l1"
+            )
+            .struct.field("dist")
+            .list.last()
+            .alias("kth_nb_dist_method_2"),
+        )
+        .select((pl.col("kth_nb_dist_method_1") == pl.col("kth_nb_dist_method_2")).all())
+        .item(0, 0)
+    )
+
+    assert test is True
