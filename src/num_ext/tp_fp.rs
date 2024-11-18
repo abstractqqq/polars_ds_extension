@@ -13,6 +13,14 @@ fn combo_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new("".into(), DataType::Struct(v)))
 }
 
+fn tpr_fpr_output(_: &[Field]) -> PolarsResult<Field> {
+    let threshold = Field::new("threshold".into(), DataType::Float64);
+    let tpr = Field::new("tpr".into(), DataType::Float64);
+    let fpr = Field::new("fpr".into(), DataType::Float64);
+    let v: Vec<Field> = vec![threshold, tpr, fpr];
+    Ok(Field::new("tpr_fpr".into(), DataType::Struct(v)))
+}
+
 fn tp_fp_frame(
     predicted: &Series,
     actual: &Series,
@@ -147,6 +155,26 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
         [&precision, &recall, &f, &ap, &auc].into_iter(),
     )?;
     Ok(out.into_series())
+}
+
+
+#[polars_expr(output_type_func=tpr_fpr_output)]
+fn pl_tpr_fpr(inputs: &[Series]) -> PolarsResult<Series> {
+    // actual, when passed in, is always u32 (done in Python extension side)
+    let actual = &inputs[0];
+    let predicted = &inputs[1];
+
+    let positive_count = actual.sum::<u32>().unwrap_or(0);
+    if positive_count == 0 {
+        return Ok(Series::from_iter([f64::NAN]));
+    }
+
+    let frame = tp_fp_frame(predicted, actual, positive_count, true)?
+        .select([col("threshold"), col("tpr"), col("fpr")])
+        .collect()?;
+   
+    let ca = frame.into_struct("tpr_fpr".into());
+    Ok(ca.into_series())
 }
 
 fn binary_confusion_matrix(combined_series: &UInt32Chunked) -> [u32; 4] {
