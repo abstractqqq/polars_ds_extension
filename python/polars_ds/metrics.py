@@ -22,6 +22,7 @@ __all__ = [
     "query_msle",
     "query_mad",
     "query_roc_auc",
+    "query_tpr_fpr",
     "query_binary_metrics",
     "query_multi_roc_auc",
     "query_cat_cross_entropy",
@@ -350,7 +351,27 @@ def query_roc_auc(
         symbol="pl_roc_auc",
         args=[str_to_expr(actual).cast(pl.UInt32), str_to_expr(pred)],
         returns_scalar=True,
-        pass_name_to_apply=True,
+    )
+
+
+def query_tpr_fpr(
+    actual: str | pl.Expr,
+    pred: str | pl.Expr,
+) -> pl.Expr:
+    """
+    Returns the TPR and FPR for all thresholds. This is useful when you want to study the thresholds
+    or when you want to plot roc auc curve.
+
+    Parameters
+    ----------
+    actual
+        An expression represeting the actual
+    pred
+        An expression represeting the column with predicted probability.
+    """
+    return pl_plugin(
+        symbol="pl_tpr_fpr",
+        args=[str_to_expr(actual).cast(pl.UInt32), str_to_expr(pred)],
     )
 
 
