@@ -326,27 +326,25 @@ fn pl_lstsq_multi(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsResult<S
         )),
     }?;
 
-    let df_out = unsafe {
-        DataFrame::new_no_checks(
-            x.nrows(),
-            y_names
-                .into_iter()
-                .enumerate()
-                .map(|(i, y)| {
-                    let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                        ListPrimitiveChunkedBuilder::new(
-                            y.clone(),
-                            1,
-                            coeffs.nrows(),
-                            DataType::Float64,
-                        );
-                    builder.append_slice(coeffs.col_as_slice(i));
-                    let out = builder.finish();
-                    out.into_column()
-                })
-                .collect::<Vec<_>>(),
-        )
-    };
+    let df_out = DataFrame::new(
+        y_names
+            .into_iter()
+            .enumerate()
+            .map(|(i, y)| {
+                let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
+                    ListPrimitiveChunkedBuilder::new(
+                        y.clone(),
+                        1,
+                        coeffs.nrows(),
+                        DataType::Float64,
+                    );
+                builder.append_slice(coeffs.col_as_slice(i));
+                let out = builder.finish();
+                out.into_column()
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    
     Ok(df_out.into_struct("coeffs".into()).into_series())
 }
 
@@ -388,7 +386,7 @@ fn pl_lstsq_multi_pred(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsRes
         s.push(p.into_column());
         s.push(r.into_column());
     }
-    let df_out = unsafe { DataFrame::new_no_checks(pred.nrows(), s) };
+    let df_out = DataFrame::new(s)?;
     Ok(df_out.into_struct("all_preds".into()).into_series())
 }
 

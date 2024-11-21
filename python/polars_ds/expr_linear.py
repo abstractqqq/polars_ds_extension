@@ -157,7 +157,7 @@ def lin_reg(
         if n_targets == 0:
             raise ValueError("If `target` is a list, it cannot be empty.")
         elif n_targets == 1:
-            return query_lstsq(
+            return lin_reg(
                 *x,
                 target=target[0],
                 add_bias=add_bias,
