@@ -1,6 +1,6 @@
 # Needed for local development
-maturin[patchelf]>=1.3.2l; sys_platform == "linux"
-maturin>=1.3.21; sys_platform != "linux"
+maturin[patchelf]>=1.7; sys_platform == "linux"
+maturin>=1.7; sys_platform != "linux"
 polars
 pre-commit
 ipykernel
