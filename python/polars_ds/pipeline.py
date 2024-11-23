@@ -33,6 +33,14 @@ __all__ = ["Pipeline", "Blueprint", "FitStep"]
 
 
 @dataclass
+class SQLStep:  # FittedStep
+    sql: str
+
+    def __iter__(self):
+        return [self.sql].__iter__()
+
+
+@dataclass
 class SelectStep:  # FittedStep
     exprs: ExprTransform
 
@@ -79,8 +87,8 @@ class FitStep:  # Not a FittedStep
         return self.func(df, real_cols)
 
 
-Step: TypeAlias = Union[FitStep, SelectStep, WithColumnsStep, FilterStep]
-FittedStep: TypeAlias = Union[SelectStep, WithColumnsStep, FilterStep]
+Step: TypeAlias = Union[FitStep, SelectStep, WithColumnsStep, FilterStep, SQLStep]
+FittedStep: TypeAlias = Union[SelectStep, WithColumnsStep, FilterStep, SQLStep]
 
 
 @dataclass
@@ -112,27 +120,32 @@ class StepRepr:
             raise ValueError(f"Keys missing or data type is not expected. Original error: \n{e}")
 
 
-def _to_json_dict(step: FittedStep) -> Dict:
+def _step_to_json(step: FittedStep) -> Dict:
     """
     Turns a fitted step into a JSON dict.
     """
-    if _IS_POLARS_V1:
-        try:
-            exprs = [e.meta.serialize(format="json") for e in step]
-        except Exception as e:
-            raise ValueError(f"The `FittedStep` is ill-defined. Original error: \n{e}")
+    if isinstance(step, SQLStep):
+        return {"SQLStep": step.sql}
     else:
-        try:
-            exprs = [e.meta.serialize() for e in step]
-        except Exception as e:
-            raise ValueError(f"The `FittedStep` is ill-defined. Original error: \n{e}")
+        if _IS_POLARS_V1:
+            try:
+                exprs = [e.meta.serialize(format="json") for e in step]
+            except Exception as e:
+                raise ValueError(f"The `FittedStep` is ill-defined. Original error: \n{e}")
+        else:
+            try:
+                exprs = [e.meta.serialize() for e in step]
+            except Exception as e:
+                raise ValueError(f"The `FittedStep` is ill-defined. Original error: \n{e}")
 
-    if isinstance(step, SelectStep):
-        return {"SelectStep": exprs}
-    elif isinstance(step, FilterStep):
-        return {"FilterStep": exprs}
-    else:
-        return {"WithColumnsStep": exprs}
+        if isinstance(step, SelectStep):
+            return {"SelectStep": exprs}
+        elif isinstance(step, FilterStep):
+            return {"FilterStep": exprs}
+        elif isinstance(step, WithColumnsStep):
+            return {"WithColumnsStep": exprs}
+        else:
+            raise ValueError("Unknown Pipeline Step Type.")
 
 
 @dataclass
@@ -157,7 +170,10 @@ class Pipeline:
         text: str = "Naive Query Steps: \n\n"
         for i, step in enumerate(self.transforms):
             text += f"Step {i+1}:\n"
-            text += ",\n".join(str(e) for e in step)  # SelectStep, WithColumnsStep are iterable
+            if isinstance(step, SQLStep):
+                text += f"Run SQL: {step.sql}\n"
+            else:
+                text += ",\n".join(str(e) for e in step)  # SelectStep, WithColumnsStep are iterable
             text += "\n\n"
 
         return text
@@ -180,6 +196,8 @@ class Pipeline:
                 plan = plan.select(step.exprs)
             elif isinstance(step, FilterStep):
                 plan = plan.filter(step.exprs)
+            elif isinstance(step, SQLStep):
+                plan = pl.SQLContext(df=plan, eager=False).execute(step.sql)
             else:
                 raise ValueError(f"Transform is not a valid FittedStep: {str(step)}")
 
@@ -194,7 +212,7 @@ class Pipeline:
             "target": self.target,
             "feature_names_in_": list(self.feature_names_in_),
             "feature_names_out_": list(self.feature_names_out_),
-            "transforms": [_to_json_dict(step) for step in self.transforms],
+            "transforms": [_step_to_json(step) for step in self.transforms],
             "ensure_features_in": self.ensure_features_in,
             "ensure_features_out": self.ensure_features_out,
         }
@@ -275,6 +293,9 @@ class Pipeline:
                     json_exprs = step.pop("FilterStep")
                     actual_exprs = [pl.Expr.deserialize(StringIO(e)) for e in json_exprs]
                     transform_steps.append(FilterStep(actual_exprs))
+            elif "SQLStep" in step:
+                sql = step.pop("SQLStep")
+                transform_steps.append(SQLStep(sql))
             else:
                 raise ValueError(f"Invalid step {step}")
 
@@ -340,7 +361,7 @@ class Pipeline:
             else:
                 extras = [c for c in df.columns if c not in self.feature_names_in_]
                 missing = [c for c in self.feature_names_in_ if c not in df.columns]
-            if len(extras) > 0 or len(missing):
+            if len(extras) > 0 or len(missing) > 0:
                 raise ValueError(
                     f"Input df doesn't have the features expected. Extra columns: {extras}. Missing columns: {missing}"
                 )
@@ -434,33 +455,38 @@ class Blueprint:
     #     self._steps = [deepcopy(s) for s in self._steps]
     #     return self
 
-    def filter(self, *by: str | pl.Expr, all_true: bool = True) -> Self:
+    def filter(self, *by: str | pl.Expr, all_: bool = True) -> Self:
         """
-        Filters on the dataframe using native polars expressions or SQL strings (the part after where).
-        Note, elements in `by` must either all be strings or all be polars expressions.
+        Filters on the dataframe using native polars expressions or SQL boolean expressions.
 
         Parameters
         ----------
         by
             Native polars boolean expression or SQL strings
-        all_true
-            Whether all conditions should be met, or any.
+        all_
+            Whether all conditions should be met by all or any (all = False).
         """
-        inputs = list(by)
-        is_all_string = all(isinstance(b, str) for b in inputs)
-        is_all_expr = all(isinstance(b, pl.Expr) for b in inputs)
-        if (is_all_string or is_all_expr) is False:  # if both are false
-            raise ValueError("Filters must either all be strings or all be polars expressions.")
-
-        if is_all_string:
-            exprs = [pl.sql_expr(s) for s in inputs]
-        else:  # is_all_expr
-            exprs = list(inputs)
-
-        if all_true:
+        exprs = [s if isinstance(s, pl.Expr) else pl.sql_expr(s) for s in by]
+        if all_:
             self._steps.append(FilterStep(pl.all_horizontal(exprs)))
         else:
             self._steps.append(FilterStep(pl.any_horizontal(exprs)))
+        return self
+
+    def sql_transform(self, sql: str) -> Self:
+        """
+        Runs the SQL on the dataframe when it reaches this step. The user must ensure that
+        the SQL is valid Polars SQL and all columns referred in the SQL exist at this point.
+        The name "df" should be used to refer to the current state of the dataframe in the SQL.
+        E.g. select * from df where A is True.
+
+        Parameters
+        ----------
+        sql
+            The SQL to run on the dataframe. Note: this step doesn't immedinately check the validity of
+            the SQL statement.
+        """
+        self._steps.append(SQLStep(sql))
         return self
 
     def impute(self, cols: IntoExprColumn, method: SimpleImputeMethod = "mean") -> Self:
@@ -481,7 +507,7 @@ class Blueprint:
 
     def nan_to_null(self) -> Self:
         """
-        Maps NaN values to null.
+        Maps NaN values in all columns to null.
         """
         self._steps.append(WithColumnsStep(cs.float().nan_to_null()))
         return self
@@ -578,7 +604,8 @@ class Blueprint:
         Parameters
         ----------
         force_f32
-            If true, force all float columns to be f32 type.
+            If true, force all float columns to be f32 type. You might want to consider using f32
+            only in the pipeline if you wish to save memory.
         """
 
         exprs = cs.integer().shrink_dtype()
@@ -970,21 +997,24 @@ class Blueprint:
         # the collect should be and optimized.
         df_lazy: pl.LazyFrame = df.lazy()
         for step in self._steps:
-            if isinstance(step, FitStep):
+            if isinstance(step, FitStep):  # Need fitting
                 exprs = step.fit(df_lazy)
                 transforms.append(WithColumnsStep(exprs))
                 df_lazy = df_lazy.with_columns(exprs)
-            elif isinstance(step, WithColumnsStep):
+            elif isinstance(step, WithColumnsStep):  # Fitted
                 transforms.append(step)
                 df_lazy = df_lazy.with_columns(step.exprs)
-            elif isinstance(step, SelectStep):
+            elif isinstance(step, SelectStep):  # Fitted
                 transforms.append(step)
                 df_lazy = df_lazy.select(step.exprs)
-            elif isinstance(step, FilterStep):
+            elif isinstance(step, FilterStep):  # Fitted
                 transforms.append(step)
                 df_lazy = df_lazy.filter(step.exprs)
+            elif isinstance(step, SQLStep):  # Fitted
+                transforms.append(step)
+                df_lazy = pl.SQLContext(df=df_lazy).execute(step.sql)
             else:
-                raise ValueError("Not a valid step.")
+                raise ValueError(f"Not a valid step: {step.__class__}")
 
         return Pipeline(
             name=self.name,

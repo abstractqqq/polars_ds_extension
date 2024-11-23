@@ -163,18 +163,19 @@ fn pl_tpr_fpr(inputs: &[Series]) -> PolarsResult<Series> {
     // actual, when passed in, is always u32 (done in Python extension side)
     let actual = &inputs[0];
     let predicted = &inputs[1];
-
     let positive_count = actual.sum::<u32>().unwrap_or(0);
+    
     if positive_count == 0 {
-        return Ok(Series::from_iter([f64::NAN]));
+        Ok(Series::from_iter([f64::NAN]))
+    } else {
+        let frame = tp_fp_frame(predicted, actual, positive_count, true)?
+            .select([col("threshold"), col("tpr"), col("fpr")])
+            .collect()?;
+       
+        let ca = frame.into_struct("tpr_fpr".into());
+        Ok(ca.into_series())
     }
 
-    let frame = tp_fp_frame(predicted, actual, positive_count, true)?
-        .select([col("threshold"), col("tpr"), col("fpr")])
-        .collect()?;
-   
-    let ca = frame.into_struct("tpr_fpr".into());
-    Ok(ca.into_series())
 }
 
 fn binary_confusion_matrix(combined_series: &UInt32Chunked) -> [u32; 4] {
