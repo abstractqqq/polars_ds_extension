@@ -52,14 +52,16 @@ fn pl_approximate_entropy(
     let phi_m = if can_parallel {
         data.chunks_exact(ncols)
             .par_bridge()
-            .map(|sl| 
+            .map(|sl| {
                 (tree.within_count(&sl[..ncols_minus_1], r).unwrap_or(0) as f64 * nrows_recip).ln()
-            )
-            .sum::<f64>() * nrows_recip
+            })
+            .sum::<f64>()
+            * nrows_recip
     } else {
-        data.chunks_exact(ncols).fold(0f64, |acc, sl| 
-            acc + (tree.within_count(&sl[..ncols_minus_1], r).unwrap_or(0) as f64 * nrows_recip).ln()
-        ) * nrows_recip
+        data.chunks_exact(ncols).fold(0f64, |acc, sl| {
+            acc + (tree.within_count(&sl[..ncols_minus_1], r).unwrap_or(0) as f64 * nrows_recip)
+                .ln()
+        }) * nrows_recip
     };
 
     // Step 3, 4, 5 for m + 1 in wiki
@@ -81,13 +83,15 @@ fn pl_approximate_entropy(
             .take(nrows_minus_1)
             .par_bridge()
             .map(|sl| (tree.within_count(sl, r).unwrap_or(0) as f64 * nrows_minus_1_recip).ln())
-            .sum::<f64>() * nrows_minus_1_recip
+            .sum::<f64>()
+            * nrows_minus_1_recip
     } else {
         data.chunks_exact(ncols)
             .take(nrows_minus_1)
             .fold(0f64, |acc, sl| {
                 acc + (tree.within_count(sl, r).unwrap_or(0) as f64 * nrows_minus_1_recip).ln()
-            }) * nrows_minus_1_recip
+            })
+            * nrows_minus_1_recip
     };
     // Output
     Ok(Series::from_vec(name.clone(), vec![(phi_m1 - phi_m).abs()]))

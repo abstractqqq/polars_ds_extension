@@ -678,7 +678,7 @@ def integrate_trapz(y: str | pl.Expr, x: float | pl.Expr) -> pl.Expr:
     if isinstance(x, float):
         xx = pl.lit(abs(x), pl.Float64)
     else:
-        xx = str_to_expr(x).cast(pl.Float64)
+        xx = str_to_expr(x).abs().cast(pl.Float64)
 
     return pl_plugin(
         symbol="pl_trapz",

@@ -1,12 +1,11 @@
+use crate::stats_utils::gamma::digamma;
 /// Extra functions for floating points
 /// trunc, fract, exp2, logit, expit, gamma,
 /// The logit, expit and gamma functions are as defined in SciPy
 use crate::utils::{first_field_output, float_output};
-use crate::stats_utils::gamma::digamma;
 use num::traits::Float;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
-
 
 #[inline]
 fn logit<T: Float>(x: T) -> T {
@@ -262,7 +261,6 @@ fn pl_next_down(inputs: &[Series]) -> PolarsResult<Series> {
             "Input column must be numerical.".into(),
         )),
     }
-
 }
 
 #[polars_expr(output_type=Float64)]
@@ -281,10 +279,9 @@ fn pl_diagamma(inputs: &[Series]) -> PolarsResult<Series> {
         DataType::Float64 => {
             let ca = s.f64().unwrap();
             Ok(ca.apply_values(digamma).into_series())
-        },
+        }
         _ => Err(PolarsError::ComputeError(
             "Input column must be numerical.".into(),
         )),
     }
 }
-

@@ -556,7 +556,7 @@ class Blueprint:
         self._steps.append(FitStep(partial(t.scale, method=method), cols, self.exclude))
         return self
 
-    def robust_scale(self, cols: IntoExprColumn, q1: float, q2: float) -> Self:
+    def robust_scale(self, cols: IntoExprColumn, q_low: float = 0.25, q_high: float = 0.75) -> Self:
         """
         Performs robust scaling on the given columns
 
@@ -564,12 +564,14 @@ class Blueprint:
         ---------
         cols
             Any Polars expression that can be understood as columns.
-        q1
+        q_low
             The lower quantile value
-        q2
+        q_high
             The higher quantile value
         """
-        self._steps.append(FitStep(partial(t.robust_scale, q1=q1, q2=q2), cols, self.exclude))
+        self._steps.append(
+            FitStep(partial(t.robust_scale, q_low=q_low, q_high=q_high), cols, self.exclude)
+        )
         return self
 
     def center(self, cols: IntoExprColumn) -> Self:

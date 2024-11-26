@@ -22,7 +22,7 @@
 //         let ordered_data = unsafe {
 //             std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(data)
 //         };
-    
+
 //         let index = match ordered_data.binary_search(&x) {
 //             Ok(i) => i,
 //             Err(j) => j
@@ -66,7 +66,7 @@
 //         x
 //             .into_iter()
 //             .par_bridge()
-//             .map(|op_y| 
+//             .map(|op_y|
 //                 op_y.map(|y| dist_from_kth_nb(data, y, k))
 //             ).collect::<Float64Chunked>()
 //     } else {

@@ -1,5 +1,5 @@
-use polars::prelude::*;
 use ordered_float::OrderedFloat;
+use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 fn psi_report_output(_: &[Field]) -> PolarsResult<Field> {
@@ -20,13 +20,9 @@ fn psi_with_bps_helper(s: &[f64], bp: &[f64]) -> Vec<u32> {
     // s: data
     // bp: breakpoints
 
-    let s = unsafe {
-        std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(s)
-    }; // safe
+    let s = unsafe { std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(s) }; // safe
 
-    let bp = unsafe {
-        std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(bp)
-    };
+    let bp = unsafe { std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(bp) };
 
     let mut c = vec![0u32; bp.len()];
     for x in s {
@@ -85,7 +81,6 @@ fn pl_psi_w_bps(inputs: &[Series]) -> PolarsResult<Series> {
     let s2 = data2.cont_slice().unwrap();
 
     let bp = breakpoints.cont_slice().unwrap();
-
 
     let c1 = psi_with_bps_helper(s1, bp);
     let c2 = psi_with_bps_helper(s2, bp);

@@ -344,7 +344,7 @@ fn pl_lstsq_multi(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsResult<S
             })
             .collect::<Vec<_>>(),
     )?;
-    
+
     Ok(df_out.into_struct("coeffs".into()).into_series())
 }
 
