@@ -10,7 +10,7 @@ from . import transforms as t
 from functools import partial
 from dataclasses import dataclass
 from polars.type_aliases import IntoExprColumn
-from typing import List, Union, Dict, Any
+from typing import List, Union, Dict, Any, Tuple
 from .type_alias import (
     TypeAlias,
     PolarsFrame,
@@ -341,7 +341,11 @@ class Pipeline:
         self.ensure_features_out = ensure_out
         return self
 
-    def transform(self, df: PolarsFrame, return_lazy: bool = False) -> PolarsFrame:
+    def transform(self, 
+        df: PolarsFrame, 
+        return_lazy: bool = False,
+        separate: bool = False,
+    ) -> PolarsFrame | Tuple[PolarsFrame, PolarsFrame]:
         """
         Transforms the df using the learned expressions.
 
@@ -352,6 +356,10 @@ class Pipeline:
             the learned transformations on the incoming df.
         return_lazy
             If true, return the lazy plan for the transformations
+        separate
+            Separate the feature data (usually referred to as `X`), from the target data, (
+            usually referred to as `y`.) by returning two dataframes representing features and
+            the target.
         """
         if self.ensure_features_in:
             if _IS_POLARS_V1:
@@ -369,7 +377,24 @@ class Pipeline:
         plan = self._generate_lazy_plan(df)
         if self.ensure_features_out:
             plan = plan.select(self.feature_names_out_)
-        return plan if return_lazy else plan.collect()  # Add config here if streaming is needed
+        
+        # Add config here if streaming is needed
+        if separate:
+            if self.target is None:
+                raise ValueError("If you want to separate the feature data from target data, please specify the target at blueprint initiation.")
+            else:
+                if return_lazy:
+                    return (
+                        plan.select(pl.all().exclude(self.target)),
+                        plan.select(self.target)
+                    )
+                else:
+                    return (
+                        plan.select(pl.all().exclude(self.target)).collect(),
+                        plan.select(self.target).collect()
+                    )
+        else:
+            return plan if return_lazy else plan.collect()  
 
 
 class Blueprint:
@@ -1032,11 +1057,20 @@ class Blueprint:
         """
         return self.materialize()
 
-    def transform(self, df: PolarsFrame) -> pl.DataFrame:
-        return self.materialize().transform(df)
+    def transform(self, 
+        df: PolarsFrame,
+        separate: bool = False
+    ) -> pl.DataFrame | Tuple[pl.DataFrame, pl.DataFrame]:
+        """
+        Fits the blueprint with the dataframe that it is initialized with, and 
+        transforms the input dataframe.
 
-    def finish(self) -> Pipeline:
+        Parameters
+        ----------
+        df
+            Any Polars dataframe
+        separate
+            If true, two dataframes will be returned, one representing the feature
+            data and the other the target data. If false, then only one dataframe is returned.
         """
-        Alias for self.materialize()
-        """
-        return self.materialize()
+        return self.materialize().transform(df, separate=separate)
