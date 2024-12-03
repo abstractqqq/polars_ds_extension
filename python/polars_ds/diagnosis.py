@@ -1,5 +1,8 @@
 """
 Data Inspection Assistant and Visualizations for Polars Dataframe.
+
+Currently, the plot backend is Altair but this is subject to change, and will be decided base on 
+which plotting backend supports Polars more natively.
 """
 
 from __future__ import annotations
@@ -15,8 +18,8 @@ import altair as alt
 import polars.selectors as cs
 import polars as pl
 import graphviz
-
 import warnings
+
 from typing import List, Iterable, Dict, Tuple, Sequence
 from functools import lru_cache
 from itertools import combinations
@@ -57,7 +60,7 @@ class DIA:
         max_points: int = 20_000,
         filter_by: pl.Expr | None = None,
         title_comments: str = "",
-    ) -> alt.Chart | Exception:
+    ) -> alt.Chart:
         """
         See the method `plot_lin_reg`
         """
@@ -799,10 +802,10 @@ class DIA:
         cp = df_local.group_by("child").agg(pl.col("parent"))
         pc = df_local.group_by("parent").agg(pl.col("child"))
         child_parent: dict[str, pl.Series] = dict(
-            zip(cp.drop_in_place("child"), cp.drop_in_place("parent"))
+            zip(cp["child"], cp["parent"])
         )
         parent_child: dict[str, pl.Series] = dict(
-            zip(pc.drop_in_place("parent"), pc.drop_in_place("child"))
+            zip(pc["parent"], pc["child"])
         )
 
         dot = graphviz.Digraph(
@@ -871,8 +874,6 @@ class DIA:
                 filter_by,
                 title_comments,
             )
-            if isinstance(plot, Exception):
-                return plot
             return plot.configure(autosize="pad")
         else:
             if filter_by is None:
