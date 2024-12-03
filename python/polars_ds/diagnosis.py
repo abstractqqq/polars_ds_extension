@@ -802,10 +802,10 @@ class DIA:
         cp = df_local.group_by("child").agg(pl.col("parent"))
         pc = df_local.group_by("parent").agg(pl.col("child"))
         child_parent: dict[str, pl.Series] = dict(
-            zip(cp.drop_in_place("child"), cp.drop_in_place("parent"))
+            zip(cp["child"], cp["parent"])
         )
         parent_child: dict[str, pl.Series] = dict(
-            zip(pc.drop_in_place("parent"), pc.drop_in_place("child"))
+            zip(pc["parent"], pc["child"])
         )
 
         dot = graphviz.Digraph(
