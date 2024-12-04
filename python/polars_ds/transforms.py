@@ -173,8 +173,8 @@ def scale(
 def robust_scale(
     df: PolarsFrame,
     cols: List[str],
-    q1: float = 0.25,
-    q2: float = 0.75,
+    q_low: float = 0.25,
+    q_high: float = 0.75,
     method: QuantileMethod = "midpoint",
 ) -> ExprTransform:
     """
@@ -186,21 +186,21 @@ def robust_scale(
         Either a lazy or an eager dataframe
     cols
         A list of strings representing column names
-    q1
+    q_low
         The lower quantile value
-    q2
+    q_high
         The higher quantile value
     method
         Method to compute quantile. One of `nearest`, `higher`, `lower`, `midpoint`, `linear`.
     """
-    if q1 > 1.0 or q1 < 0.0 or q2 > 1.0 or q2 < 0.0 or q1 >= q2:
-        raise ValueError("Input `q1` and `q2` must be between 0 and 1 and q1 must be < than q2.")
+    if q_low > 1.0 or q_low < 0.0 or q_high > 1.0 or q_high < 0.0 or q_low >= q_high:
+        raise ValueError("Input `q_low` and `q_high` must be between 0 and 1 and q_low must be < than q_high.")
 
     temp = (
         df.lazy()
         .select(
-            pl.col(cols).quantile(q1).name.prefix("q1:"),
-            pl.col(cols).quantile(q2).name.prefix("q2:"),
+            pl.col(cols).quantile(q_low, interpolation=method).name.prefix("q1:"),
+            pl.col(cols).quantile(q_high, interpolation=method).name.prefix("q2:"),
         )
         .collect()
         .row(0)
@@ -212,8 +212,8 @@ def robust_scale(
 def winsorize(
     df: PolarsFrame,
     cols: List[str],
-    lower: float = 0.05,
-    upper: float = 0.95,
+    q_low: float = 0.05,
+    q_high: float = 0.95,
     method: QuantileMethod = "nearest",
 ) -> ExprTransform:
     """
@@ -225,21 +225,21 @@ def winsorize(
         Either a lazy or an eager dataframe
     cols
         A list of strings representing column names
-    lower
+    q_low
         The lower quantile value
-    upper
+    q_high
         The higher quantile value
     method
         Method to compute quantile. One of `nearest`, `higher`, `lower`, `midpoint`, `linear`.
     """
-    if lower >= 1.0 or lower <= 0.0 or upper >= 1.0 or upper <= 0.0 or lower >= upper:
-        raise ValueError("Lower and upper must be with in (0, 1) and upper should be > lower")
+    if q_low > 1.0 or q_low < 0.0 or q_high > 1.0 or q_high < 0.0 or q_low >= q_high:
+        raise ValueError("Input `q_low` and `q_high` must be between 0 and 1 and q_low must be < than q_high.")
 
     temp = (
         df.lazy()
         .select(
-            pl.col(cols).quantile(lower).name.prefix("l"),
-            pl.col(cols).quantile(upper).name.prefix("u"),
+            pl.col(cols).quantile(q_low, interpolation=method).name.prefix("l"),
+            pl.col(cols).quantile(q_high, interpolation=method).name.prefix("u"),
         )
         .collect()
         .row(0)

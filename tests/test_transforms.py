@@ -32,7 +32,7 @@ def test_winsorize():
     q_high = 0.95
 
     should_be_true = (
-        df.with_columns(x2=t.winsorize(df, ["x1"], lower=q_low, upper=q_high)[0])
+        df.with_columns(x2=t.winsorize(df, ["x1"], q_low=q_low, q_high=q_high)[0])
         .select(
             # the max and min of x2 should be 0.95, 0.05 - percentile of x1
             x1=pl.col("x2").max() == pl.col("x1").quantile(q_high),

@@ -581,7 +581,7 @@ class Blueprint:
         self._steps.append(FitStep(partial(t.scale, method=method), cols, self.exclude))
         return self
 
-    def robust_scale(self, cols: IntoExprColumn, q1: float, q2: float) -> Self:
+    def robust_scale(self, cols: IntoExprColumn, q_low: float, q_high: float) -> Self:
         """
         Performs robust scaling on the given columns
 
@@ -589,12 +589,12 @@ class Blueprint:
         ---------
         cols
             Any Polars expression that can be understood as columns.
-        q1
+        q_low
             The lower quantile value
-        q2
+        q_high
             The higher quantile value
         """
-        self._steps.append(FitStep(partial(t.robust_scale, q1=q1, q2=q2), cols, self.exclude))
+        self._steps.append(FitStep(partial(t.robust_scale, q_low=q_low, q_high=q_high), cols, self.exclude))
         return self
 
     def center(self, cols: IntoExprColumn) -> Self:
@@ -670,8 +670,8 @@ class Blueprint:
     def winsorize(
         self,
         cols: IntoExprColumn,
-        lower: float = 0.05,
-        upper: float = 0.95,
+        q_low: float = 0.05,
+        q_high: float = 0.95,
         method: QuantileMethod = "nearest",
     ) -> Self:
         """
@@ -683,16 +683,16 @@ class Blueprint:
         ----------
         cols
             Any Polars expression that can be understood as columns. Columns must be numerical.
-        lower
+        q_low
             The lower quantile value
-        upper
+        q_high
             The higher quantile value
         method
             Method to compute quantile. One of `nearest`, `higher`, `lower`, `midpoint`, `linear`.
         """
         self._steps.append(
             FitStep(
-                partial(t.winsorize, lower=lower, upper=upper, method=method),
+                partial(t.winsorize, q_low=q_low, q_high=q_high, method=method),
                 cols,
                 self.exclude,
             )
