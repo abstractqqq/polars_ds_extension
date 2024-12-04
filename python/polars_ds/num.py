@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 import polars as pl
 from typing import List, Iterable
-from .type_alias import (
+from .typing import (
     DetrendMethod,
     ConvMode,
     ConvMethod,

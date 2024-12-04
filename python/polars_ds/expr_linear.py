@@ -3,7 +3,7 @@
 from __future__ import annotations
 import polars as pl
 import warnings
-from .type_alias import LRSolverMethods, NullPolicy
+from .typing import LRSolverMethods, NullPolicy
 from ._utils import pl_plugin
 from typing import List
 

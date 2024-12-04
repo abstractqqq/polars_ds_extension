@@ -15,7 +15,7 @@ from __future__ import annotations
 import polars as pl
 import numpy as np
 from typing import List, Tuple
-from .type_alias import LRSolverMethods, NullPolicy, PolarsFrame
+from .typing import LRSolverMethods, NullPolicy, PolarsFrame
 
 from polars_ds._polars_ds import PyLR, PyElasticNet, PyOnlineLR
 

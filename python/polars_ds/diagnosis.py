@@ -26,7 +26,7 @@ from itertools import combinations
 from great_tables import GT, nanoplot_options
 
 from . import query_cond_entropy, principal_components, query_r2
-from .type_alias import CorrMethod, PolarsFrame
+from .typing import CorrMethod, PolarsFrame
 from .stats import corr
 from .sample_and_split import sample
 

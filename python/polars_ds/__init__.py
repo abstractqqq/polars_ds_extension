@@ -69,7 +69,7 @@ def l1_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
         return pl.sum_horizontal(str_to_expr(x).abs() for x in v)
 
 
-def eval_series(*series: pl.Series, expr: str, **kwargs) -> pl.DataFrame:
+def eval_series(*series: pl.Series | np.ndarray, expr: str, **kwargs) -> pl.DataFrame:
     """
     Evaluates a Polars DS expression on a series.
 

@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import numpy as np
 from polars_ds._polars_ds import PyKDT
-from .type_alias import KdtDistance
+from typing import List, Tuple
+from .typing import KdtDistance
 
 import sys
-from typing import List, Tuple
 
 if sys.version_info >= (3, 11):
     from typing import Self

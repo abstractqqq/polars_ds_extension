@@ -3,7 +3,7 @@ from __future__ import annotations
 import polars as pl
 import random
 import math
-from .type_alias import PolarsFrame
+from .typing import PolarsFrame
 from typing import List, Tuple
 from itertools import combinations, islice
 
