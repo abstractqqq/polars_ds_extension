@@ -197,13 +197,22 @@ def query_log_loss(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool =
     normalize
         Whether to divide by N.
     """
-    a = str_to_expr(actual)
-    p = str_to_expr(pred)
-    out = a.dot(p.log()) + (1 - a).dot((1 - p).log())
-    if normalize:
-        return -(out / a.count())
-    return -out
+    a = str_to_expr(actual).cast(pl.Float64)
+    p = str_to_expr(pred).cast(pl.Float64)
+    first = pl_plugin(
+        args=[a, p],
+        symbol="pl_xlogy",
+        is_elementwise=True,
+    )
+    second = pl_plugin(
+        args=[pl.lit(1.0, dtype=pl.Float64) - a, pl.lit(1.0, dtype=pl.Float64) - p],
+        symbol="pl_xlogy",
+        is_elementwise=True,
+    )
 
+    if normalize:
+        return -(first + second).mean()
+    return -(first + second).sum()
 
 def query_mape(actual: str | pl.Expr, pred: str | pl.Expr, weighted: bool = False) -> pl.Expr:
     """

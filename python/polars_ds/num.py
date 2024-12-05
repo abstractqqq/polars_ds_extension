@@ -48,9 +48,9 @@ __all__ = [
     "next_up",
     "next_down",
     "digamma",
+    "xlogy",
     # "mutual_info_disc",
 ]
-
 
 def is_increasing(x: str | pl.Expr, strict: bool = False) -> pl.Expr:
     """
@@ -832,6 +832,22 @@ def sinc(x: str | pl.Expr) -> pl.Expr:
     y = math.pi * pl.when(xx == 0).then(1e-20).otherwise(xx)
     return y.sin() / y
 
+def xlogy(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
+    """
+    Computes x * log(y) so that if x = 0, the product is 0.
+
+    Parameters
+    ----------
+    x
+        A numerical column
+    y
+        A numerical column
+    """
+    return pl_plugin(
+        args=[str_to_expr(x).cast(pl.Float64), str_to_expr(y).cast(pl.Float64)],
+        symbol="pl_xlogy",
+        is_elementwise=True,
+    )
 
 def detrend(x: str | pl.Expr, method: DetrendMethod = "linear") -> pl.Expr:
     """

@@ -55,7 +55,7 @@ fn report_output(_: &[Field]) -> PolarsResult<Field> {
     let ci_lower = Field::new("0.025".into(), DataType::Float64); // CI lower bound at 0.025
     let ci_upper = Field::new("0.975".into(), DataType::Float64); // CI upper bound at 0.975
     let v: Vec<Field> = vec![features, beta, stderr, t, p, ci_lower, ci_upper]; //  ci_lower, ci_upper
-    Ok(Field::new("lstsq_report".into(), DataType::Struct(v)))
+    Ok(Field::new("lin_reg_report".into(), DataType::Struct(v)))
 }
 
 fn pred_residue_output(_: &[Field]) -> PolarsResult<Field> {
@@ -538,7 +538,7 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
 }
 
 #[polars_expr(output_type_func=report_output)]
-fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
@@ -621,7 +621,7 @@ fn pl_lstsq_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Serie
             let upper = Float64Chunked::from_vec("0.975".into(), ci_upper);
             let upper = upper.into_series();
             let out = StructChunked::from_series(
-                "lstsq_report".into(),
+                "lin_reg_report".into(),
                 names_series.len(),
                 [
                     &names_series,
@@ -732,7 +732,7 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let upper = Float64Chunked::from_vec("0.975".into(), ci_upper);
             let upper = upper.into_series();
             let out = StructChunked::from_series(
-                "lstsq_report".into(),
+                "lin_reg_report".into(),
                 names_series.len(),
                 [
                     &names_series,

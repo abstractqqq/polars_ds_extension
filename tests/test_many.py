@@ -6,7 +6,6 @@ import numpy as np
 import polars_ds as pds
 from polars.testing import assert_frame_equal, assert_series_equal
 
-
 def test_mcc():
     from sklearn.metrics import matthews_corrcoef
 
@@ -1803,6 +1802,18 @@ def test_next_up_down():
     assert np.all(np.nextafter(a, 1.0) == a_up)
     assert np.all(np.nextafter(a, 0.0) == a_down)
 
+def test_xlogy():
+    df = pl.DataFrame({
+        "a": [0.0, 0.0, float("nan"), 3.0], 
+        "b": [1.0, float("nan"), 1.0, 4.0], 
+    })
+    # a = 0 and b is not nan, then a * log(b) = 0
+    # otherwise, do a * log(b)
+    answer = [0.0, float("nan"), float("nan"), float(3.0 * np.log(4.0))]
+    pds_result = df.select(
+        res = pds.xlogy("a", "b")
+    )["res"].to_numpy()
+    assert np.allclose(pds_result, answer, equal_nan=True)
 
 def test_digamma():
     import scipy

@@ -9,8 +9,6 @@ from polars_ds.string import *  # noqa: F403
 from polars_ds.ts_features import *  # noqa: F403
 from polars_ds.expr_knn import *  # noqa: F403
 from polars_ds.expr_linear import *  # noqa: F403
-# from polars_ds.query_balltree import *  # noqa: F403
-
 
 __version__ = "0.6.3"
 
@@ -67,37 +65,6 @@ def l1_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
         return pl.sum_horizontal(str_to_expr(x).abs() for x in exprs) / len(exprs)
     else:
         return pl.sum_horizontal(str_to_expr(x).abs() for x in v)
-
-
-def eval_series(*series: pl.Series | np.ndarray, expr: str, **kwargs) -> pl.DataFrame:
-    """
-    Evaluates a Polars DS expression on a series.
-
-    Note: currently this doesn't support all Polars DS expressions. E.g. It may not work
-    for least square related expressions. It doesn't work for 2D NumPy matrices either, and you
-    have to pass column by column if you are using NumPy as input. This is also not tested for
-    lower versions of Polars and also not on every expression.
-
-    Parameters
-    ----------
-    series
-        A sequence of series or NumPy arrays
-    expr
-        The name of the Polars DS expression
-    kwargs
-        Keyword arguments
-    """
-
-    if expr.startswith("_") or expr.endswith("_"):
-        raise ValueError("Special underscored functions are not allowed here.")
-
-    inputs = list(pl.lit(pl.Series(name=str(i), values=s)) for i, s in enumerate(series))
-    if len(inputs) == 0:
-        raise ValueError("This currently doesn't support expressions without a positonal argument.")
-
-    func = globals()[expr]
-    return pl.select(func(*inputs, **kwargs).alias(expr.replace("query_", "")))
-
 
 def frame(size: int = 2_000, index_name: str = "row_num") -> pl.DataFrame:
     """

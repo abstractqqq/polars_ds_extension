@@ -225,3 +225,19 @@ def test_precision_recall_roc_auc():
         assert np.isclose(precision, precision_res)
         assert np.isclose(recall, recall_res)
         assert np.isclose(roc_auc_score(actual, predicted_prob), roc_auc_res)
+
+
+def test_log_loss():
+    import numpy as np
+    from sklearn.metrics import log_loss
+
+    df = pl.DataFrame(
+        {
+            "x": np.random.random(size=N_ROWS),
+            "y": np.round(np.random.random(size=N_ROWS)).astype(int),
+        }
+    )
+
+    res = df.select(pds.query_log_loss("y", "x")).item(0, 0)
+    ans = log_loss(df["y"].to_numpy(), df["x"].to_numpy())
+    assert np.isclose(res, ans, rtol=1e-10)

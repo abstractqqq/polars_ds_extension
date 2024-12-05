@@ -3,7 +3,7 @@ use ordered_float::OrderedFloat;
 use pyo3_polars::derive::polars_expr;
 
 fn psi_report_output(_: &[Field]) -> PolarsResult<Field> {
-    let breakpoints = Field::new("cnt<=".into(), DataType::Float64);
+    let breakpoints = Field::new("<=".into(), DataType::Float64);
     let baseline_pct = Field::new("baseline_pct".into(), DataType::Float64);
     let actual_pct = Field::new("actual_pct".into(), DataType::Float64);
     let psi_bins = Field::new("psi_bin".into(), DataType::Float64);
@@ -90,7 +90,7 @@ fn pl_psi_w_bps(inputs: &[Series]) -> PolarsResult<Series> {
     let c1 = psi_with_bps_helper(s1, bp);
     let c2 = psi_with_bps_helper(s2, bp);
 
-    let psi_report = psi_frame(bp, "cnt<=", &c1, &c2)?.collect()?;
+    let psi_report = psi_frame(bp, "<=", &c1, &c2)?.collect()?;
     Ok(psi_report.into_struct("".into()).into_series())
 }
 
@@ -109,7 +109,7 @@ fn pl_psi_report(inputs: &[Series]) -> PolarsResult<Series> {
     let ref_cnt = cnt.cont_slice().unwrap();
 
     let new_cnt = psi_with_bps_helper(data_new, ref_brk);
-    let psi_report = psi_frame(ref_brk, "cnt<=", ref_cnt, &new_cnt)?.collect()?;
+    let psi_report = psi_frame(ref_brk, "<=", ref_cnt, &new_cnt)?.collect()?;
 
     Ok(psi_report.into_struct("".into()).into_series())
 }
