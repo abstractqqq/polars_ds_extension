@@ -4,4 +4,4 @@ maturin>=1.7; sys_platform != "linux"
 polars
 pre-commit
 ipykernel
-numpy # for all functionalities, including linear models
+numpy
