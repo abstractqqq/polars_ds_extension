@@ -47,7 +47,7 @@ shape: (2, 3)
 └──────────┴──────────┴──────────┘
 ```
 
-Tabular Machine Learning Data Transformation Pipeline
+Tabular Machine Learning Data Transformation Pipeline (See [SKLEARN_COMPATIBILITY](SKLEARN_COMPATIBILITY.md) for more details.)
 
 ```Python
 import polars as pl
@@ -128,7 +128,7 @@ df = pds.random_data(size=5_000, n_cols=0).select(
 )
 
 df.group_by("categories").agg(
-    pds.query_lstsq(
+    pds.lin_reg(
         "x1", "x2", "x3", 
         target = "y",
         method = "l2",

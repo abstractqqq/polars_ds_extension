@@ -3,6 +3,15 @@ import numpy as np
 from typing import Any, Callable
 import polars_ds as pds
 
+# Everything in __init__.py of polars_ds that this shouldn't be able to call
+CANNOT_CALL = {
+    "frame",
+    "str_to_expr",
+    "pl",
+    "annotations",
+    "__version__",
+}
+
 __all__ = ["compat"]
 
 class _Compat():
@@ -23,6 +32,9 @@ class _Compat():
             return x
 
     def __getattr__(self, name:str) -> pl.Series:
+        if name in CANNOT_CALL:
+            raise ValueError(f"`{name}` exists but doesn't work in compat mode.")
+
         func = getattr(pds, name)
         def compat_wrapper(*args, **kwargs) -> Callable:
             positionals = list(args)

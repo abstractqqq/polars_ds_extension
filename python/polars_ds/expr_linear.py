@@ -5,7 +5,7 @@ import polars as pl
 import warnings
 from .typing import LRSolverMethods, NullPolicy
 from ._utils import pl_plugin
-from typing import List
+from typing import List, Any
 
 __all__ = [
     "lin_reg",
@@ -21,12 +21,15 @@ __all__ = [
     "query_lstsq_report",
 ]
 
-
-def lr_formula(s: str | pl.Expr) -> pl.Expr:
+# Despite the typing requirments in the function signatures, we allow some slack
+# by accepting the most common Series/Array types. 
+def lr_formula(s: Any) -> pl.Expr:
     if isinstance(s, str):
         return pl.sql_expr(s).alias(s)
-    elif isinstance(s, pl.Expr):
+    elif isinstance(s, (pl.Expr, pl.Series)):
         return s
+    elif hasattr(s, "__array__"):
+        return pl.Series(values=s.__array__())
     else:
         raise ValueError(
             "Input can only be str or polars expression. The str must be valid SQL strings that polars can understand."
@@ -170,7 +173,7 @@ def lin_reg(
                 null_policy=null_policy,
             )
         else:
-            cols = [lr_formula(t) for t in target]
+            cols = [lr_formula(t).alias(f"target_{i}") for i, t in enumerate(target)]
             multi_target_lr_kwargs = {
                 "bias": add_bias,
                 "null_policy": null_policy,

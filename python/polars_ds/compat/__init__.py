@@ -29,17 +29,23 @@ For example, in order to use PDS with Pandas dataframe, say df:pd.DataFrame, one
 >>>     return_pred = True
 >>> )
 
-Question: if output is still Polars, then the user must have both Polars and Pandas installed.
+Question: if output is still Polars, then the user must still use both Polars and Pandas.
 Why bother with compatibility?
 
-The answer is that 
+Here are some answers I consider to be true (or self-promotion :))
 
 1. PDS is a very light weight package that can reduce dependencies in your project.
 2. For projects with mixed dataframes, it is sometimes not a good idea to cast the 
 entire Pandas (or other) dataframe to Polars.
 3. Some PDS functions are faster than SciPy / Sklearn equivalents.
-4. For ad-hoc analysis that involves say something like linear regression, PDS is much easier to 
+4. For ad-hoc analysis that involves say something like linear regression, PDS is easier to 
 use than other package.
 """
 
 from ._compat import compat
+
+import warnings
+warnings.warn(
+    "The compatibility layer is considered experimental.", 
+    stacklevel=2
+)
