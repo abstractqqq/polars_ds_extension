@@ -3,12 +3,11 @@
 /// The logit, expit and gamma functions are as defined in SciPy
 use crate::utils::{first_field_output, float_output};
 use crate::stats_utils::gamma::digamma;
+use arity::binary_elementwise_values;
 use num::traits::Float;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
-
-#[inline]
 fn logit<T: Float>(x: T) -> T {
     if x.is_zero() {
         T::neg_infinity()
@@ -21,7 +20,15 @@ fn logit<T: Float>(x: T) -> T {
     }
 }
 
-#[inline]
+fn xlogy<T: Float>(x: T, y: T) -> T {
+    if x == T::zero() && !y.is_nan() {
+        T::zero()
+    } else {
+        x * y.ln()
+    }
+}
+
+
 fn expit<T: Float>(x: T) -> T {
     T::one() / (T::one() + (-x).exp())
 }
@@ -264,6 +271,17 @@ fn pl_next_down(inputs: &[Series]) -> PolarsResult<Series> {
     }
 
 }
+
+#[polars_expr(output_type_func=float_output)]
+fn pl_xlogy(inputs: &[Series]) -> PolarsResult<Series> {
+    let s1 = &inputs[0];
+    let s2 = &inputs[1];
+    let ca1 = s1.f64().unwrap();
+    let ca2 = s2.f64().unwrap();
+    let ca: Float64Chunked = binary_elementwise_values(ca1, ca2, xlogy::<f64>);
+    Ok(ca.into_series())
+}
+
 
 #[polars_expr(output_type=Float64)]
 fn pl_diagamma(inputs: &[Series]) -> PolarsResult<Series> {

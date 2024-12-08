@@ -11,7 +11,7 @@ from functools import partial
 from dataclasses import dataclass
 from polars.type_aliases import IntoExprColumn
 from typing import List, Union, Dict, Any, Tuple
-from .type_alias import (
+from .typing import (
     TypeAlias,
     PolarsFrame,
     ExprTransform,

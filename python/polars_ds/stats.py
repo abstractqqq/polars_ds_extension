@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import polars as pl
 import math
-from .type_alias import Alternative, CorrMethod, Noise, QuantileMethod
+from .typing import Alternative, CorrMethod, Noise, QuantileMethod
 from ._utils import pl_plugin, str_to_expr
 
 __all__ = [
@@ -325,8 +325,8 @@ def mann_whitney_u(
 
 def winsorize(
     x: str | pl.Expr,
-    lower: float = 0.05,
-    upper: float = 0.95,
+    q_low: float = 0.05,
+    q_high: float = 0.95,
     method: QuantileMethod = "nearest",
 ) -> pl.Expr:
     """
@@ -336,21 +336,21 @@ def winsorize(
     ----------
     x
         Either the name of the column or a Polars expression
-    lower
+    q_low
         The lower percentile value to clip the data. E.g everything < x.quantile(lower)
         will be mapped to x.quantile(lower)
-    upper
+    q_high
         The upper percentile value to clip the data. E.g everything > x.quantile(upper)
         will be mapped to x.quantile(upper)
     method
         Method for quantile estimate. One of "nearest", "higher", "lower", "midpoint", "linear".
     """
-    if lower <= 0.0 or lower >= 1.0 or upper <= 0.0 or upper >= 1.0 or upper <= lower:
+    if q_low <= 0.0 or q_low >= 1.0 or q_high <= 0.0 or q_high >= 1.0 or q_high <= q_low:
         raise ValueError("Lower and upper must be with in (0, 1) and upper should be > lower")
 
     xx = str_to_expr(x)
     return xx.clip(
-        xx.quantile(lower, interpolation=method), xx.quantile(upper, interpolation=method)
+        xx.quantile(q_low, interpolation=method), xx.quantile(q_high, interpolation=method)
     )
 
 

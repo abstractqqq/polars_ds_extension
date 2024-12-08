@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 import polars as pl
 from typing import List, Iterable
-from .type_alias import (
+from .typing import (
     DetrendMethod,
     ConvMode,
     ConvMethod,
@@ -48,9 +48,65 @@ __all__ = [
     "next_up",
     "next_down",
     "digamma",
+    "xlogy",
+    "l_inf_horizontal",
+    "l1_horizontal",
+    "l2_sq_horizontal"
     # "mutual_info_disc",
 ]
 
+def l_inf_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
+    """
+    Horizontally computes L inf norm. Shorthand for pl.max_horizontal(pl.col(x).abs() for x in exprs).
+
+    Parameters
+    ----------
+    *v
+        Expressions to compute horizontal L infinity.
+    normalize
+        Whether to divide by the dimension
+    """
+    if normalize:
+        exprs = list(v)
+        return pl.max_horizontal(str_to_expr(x).abs() for x in exprs) / len(exprs)
+    else:
+        return pl.max_horizontal(str_to_expr(x).abs() for x in v)
+
+
+def l2_sq_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
+    """
+    Horizontally computes L2 norm squared. Shorthand for pl.sum_horizontal(pl.col(x).pow(2) for x in exprs).
+
+    Parameters
+    ----------
+    *v
+        Expressions to compute horizontal L2.
+    normalize
+        Whether to divide by the dimension
+    """
+    if normalize:
+        exprs = list(v)
+        return pl.sum_horizontal(str_to_expr(x).pow(2) for x in exprs) / len(exprs)
+    else:
+        return pl.sum_horizontal(str_to_expr(x).pow(2) for x in v)
+
+
+def l1_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
+    """
+    Horizontally computes L1 norm. Shorthand for pl.sum_horizontal(pl.col(x).abs() for x in exprs).
+
+    Parameters
+    ----------
+    *v
+        Expressions to compute horizontal L1.
+    normalize
+        Whether to divide by the dimension
+    """
+    if normalize:
+        exprs = list(v)
+        return pl.sum_horizontal(str_to_expr(x).abs() for x in exprs) / len(exprs)
+    else:
+        return pl.sum_horizontal(str_to_expr(x).abs() for x in v)
 
 def is_increasing(x: str | pl.Expr, strict: bool = False) -> pl.Expr:
     """
@@ -832,6 +888,22 @@ def sinc(x: str | pl.Expr) -> pl.Expr:
     y = math.pi * pl.when(xx == 0).then(1e-20).otherwise(xx)
     return y.sin() / y
 
+def xlogy(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
+    """
+    Computes x * log(y) so that if x = 0, the product is 0.
+
+    Parameters
+    ----------
+    x
+        A numerical column
+    y
+        A numerical column
+    """
+    return pl_plugin(
+        args=[str_to_expr(x).cast(pl.Float64), str_to_expr(y).cast(pl.Float64)],
+        symbol="pl_xlogy",
+        is_elementwise=True,
+    )
 
 def detrend(x: str | pl.Expr, method: DetrendMethod = "linear") -> pl.Expr:
     """

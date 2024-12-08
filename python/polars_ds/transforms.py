@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import polars as pl
 import polars.selectors as cs
-from .type_alias import (
+from .typing import (
     PolarsFrame,
     SimpleImputeMethod,
     SimpleScaleMethod,

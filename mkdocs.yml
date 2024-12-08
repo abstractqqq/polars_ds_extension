@@ -17,6 +17,7 @@ nav:
 - Spatial Models: spatial.md
 - KNN as Polars Expr: expr_knn.md
 - Time Series Features: ts_features.md
+- Compatibility with Other DataFrames: compat.md
 - Miscellaneous: polars_ds.md
 
 theme:

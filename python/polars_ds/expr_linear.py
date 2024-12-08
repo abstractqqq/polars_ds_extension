@@ -3,9 +3,9 @@
 from __future__ import annotations
 import polars as pl
 import warnings
-from .type_alias import LRSolverMethods, NullPolicy
+from .typing import LRSolverMethods, NullPolicy
 from ._utils import pl_plugin
-from typing import List
+from typing import List, Any
 
 __all__ = [
     "lin_reg",
@@ -21,12 +21,15 @@ __all__ = [
     "query_lstsq_report",
 ]
 
-
-def lr_formula(s: str | pl.Expr) -> pl.Expr:
+# Despite the typing requirments in the function signatures, we allow some slack
+# by accepting the most common Series/Array types. 
+def lr_formula(s: Any) -> pl.Expr:
     if isinstance(s, str):
         return pl.sql_expr(s).alias(s)
-    elif isinstance(s, pl.Expr):
+    elif isinstance(s, (pl.Expr, pl.Series)):
         return s
+    elif hasattr(s, "__array__"):
+        return pl.Series(values=s.__array__())
     else:
         raise ValueError(
             "Input can only be str or polars expression. The str must be valid SQL strings that polars can understand."
@@ -77,10 +80,10 @@ def simple_lin_reg(
 
         if return_pred:
             return pl.struct(pred=beta * xx + alpha, resid=yy - (beta * xx + alpha)).alias(
-                "lstsq_pred"
+                "lr_pred"
             )
         else:
-            return (beta.append(alpha)).implode().alias("lstsq_coeffs")
+            return (beta.append(alpha)).implode().alias("coeffs")
     else:
         if weights is None:
             beta = xx.dot(yy) / xx.dot(xx)
@@ -89,9 +92,9 @@ def simple_lin_reg(
             beta = w.dot(xx * yy) / w.dot(xx.pow(2))
 
         if return_pred:
-            return pl.struct(pred=beta * xx, resid=yy - (beta * xx)).alias("lstsq_pred")
+            return pl.struct(pred=beta * xx, resid=yy - (beta * xx)).alias("lr_pred")
         else:
-            return beta.implode().alias("lstsq_coeffs")
+            return beta.implode().alias("coeffs")
 
 
 def lin_reg(
@@ -170,7 +173,7 @@ def lin_reg(
                 null_policy=null_policy,
             )
         else:
-            cols = [lr_formula(t) for t in target]
+            cols = [lr_formula(t).alias(f"target_{i}") for i, t in enumerate(target)]
             multi_target_lr_kwargs = {
                 "bias": add_bias,
                 "null_policy": null_policy,
@@ -185,7 +188,7 @@ def lin_reg(
                     args=cols,
                     kwargs=multi_target_lr_kwargs,
                     pass_name_to_apply=True,
-                ).alias("lstsq_preds")
+                ).alias("lr_pred")
             else:
                 return pl_plugin(
                     symbol="pl_lstsq_multi",
@@ -193,7 +196,7 @@ def lin_reg(
                     kwargs=multi_target_lr_kwargs,
                     returns_scalar=True,
                     pass_name_to_apply=True,
-                ).alias("lstsq_coeffs")
+                ).alias("coeffs")
     else:
         weighted = weights is not None
         lr_kwargs = {
@@ -219,7 +222,7 @@ def lin_reg(
                 args=cols,
                 kwargs=lr_kwargs,
                 pass_name_to_apply=True,
-            ).alias("lstsq_pred")
+            ).alias("lr_pred")
         else:
             return pl_plugin(
                 symbol="pl_lstsq",
@@ -227,7 +230,7 @@ def lin_reg(
                 kwargs=lr_kwargs,
                 returns_scalar=True,
                 pass_name_to_apply=True,
-            ).alias("lstsq_coeffs")
+            ).alias("coeffs")
 
 
 def query_lstsq(
@@ -570,7 +573,7 @@ def lin_reg_report(
         cols = [t]
         cols.extend(lr_formula(z) for z in x)
         return pl_plugin(
-            symbol="pl_lstsq_report",
+            symbol="pl_lin_reg_report",
             args=cols,
             kwargs=lr_kwargs,
             changes_length=True,
