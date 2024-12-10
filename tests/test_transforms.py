@@ -163,7 +163,6 @@ def test_target_encode():
     enc.fit(df_pd[cols], y)
     df_transformed = enc.transform(df_pd[cols])
     df2 = pl.from_pandas(df_transformed[cols])  # output from category_encoders
-
     assert_frame_equal(df1, df2)
 
 
