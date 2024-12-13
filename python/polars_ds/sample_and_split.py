@@ -3,6 +3,7 @@ from __future__ import annotations
 import polars as pl
 import random
 import math
+from ._utils import _IS_POLARS_V1
 from .typing import PolarsFrame
 from typing import List, Tuple
 from itertools import combinations, islice
@@ -153,19 +154,19 @@ def downsample(
 
 
 def random_cols(
-    df: PolarsFrame,
+    all_columns:list[str],
     k: int,
     keep: List[str] | None = None,
     seed: int | None = None,
 ) -> List[str]:
     """
-    Selects random columns in the dataframe. Returns the selected columns in a list. Note, it is
-    impossible for this to randomly select both ["x", "y"] and ["y", "x"].
+    Selects random columns from the given pool of columns. Returns the selected columns in a list. 
+    Note, it is impossible for this to randomly select both ["x", "y"] and ["y", "x"].
 
     Parameters
     ----------
-    df
-        Either a lazy or eager Polars dataframe
+    all_columns
+        All column names
     k
         Select k random columns from all columns outside of `keep`.
     keep
@@ -175,12 +176,12 @@ def random_cols(
     """
     if keep is None:
         out = []
-        to_sample = combinations(df.columns, k)
+        to_sample = combinations(all_columns, k)
     else:
         out = keep
-        to_sample = combinations((c for c in df.columns if c not in keep), k)
+        to_sample = combinations((c for c in all_columns if c not in keep), k)
 
-    pool_size = len(df.columns) - len(out)
+    pool_size = len(all_columns) - len(out)
     if pool_size < k:
         raise ValueError("Not enough columns to select from.")
 
@@ -229,26 +230,29 @@ def split_by_ratio(
         train = frames[(True,)].select(pl.col("*").exclude(["__id", "__tt"]))
         test = frames[(False,)].select(pl.col("*").exclude(["__id", "__tt"]))
         return [train, test]
-    else:
-        if sum(split_ratio) != 1:
-            raise ValueError("Sum of the ratios is not 1.")
+    else: # Should work with iterable (with a length), not just list
+        if len(split_ratio) == 1:
+            return split_by_ratio(df, split_ratio[0], seed)
+        else:
+            if sum(split_ratio) != 1:
+                raise ValueError("Sum of the ratios is not 1.")
 
-        df_eager = (
-            df.with_row_index(name="__id")
-            .with_columns(pl.col("__id").shuffle(seed=seed).alias("__tt"))
-            .sort("__tt")
-            .lazy()
-            .collect()
-        )
-
-        n = len(df_eager)
-        start = 0
-        dfs = []
-        for v in split_ratio:
-            length = int(n * v)
-            dfs.append(
-                df_eager.slice(start, length=length).select(pl.col("*").exclude(["__id", "__tt"]))
+            df_eager = (
+                df.with_row_index(name="__id")
+                .with_columns(pl.col("__id").shuffle(seed=seed).alias("__tt"))
+                .sort("__tt")
+                .lazy()
+                .collect()
             )
-            start += length
 
-        return dfs
+            n = len(df_eager)
+            start = 0
+            dfs = []
+            for v in split_ratio:
+                length = int(n * v)
+                dfs.append(
+                    df_eager.slice(start, length=length).select(pl.col("*").exclude(["__id", "__tt"]))
+                )
+                start += length
+
+            return dfs
