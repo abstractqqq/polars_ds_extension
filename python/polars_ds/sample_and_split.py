@@ -154,7 +154,7 @@ def downsample(
 
 
 def random_cols(
-    all_columns:list[str],
+    all_columns:List[str],
     k: int,
     keep: List[str] | None = None,
     seed: int | None = None,

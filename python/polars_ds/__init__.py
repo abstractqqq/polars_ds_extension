@@ -10,7 +10,7 @@ from polars_ds.ts_features import *  # noqa: F403
 from polars_ds.expr_knn import *  # noqa: F403
 from polars_ds.expr_linear import *  # noqa: F403
 
-__version__ = "0.6.3"
+__version__ = "0.7.0"
 
 def frame(size: int = 2_000, index_name: str = "row_num") -> pl.DataFrame:
     """

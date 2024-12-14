@@ -67,24 +67,27 @@ class FilterStep:  # FittedStep
 @dataclass
 class FitStep:  # Not a FittedStep
     func: FitTransformFunc
-    cols: IntoExprColumn
+    cols: IntoExprColumn | None
     exclude: List[str]
 
     # Here we allow IntoExprColumn as input so that users can use selectors, or other polars expressions
     # to specify input columns, which adds flexibility.
     # We still need real column names so that the functions in transforms.py will work.
     def fit(self, df: PolarsFrame) -> ExprTransform:
-        if _IS_POLARS_V1:
-            real_cols: List[str] = [
-                x
-                for x in df.lazy().select(self.cols).collect_schema().names()
-                if x not in self.exclude
-            ]
+        if self.cols is None:
+            return self.func(df)
         else:
-            real_cols: List[str] = [
-                x for x in df.select(self.cols).columns if x not in self.exclude
-            ]
-        return self.func(df, real_cols)
+            if _IS_POLARS_V1:
+                real_cols: List[str] = [
+                    x
+                    for x in df.lazy().select(self.cols).collect_schema().names()
+                    if x not in self.exclude
+                ]
+            else:
+                real_cols: List[str] = [
+                    x for x in df.select(self.cols).columns if x not in self.exclude
+                ]
+            return self.func(df, real_cols)
 
 
 Step: TypeAlias = Union[FitStep, SelectStep, WithColumnsStep, FilterStep, SQLStep]
@@ -480,7 +483,7 @@ class Blueprint:
     #     self._steps = [deepcopy(s) for s in self._steps]
     #     return self
 
-    def filter(self, *by: str | pl.Expr, all_: bool = True) -> Self:
+    def filter(self, by: str | pl.Expr) -> Self:
         """
         Filters on the dataframe using native polars expressions or SQL boolean expressions.
 
@@ -488,14 +491,8 @@ class Blueprint:
         ----------
         by
             Native polars boolean expression or SQL strings
-        all_
-            Whether all conditions should be met by all or any (all = False).
         """
-        exprs = [s if isinstance(s, pl.Expr) else pl.sql_expr(s) for s in by]
-        if all_:
-            self._steps.append(FilterStep(pl.all_horizontal(exprs)))
-        else:
-            self._steps.append(FilterStep(pl.any_horizontal(exprs)))
+        self._steps.append(FilterStep(by if isinstance(by, pl.Expr) else pl.sql_expr(by)))
         return self
 
     def sql_transform(self, sql: str) -> Self:
@@ -514,6 +511,13 @@ class Blueprint:
         self._steps.append(SQLStep(sql))
         return self
 
+    def cast_bools(self, to: pl.DataType = pl.UInt8) -> Self:
+        """
+        Cast all boolean columns in the dataframe to the given type.
+        """
+        self._steps.append(WithColumnsStep(cs.boolean().cast(to)))
+        return self
+
     def impute(self, cols: IntoExprColumn, method: SimpleImputeMethod = "mean") -> Self:
         """
         Imputes null values in the given columns. Note: this doesn't fill NaN. If filling for NaN is needed,
@@ -528,6 +532,27 @@ class Blueprint:
             a tie.
         """
         self._steps.append(FitStep(partial(t.impute, method=method), cols, self.exclude))
+        return self
+
+    def conditional_impute(
+        self, 
+        rules_dict: Dict[str, str | pl.Expr],
+        method:SimpleImputeMethod = "mean"
+    ) -> Self:
+        """
+        Conditionally imputes values in the given columns. This transform will collect if input is lazy.
+
+        Parameters
+        ----------
+        rules_dict
+            Dictionary where keys are column names (must be string), and values are SQL/Polars Conditions 
+            that when true, those values in the column will be imputed, 
+            and the value to impute will be learned on the data where the condition is false.
+        method
+            One of `mean`, `median`, `mode`. If `mode`, a random value will be chosen if there is
+            a tie.
+        """
+        self._steps.append(FitStep(partial(t.conditional_impute, rules_dict=rules_dict, method=method), None, self.exclude))
         return self
 
     def nan_to_null(self) -> Self:
