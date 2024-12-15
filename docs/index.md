@@ -205,7 +205,7 @@ Generally speaking, the more expressions you want to evaluate simultaneously, th
 
 Why does speed matter? 
 
-If your code already executes under 1s, then maybe it doesn't. But as your data grow, having a 5s run vs. a 1s run will make a lot of difference in your iterations for your project. Speed of execution becomes a bigger issues if you are building reports on demand, or if you need to pay extra for additional compute.  
+If your code already executes under 1s and you only use your code in non-production, ad-hoc environments, then maybe it doesn't. Even so, as your data grow, having a 5s run vs. a 1s run will make a lot of difference in your iterations for your project. Speed of execution becomes a bigger issues if you are building reports on demand, or if you need to pay extra for additional compute or when you have a production pipeline that has to deliver the data under a time constraint.  
 
 ## HELP WANTED!
 
