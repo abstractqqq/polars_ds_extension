@@ -46,8 +46,47 @@ def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean"
         temp = df.lazy().select(pl.col(cols).mode().list.first()).collect().row(0)
         return [pl.col(c).fill_null(m) for c, m in zip(cols, temp)]
     else:
-        raise ValueError(f"Unknown input method: {method}")
+        raise ValueError(f"Unknown impute method: `{method}`")
 
+def conditional_impute(
+    df: PolarsFrame, 
+    rules_dict: Dict[str, str | pl.Expr],
+    method: SimpleImputeMethod = "mean"
+) -> ExprTransform:
+    """
+    Conditionally imputes values in the given columns. This transform will collect if input is lazy.
+
+    Parameters
+    ----------
+    df
+        Either a lazy or an eager dataframe
+    rules_dict
+        Dictionary where keys are column names (must be string), and values are SQL/Polars Conditions 
+        that when true, those values in the column will be imputed, 
+        and the value to impute will be learned on the data where the condition is false.
+    method
+        One of `mean`, `median`, `mode`. If `mode`, a random value will be chosen if there is
+        a tie.
+    """
+    rules_dict = {
+        c: (r if isinstance(r, pl.Expr) else pl.sql_expr(r))
+        for c, r in rules_dict.items()
+    }
+    cols = list(rules_dict.keys())
+    # Learn on the data where the condition is false
+    if method == "mean":
+        temp = df.lazy().select(
+            *(pl.col(c).filter(rules_dict[c].not_()).mean() for c in rules_dict.keys())
+        ).collect().row(0)
+        return [pl.when(rules_dict[c]).then(m).otherwise(pl.col(c)).alias(c) for c, m in zip(cols, temp)]
+    elif method == "median":
+        temp = df.lazy().select(*(pl.col(c).filter(rules_dict[c].not_()).median() for c in rules_dict.keys())).collect().row(0)
+        return [pl.when(rules_dict[c]).then(m).otherwise(pl.col(c)).alias(c) for c, m in zip(cols, temp)]
+    elif method == "mode": 
+        temp = df.lazy().select(*(pl.col(c).filter(rules_dict[c].not_()).mode().list.first() for c in rules_dict.keys())).collect().row(0)
+        return [pl.when(rules_dict[c]).then(m).otherwise(pl.col(c)).alias(c) for c, m in zip(cols, temp)]
+    else:
+        raise ValueError(f"Unknown impute method: `{method}`")
 
 def linear_impute(
     df: PolarsFrame, features: List[str], target: str | pl.Expr, add_bias: bool = False

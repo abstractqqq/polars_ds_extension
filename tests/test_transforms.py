@@ -22,6 +22,31 @@ def test_linear_impute():
 
     assert_frame_equal(imputed_c, correct_c)
 
+def test_conditional_impute():
+    df = pl.DataFrame({
+        "a": [float('nan'), None, float("inf"), 9999, 100, 100, 100, 800],
+    })
+
+    res = df.with_columns(
+        t.conditional_impute(
+            df, 
+            {"a": ((pl.col("a").is_finite().not_()) | pl.col("a").is_null() | (pl.col("a") > 899))},
+            method = "mean"
+        )[0].alias("result")
+    )["result"]
+
+    assert list(res)[:4] == [275.0, 275.0, 275.0, 275.0]
+
+    res = df.with_columns(
+        t.conditional_impute(
+            df, 
+            {"a": ((pl.col("a").is_finite().not_()) | pl.col("a").is_null() | (pl.col("a") > 899))},
+            method = "median"
+        )[0].alias("result")
+    )["result"]
+
+    assert list(res)[:4] == [100.0, 100.0, 100.0, 100.0]
+
 
 def test_winsorize():
     df = pds.frame(size=1000).select(
