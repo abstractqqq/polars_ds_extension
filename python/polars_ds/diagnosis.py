@@ -460,7 +460,7 @@ class DIA:
             self._frame.select(
                 # This calls corr from .stats
                 pl.lit(x).alias("column"),
-                *(corr(x, y).alias(y) for y in self.numerics),
+                *(corr(x, y, method = method).alias(y) for y in self.numerics),
             )
             for x in to_check
         ]
