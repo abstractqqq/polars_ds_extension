@@ -7,7 +7,7 @@ which plotting backend supports Polars more natively.
 
 from __future__ import annotations
 
-from ._utils import _IS_POLARS_V1
+from .._utils import _IS_POLARS_V1
 
 if _IS_POLARS_V1:
     from polars._typing import IntoExpr
@@ -24,13 +24,109 @@ from typing import List, Iterable, Dict, Tuple, Sequence
 from functools import lru_cache
 from itertools import combinations
 from great_tables import GT, nanoplot_options
-
-from . import query_cond_entropy, principal_components, query_r2
-from .typing import CorrMethod, PolarsFrame
-from .stats import corr
-from .sample_and_split import sample
+# Internal dependencies
+from polars_ds.num import principal_components
+from polars_ds.ts_features import query_cond_entropy
+from polars_ds.metrics import query_r2
+from polars_ds.stats import corr
+from ..typing import CorrMethod, PolarsFrame
+from ..sample_and_split import sample
 
 alt.data_transformers.enable("vegafusion")
+
+__all__ = ["DIA"]
+
+def _plot_lin_reg(
+    df: pl.DataFrame | pl.LazyFrame,
+    x: str,
+    target: str,
+    add_bias: bool = False,
+    weights: str | None = None,
+    max_points: int = 20_000,
+    filter_by: pl.Expr | None = None,
+    title_comments: str = "",
+) -> alt.Chart:
+    """
+    See the method `plot_lin_reg`
+    """
+
+    to_select = [x, target] if weights is None else [x, target, weights]
+    if filter_by is None:
+        temp = df.lazy().select(*to_select)
+    else:
+        temp = df.lazy().filter(filter_by).select(*to_select)
+
+    actual_title_comments = "" if title_comments == "" else "<" + title_comments + ">"
+
+    xx = pl.col(x)
+    yy = pl.col(target)
+    # Although using simple_lin_reg might seem to be able to reduce some code here,
+    # it adds complexity because of output type and the r2 query.
+    # A little bit of code dup is reasonable.
+    if add_bias:
+        if weights is None:
+            x_mean = xx.mean()
+            y_mean = yy.mean()
+            beta = (xx - x_mean).dot(yy - y_mean) / (xx - x_mean).dot(xx - x_mean)
+            alpha = y_mean - beta * x_mean
+        else:
+            w = pl.col(weights)
+            w_sum = w.sum()
+            x_wmean = w.dot(xx) / w_sum
+            y_wmean = w.dot(yy) / w_sum
+            beta = w.dot((xx - x_wmean) * (yy - y_wmean)) / (w.dot((xx - x_wmean).pow(2)))
+            alpha = y_wmean - beta * x_wmean
+    else:
+        if weights is None:
+            beta = xx.dot(yy) / xx.dot(xx)
+        else:
+            w = pl.col(weights)
+            beta = w.dot(xx * yy) / w.dot(xx.pow(2))
+
+        alpha = pl.lit(0, dtype=pl.Float64)
+
+    beta, alpha, r2 = (
+        temp.select(
+            beta.alias("beta"),
+            alpha.alias("alpha"),
+            query_r2(yy, xx * beta + alpha).alias("r2"),
+        )
+        .collect()
+        .row(0)
+    )
+
+    df_need = temp.select(
+        xx,
+        yy,
+        (xx * beta + alpha).alias("y_pred"),
+    )
+    # Sample down. If len(temp) < max_points, all temp will be selected. This sample supports lazy.
+    df_sampled = sample(df_need, value=max_points)
+
+    if add_bias and alpha > 0:
+        subtitle = f"y = {beta:.4f} * x + {round(alpha, 4) if add_bias else ''}, r2 = {r2:.4f}"
+    elif add_bias and alpha < 0:
+        subtitle = (
+            f"y = {beta:.4f} * x - {abs(round(alpha, 4)) if add_bias else ''}, r2 = {r2:.4f}"
+        )
+    else:
+        subtitle = f"y = {beta:.4f} * x, r2 = {r2:.4f}"
+
+    title = alt.Title(
+        text=[
+            f"Linear Regression: {target} ~ {x} {'+ bias' if add_bias else ''}",
+            actual_title_comments,
+        ],
+        subtitle=subtitle,
+        align="center",
+    )
+    chart = (
+        alt.Chart(df_sampled, title=title)
+        .mark_point()
+        .encode(alt.X(x).scale(zero=False), alt.Y(target))
+    )
+    return chart + chart.mark_line().encode(alt.X(x).scale(zero=False), alt.Y("y_pred"))
+
 
 
 # DIA = Data Inspection Assistant / DIAgonsis
@@ -48,99 +144,6 @@ class DIA:
     """
 
     # --- Static / Class Methods ---
-
-    # Only a static method for convenience.
-    @staticmethod
-    def _plot_lin_reg(
-        df: pl.DataFrame | pl.LazyFrame,
-        x: str,
-        target: str,
-        add_bias: bool = False,
-        weights: str | None = None,
-        max_points: int = 20_000,
-        filter_by: pl.Expr | None = None,
-        title_comments: str = "",
-    ) -> alt.Chart:
-        """
-        See the method `plot_lin_reg`
-        """
-
-        to_select = [x, target] if weights is None else [x, target, weights]
-        if filter_by is None:
-            temp = df.lazy().select(*to_select)
-        else:
-            temp = df.lazy().filter(filter_by).select(*to_select)
-
-        actual_title_comments = "" if title_comments == "" else "<" + title_comments + ">"
-
-        xx = pl.col(x)
-        yy = pl.col(target)
-        # Although using simple_lin_reg might seem to be able to reduce some code here,
-        # it adds complexity because of output type and the r2 query.
-        # A little bit of code dup is reasonable.
-        if add_bias:
-            if weights is None:
-                x_mean = xx.mean()
-                y_mean = yy.mean()
-                beta = (xx - x_mean).dot(yy - y_mean) / (xx - x_mean).dot(xx - x_mean)
-                alpha = y_mean - beta * x_mean
-            else:
-                w = pl.col(weights)
-                w_sum = w.sum()
-                x_wmean = w.dot(xx) / w_sum
-                y_wmean = w.dot(yy) / w_sum
-                beta = w.dot((xx - x_wmean) * (yy - y_wmean)) / (w.dot((xx - x_wmean).pow(2)))
-                alpha = y_wmean - beta * x_wmean
-        else:
-            if weights is None:
-                beta = xx.dot(yy) / xx.dot(xx)
-            else:
-                w = pl.col(weights)
-                beta = w.dot(xx * yy) / w.dot(xx.pow(2))
-
-            alpha = pl.lit(0, dtype=pl.Float64)
-
-        beta, alpha, r2 = (
-            temp.select(
-                beta.alias("beta"),
-                alpha.alias("alpha"),
-                query_r2(yy, xx * beta + alpha).alias("r2"),
-            )
-            .collect()
-            .row(0)
-        )
-
-        df_need = temp.select(
-            xx,
-            yy,
-            (xx * beta + alpha).alias("y_pred"),
-        )
-        # Sample down. If len(temp) < max_points, all temp will be selected. This sample supports lazy.
-        df_sampled = sample(df_need, value=max_points)
-
-        if add_bias and alpha > 0:
-            subtitle = f"y = {beta:.4f} * x + {round(alpha, 4) if add_bias else ''}, r2 = {r2:.4f}"
-        elif add_bias and alpha < 0:
-            subtitle = (
-                f"y = {beta:.4f} * x - {abs(round(alpha, 4)) if add_bias else ''}, r2 = {r2:.4f}"
-            )
-        else:
-            subtitle = f"y = {beta:.4f} * x, r2 = {r2:.4f}"
-
-        title = alt.Title(
-            text=[
-                f"Linear Regression: {target} ~ {x} {'+ bias' if add_bias else ''}",
-                actual_title_comments,
-            ],
-            subtitle=subtitle,
-            align="center",
-        )
-        chart = (
-            alt.Chart(df_sampled, title=title)
-            .mark_point()
-            .encode(alt.X(x).scale(zero=False), alt.Y(target))
-        )
-        return chart + chart.mark_line().encode(alt.X(x).scale(zero=False), alt.Y("y_pred"))
 
     # --- Methods ---
 
@@ -864,7 +867,7 @@ class DIA:
             This means it is possible to filter out entire segment(s) before plots are drawn.
         """
         if by is None:
-            plot = DIA._plot_lin_reg(
+            plot = _plot_lin_reg(
                 self._frame,
                 x,
                 target,
@@ -884,7 +887,7 @@ class DIA:
             plots = []
             for key, df in frame.collect().partition_by(by, as_dict=True).items():
                 try:
-                    plot = DIA._plot_lin_reg(
+                    plot = _plot_lin_reg(
                         df,
                         x,
                         target,

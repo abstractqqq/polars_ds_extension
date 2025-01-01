@@ -40,5 +40,9 @@ line-length = 100
 fix = true
 src = ["python"]
 
+[tool.ruff.format]
+docstring-code-format = true
+
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
