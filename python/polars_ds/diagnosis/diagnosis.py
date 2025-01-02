@@ -29,6 +29,7 @@ from polars_ds.num import principal_components
 from polars_ds.ts_features import query_cond_entropy
 from polars_ds.metrics import query_r2
 from polars_ds.stats import corr
+from polars_ds.partition import PartitionResult
 from ..typing import CorrMethod, PolarsFrame
 from ..sample_and_split import sample
 
@@ -43,7 +44,6 @@ def _plot_lin_reg(
     add_bias: bool = False,
     weights: str | None = None,
     max_points: int = 20_000,
-    filter_by: pl.Expr | None = None,
     title_comments: str = "",
 ) -> alt.Chart:
     """
@@ -51,10 +51,7 @@ def _plot_lin_reg(
     """
 
     to_select = [x, target] if weights is None else [x, target, weights]
-    if filter_by is None:
-        temp = df.lazy().select(*to_select)
-    else:
-        temp = df.lazy().filter(filter_by).select(*to_select)
+    temp = df.lazy().select(*to_select)
 
     actual_title_comments = "" if title_comments == "" else "<" + title_comments + ">"
 
@@ -866,46 +863,20 @@ class DIA:
             dataframe, and then the dataframe will be partitioned by the segments.
             This means it is possible to filter out entire segment(s) before plots are drawn.
         """
-        if by is None:
-            plot = _plot_lin_reg(
-                self._frame,
+        frame = self._frame if filter_by is None else self._frame.filter(filter_by)
+  
+        result = PartitionResult(frame, by).apply(
+            lambda seg, df: _plot_lin_reg(
+                df,
                 x,
                 target,
                 add_bias,
                 weights,
                 max_points,
-                filter_by,
-                title_comments,
+                title_comments= "" if by is None else f"Segment = {seg}",
             )
-            return plot.configure(autosize="pad")
-        else:
-            if filter_by is None:
-                frame = self._frame
-            else:
-                frame = self._frame.filter(filter_by)
-
-            plots = []
-            for key, df in frame.collect().partition_by(by, as_dict=True).items():
-                try:
-                    plot = _plot_lin_reg(
-                        df,
-                        x,
-                        target,
-                        add_bias,
-                        weights,
-                        max_points,
-                        filter_by=None,
-                        title_comments=f"Segment = {key if len(key) > 1 else key[0]}",
-                    )
-                    plots.append(plot)
-                except Exception as e:
-                    warnings.warn(
-                        f"Error occured when plotting on segment: {key}\nOriginal Error Message: {e}"
-                    )
-
-            return alt.vconcat(
-                *(plot for plot in plots if not isinstance(plot, Exception))
-            ).configure(autosize="pad")
+        )
+        return alt.vconcat(*result.values()).configure(autosize="pad")
 
     def plot_dist(
         self,

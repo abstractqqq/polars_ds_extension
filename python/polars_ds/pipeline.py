@@ -31,6 +31,7 @@ else:  # 3.10, 3.9, 3.8
 
 __all__ = ["Pipeline", "Blueprint", "FitStep"]
 
+# Need to refactor and think of a better abstraction for the layers
 
 @dataclass
 class SQLStep:  # FittedStep
