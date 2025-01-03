@@ -15,6 +15,9 @@ else:
     raise ValueError("You must be on Polars >= v1.0.0 to use this module.")
 
 import altair as alt
+import plotly.express as px
+import plotly.graph_objs as go
+
 import polars.selectors as cs
 import polars as pl
 import graphviz
@@ -1118,7 +1121,7 @@ class DIA:
         filter_by: pl.Expr | None = None,
         max_points: int = 10_000,
         **kwargs,
-    ) -> alt.Chart:
+    ) -> go.Figure:
         """
         Creates a scatter plot based on the reduced dimensions via PCA, and color it by `by`.
 
@@ -1143,31 +1146,30 @@ class DIA:
 
         if len(feats) < 2:
             raise ValueError("You must pass >= 2 features.")
-        if dim != 2:
-            raise NotImplementedError
-        # if dim < 2 or dim > 3:
-        #     raise ValueError("Input `dim` must either be 2 or 3.")
+        if dim not in (2, 3):
+            raise ValueError("Dim must be 2 or 3.")
 
-        if filter_by is None:
-            frame = self._frame
-        else:
-            frame = self._frame.filter(filter_by)
+        frame = self._frame if filter_by is None else self._frame.filter(filter_by)
 
         temp = frame.select(principal_components(*feats, center=center, k=dim).alias("pc"), by)
         df = sample(temp, value=max_points).unnest("pc")
 
         if dim == 2:
-            selection = alt.selection_point(fields=[by], bind="legend")
-            return (
-                alt.Chart(df, title="PC2 Plot")
-                .mark_point()
-                .encode(
-                    alt.X("pc1:Q"),
-                    alt.Y("pc2:Q"),
-                    alt.Color(f"{by}:N"),
-                    opacity=alt.condition(selection, alt.value(1), alt.value(0.1)),
-                )
-                .add_params(selection)
+            return px.scatter(
+                df, 
+                x = "pc1", 
+                y = "pc2", 
+                color = by,
+                title = "PC2 Plot",
+                **kwargs
             )
-        else:
-            raise NotImplementedError
+        else: # 3d
+            return px.scatter_3d(
+                df, 
+                x = 'pc1', 
+                y = 'pc2', 
+                z = 'pc3',
+                color = by,
+                title = "PC3 Plot",
+                **kwargs
+            )
