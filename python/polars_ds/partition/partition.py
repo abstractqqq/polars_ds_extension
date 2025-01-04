@@ -5,12 +5,6 @@ import polars.selectors as cs
 import warnings
 import sys
 
-from .._utils import _IS_POLARS_V1
-if _IS_POLARS_V1:
-    from polars._typing import IntoExpr
-else:
-    raise ValueError("You must be on Polars >= v1.0.0 to use this module.")
-
 # Typing
 from collections.abc import Callable
 if sys.version_info >= (3, 11):
@@ -20,7 +14,7 @@ else:  # 3.10, 3.9, 3.8
 from ..typing import PolarsFrame
 from typing import List, Dict, Any
 
-class PartitionResult():
+class PartitionHelper():
     """
     A transitory convenience class.
     """
@@ -52,12 +46,12 @@ class PartitionResult():
             self.parts: Dict[str, pl.DataFrame] = {whole_df_name: df.lazy().collect()}
         else:
             cols = df.select(
-                (cs.by_name(by)) & (cs.string() | cs.categorical())
+                (cs.by_name(by)) & (cs.string() | cs.categorical() | cs.boolean())
             ).collect_schema().names()
 
             all_ok = cols[0] == by if isinstance(by, str) else sorted(cols) == sorted(by)
             if not all_ok:
-                raise ValueError("Currently this only supports partitions by str or categorical columns.")
+                raise ValueError("Currently this only supports partitions by str, bool or categorical columns.")
 
             self.parts = {
                 separator.join((str(k) for k in keys)): value
@@ -74,18 +68,22 @@ class PartitionResult():
     def head(self, n:int = 5) -> Dict[str, pl.DataFrame]:
         return {k: df.head(n) for k, df in self.parts.items()}
 
-    def parts(self) -> List[str]:
+    def names(self) -> List[str]:
         return list(self.parts.keys())
+
+    def get(self, part:str) -> pl.DataFrame | None: 
+        return self.parts.get(part, None)
 
     def apply(self, func: Callable[[str, pl.DataFrame], Any]) -> Dict[str, Any]:
         """
-        Apply the function to all of the parts in the partition.
+        Apply an arbitrary function to all parts in this partition. Each part can 
+        be mapped to anything.
 
         Parameters
         ----------
         func
             A function that takes in a str and a pl.DataFrame and outputs anything. The string
-            represents the name of the segment. Note: this is usually a partial function with 
+            represents the name of the segment. Note: this is usually a partial/lambda function with 
             all other arguments provided.
         """
         output = {}

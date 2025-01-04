@@ -24,7 +24,8 @@ dependencies = [
 keywords = ["polars-extension", "scientific-computing", "data-science"]
 
 [project.optional-dependencies]
-plot = ["great-tables>=0.9", "graphviz>=0.20", "altair >= 5.4.0", "vegafusion[embed]", "plotly >= 5.5"]
+# "plotly >= 5.5"
+plot = ["great-tables>=0.9", "graphviz>=0.20", "altair >= 5.4.0", "vegafusion[embed]"]
 models = ["numpy>=1.16"]
 compat = ["numpy>=1.16"]
 all = ["great-tables>=0.9", "graphviz>=0.20", "numpy>=1.16", "altair >= 5.4.0", "vegafusion[embed]"]

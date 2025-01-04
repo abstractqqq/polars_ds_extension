@@ -7,18 +7,12 @@ which plotting backend supports Polars more natively.
 
 from __future__ import annotations
 
-from .._utils import _IS_POLARS_V1
-
-if _IS_POLARS_V1:
-    from polars._typing import IntoExpr
-else:
-    raise ValueError("You must be on Polars >= v1.0.0 to use this module.")
-
 import altair as alt
-import plotly.express as px
-import plotly.graph_objs as go
+# import plotly.express as px
+# import plotly.graph_objs as go
 
 import polars.selectors as cs
+from polars._typing import IntoExpr
 import polars as pl
 import graphviz
 import warnings
@@ -28,11 +22,8 @@ from functools import lru_cache
 from itertools import combinations
 from great_tables import GT, nanoplot_options
 # Internal dependencies
-from polars_ds.num import principal_components
 from polars_ds.ts_features import query_cond_entropy
-from polars_ds.metrics import query_r2
 from polars_ds.stats import corr
-from polars_ds.partition import PartitionResult
 from ..typing import CorrMethod, PolarsFrame
 from ..sample_and_split import sample
 
@@ -40,99 +31,10 @@ alt.data_transformers.enable("vegafusion")
 
 __all__ = ["DIA"]
 
-def _plot_lin_reg(
-    df: pl.DataFrame | pl.LazyFrame,
-    x: str,
-    target: str,
-    add_bias: bool = False,
-    weights: str | None = None,
-    max_points: int = 20_000,
-    title_comments: str = "",
-) -> alt.Chart:
-    """
-    See the method `plot_lin_reg`
-    """
-
-    to_select = [x, target] if weights is None else [x, target, weights]
-    temp = df.lazy().select(*to_select)
-
-    actual_title_comments = "" if title_comments == "" else "<" + title_comments + ">"
-
-    xx = pl.col(x)
-    yy = pl.col(target)
-    # Although using simple_lin_reg might seem to be able to reduce some code here,
-    # it adds complexity because of output type and the r2 query.
-    # A little bit of code dup is reasonable.
-    if add_bias:
-        if weights is None:
-            x_mean = xx.mean()
-            y_mean = yy.mean()
-            beta = (xx - x_mean).dot(yy - y_mean) / (xx - x_mean).dot(xx - x_mean)
-            alpha = y_mean - beta * x_mean
-        else:
-            w = pl.col(weights)
-            w_sum = w.sum()
-            x_wmean = w.dot(xx) / w_sum
-            y_wmean = w.dot(yy) / w_sum
-            beta = w.dot((xx - x_wmean) * (yy - y_wmean)) / (w.dot((xx - x_wmean).pow(2)))
-            alpha = y_wmean - beta * x_wmean
-    else:
-        if weights is None:
-            beta = xx.dot(yy) / xx.dot(xx)
-        else:
-            w = pl.col(weights)
-            beta = w.dot(xx * yy) / w.dot(xx.pow(2))
-
-        alpha = pl.lit(0, dtype=pl.Float64)
-
-    beta, alpha, r2 = (
-        temp.select(
-            beta.alias("beta"),
-            alpha.alias("alpha"),
-            query_r2(yy, xx * beta + alpha).alias("r2"),
-        )
-        .collect()
-        .row(0)
-    )
-
-    df_need = temp.select(
-        xx,
-        yy,
-        (xx * beta + alpha).alias("y_pred"),
-    )
-    # Sample down. If len(temp) < max_points, all temp will be selected. This sample supports lazy.
-    df_sampled = sample(df_need, value=max_points)
-
-    if add_bias and alpha > 0:
-        subtitle = f"y = {beta:.4f} * x + {round(alpha, 4) if add_bias else ''}, r2 = {r2:.4f}"
-    elif add_bias and alpha < 0:
-        subtitle = (
-            f"y = {beta:.4f} * x - {abs(round(alpha, 4)) if add_bias else ''}, r2 = {r2:.4f}"
-        )
-    else:
-        subtitle = f"y = {beta:.4f} * x, r2 = {r2:.4f}"
-
-    title = alt.Title(
-        text=[
-            f"Linear Regression: {target} ~ {x} {'+ bias' if add_bias else ''}",
-            actual_title_comments,
-        ],
-        subtitle=subtitle,
-        align="center",
-    )
-    chart = (
-        alt.Chart(df_sampled, title=title)
-        .mark_point()
-        .encode(alt.X(x).scale(zero=False), alt.Y(target))
-    )
-    return chart + chart.mark_line().encode(alt.X(x).scale(zero=False), alt.Y("y_pred"))
-
-
-
 # DIA = Data Inspection Assistant / DIAgonsis
 class DIA:
     """
-    Data Inspection Assistant. Most plots are powered by plotly/great_tables. Plotly may require
+    Data Inspection Assistant. Most plots are powered by Altair/great_tables. Altair may require
     additional package downloads.
 
     If you cannot import this module, please try: pip install "polars_ds[plot]"
@@ -327,20 +229,17 @@ class DIA:
         else:
             return df_final
 
-    def plot_null_distribution(
+    def null_corr(
         self,
         subset: IntoExpr | Iterable[IntoExpr] = pl.all(),
         filter_by: pl.Expr | None = None,
-        sort: IntoExpr | Iterable[IntoExpr] | None = None,
-        descending: bool | Sequence[bool] = False,
-        row_group_size: int = 10_000,
-    ) -> GT:
+    ) -> pl.DataFrame:
         """
-        Checks the null percentages per row group. Row groups are consecutive rows grouped by row number,
-        with each group having len//n_bins number of elements. The height of each bin is the percentage
-        of nulls in the row group.
+        Computes the correlation between A is null and B is null for all (A, B) combinations
+        in the given subset of columns.
 
-        This plot shows whether nulls in one feature is correlated with nulls in other features.
+        If either A or B is all null or all non-null, the null correlation will not be 
+        computed, since the value is not going to be meaningful.
 
         Parameters
         ----------
@@ -348,62 +247,50 @@ class DIA:
             Anything that can be put into a Polars .select statement. Defaults to pl.all()
         filter_by
             A boolean expression
-        sort
-            Whether to sort the dataframe first by some other expression.
-        descending
-            Only used when sort is not none. Sort in descending order.
-        row_group_size
-            The number of rows per row group
         """
 
         cols = self._frame.select(subset).collect_schema().names()
 
         if filter_by is None:
-            frame = self._frame
+            frame = self._frame.select(pl.col(cols).is_null()).collect()
         else:
-            frame = self._frame.filter(filter_by)
+            frame = self._frame.filter(filter_by).select(pl.col(cols).is_null()).collect()
 
-        if sort is not None:
-            frame = frame.sort(sort, descending=descending)
+        df_null_cnt = frame.sum()
+        n = frame.shape[0]
 
-        temp = (
-            frame.with_row_index(name="row_group")
-            .group_by((pl.col("row_group") // row_group_size).alias("row_group"))
-            .agg(pl.col(cols).null_count() / pl.len())
-            .sort("row_group")
-            .select(
-                pl.col(cols).exclude(["row_group"]).implode(),
-            )
-            .collect()
-        )
-        # Values for plot. The first n are list[f64] used in nanoplot. The rest are overall null rates
-        percentages = temp.row(0)
-        temp2 = frame.select(pl.len(), pl.col(cols).null_count() / pl.len()).collect()
-        row = temp2.row(0)
-        total = row[0]
-        null_rates = row[1:]
-
-        null_table = pl.DataFrame(
-            {
-                "column": cols,
-                "percentages in row groups": [{"val": values} for values in percentages],
-                "null%": null_rates,
-                "total": total,
-            }
+        invalid = set(
+            c
+            for c, cnt in zip(df_null_cnt.columns, df_null_cnt.row(0))
+            if (cnt == 0 or cnt == n)
         )
 
-        return (
-            GT(null_table, rowname_col="column")
-            .tab_header(title="Null Distribution")
-            .tab_stubhead("column")
-            .fmt_number(columns=["null%"], decimals=5)
-            .fmt_percent(columns="null%")
-            .fmt_nanoplot(
-                columns="percentages in row groups",
-                plot_type="bar",
-                options=nanoplot_options(data_bar_fill_color=None),  # "red"
-            )
-        )
+        xx = []
+        yy = []
+        for x, y in combinations(cols, 2):
+            if not (x in invalid or y in invalid):
+                xx.append(x)
+                yy.append(y)
+        
+        if len(xx) == 0:
+            return pl.DataFrame({
+                "column_1": [],
+                "column_2": [],
+                "null_corr": []
+            }, schema = {
+                "column_1": pl.String,
+                "column_2": pl.String,
+                "null_corr": pl.Float64,
+            })
+        else:
+            corrs = frame.select(
+                pl.corr(x, y).alias(str(i)) for i, (x, y) in enumerate(zip(xx, yy)) 
+            ).row(0)
+            return pl.DataFrame({
+                "column_1": xx,
+                "column_2": yy,
+                "null_corr": corrs
+            }).sort(pl.col("null_corr").abs(), descending=True)
 
     def meta(self) -> Dict:
         """
@@ -691,15 +578,6 @@ class DIA:
             One of ["pearson", "spearman", "xi", "kendall"]
         """
         to_check = self.numerics + self.bools
-        correlation = (
-            self._frame.with_columns(pl.col(c).cast(pl.UInt8) for c in self.bools)
-            .select(
-                corr(x, y, method=method).alias(f"{i}")
-                for i, (x, y) in enumerate(combinations(to_check, 2))
-            )
-            .collect()
-            .row(0)
-        )
 
         xx = []
         yy = []
@@ -707,7 +585,17 @@ class DIA:
             xx.append(x)
             yy.append(y)
 
-        return pl.DataFrame({"x": xx, "y": yy, "corr": correlation}).sort(
+        corrs = (
+            self._frame.with_columns(pl.col(c).cast(pl.UInt8) for c in self.bools)
+            .select(
+                corr(x, y, method=method).alias(f"{i}")
+                for i, (x, y) in enumerate(zip(xx, yy))
+            )
+            .collect()
+            .row(0)
+        )
+
+        return pl.DataFrame({"x": xx, "y": yy, "corr": corrs}).sort(
             pl.col("corr").abs(), descending=True
         )
 
@@ -760,21 +648,22 @@ class DIA:
                 stacklevel=2,
             )
 
-        ce = (
-            self._frame.select(
-                query_cond_entropy(x, y).abs().alias(f"{i}")
-                for i, (x, y) in enumerate(combinations(check, 2))
-            )
-            .collect()
-            .row(0)
-        )
-
         # Construct output
         column = []
         by = []
         for x, y in combinations(check, 2):
             column.append(x)
             by.append(y)
+
+        ce = (
+            self._frame.select(
+                query_cond_entropy(x, y).abs().alias(f"{i}")
+                for i, (x, y) in enumerate(zip(column, by))
+            )
+            .collect()
+            .row(0)
+        )
+
 
         out = pl.DataFrame({"column": column, "by": by, "cond_entropy": ce}).sort("cond_entropy")
 
@@ -829,57 +718,6 @@ class DIA:
                 dot.edge(p, c)
 
         return dot
-
-    def plot_lin_reg(
-        self,
-        x: str,
-        target: str,
-        add_bias: bool = False,
-        weights: str | None = None,
-        max_points: int = 20_000,
-        by: str | None = None,
-        title_comments: str = "",
-        filter_by: pl.Expr | None = None,
-    ) -> alt.Chart | Exception:
-        """
-        Plots the linear regression line between x and target.
-
-        Paramters
-        ---------
-        x
-            The preditive variable
-        target
-            The target variable
-        add_bias
-            Whether to add bias in the linear regression
-        weights
-            Weights for the linear regression
-        max_points
-            The max number of points to be displayed. Notice that this only affects the number of points
-            on the plot. The linear regression will still be fit on the entire dataset.
-        title_comments
-            Additional comments to put in the plot title.
-        by
-            Create a lstsq plot for each segment in `by`.
-        filter_by
-            Additional filter condition to be applied. This will be applied upfront to the entire
-            dataframe, and then the dataframe will be partitioned by the segments.
-            This means it is possible to filter out entire segment(s) before plots are drawn.
-        """
-        frame = self._frame if filter_by is None else self._frame.filter(filter_by)
-  
-        result = PartitionResult(frame, by).apply(
-            lambda seg, df: _plot_lin_reg(
-                df,
-                x,
-                target,
-                add_bias,
-                weights,
-                max_points,
-                title_comments= "" if by is None else f"Segment = {seg}",
-            )
-        )
-        return alt.vconcat(*result.values()).configure(autosize="pad")
 
     def plot_dist(
         self,
@@ -1111,65 +949,3 @@ class DIA:
             )
         )
         return alt.vconcat(dist_chart, bad_chart)
-
-    def plot_pca(
-        self,
-        *features: IntoExpr | Iterable[IntoExpr],
-        by: IntoExpr,
-        center: bool = True,
-        dim: int = 2,
-        filter_by: pl.Expr | None = None,
-        max_points: int = 10_000,
-        **kwargs,
-    ) -> go.Figure:
-        """
-        Creates a scatter plot based on the reduced dimensions via PCA, and color it by `by`.
-
-        Paramters
-        ---------
-        features
-            Any selection expression for Polars
-        by
-            Color the 2-D PCA plot by the values in the column
-        center
-            Whether to automatically center the features
-        dim
-            Only 2 principal components plot can be done at this moment.
-        filter_by
-            A boolean expression
-        max_points
-            The max number of points to be displayed. If data > this limit, the data will be sampled.
-        kwargs
-            Anything else that will be passed to plotly's scatter function
-        """
-        feats = self._frame.select(features).collect_schema().names()
-
-        if len(feats) < 2:
-            raise ValueError("You must pass >= 2 features.")
-        if dim not in (2, 3):
-            raise ValueError("Dim must be 2 or 3.")
-
-        frame = self._frame if filter_by is None else self._frame.filter(filter_by)
-
-        temp = frame.select(principal_components(*feats, center=center, k=dim).alias("pc"), by)
-        df = sample(temp, value=max_points).unnest("pc")
-
-        if dim == 2:
-            return px.scatter(
-                df, 
-                x = "pc1", 
-                y = "pc2", 
-                color = by,
-                title = "PC2 Plot",
-                **kwargs
-            )
-        else: # 3d
-            return px.scatter_3d(
-                df, 
-                x = 'pc1', 
-                y = 'pc2', 
-                z = 'pc3',
-                color = by,
-                title = "PC3 Plot",
-                **kwargs
-            )

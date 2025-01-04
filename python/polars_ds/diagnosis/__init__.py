@@ -1,1 +1,0 @@
-from .diagnosis import DIA

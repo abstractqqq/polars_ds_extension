@@ -33,12 +33,12 @@ ExprTransform: TypeAlias = Union[pl.Expr, List[pl.Expr]]
 # Need ...
 FitTransformFunc: TypeAlias = Callable[[PolarsFrame, List[str]], ExprTransform]
 
-# For compatibility
-IntoNumpy: TypeAlias = Union["Sequence[float]", "Sequence[int]"]
-"""Anything which can be converted to a NumPy numeric array.
+# # For compatibility
+# IntoNumpy: TypeAlias = Union["Sequence[float]", "Sequence[int]"]
+# """Anything which can be converted to a NumPy numeric array.
 
-Examples:
-    >>> from polars_ds.typing import IntoNumPy
-    >>> def agnostic_to_numpy(s: IntoNumpy) -> np.ndarray:
-    ...     return s.to_numpy()
-"""
+# Examples:
+#     >>> from polars_ds.typing import IntoNumPy
+#     >>> def agnostic_to_numpy(s: IntoNumpy) -> np.ndarray:
+#     ...     return s.to_numpy()
+# """
