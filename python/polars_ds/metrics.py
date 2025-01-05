@@ -352,7 +352,7 @@ def query_roc_auc(
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression represeting the actual. Must be castable to UInt32.
     pred
         An expression represeting the column with predicted probability.
     """
@@ -374,7 +374,7 @@ def query_tpr_fpr(
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression represeting the actual. Must be castable to UInt32.
     pred
         An expression represeting the column with predicted probability.
     """

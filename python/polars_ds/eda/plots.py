@@ -6,7 +6,7 @@ from typing import Iterable, List
 from polars._typing import IntoExpr
 # Internal dependencies
 import polars_ds.sample_and_split as sa
-from polars_ds import query_r2, principal_components
+from polars_ds import query_r2, principal_components, query_tpr_fpr, integrate_trapz
 
 alt.data_transformers.enable("vegafusion")
 
@@ -169,3 +169,88 @@ def plot_pca(
         ) # .interactive()
     else: # 3d
         raise NotImplementedError
+
+def plot_roc_auc(
+    *,
+    actual: Iterable[int] | str | pl.Expr,
+    pred: Iterable[float] | str | pl.Expr,
+    df: pl.DataFrame | pl.LazyFrame | None = None,
+    show_auc: bool = True,
+    estimator_name: str = "",
+    line_color: str = "#92e884",
+    round_to: int = 4
+) -> alt.Chart:
+    """
+    Plots ROC AUC curve.
+
+    Paramters
+    ---------
+    df
+        Either an eager or lazy Polars Dataframe
+    actual
+        A column which has the actual binary target information
+    pred
+        The prediction
+    show_auc
+        Whether to show the AUC value or not
+    estimator_name
+        Name for the estiamtor. Only shown if show_auc is True
+    line_color
+        HTML color code
+    round_to
+        Round to n-th decimal digit if show_auc is True
+    """
+    # expr_based = isinstance(actual, (str, pl.Expr)) and isinstance(pred, (str, pl.Expr)) and isinstance(df, (pl.DataFrame, pl.LazyFrame))
+    if isinstance(actual, (str, pl.Expr)) and isinstance(pred, (str, pl.Expr)) and isinstance(df, (pl.DataFrame, pl.LazyFrame)):
+        zero = pl.DataFrame({
+            "tpr": [0.],
+            "fpr": [0.],
+        }, schema = {
+            "tpr": pl.Float64,
+            "fpr": pl.Float64,
+        })
+        
+        tpr_fpr = df.lazy().select(
+            tpr_fpr = query_tpr_fpr(actual, pred).reverse()
+        ).unnest("tpr_fpr").select(
+            "tpr",
+            "fpr",
+        ).collect()
+        df_plot = pl.concat([zero, tpr_fpr])
+
+        chart = alt.Chart(df_plot).mark_line(interpolate="step", color = line_color).encode(
+            x=alt.X('fpr', title = "False Positive Rate"),
+            y=alt.Y('tpr', title = "True Positive Rate"),
+        )
+        if show_auc:
+            auc = tpr_fpr.select(
+                integrate_trapz("tpr", "fpr")
+            ).item(0, 0)
+            df_text = pl.DataFrame({
+                "x": [1.0]
+                , "y": [0.]
+            })
+            estimator = estimator_name.strip()
+            auc_text = f"AUC = {round(auc, round_to)}" if estimator == "" else f"{estimator} (AUC = {round(auc, round_to)})"
+            text = alt.Chart(df_text).mark_point(opacity=0.0).encode(
+                x = alt.X("x"),
+                y = alt.Y("y"),
+            ).mark_text(
+                dx = -1,
+                dy = -5,
+                fontWeight="bold",
+                text = auc_text,
+                align="right"
+            )
+            return chart + text
+        else:
+            return chart
+    else: # May fail. User should catch
+        s1 = pl.Series("actual", values=actual, dtype=pl.UInt32)
+        s2 = pl.Series("pred", values=pred)
+        df_temp = pl.DataFrame({
+            "actual": s1,
+            "pred": s2, 
+        })
+        return plot_roc_auc(df = df_temp, actual = "actual", pred = "pred", show_auc=show_auc, estimator_name = estimator_name, line_color=line_color, round_to=round_to)
+
