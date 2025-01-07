@@ -24,6 +24,7 @@ from great_tables import GT, nanoplot_options
 # Internal dependencies
 from polars_ds.ts_features import query_cond_entropy
 from polars_ds.stats import corr
+from .plots import plot_feature, plot_feature_over
 from ..typing import CorrMethod, PolarsFrame
 from ..sample_and_split import sample
 
@@ -719,14 +720,13 @@ class DIA:
 
         return dot
 
-    def plot_dist(
+    def plot_feature(
         self,
         feature: str,
         n_bins: int | None = None,
         density: bool = False,
         show_bad_values: bool = True,
         filter_by: pl.Expr | None = None,
-        **kwargs,
     ) -> Tuple[pl.DataFrame, alt.Chart]:
         """
         Plot distribution of the feature with a few statistical details.
@@ -741,121 +741,29 @@ class DIA:
             Whether to plot a probability density or not
         filter_by
             An extra condition you may want to impose on the underlying dataset
-        include_null
-            When by is not null, whether to consider null a segment or not. If true, null values will be
-            mapped to the name "__null__". The string "__null__" should not exist originally in the column.
-            This is a workaround to get plotly to recognize null values.
-        max_rows
-
-        kwargs
-            Keyword arguments for plotly's histogram function
+        show_bad_values
+            Whether to show % of bad (null or inf or nan) values
         """
-
-        if n_bins <= 2:
-            raise ValueError("For plot_dist, `n_bins` must be > 2.")
         if feature not in self.numerics:
             raise ValueError("Input feature must be numeric.")
 
-        if filter_by is None:
-            frame_with_filter = self._frame.select(feature)
-        else:
-            frame_with_filter = self._frame.select(feature).filter(filter_by)
-
-        frame = frame_with_filter.filter(
-            pl.all_horizontal(pl.col(feature).is_finite(), pl.col(feature).is_not_null())
-        ).collect()
-
-        p5, median, mean, p95, min_, max_ = frame.select(
-            p5=pl.col(feature).quantile(0.05),
-            median=pl.col(feature).median(),
-            mean=pl.col(feature).mean(),
-            p95=pl.col(feature).quantile(0.95),
-            min=pl.col(feature).min(),
-            max=pl.col(feature).max(),
-        ).row(0)
-
-        # bin computation
-        range_ = max_ - min_
-        recip = 1 / n_bins
-        cuts = [recip * (i + 0.5) for i in range(1, n_bins + 1)]
-        cnt, values = (
-            frame.select(
-                ((pl.col(feature) - min_) / range_)
-                .cut(breaks=cuts, include_breaks=True)
-                .struct.rename_fields(["brk", "category"])
-                .struct.field("brk")
-                .value_counts(parallel=True)
-                .sort()
-                .alias("bins")
-            )
-            .unnest("bins")
-            .select(cnt=pl.col("count"), values=pl.col("brk") * range_ + min_)
-            .get_columns()
-        )
-        # histgram plot
-        df_plot = pl.DataFrame({"counts": cnt, "cuts": values})
-        density_str = "density" if density else "counts"
-        alt_y = alt.Y(f"{density_str}:Q", scale=alt.Scale(domainMin=0)).title(density_str)
-        if density:
-            df_plot = df_plot.with_columns(density=pl.col("counts") / pl.col("counts").sum())
-
-        base = alt.Chart(df_plot, title=f"Distribution for {feature}")
-        dist_chart = base.mark_bar(size=15).encode(
-            alt.X("cuts:Q", axis=alt.Axis(tickCount=n_bins // 2, grid=False)),
-            alt_y,
-            tooltip=[
-                alt.Tooltip("cuts:Q", title="CutValue"),
-                alt.Tooltip(f"{density_str}:Q", title=density_str),
-            ],
-        )
-        # stats overlay
-        df_stats = pl.DataFrame(
-            {"names": ["p5", "p50", "avg", "p95"], "stats": [p5, median, mean, p95]}
+        return plot_feature(
+            df = self._frame.select(feature) if filter_by is None else self._frame.filter(filter_by).select(feature),
+            feature = feature,
+            n_bins = n_bins,
+            density = density,
+            show_bad_values = show_bad_values
         )
 
-        stats_base = alt.Chart(df_stats)
-        stats_chart = stats_base.mark_rule(color="red").encode(
-            x=alt.X("stats").title(""),
-            tooltip=[
-                alt.Tooltip("names:N", title="Stats"),
-                alt.Tooltip("stats:Q", title="Value"),
-            ],
-        )
-        # null, inf, nan percentages bar
-        if show_bad_values:
-            bad_pct = (
-                frame_with_filter.select(
-                    pl.any_horizontal(pl.col(feature).is_null(), ~pl.col(feature).is_finite()).sum()
-                    / pl.len()
-                )
-                .collect()
-                .item(0, 0)
-            )
-
-            df_bad = pl.DataFrame({"Null/NaN/Inf%": [bad_pct]})
-            bad_chart = (
-                alt.Chart(df_bad)
-                .mark_bar(opacity=0.5)
-                .encode(
-                    alt.X("Null/NaN/Inf%:Q", scale=alt.Scale(domain=[0, 1])),
-                    tooltip=[
-                        alt.Tooltip("Null/NaN/Inf%:Q", title="Null/NaN/Inf%"),
-                    ],
-                )
-            )
-            chart = alt.vconcat(dist_chart + stats_chart, bad_chart)
-        else:
-            chart = dist_chart + stats_chart
-
-        return df_plot, chart
-
-    def compare_dist_on_segment(
+    def plot_feature_over(
         self,
         feature: str,
-        by: IntoExpr,
+        segment: str,
         n_bins: int = 30,
         density: bool = True,
         filter_by: pl.Expr | None = None,
+        show_bad_values: bool = True,
+        include_null_segment: bool = False
     ) -> alt.Chart:
         """
         Compare the distribution of a feature on a segment.
@@ -864,7 +772,7 @@ class DIA:
         ----------
         feature
             A string representing a column name
-        by
+        segment
             The segment. Anything that evaluates to a column that can be casted to string and used as dicrete segments.
             Null values in this segment column will be mapped to '__null__'.
         n_bins
@@ -873,79 +781,21 @@ class DIA:
             Whether to show a histogram or a density plot
         filter_by
             An optional filter. If not none, this will be applied to the entire data upfront before the segmentation.
+        show_bad_values
+            Whether to show % of bad (null or inf or nan) values
+        include_null_segment
+            Whether to treat null values in the segment column as a segment.
         """
+        if feature not in self.numerics:
+            raise ValueError("Input feature must be numeric.")
 
-        feat, segment = self._frame.select(feature, by).collect_schema().names()
-        if filter_by is None:
-            frame = (
-                self._frame.filter(
-                    pl.all_horizontal(pl.col(feat).is_not_null(), pl.col(feat).is_finite())
-                )
-                .select(feat, by)
-                .collect()
-            )
-        else:
-            frame = (
-                self._frame.filter(
-                    pl.all_horizontal(
-                        pl.col(feat).is_not_null(), pl.col(feat).is_finite(), filter_by
-                    )
-                )
-                .select(feat, by)
-                .collect()
-            )
-
-        selection = alt.selection_point(fields=[segment], bind="legend")
-        # Null will be a group in Altair's chart, but it breaks the predicate evaluation, making
-        # toggling the null group impossible. (This is likely a Altair bug). We
-        # map nulls to a special string '__null__' to avoid that issue
-        frame = frame.with_columns(pl.col(segment).cast(pl.String).fill_null(pl.lit("__null__")))
-        base = alt.Chart(frame, title=f"Distribution of {feat} on segment {segment}")
-        if density:
-            dist_chart = (
-                base.transform_density(
-                    feat,
-                    groupby=[segment],
-                    as_=[feat, "density"],
-                )
-                .mark_bar(opacity=0.55, binSpacing=0)
-                .encode(
-                    alt.X(f"{feat}:Q"),
-                    alt.Y("density:Q", scale=alt.Scale(domainMin=0)).stack(None),
-                    color=f"{segment}:N",
-                    opacity=alt.condition(selection, alt.value(0.55), alt.value(0.0)),
-                )
-                .add_selection(selection)
-            )
-        else:
-            dist_chart = (
-                base.mark_bar(opacity=0.55, binSpacing=0)
-                .encode(
-                    alt.X(f"{feat}:Q"),
-                    alt.Y("count()", scale=alt.Scale(domainMin=0)).stack(None),
-                    color=f"{segment}:N",
-                    opacity=alt.condition(selection, alt.value(0.55), alt.value(0.0)),
-                )
-                .add_selection(selection)
-            )
-
-        df_temp = self._frame if filter_by is None else self._frame.filter(filter_by)
-        df_bad = (
-            df_temp.group_by(by)
-            .agg(bad_rate=(pl.col(feat).is_null() | (~pl.col(feat).is_finite())).sum() / pl.len())
-            .with_columns(pl.col(segment).fill_null(pl.lit("__null__")))
-            .collect()
+        frame = self._frame.select(feature, segment) if filter_by is None else self._frame.filter(filter_by).select(feature, segment)
+        return plot_feature_over(
+            feature = feature,
+            segment = segment,
+            n_bins = n_bins,
+            density = density,
+            include_null_segment = include_null_segment,
+            show_bad_values = show_bad_values,
+            df = frame,
         )
-        bad_chart = (
-            alt.Chart(df_bad)
-            .mark_bar(opacity=0.5)
-            .encode(
-                alt.X("bad_rate:Q", scale=alt.Scale(domain=[0, 1])).title("Null/NaN/Inf%"),
-                alt.Y(f"{segment}:N"),
-                color=f"{segment}:N",
-                tooltip=[
-                    alt.Tooltip("bad_rate:Q", title="Null/NaN/Inf%"),
-                ],
-            )
-        )
-        return alt.vconcat(dist_chart, bad_chart)
