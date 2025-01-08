@@ -36,8 +36,7 @@ class CustomPDSTransformer(BaseEstimator, TransformerMixin):
     def fit(self, df, y=None):
         # specify all the rules for the transform here
         bp = (
-            pds_pipe.Blueprint(df, name = "example", target = "approved") 
-            .lowercase() 
+            pds_pipe.Blueprint(df, name = "example", target = "approved", lowercase=True) 
             .filter( 
                 "city_category is not null" # or equivalently, you can do: pl.col("city_category").is_not_null()
             )

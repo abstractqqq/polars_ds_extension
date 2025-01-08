@@ -7,10 +7,6 @@ import sys
 
 # Typing
 from collections.abc import Callable
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:  # 3.10, 3.9, 3.8
-    from typing_extensions import Self
 from ..typing import PolarsFrame
 from typing import List, Dict, Any
 
@@ -76,8 +72,7 @@ class PartitionHelper():
 
     def apply(self, func: Callable[[str, pl.DataFrame], Any]) -> Dict[str, Any]:
         """
-        Apply an arbitrary function to all parts in this partition. Each part can 
-        be mapped to anything.
+        Apply an arbitrary function to all parts in this partition.
 
         Parameters
         ----------
