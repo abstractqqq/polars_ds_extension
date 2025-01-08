@@ -22,11 +22,11 @@ from functools import lru_cache
 from itertools import combinations
 from great_tables import GT, nanoplot_options
 # Internal dependencies
-from polars_ds.ts_features import query_cond_entropy
-from polars_ds.stats import corr
+from polars_ds.exprs.ts_features import query_cond_entropy
+from polars_ds.exprs.stats import corr
+from polars_ds.typing import CorrMethod, PolarsFrame
+from polars_ds.sample_and_split import sample
 from .plots import plot_feature, plot_feature_over
-from ..typing import CorrMethod, PolarsFrame
-from ..sample_and_split import sample
 
 alt.data_transformers.enable("vegafusion")
 

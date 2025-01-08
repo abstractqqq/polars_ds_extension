@@ -4,11 +4,11 @@ import polars as pl
 import polars.selectors as cs
 import warnings
 import sys
-
 # Typing
 from collections.abc import Callable
-from ..typing import PolarsFrame
 from typing import List, Dict, Any
+# Internal Dependencies
+from polars_ds.typing import PolarsFrame
 
 class PartitionHelper():
     """
