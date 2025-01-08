@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import polars as pl
 import polars.selectors as cs
-from .typing import (
+from typing import List
+# Internal dependencies
+from polars_ds.typing import (
     PolarsFrame,
     SimpleImputeMethod,
     SimpleScaleMethod,
@@ -16,10 +18,8 @@ from .typing import (
     QuantileMethod,
     EncoderDefaultStrategy,
 )
-from . import num as pds_num
-from . import expr_linear as lr
-from typing import List
-
+import polars_ds.num as pds_num
+import polars_ds.expr_linear as lr
 
 def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean") -> ExprTransform:
     """

@@ -6,13 +6,19 @@ import polars as pl
 import json
 import sys
 import polars.selectors as cs
-from . import transforms as t
 from enum import StrEnum
 from functools import partial
 from dataclasses import dataclass
 from polars.type_aliases import IntoExprColumn
 from typing import List, Union, Dict, Any, Tuple
-from .typing import (
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:  # 3.10, 3.9, 3.8
+    from typing_extensions import Self
+
+# Internal Depenedncies
+from . import transforms as t
+from polars_ds.typing import (
     TypeAlias,
     PolarsFrame,
     ExprTransform,
@@ -23,10 +29,6 @@ from .typing import (
     EncoderDefaultStrategy,
 )
 
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:  # 3.10, 3.9, 3.8
-    from typing_extensions import Self
 
 __all__ = ["Pipeline", "Blueprint", "FitStep"]
 
