@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import polars as pl
 from typing import List, Literal, Dict
-from ._utils import pl_plugin, str_to_expr
-
+# Internal dependencies
+from polars_ds._utils import pl_plugin, str_to_expr
 
 __all__ = [
     "filter_by_levenshtein",

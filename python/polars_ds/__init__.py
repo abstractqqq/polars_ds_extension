@@ -1,14 +1,8 @@
 from __future__ import annotations
 import polars as pl
+# Internal dependencies
 from ._utils import str_to_expr
-
-from polars_ds.num import *  # noqa: F403
-from polars_ds.metrics import *  # noqa: F403
-from polars_ds.stats import *  # noqa: F403
-from polars_ds.string import *  # noqa: F403
-from polars_ds.ts_features import *  # noqa: F403
-from polars_ds.expr_knn import *  # noqa: F403
-from polars_ds.expr_linear import *  # noqa: F403
+from polars_ds.exprs import *
 
 __version__ = "0.7.0"
 

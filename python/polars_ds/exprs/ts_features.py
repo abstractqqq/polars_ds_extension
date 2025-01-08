@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import math
 import polars as pl
-from .typing import Distance, NullPolicy
-from ._utils import pl_plugin, str_to_expr
 from typing import Iterable, Literal
+# Internal dependencies
+from polars_ds.typing import Distance, NullPolicy
+from polars_ds._utils import pl_plugin, str_to_expr
 
 __all__ = [
     "query_abs_energy",

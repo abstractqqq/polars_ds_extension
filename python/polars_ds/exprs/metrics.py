@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import polars as pl
-
-from ._utils import pl_plugin, str_to_expr
-from .typing import MultiAUCStrategy
+# Internal dependencies
+from polars_ds._utils import pl_plugin, str_to_expr
+from polars_ds.typing import MultiAUCStrategy
 
 __all__ = [
     "query_r2",
