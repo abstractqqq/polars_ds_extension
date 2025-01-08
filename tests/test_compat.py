@@ -6,13 +6,13 @@ import pandas as pd
 
 import numpy as np
 import polars_ds as pds
-import polars_ds.expr_linear as pds_linear
-import polars_ds.num as pds_num
-import polars_ds.string as pds_str
-import polars_ds.stats as pds_stats
-import polars_ds.ts_features as pds_ts
-import polars_ds.expr_knn as pds_knn
-import polars_ds.metrics as pds_metrics
+import polars_ds.exprs.expr_linear as pds_linear
+import polars_ds.exprs.num as pds_num
+import polars_ds.exprs.string as pds_str
+import polars_ds.exprs.stats as pds_stats
+import polars_ds.exprs.ts_features as pds_ts
+import polars_ds.exprs.expr_knn as pds_knn
+import polars_ds.exprs.metrics as pds_metrics
 from polars.testing import assert_frame_equal, assert_series_equal
 
 from polars_ds.compat import compat as pds2

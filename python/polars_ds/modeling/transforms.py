@@ -18,8 +18,8 @@ from polars_ds.typing import (
     QuantileMethod,
     EncoderDefaultStrategy,
 )
-import polars_ds.num as pds_num
-import polars_ds.expr_linear as lr
+import polars_ds.exprs.num as pds_num
+import polars_ds.exprs.expr_linear as lr
 
 def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean") -> ExprTransform:
     """
