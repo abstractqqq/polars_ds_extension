@@ -81,7 +81,8 @@ jobs:
           pip install jupyter ipython ipykernel nbconvert
           pip install -r tests/requirements-test.txt
           jupyter execute examples/basics.ipynb
-          jupyter execute examples/diagnosis.ipynb
+          jupyter execute examples/pipeline.ipynb
+          jupyter execute examples/eda.ipynb
           jupyter execute examples/sample_and_split.ipynb
 
 
