@@ -6,7 +6,6 @@ import polars as pl
 import json
 import sys
 import polars.selectors as cs
-from enum import StrEnum
 from functools import partial
 from dataclasses import dataclass
 from polars.type_aliases import IntoExprColumn
