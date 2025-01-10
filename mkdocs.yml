@@ -5,7 +5,7 @@ use_directory_urls: false
 
 nav:
 - Home: index.md
-- Diagnosis: dia.md
+- Explorative Data Analysis: eda.md
 - Pipeline: pipeline.md
 - Sample and Split: sample_and_split.md
 - Numerical Functions: num.md

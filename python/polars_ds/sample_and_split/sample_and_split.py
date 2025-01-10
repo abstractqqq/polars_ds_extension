@@ -3,10 +3,18 @@ from __future__ import annotations
 import polars as pl
 import random
 import math
-from ._utils import _IS_POLARS_V1
-from .typing import PolarsFrame
 from typing import List, Tuple
 from itertools import combinations, islice
+# Internal dependency
+from polars_ds.typing import PolarsFrame
+
+__all__ = [
+    "sample",
+    "volume_neutral",
+    "downsample",
+    "random_cols",
+    "split_by_ratio"
+]
 
 
 def _sampler_expr(value: float | int, seed: int | None = None) -> pl.Expr:

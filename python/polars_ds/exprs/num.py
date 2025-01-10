@@ -4,12 +4,13 @@ from __future__ import annotations
 import math
 import polars as pl
 from typing import List, Iterable
-from .typing import (
+# Internal dependencies
+from polars_ds.typing import (
     DetrendMethod,
     ConvMode,
     ConvMethod,
 )
-from ._utils import pl_plugin, str_to_expr
+from polars_ds._utils import pl_plugin, str_to_expr
 
 __all__ = [
     "singular_values",

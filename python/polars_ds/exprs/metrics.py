@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import polars as pl
-
-from ._utils import pl_plugin, str_to_expr
-from .typing import MultiAUCStrategy
+# Internal dependencies
+from polars_ds._utils import pl_plugin, str_to_expr
+from polars_ds.typing import MultiAUCStrategy
 
 __all__ = [
     "query_r2",
@@ -352,7 +352,7 @@ def query_roc_auc(
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression represeting the actual. Must be castable to UInt32.
     pred
         An expression represeting the column with predicted probability.
     """
@@ -374,7 +374,7 @@ def query_tpr_fpr(
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression represeting the actual. Must be castable to UInt32.
     pred
         An expression represeting the column with predicted probability.
     """

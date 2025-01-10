@@ -3,9 +3,10 @@
 from __future__ import annotations
 import polars as pl
 import warnings
-from .typing import LRSolverMethods, NullPolicy
-from ._utils import pl_plugin
 from typing import List, Any
+# Internal dependencies
+from polars_ds.typing import LRSolverMethods, NullPolicy
+from polars_ds._utils import pl_plugin
 
 __all__ = [
     "lin_reg",

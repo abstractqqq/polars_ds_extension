@@ -1,3 +1,4 @@
+use faer::reborrow::IntoConst;
 /// All things true positive, false positive related.
 /// ROC AUC, Average Precision, precision, recall, etc. m
 use polars::prelude::*;
@@ -125,12 +126,7 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     let y = y.cont_slice()?; // Zero copy
     let x = x.cont_slice()?; // Zero copy
 
-    let auc = if x.len() == 1 {
-        // x[0] >= 0. Inserting a 0 on the left means we don't need the - sign like the case below
-        super::trapz::trapz(&[0., y[0]], &[0., x[0]])
-    } else {
-        -super::trapz::trapz(y, x)
-    };
+    let auc = -super::trapz::trapz(y, x);
     let auc: Series = Series::from_vec("roc_auc".into(), vec![auc]);
 
     // Average Precision
@@ -163,12 +159,15 @@ fn pl_tpr_fpr(inputs: &[Series]) -> PolarsResult<Series> {
     // actual, when passed in, is always u32 (done in Python extension side)
     let actual = &inputs[0];
     let predicted = &inputs[1];
-    let positive_count = actual.sum::<u32>().unwrap_or(0);
+    let positive_cnt = actual.sum::<u32>().unwrap_or(0);
     
-    if positive_count == 0 {
-        Ok(Series::from_iter([f64::NAN]))
+    if positive_cnt == 0 {
+        let tpr = Series::from_vec("tpr".into(), vec![f64::NAN]);
+        let fpr = Series::from_vec("fpr".into(), vec![f64::NAN]);
+        let ca = StructChunked::from_columns("tpr_fpr".into(), 1, &[tpr.into_column(), fpr.into_column()])?;
+        Ok(ca.into_series())
     } else {
-        let frame = tp_fp_frame(predicted, actual, positive_count, true)?
+        let frame = tp_fp_frame(predicted, actual, positive_cnt, true)?
             .select([col("threshold"), col("tpr"), col("fpr")])
             .collect()?;
        
@@ -216,13 +215,12 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
     // actual, when passed in, is always u32 (done in Python extension side)
     let actual = &inputs[0];
     let predicted = &inputs[1];
-
-    let positive_count = actual.sum::<u32>().unwrap_or(0);
-    if positive_count == 0 {
+    let positive_cnt = actual.sum::<u32>().unwrap_or(0);
+    if positive_cnt == 0 {
         return Ok(Series::from_iter([f64::NAN]));
     }
 
-    let mut binding = tp_fp_frame(predicted, actual, positive_count, true)?
+    let mut binding = tp_fp_frame(predicted, actual, positive_cnt, true)?
         .select([col("tpr"), col("fpr")])
         .collect()?;
     let frame = binding.align_chunks();
@@ -237,13 +235,7 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
     let y = y.cont_slice()?;
     let x = x.cont_slice()?;
 
-    let auc = if x.len() == 1 {
-        // x[0] >= 0. Inserting a 0 on the left means we don't need the - sign like the case below
-        super::trapz::trapz(&[0., y[0]], &[0., x[0]])
-    } else {
-        -super::trapz::trapz(y, x)
-    };
-    // let auc: f64 = -super::trapz::trapz(y, x);
+    let auc = -super::trapz::trapz(y, x);
     Ok(Series::from_vec("roc_auc".into(), vec![auc]))
 }
 

@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import polars as pl
 import polars.selectors as cs
-from .typing import (
+from typing import List
+# Internal dependencies
+from polars_ds.typing import (
     PolarsFrame,
     SimpleImputeMethod,
     SimpleScaleMethod,
@@ -16,11 +18,8 @@ from .typing import (
     QuantileMethod,
     EncoderDefaultStrategy,
 )
-from . import num as pds_num
-from . import expr_linear as lr
-from ._utils import _IS_POLARS_V1
-from typing import List
-
+import polars_ds.exprs.num as pds_num
+import polars_ds.exprs.expr_linear as lr
 
 def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean") -> ExprTransform:
     """
@@ -111,11 +110,7 @@ def linear_impute(
     add_bias
         Whether to add a bias term to the linear regression
     """
-    if _IS_POLARS_V1:
-        target_name = df.lazy().select(target).collect_schema().names()[0]
-    else:
-        target_name = df.select(target).columns[0]
-
+    target_name = df.lazy().select(target).collect_schema().names()[0]
     features_as_expr = [pl.col(f) for f in features]
     target_as_expr = pl.col(target_name)
     temp = (
@@ -362,9 +357,6 @@ def rank_hot_encode(
     if n_ranks <= 1:
         raise ValueError("Rank hot encoding does not work with single value ranking.")
 
-    if not _IS_POLARS_V1:
-        raise ValueError("Unavailable for Polars < v1.")
-
     number_rank = list(range(n_ranks))
     ranked_expr = pl.col(col).replace_strict(
         old=ranking, new=number_rank, default=None, return_dtype=pl.Int32
@@ -442,13 +434,9 @@ def target_encode(
     https://contrib.scikit-learn.org/category_encoders/targetencoder.html
     """
     temp = df.lazy()
-    if _IS_POLARS_V1:
-        valid_cols = (
-            temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
-        )
-
-    else:
-        valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
+    valid_cols = (
+        temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
+    )
 
     if len(valid_cols) == 0:
         raise ValueError(
@@ -463,24 +451,13 @@ def target_encode(
         ).implode()
         for c in valid_cols
     ).collect()  # add collect config..
-    # POLARS_V1
-    if _IS_POLARS_V1:
-        exprs = [
-            # c[0] will be a series of struct because of the implode above.
-            pl.col(c.name).replace_strict(
-                old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default_value
-            )
-            for c in temp.get_columns()
-        ]
-    else:
-        exprs = [
-            # c[0] will be a series of struct because of the implode above.
-            pl.col(c.name).replace(
-                old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default_value
-            )
-            for c in temp.get_columns()
-        ]
-    return exprs
+    return [
+        # c[0] will be a series of struct because of the implode above.
+        pl.col(c.name).replace_strict(
+            old=c[0].struct.field("value"), new=c[0].struct.field("to"), default=default_value
+        )
+        for c in temp.get_columns()
+    ]
 
 
 def woe_encode(
@@ -514,12 +491,9 @@ def woe_encode(
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
     temp = df.lazy()
-    if _IS_POLARS_V1:
-        valid_cols = (
-            temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
-        )
-    else:
-        valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
+    valid_cols = (
+        temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
+    )
 
     if len(valid_cols) == 0:
         raise ValueError(
@@ -531,25 +505,14 @@ def woe_encode(
     temp = temp.select(
         pds_num.woe_discrete(c, target).implode() for c in valid_cols
     ).collect()  # add collect config..
-    # POLARS_V1
-    if _IS_POLARS_V1:
-        exprs = [
-            # c[0] will be a series of struct because of the implode above.
-            pl.col(c.name).replace_strict(
-                old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default_value
-            )
-            for c in temp.get_columns()
-        ]
-    else:
-        exprs = [
-            # c[0] will be a series of struct because of the implode above.
-            pl.col(c.name).replace(
-                old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default_value
-            )
-            for c in temp.get_columns()
-        ]
 
-    return exprs
+    return [
+        # c[0] will be a series of struct because of the implode above.
+        pl.col(c.name).replace_strict(
+            old=c[0].struct.field("value"), new=c[0].struct.field("woe"), default=default_value
+        )
+        for c in temp.get_columns()
+    ]
 
 
 def iv_encode(
@@ -583,12 +546,9 @@ def iv_encode(
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
     temp = df.lazy()
-    if _IS_POLARS_V1:
-        valid_cols = (
-            temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
-        )
-    else:
-        valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).columns
+    valid_cols = (
+        temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
+    )
 
     if len(valid_cols) == 0:
         raise ValueError(
@@ -601,23 +561,13 @@ def iv_encode(
         pds_num.info_value_discrete(c, target, return_sum=False).implode() for c in valid_cols
     ).collect()  # add collect config..
     # POLARS_V1
-    if _IS_POLARS_V1:
-        exprs = [
-            # c[0] will be a series of struct because of the implode above.
-            pl.col(c.name).replace_strict(
-                old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default_value
-            )
-            for c in temp.get_columns()
-        ]
-    else:
-        exprs = [
-            # c[0] will be a series of struct because of the implode above.
-            pl.col(c.name).replace(
-                old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default_value
-            )
-            for c in temp.get_columns()
-        ]
-    return exprs
+    return [
+        # c[0] will be a series of struct because of the implode above.
+        pl.col(c.name).replace_strict(
+            old=c[0].struct.field("value"), new=c[0].struct.field("iv"), default=default_value
+        )
+        for c in temp.get_columns()
+    ]
 
 
 def polynomial_features(

@@ -5,3 +5,4 @@ polars
 pre-commit
 ipykernel
 numpy
+# nbformat>=4.2.0 # Need this if we have plotly

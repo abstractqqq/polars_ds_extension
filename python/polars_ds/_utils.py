@@ -9,9 +9,9 @@ from polars.plugins import register_plugin_function
 
 # Only need this
 _PLUGIN_PATH = Path(__file__).parent
-# FLAG FOR v1 polars
-_IS_POLARS_V1 = pl.__version__.startswith("1.")
 
+# V1.18 Introduces a Int128 dtype
+# _IS_POLARS_V1_18 = pl.__version__.startswith("1.18.")
 
 def pl_plugin(
     *,

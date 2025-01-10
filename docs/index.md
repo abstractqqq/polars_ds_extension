@@ -218,7 +218,7 @@ If your code already executes under 1s and you only use your code in non-product
 
 # Disclaimer
 
-**Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars (for most of its core) and will try to be as stable as possible for polars>=1 (It currently supports polars>=0.20.16 but that will be dropped soon). Exceptions will be made when Polars's update forces changes in the plugins.**
+**Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars (for most of its core) and will try to be as stable as possible for polars>=1. Exceptions will be made when Polars's update forces changes in the plugins.**
 
 This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed.
 

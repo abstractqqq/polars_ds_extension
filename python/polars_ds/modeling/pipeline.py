@@ -6,12 +6,18 @@ import polars as pl
 import json
 import sys
 import polars.selectors as cs
-from . import transforms as t
 from functools import partial
 from dataclasses import dataclass
 from polars.type_aliases import IntoExprColumn
 from typing import List, Union, Dict, Any, Tuple
-from .typing import (
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:  # 3.10, 3.9, 3.8
+    from typing_extensions import Self
+
+# Internal Depenedncies
+from . import transforms as t
+from polars_ds.typing import (
     TypeAlias,
     PolarsFrame,
     ExprTransform,
@@ -22,15 +28,10 @@ from .typing import (
     EncoderDefaultStrategy,
 )
 
-from ._utils import _IS_POLARS_V1
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:  # 3.10, 3.9, 3.8
-    from typing_extensions import Self
 
 __all__ = ["Pipeline", "Blueprint", "FitStep"]
 
+# Need to refactor and think of a better abstraction for the layers
 
 @dataclass
 class SQLStep:  # FittedStep
@@ -77,16 +78,11 @@ class FitStep:  # Not a FittedStep
         if self.cols is None:
             return self.func(df)
         else:
-            if _IS_POLARS_V1:
-                real_cols: List[str] = [
-                    x
-                    for x in df.lazy().select(self.cols).collect_schema().names()
-                    if x not in self.exclude
-                ]
-            else:
-                real_cols: List[str] = [
-                    x for x in df.select(self.cols).columns if x not in self.exclude
-                ]
+            real_cols: List[str] = [
+                x
+                for x in df.lazy().select(self.cols).collect_schema().names()
+                if x not in self.exclude
+            ]
             return self.func(df, real_cols)
 
 
@@ -130,16 +126,10 @@ def _step_to_json(step: FittedStep) -> Dict:
     if isinstance(step, SQLStep):
         return {"SQLStep": step.sql}
     else:
-        if _IS_POLARS_V1:
-            try:
-                exprs = [e.meta.serialize(format="json") for e in step]
-            except Exception as e:
-                raise ValueError(f"The `FittedStep` is ill-defined. Original error: \n{e}")
-        else:
-            try:
-                exprs = [e.meta.serialize() for e in step]
-            except Exception as e:
-                raise ValueError(f"The `FittedStep` is ill-defined. Original error: \n{e}")
+        try:
+            exprs = [e.meta.serialize(format="json") for e in step]
+        except Exception as e:
+            raise ValueError(f"The `FittedStep` is ill-defined. Original error: \n{e}")
 
         if isinstance(step, SelectStep):
             return {"SelectStep": exprs}
@@ -165,6 +155,8 @@ class Pipeline:
     transforms: List[FittedStep]
     ensure_features_in: bool = False
     ensure_features_out: bool = True
+    lowercase: bool = False
+    uppercase: bool = False
 
     def __str__(self) -> str:
         return self.transforms.__str__()
@@ -191,7 +183,14 @@ class Pipeline:
             If none, create the plan for the df that the pipe is initialized with. Otherwise,
             create the plan for the incoming df.
         """
-        plan = df.lazy()
+        if self.lowercase:
+            plan = df.lazy().select(pl.all().name.to_lowercase())
+        else:
+            if self.uppercase:
+                plan = df.lazy().select(pl.all().name.to_uppercase())
+            else:
+                plan = df.lazy()
+        
         for step in self.transforms:
             if isinstance(step, WithColumnsStep):
                 plan = plan.with_columns(step.exprs)
@@ -218,6 +217,8 @@ class Pipeline:
             "transforms": [_step_to_json(step) for step in self.transforms],
             "ensure_features_in": self.ensure_features_in,
             "ensure_features_out": self.ensure_features_out,
+            "lowercase": self.lowercase,
+            "uppercase": self.uppercase
         }
 
     def to_json(self, path: str | None = None, **kwargs) -> str | None:
@@ -255,6 +256,8 @@ class Pipeline:
             feature_names_out_ = pipeline_dict["feature_names_out_"]
             ensure_features_in = pipeline_dict["ensure_features_in"]
             ensure_features_out = pipeline_dict["ensure_features_out"]
+            lowercase = pipeline_dict.get("lowercase", False)
+            uppercase = pipeline_dict.get("uppercase", False)
         except Exception as e:
             raise ValueError(f"Input dictionary is missing keywords. Original error: \n{e}")
 
@@ -263,39 +266,26 @@ class Pipeline:
         # each step is a dict like {'SelectStep': [jsonified str expressions..]}
         for step in transforms:
             if "SelectStep" in step:
-                if _IS_POLARS_V1:
-                    json_exprs = step.pop("SelectStep")
-                    actual_exprs = [
-                        pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs
-                    ]
-                    transform_steps.append(SelectStep(actual_exprs))
-                else:
-                    json_exprs = step.pop("SelectStep")
-                    actual_exprs = [pl.Expr.deserialize(StringIO(e)) for e in json_exprs]
-                    transform_steps.append(SelectStep(actual_exprs))
-
+                json_exprs = step.pop("SelectStep")
+                actual_exprs = [
+                    pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs
+                ]
+                transform_steps.append(SelectStep(actual_exprs))
+            elif "SpecialStep" in step:
+                json_exprs = step.pop("SpecialStep")
+                transform_steps.append(SpecialStep(json_exprs["SpecialStep"]))
             elif "WithColumnsStep" in step:
-                if _IS_POLARS_V1:
-                    json_exprs = step.pop("WithColumnsStep")
-                    actual_exprs = [
-                        pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs
-                    ]
-                    transform_steps.append(WithColumnsStep(actual_exprs))
-                else:
-                    json_exprs = step.pop("WithColumnsStep")
-                    actual_exprs = [pl.Expr.deserialize(StringIO(e)) for e in json_exprs]
-                    transform_steps.append(WithColumnsStep(actual_exprs))
+                json_exprs = step.pop("WithColumnsStep")
+                actual_exprs = [
+                    pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs
+                ]
+                transform_steps.append(WithColumnsStep(actual_exprs))
             elif "FilterStep" in step:
-                if _IS_POLARS_V1:
-                    json_exprs = step.pop("FilterStep")
-                    actual_exprs = [
-                        pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs
-                    ]
-                    transform_steps.append(FilterStep(actual_exprs))
-                else:
-                    json_exprs = step.pop("FilterStep")
-                    actual_exprs = [pl.Expr.deserialize(StringIO(e)) for e in json_exprs]
-                    transform_steps.append(FilterStep(actual_exprs))
+                json_exprs = step.pop("FilterStep")
+                actual_exprs = [
+                    pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs
+                ]
+                transform_steps.append(FilterStep(actual_exprs))
             elif "SQLStep" in step:
                 sql = step.pop("SQLStep")
                 transform_steps.append(SQLStep(sql))
@@ -310,6 +300,8 @@ class Pipeline:
             transforms=transform_steps,
             ensure_features_in=ensure_features_in,
             ensure_features_out=ensure_features_out,
+            lowercase=lowercase,
+            uppercase=uppercase
         )
 
     def from_json_str(json_str: str) -> Self:
@@ -344,7 +336,8 @@ class Pipeline:
         self.ensure_features_out = ensure_out
         return self
 
-    def transform(self, 
+    def transform(
+        self, 
         df: PolarsFrame, 
         return_lazy: bool = False,
         separate: bool = False,
@@ -365,13 +358,9 @@ class Pipeline:
             the target.
         """
         if self.ensure_features_in:
-            if _IS_POLARS_V1:
-                columns = df.lazy().collect_schema().names()
-                extras = [c for c in columns if c not in self.feature_names_in_]
-                missing = [c for c in self.feature_names_in_ if c not in columns]
-            else:
-                extras = [c for c in df.columns if c not in self.feature_names_in_]
-                missing = [c for c in self.feature_names_in_ if c not in df.columns]
+            columns = df.lazy().collect_schema().names()
+            extras = [c for c in columns if c not in self.feature_names_in_]
+            missing = [c for c in self.feature_names_in_ if c not in columns]
             if len(extras) > 0 or len(missing) > 0:
                 raise ValueError(
                     f"Input df doesn't have the features expected. Extra columns: {extras}. Missing columns: {missing}"
@@ -414,6 +403,8 @@ class Blueprint:
         name: str = "test",
         target: str | None = None,
         exclude: List[str] | None = None,
+        lowercase: bool = False,
+        uppercase: bool = False,
     ):
         """
         Creates a blueprint object.
@@ -433,22 +424,41 @@ class Blueprint:
             the exact columns to transform. E.g. when you are using a selector like cs.numeric() for all numeric columns.
             If this is the case and target is not set nor excluded, then the transformation may be applied to the target
             as well, which is not desired in most cases. Therefore, it is highly recommended you initialize with target name.
+        lowercase
+            Whether to insert a lowercase column name step before all other transformations. 
+            This takes precedence over uppercase.
+        uppercase
+            Whether to insert a uppercase column name step before all other transformations.
+            This only happens if lowercase is False
         """
 
         self._df: pl.LazyFrame = df.lazy()
+        if lowercase:
+            self._df = self._df.select(pl.all().name.to_lowercase())
+        else:
+            if uppercase:
+                self._df = self._df.select(pl.all().name.to_uppercase())
+
         self.name: str = str(name)
         self.target = target
-        self.feature_names_in_: list[str] = (
-            self._df.collect_schema().names() if _IS_POLARS_V1 else list(df.columns)
-        )
+        self.feature_names_in_: list[str] = self._df.collect_schema().names()
+        
         self._steps: List[Step] = []
         self.exclude: List[str] = [] if target is None else [target]
         if exclude is not None:  # dedup in case user accidentally puts the same column name twice
             self.exclude = list(set(self.exclude + exclude))
 
+        self.lowercase = lowercase
+        self.uppercase = uppercase
+
     def __str__(self) -> str:
         out: str = ""
         out += f"Blueprint name: {self.name}\n"
+        if self.lowercase:
+            out += "Column names: Lowercase all incoming columns."
+        elif self.uppercase:
+            out += "Column names: Uppercase all incoming columns."
+
         out += f"Blueprint current steps: {len(self._steps)}\n"
         out += f"Features Expected: {self.feature_names_in_}\n"
         return out
@@ -562,6 +572,22 @@ class Blueprint:
         self._steps.append(WithColumnsStep(cs.float().nan_to_null()))
         return self
 
+    def int_to_float(self, f32:bool=True) -> Self:
+        """
+        Maps all integer columns to float.
+
+        Parameters
+        ----------
+        f32
+            If true, map all integer columns to f32 columns. Otherwise they will be 
+            casted to f64 columns.
+        """
+        if f32:
+            self._steps.append(WithColumnsStep(cs.integer().cast(pl.Float32)))
+        else:
+            self._steps.append(WithColumnsStep(cs.integer().cast(pl.Float64)))
+        return self
+
     def linear_impute(
         self, features: IntoExprColumn, target: str | pl.Expr | None = None, add_bias: bool = False
     ) -> Self:
@@ -646,24 +672,28 @@ class Blueprint:
         self._steps.append(SelectStep(cols))
         return self
 
-    def shrink_dtype(self, force_f32: bool = False) -> Self:
-        """
-        Shrinks the dtype by calling shrink_dtype on all numerical columns. This may reduce
-        the memory pressure during the process.
+    # Not working after pl.Int128 is introduced
 
-        Parameters
-        ----------
-        force_f32
-            If true, force all float columns to be f32 type. You might want to consider using f32
-            only in the pipeline if you wish to save memory.
-        """
+    # def shrink_dtype(self, force_f32: bool = False) -> Self:
+    #     """
+    #     Shrinks the dtype by calling shrink_dtype on all numerical columns. This may reduce
+    #     the memory pressure during the process.
 
-        exprs = cs.integer().shrink_dtype()
-        self._steps.append(WithColumnsStep(exprs))
-        if force_f32:
-            self._steps.append(WithColumnsStep(cs.float().cast(pl.Float32)))
+    #     Parameters
+    #     ----------
+    #     force_f32
+    #         If true, force all float columns to be f32 type. You might want to consider using f32
+    #         only in the pipeline if you wish to save memory.
+    #     """
+    #     # The reason for this is that pl.Int128 cannot be pickled yet???
+    #     exprs = cs.by_dtype(
+    #         pl.Int32, pl.Int8, pl.UInt64, pl.UInt16, pl.UInt8, pl.Int64, pl.Int16, pl.UInt32
+    #     ).shrink_dtype()
+    #     self._steps.append(WithColumnsStep(exprs))
+    #     if force_f32:
+    #         self._steps.append(WithColumnsStep(cs.float().cast(pl.Float32)))
 
-        return self
+    #     return self
 
     def polynomial_features(
         self, cols: List[str], degree: int, interaction_only: bool = True
@@ -748,30 +778,6 @@ class Blueprint:
         old = list(rename_dict.keys())
         self._steps.append(WithColumnsStep([pl.col(k).alias(v) for k, v in rename_dict.items()]))
         return self.drop(old)
-
-    def lowercase(self) -> Self:
-        """
-        Lowercases all column names.
-        """
-        if _IS_POLARS_V1:
-            self._steps.append(
-                SelectStep([pl.col(c).alias(c.lower()) for c in self._df.collect_schema().names()])
-            )
-        else:
-            self._steps.append(SelectStep([pl.col(c).alias(c.lower()) for c in self._df.columns]))
-        return self
-
-    def uppercase(self) -> Self:
-        """
-        Uppercases all column names.
-        """
-        if _IS_POLARS_V1:
-            self._steps.append(
-                SelectStep([pl.col(c).alias(c.upper()) for c in self._df.collect_schema().names()])
-            )
-        else:
-            self._steps.append(SelectStep([pl.col(c).alias(c.upper()) for c in self._df.columns]))
-        return self
 
     def one_hot_encode(
         self,
@@ -1047,20 +1053,21 @@ class Blueprint:
         # the collect should be and optimized.
         df_lazy: pl.LazyFrame = df.lazy()
         for step in self._steps:
-            if isinstance(step, FitStep):  # Need fitting
-                exprs = step.fit(df_lazy)
+            if isinstance(step, FitStep): # Need fitting
+                df_temp = df_lazy.collect()
+                exprs = step.fit(df_temp)
                 transforms.append(WithColumnsStep(exprs))
-                df_lazy = df_lazy.with_columns(exprs)
-            elif isinstance(step, WithColumnsStep):  # Fitted
+                df_lazy = df_temp.lazy().with_columns(exprs)
+            elif isinstance(step, WithColumnsStep):
                 transforms.append(step)
                 df_lazy = df_lazy.with_columns(step.exprs)
-            elif isinstance(step, SelectStep):  # Fitted
+            elif isinstance(step, SelectStep):
                 transforms.append(step)
                 df_lazy = df_lazy.select(step.exprs)
-            elif isinstance(step, FilterStep):  # Fitted
+            elif isinstance(step, FilterStep):
                 transforms.append(step)
                 df_lazy = df_lazy.filter(step.exprs)
-            elif isinstance(step, SQLStep):  # Fitted
+            elif isinstance(step, SQLStep):
                 transforms.append(step)
                 df_lazy = pl.SQLContext(df=df_lazy).execute(step.sql)
             else:
@@ -1070,10 +1077,10 @@ class Blueprint:
             name=self.name,
             target=self.target,
             feature_names_in_=list(self.feature_names_in_),
-            feature_names_out_=df_lazy.collect_schema().names()
-            if _IS_POLARS_V1
-            else list(df_lazy.columns),
+            feature_names_out_=df_lazy.collect_schema().names(),
             transforms=transforms,
+            lowercase=self.lowercase,
+            uppercase=self.uppercase
         )
 
     def fit(self, X=None, y=None) -> Pipeline:

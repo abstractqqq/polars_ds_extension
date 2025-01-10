@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import polars as pl
 import math
-from .typing import Alternative, CorrMethod, Noise, QuantileMethod
-from ._utils import pl_plugin, str_to_expr
+# Internal dependencies
+from polars_ds.typing import Alternative, CorrMethod, Noise, QuantileMethod
+from polars_ds._utils import pl_plugin, str_to_expr
 
 __all__ = [
     "ttest_ind",

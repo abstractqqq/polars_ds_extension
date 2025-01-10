@@ -57,9 +57,9 @@ jobs:
           pip install -r requirements.txt
           python -c 'import polars_ds as pds'
           python -c 'from polars_ds import linear_models'
-          python -c 'from polars_ds.ts_features import *'
           python -c 'from polars_ds.spatial import *'
           python -c 'from polars_ds.sample_and_split import *'
+          python -c 'from polars_ds.exprs.ts_features import *'
 
       - name: Upload sdist
         uses: actions/upload-artifact@v4
@@ -81,7 +81,8 @@ jobs:
           pip install jupyter ipython ipykernel nbconvert
           pip install -r tests/requirements-test.txt
           jupyter execute examples/basics.ipynb
-          jupyter execute examples/diagnosis.ipynb
+          jupyter execute examples/pipeline.ipynb
+          jupyter execute examples/eda.ipynb
           jupyter execute examples/sample_and_split.ipynb
 
 
