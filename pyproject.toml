@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "polars_ds"
 requires-python = ">=3.9"
-version = "0.7.0"
+version = "0.7.1"
 
 license = { file = "LICENSE.txt" }
 classifiers = [
