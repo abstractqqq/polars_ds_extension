@@ -1,16 +1,16 @@
 use super::{generic_stats_output, simple_stats_output};
 use crate::stats_utils::gamma;
 use polars::prelude::*;
-use polars_plan::dsl::functions::concat_str;
 use pyo3_polars::derive::polars_expr;
 
-fn chi2_full_output(_: &[Field]) -> PolarsResult<Field> {
+fn chi2_full_output(fields: &[Field]) -> PolarsResult<Field> {
     let s = Field::new("statistic".into(), DataType::Float64);
     let p = Field::new("pvalue".into(), DataType::Float64);
     let dof = Field::new("dof".into(), DataType::UInt32);
-    let x = Field::new("cross".into(), DataType::String);
+    let f1 = fields[0].clone();
+    let f2 = fields[1].clone();
     let ef = Field::new("E[freq]".into(), DataType::Float64);
-    let v: Vec<Field> = vec![s, p, dof, x, ef];
+    let v: Vec<Field> = vec![s, p, dof, f1, f2, ef];
     Ok(Field::new("chi2_full".into(), DataType::Struct(v)))
 }
 
@@ -97,18 +97,19 @@ fn pl_chi2(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type_func=chi2_full_output)]
 fn pl_chi2_full(inputs: &[Series]) -> PolarsResult<Series> {
+    let s1_name = inputs[0].name();
+    let s2_name = inputs[1].name();
 
     let (df, u1_len, u2_len) = _chi2(inputs)?;
     // cheap clone
     let mut df2 = df.clone().select([
-        concat_str([
-            col("s1").cast(DataType::String),
-            col("s2").cast(DataType::String),
-        ], ", ", true).alias("cross"),
+        col("s1").alias(s1_name.clone()),
+        col("s2").alias(s2_name.clone()),
         col("ex").alias("E[freq]"),
     ]).collect()?;
     let ef = df2.drop_in_place("E[freq]").unwrap();
-    let x = df2.drop_in_place("cross").unwrap();
+    let s1 = df2.drop_in_place(s1_name).unwrap();
+    let s2 = df2.drop_in_place(s2_name).unwrap();
 
     let mut final_df = df.select([
         ((col("ob").cast(DataType::Float64) - col("ex")).pow(2) / col("ex"))
@@ -130,7 +131,7 @@ fn pl_chi2_full(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = StructChunked::from_columns(
         "chi2_full".into(), 
         ef.len(), 
-        &[stats_column, pval_column, dof_column, x, ef]
+        &[stats_column, pval_column, dof_column, s1, s2, ef]
     )?;
     Ok(ca.into_series())
 }
