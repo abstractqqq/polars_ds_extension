@@ -258,7 +258,7 @@ def f_test(*variables: str | pl.Expr, group: str | pl.Expr) -> pl.Expr:
         return pl_plugin(symbol="pl_f_test", args=vars_, changes_length=True)
 
 
-def chi2(var1: str | pl.Expr, var2: str | pl.Expr) -> pl.Expr:
+def chi2(var1: str | pl.Expr, var2: str | pl.Expr, return_full:bool=False) -> pl.Expr:
     """
     Computes the Chi Squared statistic and p value between two categorical values.
 
@@ -272,12 +272,23 @@ def chi2(var1: str | pl.Expr, var2: str | pl.Expr) -> pl.Expr:
         Either the name of the column or a Polars expression
     var2
         Either the name of the column or a Polars expression
+    return_full
+        If true, dof and expected frequency will also be returned. The returned "struct"
+        will not be a scalar anymore, but has length = length of expected frequencies.
     """
-    return pl_plugin(
-        symbol="pl_chi2",
-        args=[str_to_expr(var1), str_to_expr(var2)],
-        returns_scalar=True,
-    )
+    if return_full:
+        return pl_plugin(
+            symbol="pl_chi2_full",
+            args=[str_to_expr(var1), str_to_expr(var2)],
+            changes_length=True
+        )
+    else:
+        return pl_plugin(
+            symbol="pl_chi2",
+            args=[str_to_expr(var1), str_to_expr(var2)],
+            returns_scalar=True,
+        )
+
 
 
 def mann_whitney_u(

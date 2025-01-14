@@ -2597,7 +2597,7 @@ dependencies = [
 
 [[package]]
 name = "polars_ds"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "ahash",
  "approx",

@@ -44,26 +44,28 @@ import polars.selectors as cs
 from polars_ds.pipeline import Pipeline, Blueprint
 
 bp = (
-    # If we specify a target, then target will be excluded from any transformations.
-    Blueprint(df, name = "example", target = "approved") 
-    .lowercase() # lowercase all columns
-    .select(cs.numeric() | cs.by_name(["gender", "employer_category1", "city_category"]))
+    Blueprint(df, name = "example", target = "approved", lowercase=True) # You can optionally 
+    .filter( 
+        "city_category is not null" # or equivalently, you can do: pl.col("city_category").is_not_null()
+    )
     .linear_impute(features = ["var1", "existing_emi"], target = "loan_period") 
     .impute(["existing_emi"], method = "median")
     .append_expr( # generate some features
         pl.col("existing_emi").log1p().alias("existing_emi_log1p"),
         pl.col("loan_amount").log1p().alias("loan_amount_log1p"),
+        pl.col("loan_amount").clip(lower_bound = 0, upper_bound = 1000).alias("loan_amount_log1p_clipped"),
         pl.col("loan_amount").sqrt().alias("loan_amount_sqrt"),
         pl.col("loan_amount").shift(-1).alias("loan_amount_lag_1") # any kind of lag transform
     )
-    .scale( 
+    .scale( # target is numerical, but will be excluded automatically because bp is initialzied with a target
         cs.numeric().exclude(["var1", "existing_emi_log1p"]), method = "standard"
     ) # Scale the columns up to this point. The columns below won't be scaled
-    .append_expr( # Add missing flags
+    .append_expr(
+        # Add missing flags
         pl.col("employer_category1").is_null().cast(pl.UInt8).alias("employer_category1_is_missing")
     )
     .one_hot_encode("gender", drop_first=True)
-    .woe_encode("city_category")
+    .woe_encode("city_category") # No need to specify target because we initialized bp with a target
     .target_encode("employer_category1", min_samples_leaf = 20, smoothing = 10.0) # same as above
 )
 
