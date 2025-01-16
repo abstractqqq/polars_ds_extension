@@ -15,6 +15,7 @@ use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use serde::Deserialize;
 
+
 #[derive(Deserialize, Debug)]
 pub(crate) struct LstsqKwargs {
     pub(crate) bias: bool,
@@ -23,6 +24,8 @@ pub(crate) struct LstsqKwargs {
     pub(crate) l1_reg: f64,
     pub(crate) l2_reg: f64,
     pub(crate) tol: f64,
+    pub(crate) r2: bool,
+    pub(crate) r2_adj: bool,
     #[serde(default)]
     pub(crate) weighted: bool,
 }
@@ -344,7 +347,7 @@ fn pl_lstsq_multi(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsResult<S
             })
             .collect::<Vec<_>>(),
     )?;
-    
+
     Ok(df_out.into_struct("coeffs".into()).into_series())
 }
 
@@ -569,7 +572,7 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
             // Degree of Freedom
             let dof = nrows as f64 - ncols as f64;
             // Residue
-            let res = y - x * &coeffs;
+            let res = y - x * &coeffs; 
             // total residue, sum of squares
             let mse = (res.transpose() * &res).read(0, 0) / dof;
             // std err
@@ -620,19 +623,36 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
             let lower = lower.into_series();
             let upper = Float64Chunked::from_vec("0.975".into(), ci_upper);
             let upper = upper.into_series();
+            let names_series_len=*&names_series.len();
+            // let names_series_len=*names_series_len;
+            let mut out_cols = vec![
+                names_series,
+                coeffs_series,
+                stderr_series,
+                t_series,
+                p_series,
+                lower,
+                upper,
+            ];
+            if kwargs.r2 {
+                let rss = (res.transpose() * &res).read(0,0);
+                let yty = (y.transpose() * &y).read(0,0);
+                let ones = Mat::from_fn(nrows, 1, |_,_| 1.0);
+                let ytone= y.transpose()*&ones;
+                let ytone_sq = (&ytone * &ytone).read(0,0);
+                let ytone_sq_n = ytone_sq/(nrows as f64);
+                let tss=yty-ytone_sq_n;
+                let r2=1.0-rss/tss;
+                let r2 = Float64Chunked::from_vec("r2".into(), vec![r2; names_series_len]);
+                let r2=r2.into_series();
+                out_cols.push(r2);
+            };
+
+
             let out = StructChunked::from_series(
                 "lin_reg_report".into(),
-                names_series.len(),
-                [
-                    &names_series,
-                    &coeffs_series,
-                    &stderr_series,
-                    &t_series,
-                    &p_series,
-                    &lower,
-                    &upper,
-                ]
-                .into_iter(),
+                names_series_len,
+                out_cols.iter(),
             )?;
             Ok(out.into_series())
         }
