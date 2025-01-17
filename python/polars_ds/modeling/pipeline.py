@@ -10,6 +10,7 @@ from functools import partial
 from dataclasses import dataclass
 from polars.type_aliases import IntoExprColumn
 from typing import List, Union, Dict, Any, Tuple
+
 if sys.version_info >= (3, 11):
     from typing import Self
 else:  # 3.10, 3.9, 3.8
@@ -33,6 +34,7 @@ __all__ = ["Pipeline", "Blueprint", "FitStep"]
 
 # Need to refactor and think of a better abstraction for the layers
 
+
 @dataclass
 class SQLStep:  # FittedStep
     sql: str
@@ -43,6 +45,14 @@ class SQLStep:  # FittedStep
 
 @dataclass
 class SelectStep:  # FittedStep
+    exprs: ExprTransform
+
+    def __iter__(self):
+        return [self.exprs].__iter__() if isinstance(self.exprs, pl.Expr) else self.exprs.__iter__()
+
+
+@dataclass
+class SpecialStep:  # FittedStep
     exprs: ExprTransform
 
     def __iter__(self):
@@ -101,7 +111,7 @@ class StepRepr:
     kwargs: Dict[str, Any]
 
     @staticmethod
-    def from_dict(dictionary: Dict[str, Any]) -> Self:
+    def from_dict(dictionary: Dict[str, Any]) -> "StepRepr":
         try:
             name: str = dictionary["name"]
             args: List[Any] = dictionary.get("args", [])
@@ -190,7 +200,7 @@ class Pipeline:
                 plan = df.lazy().select(pl.all().name.to_uppercase())
             else:
                 plan = df.lazy()
-        
+
         for step in self.transforms:
             if isinstance(step, WithColumnsStep):
                 plan = plan.with_columns(step.exprs)
@@ -218,7 +228,7 @@ class Pipeline:
             "ensure_features_in": self.ensure_features_in,
             "ensure_features_out": self.ensure_features_out,
             "lowercase": self.lowercase,
-            "uppercase": self.uppercase
+            "uppercase": self.uppercase,
         }
 
     def to_json(self, path: str | None = None, **kwargs) -> str | None:
@@ -242,7 +252,8 @@ class Pipeline:
 
             return None
 
-    def from_dict(pipeline_dict: Dict[str, Any]) -> Self:
+    @staticmethod
+    def from_dict(pipeline_dict: Dict[str, Any]) -> Pipeline:
         """
         Recreates a pipeline from a dictionary created by the `to_dict` call.
         """
@@ -265,26 +276,21 @@ class Pipeline:
         step: Dict[str, List[str]]
         # each step is a dict like {'SelectStep': [jsonified str expressions..]}
         for step in transforms:
+            assert isinstance(step, dict)
             if "SelectStep" in step:
                 json_exprs = step.pop("SelectStep")
-                actual_exprs = [
-                    pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs
-                ]
+                actual_exprs = [pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs]
                 transform_steps.append(SelectStep(actual_exprs))
             elif "SpecialStep" in step:
                 json_exprs = step.pop("SpecialStep")
                 transform_steps.append(SpecialStep(json_exprs["SpecialStep"]))
             elif "WithColumnsStep" in step:
                 json_exprs = step.pop("WithColumnsStep")
-                actual_exprs = [
-                    pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs
-                ]
+                actual_exprs = [pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs]
                 transform_steps.append(WithColumnsStep(actual_exprs))
             elif "FilterStep" in step:
                 json_exprs = step.pop("FilterStep")
-                actual_exprs = [
-                    pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs
-                ]
+                actual_exprs = [pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs]
                 transform_steps.append(FilterStep(actual_exprs))
             elif "SQLStep" in step:
                 sql = step.pop("SQLStep")
@@ -301,7 +307,7 @@ class Pipeline:
             ensure_features_in=ensure_features_in,
             ensure_features_out=ensure_features_out,
             lowercase=lowercase,
-            uppercase=uppercase
+            uppercase=uppercase,
         )
 
     def from_json_str(json_str: str) -> Self:
@@ -337,8 +343,8 @@ class Pipeline:
         return self
 
     def transform(
-        self, 
-        df: PolarsFrame, 
+        self,
+        df: PolarsFrame,
         return_lazy: bool = False,
         separate: bool = False,
     ) -> PolarsFrame | Tuple[PolarsFrame, PolarsFrame]:
@@ -369,24 +375,23 @@ class Pipeline:
         plan = self._generate_lazy_plan(df)
         if self.ensure_features_out:
             plan = plan.select(self.feature_names_out_)
-        
+
         # Add config here if streaming is needed
         if separate:
             if self.target is None:
-                raise ValueError("If you want to separate the feature data from target data, please specify the target at blueprint initiation.")
+                raise ValueError(
+                    "If you want to separate the feature data from target data, please specify the target at blueprint initiation."
+                )
             else:
                 if return_lazy:
-                    return (
-                        plan.select(pl.all().exclude(self.target)),
-                        plan.select(self.target)
-                    )
+                    return (plan.select(pl.all().exclude(self.target)), plan.select(self.target))
                 else:
                     return (
                         plan.select(pl.all().exclude(self.target)).collect(),
-                        plan.select(self.target).collect()
+                        plan.select(self.target).collect(),
                     )
         else:
-            return plan if return_lazy else plan.collect()  
+            return plan if return_lazy else plan.collect()
 
 
 class Blueprint:
@@ -425,7 +430,7 @@ class Blueprint:
             If this is the case and target is not set nor excluded, then the transformation may be applied to the target
             as well, which is not desired in most cases. Therefore, it is highly recommended you initialize with target name.
         lowercase
-            Whether to insert a lowercase column name step before all other transformations. 
+            Whether to insert a lowercase column name step before all other transformations.
             This takes precedence over uppercase.
         uppercase
             Whether to insert a uppercase column name step before all other transformations.
@@ -442,7 +447,7 @@ class Blueprint:
         self.name: str = str(name)
         self.target = target
         self.feature_names_in_: list[str] = self._df.collect_schema().names()
-        
+
         self._steps: List[Step] = []
         self.exclude: List[str] = [] if target is None else [target]
         if exclude is not None:  # dedup in case user accidentally puts the same column name twice
@@ -545,9 +550,7 @@ class Blueprint:
         return self
 
     def conditional_impute(
-        self, 
-        rules_dict: Dict[str, str | pl.Expr],
-        method:SimpleImputeMethod = "mean"
+        self, rules_dict: Dict[str, str | pl.Expr], method: SimpleImputeMethod = "mean"
     ) -> Self:
         """
         Conditionally imputes values in the given columns. This transform will collect if input is lazy.
@@ -555,14 +558,20 @@ class Blueprint:
         Parameters
         ----------
         rules_dict
-            Dictionary where keys are column names (must be string), and values are SQL/Polars Conditions 
-            that when true, those values in the column will be imputed, 
+            Dictionary where keys are column names (must be string), and values are SQL/Polars Conditions
+            that when true, those values in the column will be imputed,
             and the value to impute will be learned on the data where the condition is false.
         method
             One of `mean`, `median`, `mode`. If `mode`, a random value will be chosen if there is
             a tie.
         """
-        self._steps.append(FitStep(partial(t.conditional_impute, rules_dict=rules_dict, method=method), None, self.exclude))
+        self._steps.append(
+            FitStep(
+                partial(t.conditional_impute, rules_dict=rules_dict, method=method),
+                None,
+                self.exclude,
+            )
+        )
         return self
 
     def nan_to_null(self) -> Self:
@@ -572,14 +581,14 @@ class Blueprint:
         self._steps.append(WithColumnsStep(cs.float().nan_to_null()))
         return self
 
-    def int_to_float(self, f32:bool=True) -> Self:
+    def int_to_float(self, f32: bool = True) -> Self:
         """
         Maps all integer columns to float.
 
         Parameters
         ----------
         f32
-            If true, map all integer columns to f32 columns. Otherwise they will be 
+            If true, map all integer columns to f32 columns. Otherwise they will be
             casted to f64 columns.
         """
         if f32:
@@ -645,7 +654,9 @@ class Blueprint:
         q_high
             The higher quantile value
         """
-        self._steps.append(FitStep(partial(t.robust_scale, q_low=q_low, q_high=q_high), cols, self.exclude))
+        self._steps.append(
+            FitStep(partial(t.robust_scale, q_low=q_low, q_high=q_high), cols, self.exclude)
+        )
         return self
 
     def center(self, cols: IntoExprColumn) -> Self:
@@ -1053,7 +1064,7 @@ class Blueprint:
         # the collect should be and optimized.
         df_lazy: pl.LazyFrame = df.lazy()
         for step in self._steps:
-            if isinstance(step, FitStep): # Need fitting
+            if isinstance(step, FitStep):  # Need fitting
                 df_temp = df_lazy.collect()
                 exprs = step.fit(df_temp)
                 transforms.append(WithColumnsStep(exprs))
@@ -1080,7 +1091,7 @@ class Blueprint:
             feature_names_out_=df_lazy.collect_schema().names(),
             transforms=transforms,
             lowercase=self.lowercase,
-            uppercase=self.uppercase
+            uppercase=self.uppercase,
         )
 
     def fit(self, X=None, y=None) -> Pipeline:
@@ -1089,12 +1100,11 @@ class Blueprint:
         """
         return self.materialize()
 
-    def transform(self, 
-        df: PolarsFrame,
-        separate: bool = False
+    def transform(
+        self, df: PolarsFrame, separate: bool = False
     ) -> pl.DataFrame | Tuple[pl.DataFrame, pl.DataFrame]:
         """
-        Fits the blueprint with the dataframe that it is initialized with, and 
+        Fits the blueprint with the dataframe that it is initialized with, and
         transforms the input dataframe.
 
         Parameters

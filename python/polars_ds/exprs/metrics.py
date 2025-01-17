@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import polars as pl
+
 # Internal dependencies
 from polars_ds._utils import pl_plugin, str_to_expr
 from polars_ds.typing import MultiAUCStrategy
@@ -87,14 +88,14 @@ def query_adj_r2(actual: str | pl.Expr, pred: str | pl.Expr, p: int) -> pl.Expr:
     p
         The number of explanatory variables
     """
-    a = str_to_expr(actual)
-    p = str_to_expr(pred)
-    diff = a - p
+    actual_expr = str_to_expr(actual)
+    pred_expr = str_to_expr(pred)
+    diff = actual_expr - pred_expr
     ss_res = diff.dot(diff)
-    diff2 = a - a.mean()
+    diff2 = actual_expr - actual_expr.mean()
     ss_tot = diff2.dot(diff2)
-    df_res = a.count() - p
-    df_tot = a.count() - 1
+    df_res = actual_expr.len() - p
+    df_tot = actual_expr.len() - 1
     return 1.0 - (ss_res / df_res) / (ss_tot / df_tot)
 
 
@@ -214,6 +215,7 @@ def query_log_loss(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool =
         return -(first + second).mean()
     return -(first + second).sum()
 
+
 def query_mape(actual: str | pl.Expr, pred: str | pl.Expr, weighted: bool = False) -> pl.Expr:
     """
     Computes mean absolute percentage error between self and the other `pred` expression.
@@ -305,15 +307,16 @@ def query_mase(
         else:
             numerator = (a - p).abs().median()
 
-        return numerator / train
+        return numerator / pl.lit(train)
+
     else:
-        train: pl.Expr = str_to_expr(train)
+        train_expr = str_to_expr(train)
         if use_mean:
             numerator = (a - p).abs().mean()
-            denom = train.diff(n=freq).abs().mean()
+            denom = train_expr.diff(n=freq).abs().mean()
         else:
             numerator = (a - p).abs().median()
-            denom = train.diff(n=freq).abs().median()
+            denom = train_expr.diff(n=freq).abs().median()
 
         return numerator / denom
 
@@ -436,9 +439,7 @@ def query_confusion_matrix(
     Limited to just the basic confusion matrix
 
     >>> df = pl.DataFrame({"actual": [1, 0, 1], "pred": [0.4, 0.6, 0.9]})
-    >>> df.select(pds.query_confusion_matrix("actual", "pred").alias("metrics")).unnest(
-    ...    "metrics"
-    ... )
+    >>> df.select(pds.query_confusion_matrix("actual", "pred").alias("metrics")).unnest("metrics")
     shape: (1, 4)
     ┌─────┬─────┬─────┬─────┐
     │ tn  ┆ fp  ┆ fn  ┆ tp  │

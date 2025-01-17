@@ -3,7 +3,6 @@ from __future__ import annotations
 import polars as pl
 import polars.selectors as cs
 import warnings
-import sys
 # Typing
 from collections.abc import Callable
 from typing import List, Dict, Any

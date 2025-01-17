@@ -3,7 +3,8 @@
 from __future__ import annotations
 import math
 import polars as pl
-from typing import List, Iterable
+from typing import List, Iterable, TYPE_CHECKING
+
 # Internal dependencies
 from polars_ds.typing import (
     DetrendMethod,
@@ -12,6 +13,8 @@ from polars_ds.typing import (
 )
 from polars_ds._utils import pl_plugin, str_to_expr
 
+if TYPE_CHECKING:
+    from numpy import ndarray
 __all__ = [
     "singular_values",
     "principal_components",
@@ -52,9 +55,10 @@ __all__ = [
     "xlogy",
     "l_inf_horizontal",
     "l1_horizontal",
-    "l2_sq_horizontal"
+    "l2_sq_horizontal",
     # "mutual_info_disc",
 ]
+
 
 def l_inf_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
     """
@@ -108,6 +112,7 @@ def l1_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
         return pl.sum_horizontal(str_to_expr(x).abs() for x in exprs) / len(exprs)
     else:
         return pl.sum_horizontal(str_to_expr(x).abs() for x in v)
+
 
 def is_increasing(x: str | pl.Expr, strict: bool = False) -> pl.Expr:
     """
@@ -397,8 +402,8 @@ def jaccard_col(first: str | pl.Expr, second: str | pl.Expr, count_null: bool = 
 
 
 def psi(
-    new: str | pl.expr | Iterable[float],
-    baseline: str | pl.expr | Iterable[float],
+    new: str | pl.Expr | Iterable[float],
+    baseline: str | pl.Expr | Iterable[float],
     n_bins: int = 10,
     return_report: bool = False,
 ) -> pl.Expr:
@@ -439,17 +444,17 @@ def psi(
 
     if isinstance(new, (str, pl.Expr)):
         new_ = str_to_expr(new)
-        valid_new: pl.Series | pl.Expr = new_.filter(new_.is_finite()).cast(pl.Float64)
+        valid_new = new_.filter(new_.is_finite()).cast(pl.Float64)
     else:
         temp = pl.Series(values=new, dtype=pl.Float64)
-        valid_new: pl.Series | pl.Expr = temp.filter(temp.is_finite())
+        valid_new = pl.lit(temp.filter(temp.is_finite()))
 
     if isinstance(baseline, (str, pl.Expr)):
         base = str_to_expr(baseline)
-        valid_ref: pl.Series | pl.Expr = base.filter(base.is_finite()).cast(pl.Float64)
+        valid_ref = base.filter(base.is_finite()).cast(pl.Float64)
     else:
-        temp = pl.Series(values=baseline, dtype=pl.Float64)
-        valid_ref: pl.Series | pl.Expr = temp.filter(temp.is_finite())
+        temp = pl.lit(pl.Series(values=baseline, dtype=pl.Float64))
+        valid_ref = temp.filter(temp.is_finite())
 
     vc = (
         valid_ref.qcut(n_bins, left_closed=False, allow_duplicates=True, include_breaks=True)
@@ -460,6 +465,7 @@ def psi(
         .value_counts()
         .sort()
     )
+
     # breakpoints learned from ref
     brk = vc.struct.field("brk")  # .cast(pl.Float64)
     # counts of points in the buckets
@@ -476,8 +482,8 @@ def psi(
 
 
 def psi_discrete(
-    new: str | pl.expr | Iterable[float],
-    baseline: str | pl.expr | Iterable[float],
+    new: str | pl.Expr | Iterable[float],
+    baseline: str | pl.Expr | Iterable[float],
     return_report: bool = False,
 ) -> pl.Expr:
     """
@@ -508,24 +514,24 @@ def psi_discrete(
     if isinstance(new, (str, pl.Expr)):
         new_ = str_to_expr(new)
         temp = new_.value_counts().struct.rename_fields(["", "count"])
-        new_cnt: pl.Series | pl.Expr = temp.struct.field("count")
-        new_cat: pl.Series | pl.Expr = temp.struct.field("")
+        new_cnt = temp.struct.field("count")
+        new_cat = temp.struct.field("")
     else:
         temp = pl.Series(values=new)
-        temp: pl.DataFrame = temp.value_counts()  # This is a df in this case
-        ref_cnt: pl.Series | pl.Expr = temp.drop_in_place("count")
-        ref_cat: pl.Series | pl.Expr = temp[temp.columns[0]]
+        temp = temp.value_counts()  # This is a df in this case
+        new_cnt = pl.lit(temp.drop_in_place("count"))
+        new_cat = pl.lit(temp[temp.columns[0]])
 
     if isinstance(baseline, (str, pl.Expr)):
         base = str_to_expr(baseline)
         temp = base.value_counts().struct.rename_fields(["", "count"])
-        ref_cnt: pl.Series | pl.Expr = temp.struct.field("count")
-        ref_cat: pl.Series | pl.Expr = temp.struct.field("")
+        ref_cnt = temp.struct.field("count")
+        ref_cat = temp.struct.field("")
     else:
         temp = pl.Series(values=baseline)
-        temp: pl.DataFrame = temp.value_counts()  # This is a df in this case
-        ref_cnt: pl.Series | pl.Expr = temp.drop_in_place("count")
-        ref_cat: pl.Series | pl.Expr = temp[temp.columns[0]]
+        temp = temp.value_counts()  # This is a df in this case
+        ref_cnt = pl.lit(temp.drop_in_place("count"))
+        ref_cat = pl.lit(temp[temp.columns[0]])
 
     psi_report = pl_plugin(
         symbol="pl_psi_discrete_report",
@@ -746,7 +752,7 @@ def integrate_trapz(y: str | pl.Expr, x: float | pl.Expr) -> pl.Expr:
 
 def convolve(
     x: str | pl.Expr,
-    kernel: List[float] | "np.ndarray" | pl.Series | pl.Expr,  # noqa: F821
+    kernel: List[float] | ndarray | pl.Series | pl.Expr,  # noqa: F821
     fill_value: float | pl.Expr = 0.0,
     method: ConvMethod = "direct",
     mode: ConvMode = "full",
@@ -889,6 +895,7 @@ def sinc(x: str | pl.Expr) -> pl.Expr:
     y = math.pi * pl.when(xx == 0).then(1e-20).otherwise(xx)
     return y.sin() / y
 
+
 def xlogy(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
     """
     Computes x * log(y) so that if x = 0, the product is 0.
@@ -905,6 +912,7 @@ def xlogy(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
         symbol="pl_xlogy",
         is_elementwise=True,
     )
+
 
 def detrend(x: str | pl.Expr, method: DetrendMethod = "linear") -> pl.Expr:
     """
@@ -982,7 +990,7 @@ def target_encode(
     if isinstance(target, (str, pl.Expr)):
         t = str_to_expr(target)
     else:
-        t = pl.Series(values=target)
+        t = pl.lit(pl.Series(values=target))
     return pl_plugin(
         symbol="pl_target_encode",
         args=[str_to_expr(s), t, t.mean()],
