@@ -25,7 +25,10 @@ from great_tables import GT
 from polars_ds.exprs.ts_features import query_cond_entropy
 from polars_ds.exprs.stats import corr
 from polars_ds.typing import CorrMethod, PolarsFrame
-from .plots import plot_feature, plot_feature_over
+
+from polars_ds.sample_and_split import sample
+from .plots import plot_feature_distr
+
 
 alt.data_transformers.enable("vegafusion")
 
@@ -719,12 +722,15 @@ class DIA:
 
         return dot
 
-    def plot_feature(
+    def plot_feature_distr(
         self,
         feature: str,
         n_bins: int | None = None,
         density: bool = False,
         show_bad_values: bool = True,
+        min_: float | pl.Expr | None = None,
+        max_: float | pl.Expr | None = None,
+        over: str | None = None,
         filter_by: pl.Expr | None = None,
     ) -> Tuple[pl.DataFrame, alt.Chart]:
         """
@@ -738,63 +744,40 @@ class DIA:
             The number of bins used for histograms. Not used when the feature column is categorical.
         density
             Whether to plot a probability density or not
+        show_bad_values
+            Whether to show % of bad (null or non-finite) values
+        min_
+            Whether to ignore values strictly lower than min_
+        max_
+            Whether to ignore values strictly higher than max_
+        over
+            Whether to look at the distribution over another categorical column
         filter_by
             An extra condition you may want to impose on the underlying dataset
-        show_bad_values
-            Whether to show % of bad (null or inf or nan) values
         """
         if feature not in self.numerics:
             raise ValueError("Input feature must be numeric.")
 
-        return plot_feature(
-            df = self._frame.select(feature) if filter_by is None else self._frame.filter(filter_by).select(feature),
+        conditions = []
+        if filter_by is not None:
+            conditions.append(filter_by)
+        if min_ is not None:
+            conditions.append(pl.col(feature) >= min_)
+        if max_ is not None:
+            conditions.append(pl.col(feature) <= max_)
+
+        if len(conditions) > 0:
+            df = self._frame.filter(
+                pl.all_horizontal(*conditions)
+            ).select(feature, over).collect()
+        else:
+            df = self._frame.select(feature, over).collect()
+
+        return plot_feature_distr(
+            df = df,
             feature = feature,
             n_bins = n_bins,
             density = density,
-            show_bad_values = show_bad_values
-        )
-
-    def plot_feature_over(
-        self,
-        feature: str,
-        segment: str,
-        n_bins: int = 30,
-        density: bool = True,
-        filter_by: pl.Expr | None = None,
-        show_bad_values: bool = True,
-        include_null_segment: bool = False
-    ) -> alt.Chart:
-        """
-        Compare the distribution of a feature on a segment.
-
-        Parameters
-        ----------
-        feature
-            A string representing a column name
-        segment
-            The segment. Anything that evaluates to a column that can be casted to string and used as dicrete segments.
-            Null values in this segment column will be mapped to '__null__'.
-        n_bins
-            The max number of bins for the plot.
-        density
-            Whether to show a histogram or a density plot
-        filter_by
-            An optional filter. If not none, this will be applied to the entire data upfront before the segmentation.
-        show_bad_values
-            Whether to show % of bad (null or inf or nan) values
-        include_null_segment
-            Whether to treat null values in the segment column as a segment.
-        """
-        if feature not in self.numerics:
-            raise ValueError("Input feature must be numeric.")
-
-        frame = self._frame.select(feature, segment) if filter_by is None else self._frame.filter(filter_by).select(feature, segment)
-        return plot_feature_over(
-            feature = feature,
-            segment = segment,
-            n_bins = n_bins,
-            density = density,
-            include_null_segment = include_null_segment,
             show_bad_values = show_bad_values,
-            df = frame,
+            over = over 
         )
