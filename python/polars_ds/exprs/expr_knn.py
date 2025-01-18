@@ -4,7 +4,9 @@ KNN related query expressions in Polars.
 
 from __future__ import annotations
 import polars as pl
-from typing import Iterable, List
+from typing import Any, Iterable, List, Sequence, cast
+import warnings
+
 # Internal dependencies
 from polars_ds._utils import pl_plugin, str_to_expr
 from polars_ds.typing import Distance
@@ -307,9 +309,30 @@ def query_knn_avg(
     )
 
 
+def warn_len_compare(item1: Iterable[Any], item2: Iterable[Any]) -> bool:
+    """
+    Compares the len of two Iterables if they have len returning true and warning if no len.
+
+    Args:
+        item1 (Iterable[Any]): Any iterable
+        item2 (Iterable[Any]): Any iterable
+
+    Returns:
+        bool: If both items have __len__ then it will simply return whether or not
+            they have equal size. If they don't have len then it returns True with a
+            warning
+    """
+    if hasattr(item1, "__len__") and hasattr(item2, "__len__"):
+        return len(cast(Sequence, item1)) == len(cast(Sequence, item2))
+    else:
+        msg = "The inputs do not each have len so can't be compared, unexpected results may follow"
+        warnings.warn(msg)
+        return True
+
+
 def within_dist_from(
     *features: str | pl.Expr,
-    pt: Iterable[float],
+    pt: Sequence[float] | Iterable[float],
     r: float | pl.Expr,
     dist: Distance = "sql2",
 ) -> pl.Expr:
@@ -329,7 +352,7 @@ def within_dist_from(
     """
     # For a single point, it is faster to just do it in native polars
     oth = [str_to_expr(x) for x in features]
-    if len(pt) != len(oth):
+    if warn_len_compare(pt, oth):
         raise ValueError("Dimension does not match.")
 
     if dist == "l1":
@@ -351,11 +374,11 @@ def within_dist_from(
         x_list = list(pt)
         x_norm = sum(z * z for z in x_list)
         oth_norm = pl.sum_horizontal(e * e for e in oth)
-        dist = (
+        distN = (
             1.0
             - pl.sum_horizontal(xi * e for xi, e in zip(x_list, oth)) / (x_norm * oth_norm).sqrt()
         )
-        return dist <= r
+        return distN <= r
     elif dist in ("h", "haversine"):
         from . import haversine
 
@@ -368,8 +391,8 @@ def within_dist_from(
 
         y_lat = pl.lit(pt_as_list[0], dtype=pl.Float64)
         y_long = pl.lit(pt_as_list[1], dtype=pl.Float64)
-        dist = haversine(oth[0], oth[1], y_lat, y_long)
-        return dist <= r
+        dist_out = haversine(oth[0], oth[1], y_lat, y_long)
+        return dist_out <= r
     else:
         raise ValueError(f"Unknown distance function: {dist}")
 
@@ -396,29 +419,33 @@ def is_knn_from(
     """
     # For a single point, it is faster to just do it in native polars
     oth = [str_to_expr(x) for x in features]
-    if len(pt) != len(oth):
+    if warn_len_compare(pt, oth):
         raise ValueError("Dimension does not match.")
 
     if dist == "l1":
-        dist = pl.sum_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
-        return dist <= dist.bottom_k(k=k).max()
+        dist_out = pl.sum_horizontal(
+            (e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth)
+        )
+        return dist_out <= dist_out.bottom_k(k=k).max()
     elif dist in ("l2", "sql2"):
-        dist = pl.sum_horizontal(
+        dist_out = pl.sum_horizontal(
             (e - pl.lit(xi, dtype=pl.Float64)).pow(2) for xi, e in zip(pt, oth)
         )
-        return dist <= dist.bottom_k(k=k).max()
+        return dist_out <= dist_out.bottom_k(k=k).max()
     elif dist == "inf":
-        dist = pl.max_horizontal((e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth))
-        return dist <= dist.bottom_k(k=k).max()
+        dist_out = pl.max_horizontal(
+            (e - pl.lit(xi, dtype=pl.Float64)).abs() for xi, e in zip(pt, oth)
+        )
+        return dist_out <= dist_out.bottom_k(k=k).max()
     elif dist == "cosine":
         x_list = list(pt)
         x_norm = sum(z * z for z in x_list)
         oth_norm = pl.sum_horizontal(e * e for e in oth)
-        dist = (
+        dist_out = (
             1.0
             - pl.sum_horizontal(xi * e for xi, e in zip(x_list, oth)) / (x_norm * oth_norm).sqrt()
         )
-        return dist <= dist.bottom_k(k=k).max()
+        return dist_out <= dist_out.bottom_k(k=k).max()
     elif dist in ("h", "haversine"):
         from . import haversine
 
@@ -431,8 +458,8 @@ def is_knn_from(
 
         y_lat = pl.lit(pt_as_list[0], dtype=pl.Float64)
         y_long = pl.lit(pt_as_list[1], dtype=pl.Float64)
-        dist = haversine(oth[0], oth[1], y_lat, y_long)
-        return dist <= dist.bottom_k(k=k).max()
+        dist_out = haversine(oth[0], oth[1], y_lat, y_long)
+        return dist_out <= dist_out.bottom_k(k=k).max()
     else:
         raise ValueError(f"Unknown distance function: {dist}")
 

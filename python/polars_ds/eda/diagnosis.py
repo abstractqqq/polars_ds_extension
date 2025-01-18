@@ -17,16 +17,18 @@ import polars as pl
 import graphviz
 import warnings
 
-from typing import List, Iterable, Dict, Tuple, Sequence
+from typing import List, Iterable, Dict, Tuple
 from functools import lru_cache
 from itertools import combinations
-from great_tables import GT, nanoplot_options
+from great_tables import GT
 # Internal dependencies
 from polars_ds.exprs.ts_features import query_cond_entropy
 from polars_ds.exprs.stats import corr
 from polars_ds.typing import CorrMethod, PolarsFrame
+
 from polars_ds.sample_and_split import sample
 from .plots import plot_feature_distr
+
 
 alt.data_transformers.enable("vegafusion")
 
