@@ -4,7 +4,7 @@ import polars as pl
 from ._utils import str_to_expr
 from polars_ds.exprs import *
 
-__version__ = "0.7.1"
+__version__ = "0.8.0"
 
 def frame(size: int = 2_000, index_name: str = "row_num") -> pl.DataFrame:
     """

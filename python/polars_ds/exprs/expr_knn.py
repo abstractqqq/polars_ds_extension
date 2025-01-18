@@ -23,6 +23,30 @@ __all__ = [
     "within_dist_from",
 ]
 
+def warn_len_compare(item1: Iterable[Any], item2: Iterable[Any]) -> bool:
+    """
+    Compares the len of two Iterables if they have len returning true and warning if no len.
+
+    Parameters
+    ----------
+    item1: Iterable[Any] 
+        Any iterable
+    item2: Iterable[Any])
+        Any iterable
+
+    Returns:
+        bool: If both items have __len__ then it will simply return whether or not
+            they have equal size. If they don't have len then it returns True with a
+            warning
+    """
+    # print()
+    if hasattr(item1, "__len__") and hasattr(item2, "__len__"):
+        return len(cast(Sequence, item1)) == len(cast(Sequence, item2))
+    else:
+        msg = "The inputs do not each have len so can't be compared, unexpected results may follow."
+        warnings.warn(msg, stacklevel=2)
+        return True
+
 
 def query_dist_from_kth_nb(
     *features: str | pl.Expr,
@@ -309,27 +333,6 @@ def query_knn_avg(
     )
 
 
-def warn_len_compare(item1: Iterable[Any], item2: Iterable[Any]) -> bool:
-    """
-    Compares the len of two Iterables if they have len returning true and warning if no len.
-
-    Args:
-        item1 (Iterable[Any]): Any iterable
-        item2 (Iterable[Any]): Any iterable
-
-    Returns:
-        bool: If both items have __len__ then it will simply return whether or not
-            they have equal size. If they don't have len then it returns True with a
-            warning
-    """
-    if hasattr(item1, "__len__") and hasattr(item2, "__len__"):
-        return len(cast(Sequence, item1)) == len(cast(Sequence, item2))
-    else:
-        msg = "The inputs do not each have len so can't be compared, unexpected results may follow"
-        warnings.warn(msg)
-        return True
-
-
 def within_dist_from(
     *features: str | pl.Expr,
     pt: Sequence[float] | Iterable[float],
@@ -419,7 +422,7 @@ def is_knn_from(
     """
     # For a single point, it is faster to just do it in native polars
     oth = [str_to_expr(x) for x in features]
-    if warn_len_compare(pt, oth):
+    if not warn_len_compare(pt, oth):
         raise ValueError("Dimension does not match.")
 
     if dist == "l1":
