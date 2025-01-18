@@ -23,13 +23,14 @@ __all__ = [
     "within_dist_from",
 ]
 
+
 def warn_len_compare(item1: Iterable[Any], item2: Iterable[Any]) -> bool:
     """
     Compares the len of two Iterables if they have len returning true and warning if no len.
 
     Parameters
     ----------
-    item1: Iterable[Any] 
+    item1: Iterable[Any]
         Any iterable
     item2: Iterable[Any])
         Any iterable
@@ -355,7 +356,7 @@ def within_dist_from(
     """
     # For a single point, it is faster to just do it in native polars
     oth = [str_to_expr(x) for x in features]
-    if warn_len_compare(pt, oth):
+    if not warn_len_compare(pt, oth):
         raise ValueError("Dimension does not match.")
 
     if dist == "l1":
