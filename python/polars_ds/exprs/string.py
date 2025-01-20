@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import polars as pl
 from typing import List, Literal, Dict
+
 # Internal dependencies
 from polars_ds._utils import pl_plugin, str_to_expr
 
@@ -732,11 +733,18 @@ def extract_numbers(
 
     Examples
     --------
-    >>> df = pl.DataFrame({
-    ...     "survey":["0% of my time", "1% to 25% of my time", "75% to 99% of my time",
-    ...            "50% to 74% of my time", "75% to 99% of my time",
-    ...            "50% to 74% of my time"]
-    ... })
+    >>> df = pl.DataFrame(
+    ...     {
+    ...         "survey": [
+    ...             "0% of my time",
+    ...             "1% to 25% of my time",
+    ...             "75% to 99% of my time",
+    ...             "50% to 74% of my time",
+    ...             "75% to 99% of my time",
+    ...             "50% to 74% of my time",
+    ...         ]
+    ...     }
+    ... )
     >>> df.select(pl.col("survey").str_ext.extract_numbers(dtype=pl.UInt32))
     shape: (6, 1)
     ┌───────────┐
@@ -903,6 +911,14 @@ def normalize_string(c: str | pl.Expr, form: Literal["NFC", "NFKC", "NFD", "NFKD
     │ Ç   ┆ Ç   ┆ false    ┆ true                │
     └─────┴─────┴──────────┴─────────────────────┘
     """
+    import warnings
+
+    warnings.warn(
+        "This function is deprecated because Polars>=1.20 has a native str.normalize() method. "
+        + "This will be removed in a future version.",
+        stacklevel=2,
+    )
+
     if form not in ("NFC", "NFKC", "NFD", "NFKD"):
         raise ValueError(
             f"{form} is not a valid Unicode normalization form.",
