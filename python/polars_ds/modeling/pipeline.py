@@ -6,10 +6,10 @@ import polars as pl
 import json
 import sys
 import polars.selectors as cs
+from polars._typing import IntoExprColumn
 from functools import partial
 from dataclasses import dataclass
-from polars.type_aliases import IntoExprColumn
-from typing import List, Union, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -18,86 +18,17 @@ else:  # 3.10, 3.9, 3.8
 
 # Internal Depenedncies
 from . import transforms as t
+from ._structures import PLContext, PipelineStep, FitStep
 from polars_ds.typing import (
-    TypeAlias,
     PolarsFrame,
     ExprTransform,
-    FitTransformFunc,
     SimpleImputeMethod,
     SimpleScaleMethod,
     QuantileMethod,
     EncoderDefaultStrategy,
 )
 
-
-__all__ = ["Pipeline", "Blueprint", "FitStep"]
-
-# Need to refactor and think of a better abstraction for the layers
-
-
-@dataclass
-class SQLStep:  # FittedStep
-    sql: str
-
-    def __iter__(self):
-        return [self.sql].__iter__()
-
-
-@dataclass
-class SelectStep:  # FittedStep
-    exprs: ExprTransform
-
-    def __iter__(self):
-        return [self.exprs].__iter__() if isinstance(self.exprs, pl.Expr) else self.exprs.__iter__()
-
-
-@dataclass
-class SpecialStep:  # FittedStep
-    exprs: ExprTransform
-
-    def __iter__(self):
-        return [self.exprs].__iter__() if isinstance(self.exprs, pl.Expr) else self.exprs.__iter__()
-
-
-@dataclass
-class WithColumnsStep:  # FittedStep
-    exprs: ExprTransform
-
-    def __iter__(self):
-        return [self.exprs].__iter__() if isinstance(self.exprs, pl.Expr) else self.exprs.__iter__()
-
-
-@dataclass
-class FilterStep:  # FittedStep
-    exprs: ExprTransform
-
-    def __iter__(self):
-        return [self.exprs].__iter__() if isinstance(self.exprs, pl.Expr) else self.exprs.__iter__()
-
-
-@dataclass
-class FitStep:  # Not a FittedStep
-    func: FitTransformFunc
-    cols: IntoExprColumn | None
-    exclude: List[str]
-
-    # Here we allow IntoExprColumn as input so that users can use selectors, or other polars expressions
-    # to specify input columns, which adds flexibility.
-    # We still need real column names so that the functions in transforms.py will work.
-    def fit(self, df: PolarsFrame) -> ExprTransform:
-        if self.cols is None:
-            return self.func(df)
-        else:
-            real_cols: List[str] = [
-                x
-                for x in df.lazy().select(self.cols).collect_schema().names()
-                if x not in self.exclude
-            ]
-            return self.func(df, real_cols)
-
-
-Step: TypeAlias = Union[FitStep, SelectStep, WithColumnsStep, FilterStep, SQLStep]
-FittedStep: TypeAlias = Union[SelectStep, WithColumnsStep, FilterStep, SQLStep]
+__all__ = ["Pipeline", "Blueprint", "PLContext", "PipelineStep"]
 
 
 @dataclass
@@ -129,28 +60,6 @@ class StepRepr:
             raise ValueError(f"Keys missing or data type is not expected. Original error: \n{e}")
 
 
-def _step_to_json(step: FittedStep) -> Dict:
-    """
-    Turns a fitted step into a JSON dict.
-    """
-    if isinstance(step, SQLStep):
-        return {"SQLStep": step.sql}
-    else:
-        try:
-            exprs = [e.meta.serialize(format="json") for e in step]
-        except Exception as e:
-            raise ValueError(f"The `FittedStep` is ill-defined. Original error: \n{e}")
-
-        if isinstance(step, SelectStep):
-            return {"SelectStep": exprs}
-        elif isinstance(step, FilterStep):
-            return {"FilterStep": exprs}
-        elif isinstance(step, WithColumnsStep):
-            return {"WithColumnsStep": exprs}
-        else:
-            raise ValueError("Unknown Pipeline Step Type.")
-
-
 @dataclass
 class Pipeline:
     """
@@ -162,7 +71,7 @@ class Pipeline:
     target: str | None
     feature_names_in_: List[str]
     feature_names_out_: List[str]
-    transforms: List[FittedStep]
+    transforms: List[PipelineStep]
     ensure_features_in: bool = False
     ensure_features_out: bool = True
     lowercase: bool = False
@@ -175,10 +84,10 @@ class Pipeline:
         text: str = "Naive Query Steps: \n\n"
         for i, step in enumerate(self.transforms):
             text += f"Step {i+1}:\n"
-            if isinstance(step, SQLStep):
-                text += f"Run SQL: {step.sql}\n"
+            if isinstance(step, PipelineStep) and step.context == PLContext.SQL:
+                text += f"Run SQL: {step.exprs[0]}\n"
             else:
-                text += ",\n".join(str(e) for e in step)  # SelectStep, WithColumnsStep are iterable
+                text += ",\n".join(str(e) for e in step)
             text += "\n\n"
 
         return text
@@ -202,17 +111,7 @@ class Pipeline:
                 plan = df.lazy()
 
         for step in self.transforms:
-            if isinstance(step, WithColumnsStep):
-                plan = plan.with_columns(step.exprs)
-            elif isinstance(step, SelectStep):
-                plan = plan.select(step.exprs)
-            elif isinstance(step, FilterStep):
-                plan = plan.filter(step.exprs)
-            elif isinstance(step, SQLStep):
-                plan = pl.SQLContext(df=plan, eager=False).execute(step.sql)
-            else:
-                raise ValueError(f"Transform is not a valid FittedStep: {str(step)}")
-
+            plan = step.apply_df(plan)
         return plan
 
     def to_dict(self) -> Dict:
@@ -224,7 +123,7 @@ class Pipeline:
             "target": self.target,
             "feature_names_in_": list(self.feature_names_in_),
             "feature_names_out_": list(self.feature_names_out_),
-            "transforms": [_step_to_json(step) for step in self.transforms],
+            "transforms": [step.to_json() for step in self.transforms],
             "ensure_features_in": self.ensure_features_in,
             "ensure_features_out": self.ensure_features_out,
             "lowercase": self.lowercase,
@@ -257,7 +156,6 @@ class Pipeline:
         """
         Recreates a pipeline from a dictionary created by the `to_dict` call.
         """
-        from io import StringIO
 
         try:
             name = pipeline_dict["name"]
@@ -272,32 +170,7 @@ class Pipeline:
         except Exception as e:
             raise ValueError(f"Input dictionary is missing keywords. Original error: \n{e}")
 
-        transform_steps = []
-        step: Dict[str, List[str]]
-        # each step is a dict like {'SelectStep': [jsonified str expressions..]}
-        for step in transforms:
-            assert isinstance(step, dict)
-            if "SelectStep" in step:
-                json_exprs = step.pop("SelectStep")
-                actual_exprs = [pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs]
-                transform_steps.append(SelectStep(actual_exprs))
-            elif "SpecialStep" in step:
-                json_exprs = step.pop("SpecialStep")
-                transform_steps.append(SpecialStep(json_exprs["SpecialStep"]))
-            elif "WithColumnsStep" in step:
-                json_exprs = step.pop("WithColumnsStep")
-                actual_exprs = [pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs]
-                transform_steps.append(WithColumnsStep(actual_exprs))
-            elif "FilterStep" in step:
-                json_exprs = step.pop("FilterStep")
-                actual_exprs = [pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs]
-                transform_steps.append(FilterStep(actual_exprs))
-            elif "SQLStep" in step:
-                sql = step.pop("SQLStep")
-                transform_steps.append(SQLStep(sql))
-            else:
-                raise ValueError(f"Invalid step {step}")
-
+        transform_steps = [PipelineStep.from_json(step) for step in transforms]
         return Pipeline(
             name=name,
             target=target,
@@ -448,7 +321,7 @@ class Blueprint:
         self.target = target
         self.feature_names_in_: list[str] = self._df.collect_schema().names()
 
-        self._steps: List[Step] = []
+        self._steps: List[PipelineStep | FitStep] = []
         self.exclude: List[str] = [] if target is None else [target]
         if exclude is not None:  # dedup in case user accidentally puts the same column name twice
             self.exclude = list(set(self.exclude + exclude))
@@ -478,26 +351,6 @@ class Blueprint:
         else:
             return target
 
-    # def reset_df(self, df: PolarsFrame) -> Self:
-    #     """
-    #     Resets the underlying dataset to learn from. This will keep all the existing
-    #     steps in the blueprint.
-
-    #     Parameters
-    #     ----------
-    #     df
-    #         The new dataframe to use when materializing.
-    #     """
-    #     from copy import deepcopy
-
-    #     self._df = df.lazy()
-    #     self.name = str(self.name)
-    #     self.feature_names_in_ = (
-    #         self._df.collect_schema().names() if _IS_POLARS_V1 else list(df.columns)
-    #     )
-    #     self._steps = [deepcopy(s) for s in self._steps]
-    #     return self
-
     def filter(self, by: str | pl.Expr) -> Self:
         """
         Filters on the dataframe using native polars expressions or SQL boolean expressions.
@@ -507,7 +360,9 @@ class Blueprint:
         by
             Native polars boolean expression or SQL strings
         """
-        self._steps.append(FilterStep(by if isinstance(by, pl.Expr) else pl.sql_expr(by)))
+        self._steps.append(
+            PipelineStep(by if isinstance(by, pl.Expr) else pl.sql_expr(by), PLContext.FILTER)
+        )
         return self
 
     def sql_transform(self, sql: str) -> Self:
@@ -523,14 +378,14 @@ class Blueprint:
             The SQL to run on the dataframe. Note: this step doesn't immedinately check the validity of
             the SQL statement.
         """
-        self._steps.append(SQLStep(sql))
+        self._steps.append(PipelineStep(sql, PLContext.SQL))
         return self
 
     def cast_bools(self, to: pl.DataType = pl.UInt8) -> Self:
         """
         Cast all boolean columns in the dataframe to the given type.
         """
-        self._steps.append(WithColumnsStep(cs.boolean().cast(to)))
+        self._steps.append(PipelineStep(cs.boolean().cast(to), PLContext.WITH_COLUMNS))
         return self
 
     def impute(self, cols: IntoExprColumn, method: SimpleImputeMethod = "mean") -> Self:
@@ -578,7 +433,7 @@ class Blueprint:
         """
         Maps NaN values in all columns to null.
         """
-        self._steps.append(WithColumnsStep(cs.float().nan_to_null()))
+        self._steps.append(PipelineStep(cs.float().nan_to_null(), PLContext.WITH_COLUMNS))
         return self
 
     def int_to_float(self, f32: bool = True) -> Self:
@@ -592,9 +447,9 @@ class Blueprint:
             casted to f64 columns.
         """
         if f32:
-            self._steps.append(WithColumnsStep(cs.integer().cast(pl.Float32)))
+            self._steps.append(PipelineStep(cs.integer().cast(pl.Float32), PLContext.WITH_COLUMNS))
         else:
-            self._steps.append(WithColumnsStep(cs.integer().cast(pl.Float64)))
+            self._steps.append(PipelineStep(cs.integer().cast(pl.Float64), PLContext.WITH_COLUMNS))
         return self
 
     def linear_impute(
@@ -680,7 +535,7 @@ class Blueprint:
         cols
             Any Polars expression that can be understood as columns.
         """
-        self._steps.append(SelectStep(cols))
+        self._steps.append(PipelineStep(cols, PLContext.SELECT))
         return self
 
     # Not working after pl.Int128 is introduced
@@ -727,8 +582,9 @@ class Blueprint:
             )
 
         self._steps.append(
-            WithColumnsStep(
-                t.polynomial_features(cols, degree=degree, interaction_only=interaction_only)
+            PipelineStep(
+                t.polynomial_features(cols, degree=degree, interaction_only=interaction_only),
+                PLContext.WITH_COLUMNS,
             )
         )
         return self
@@ -774,7 +630,7 @@ class Blueprint:
         cols
             Any Polars expression that can be understood as columns.
         """
-        self._steps.append(SelectStep(pl.all().exclude(cols)))
+        self._steps.append(PipelineStep(pl.all().exclude(cols), PLContext.SELECT))
         return self
 
     def rename(self, rename_dict: Dict[str, str]) -> Self:
@@ -787,7 +643,11 @@ class Blueprint:
             The name mapping
         """
         old = list(rename_dict.keys())
-        self._steps.append(WithColumnsStep([pl.col(k).alias(v) for k, v in rename_dict.items()]))
+        self._steps.append(
+            PipelineStep(
+                [pl.col(k).alias(v) for k, v in rename_dict.items()], PLContext.WITH_COLUMNS
+            )
+        )
         return self.drop(old)
 
     def one_hot_encode(
@@ -846,7 +706,9 @@ class Blueprint:
         drop_cols
             Whether to drop the original column after the transform
         """
-        self._steps.append(WithColumnsStep(t.rank_hot_encode(col=col, ranking=ranking)))
+        self._steps.append(
+            PipelineStep(t.rank_hot_encode(col=col, ranking=ranking), PLContext.WITH_COLUMNS)
+        )
         if drop_cols:
             return self.drop(cols=[col])
         return self
@@ -996,9 +858,9 @@ class Blueprint:
             will be executed in a .with_columns(..) context.
         """
         if is_select:
-            self._steps.append(SelectStep(list(exprs)))
+            self._steps.append(PipelineStep(list(exprs), PLContext.SELECT))
         else:
-            self._steps.append(WithColumnsStep(list(exprs)))
+            self._steps.append(PipelineStep(list(exprs), PLContext.WITH_COLUMNS))
         return self
 
     # How to type this?
@@ -1052,13 +914,13 @@ class Blueprint:
         if func is None or step_repr.name.startswith("_"):
             raise ValueError("Unknown / invalid method name.")
 
-        return func(*step_repr.args, **step_repr.kwargs)  # self is already part of func
+        return func(*step_repr.args, **step_repr.kwargs)
 
     def materialize(self) -> Pipeline:
         """
         Materialize the blueprint, which means that it will fit and learn all the paramters needed.
         """
-        transforms: List[FittedStep] = []
+        transforms: List[PipelineStep] = []
         df: pl.DataFrame = self._df.collect()  # Add config here if streaming is needed
         # Let this lazy plan go through the fit process. The frame will be collected temporarily but
         # the collect should be and optimized.
@@ -1067,20 +929,11 @@ class Blueprint:
             if isinstance(step, FitStep):  # Need fitting
                 df_temp = df_lazy.collect()
                 exprs = step.fit(df_temp)
-                transforms.append(WithColumnsStep(exprs))
+                transforms.append(PipelineStep(exprs, PLContext.WITH_COLUMNS))
                 df_lazy = df_temp.lazy().with_columns(exprs)
-            elif isinstance(step, WithColumnsStep):
+            elif isinstance(step, PipelineStep):
                 transforms.append(step)
-                df_lazy = df_lazy.with_columns(step.exprs)
-            elif isinstance(step, SelectStep):
-                transforms.append(step)
-                df_lazy = df_lazy.select(step.exprs)
-            elif isinstance(step, FilterStep):
-                transforms.append(step)
-                df_lazy = df_lazy.filter(step.exprs)
-            elif isinstance(step, SQLStep):
-                transforms.append(step)
-                df_lazy = pl.SQLContext(df=df_lazy).execute(step.sql)
+                df_lazy = step.apply_df(df_lazy)
             else:
                 raise ValueError(f"Not a valid step: {step.__class__}")
 
