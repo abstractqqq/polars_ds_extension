@@ -43,6 +43,7 @@ fn pl_singular_values(inputs: &[Series]) -> PolarsResult<Series> {
     let mut s = Col::zeros(dim);
     let parallelism = faer::Parallelism::Rayon(0); // use current num threads
     let params = Default::default();
+
     faer::linalg::svd::compute_svd(
         mat.canonicalize().0,
         s.as_mut(),

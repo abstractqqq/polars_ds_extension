@@ -1,7 +1,13 @@
 #![allow(non_snake_case)]
+use faer_traits::RealField;
+use faer_traits::math_utils::is_nan;
+use faer::{diag::AsDiagRef, linalg::solvers::DenseSolveCore};
+use faer::mat::Mat;
+
 use super::LinalgErrors;
 use core::f64;
-use faer::{prelude::*, Side};
+use faer::{linalg::solvers::{Solve, SolveLstsqCore}, prelude::*, Side};
+use num::traits::real::Real;
 use std::ops::Neg;
 
 #[derive(Clone, Copy, Default)]
@@ -186,14 +192,15 @@ impl LR {
             solver: LRSolverMethods::default(),
             method: ClosedFormLRMethods::default(),
             lambda: 0.,
-            coefficients: faer::mat::from_row_major_slice(coeffs, coeffs.len(), 1).to_owned(),
+            coefficients: faer::mat::Mat::from_fn(coeffs.len(), 1, |i, _| coeffs[i]),
+            // from_row_major_slice(coeffs, coeffs.len(), 1).to_owned(),
             fit_bias: bias.abs() > f64::EPSILON,
             bias: bias,
         }
     }
 
     pub fn set_coeffs_and_bias(&mut self, coeffs: &[f64], bias: f64) {
-        self.coefficients = (faer::mat::from_row_major_slice(coeffs, coeffs.len(), 1)).to_owned();
+        self.coefficients = faer::mat::Mat::from_fn(coeffs.len(), 1, |i, _| coeffs[i]);
         self.bias = bias;
         self.fit_bias = bias.abs() > f64::EPSILON;
     }
@@ -233,8 +240,7 @@ impl LinearRegression for LR {
         if self.fit_bias {
             let n = all_coefficients.nrows();
             let slice = all_coefficients.col_as_slice(0);
-            self.coefficients =
-                faer::mat::from_row_major_slice(&slice[..n - 1], n - 1, 1).to_owned();
+            self.coefficients = faer::mat::Mat::from_fn(n - 1, 1, |i, _| slice[i]);
             self.bias = slice[n - 1];
         } else {
             self.coefficients = all_coefficients;
@@ -274,8 +280,7 @@ impl OnlineLR {
             Err(LinalgErrors::DimensionMismatch)
         } else {
             self.bias = bias;
-            self.coefficients =
-                (faer::mat::from_row_major_slice(coeffs, coeffs.len(), 1)).to_owned();
+            self.coefficients = faer::mat::Mat::from_fn(coeffs.len(), 1, |i, _| coeffs[i]);
             self.inv = inv.to_owned();
             Ok(())
         }
@@ -396,7 +401,7 @@ impl ElasticNet {
         ElasticNet {
             l1_reg: f64::NAN,
             l2_reg: f64::NAN,
-            coefficients: faer::mat::from_row_major_slice(coeffs, coeffs.len(), 1).to_owned(),
+            coefficients: Mat::from_fn(coeffs.len(), 1, |i, _| coeffs[i]),
             fit_bias: bias.abs() > f64::EPSILON,
             bias: bias,
             tol: 1e-5,
@@ -405,7 +410,7 @@ impl ElasticNet {
     }
 
     pub fn set_coeffs_and_bias(&mut self, coeffs: &[f64], bias: f64) {
-        self.coefficients = (faer::mat::from_row_major_slice(coeffs, coeffs.len(), 1)).to_owned();
+        self.coefficients = Mat::from_fn(coeffs.len(), 1, |i, _| coeffs[i]);
         self.bias = bias;
         self.fit_bias = bias.abs() > f64::EPSILON;
     }
@@ -456,8 +461,7 @@ impl LinearRegression for ElasticNet {
         if self.fit_bias {
             let n = all_coefficients.nrows();
             let slice = all_coefficients.col_as_slice(0);
-            self.coefficients =
-                faer::mat::from_row_major_slice(&slice[..n - 1], n - 1, 1).to_owned();
+            self.coefficients = faer::mat::Mat::from_fn(n - 1, 1, |i, _| *all_coefficients.get(i, 0));
             self.bias = slice[n - 1];
         } else {
             self.coefficients = all_coefficients;
@@ -478,46 +482,80 @@ impl LinearRegression for ElasticNet {
 //------------------------------------ The Basic Functions ---------------------------------------
 
 /// Returns the coefficients for lstsq as a nrows x 1 matrix
+// #[inline(always)]
+// pub fn faer_solve_lstsq(x: MatRef<f64>, y: MatRef<f64>, how: LRSolverMethods) -> Mat<f64> {
+//     match how {
+//         LRSolverMethods::SVD => (x.transpose() * x).thin_svd().solve(x.transpose() * y),
+//         LRSolverMethods::QR => x.col_piv_qr().solve_lstsq(y),
+//         LRSolverMethods::Choleskey => match (x.transpose() * x).cholesky(Side::Lower) {
+//             Ok(cho) => cho.solve(x.transpose() * y),
+//             Err(_) => x.col_piv_qr().solve_lstsq(y),
+//         },
+//     }
+// }
+
+
+
+
 #[inline(always)]
-pub fn faer_solve_lstsq(x: MatRef<f64>, y: MatRef<f64>, how: LRSolverMethods) -> Mat<f64> {
+pub fn faer_solve_lstsq<T:RealField>(x: MatRef<T>, y: MatRef<T>, how: LRSolverMethods) -> Mat<T> {
+    let lhs = x.transpose() * x;
+    let rhs = x.transpose() * y;
+
     match how {
-        LRSolverMethods::SVD => (x.transpose() * x).thin_svd().solve(x.transpose() * y),
-        LRSolverMethods::QR => x.col_piv_qr().solve_lstsq(y),
-        LRSolverMethods::Choleskey => match (x.transpose() * x).cholesky(Side::Lower) {
-            Ok(cho) => cho.solve(x.transpose() * y),
-            Err(_) => x.col_piv_qr().solve_lstsq(y),
+        LRSolverMethods::SVD => match lhs.thin_svd() {
+            Ok(l) => l.solve(rhs),
+            Err(_) => lhs.col_piv_qr().solve(rhs)
         },
+        LRSolverMethods::QR => lhs.col_piv_qr().solve(rhs),
+        LRSolverMethods::Choleskey => {
+
+            
+
+            todo!()
+        }
+        
+        // match (x.transpose() * x).cholesky(Side::Lower) {
+        //     Ok(cho) => cho.solve(x.transpose() * y),
+        //     Err(_) => x.col_piv_qr().solve_lstsq(y),
+        // },
     }
 }
+
+
+
 
 /// Least square that sets all singular values below threshold to 0.
 /// Returns the coefficients and the singular values
 #[inline(always)]
 pub fn faer_solve_lstsq_rcond(x: MatRef<f64>, y: MatRef<f64>, rcond: f64) -> (Mat<f64>, Vec<f64>) {
     let xt = x.transpose();
-    let svd = (xt * x).thin_svd();
 
-    let singular_values = svd
-        .s_diagonal()
+    // Need work here
+
+    let svd = (xt * x).thin_svd().unwrap();
+    let s = svd.S().column_vector();
+
+    let singular_values = s
         .iter()
         .copied()
         .map(f64::sqrt)
         .collect::<Vec<_>>();
 
+    let n = singular_values.len();
+
     let max_singular_value = singular_values.iter().copied().fold(f64::MIN, f64::max);
     let threshold = rcond * max_singular_value;
 
-    let s_inv = svd
-        .s_diagonal()
-        .iter()
-        .copied()
-        .map(|x| if x >= threshold { x.recip() } else { 0. })
-        .collect::<Vec<_>>();
+    // Safe, because i <= n
+    let mut s_inv = Mat::<f64>::zeros(n, n);
+    unsafe {
+        for (i, v) in s.iter().copied().enumerate() {
+            *s_inv.get_mut_unchecked(i, i) = if v >= threshold { v.recip() } else { 0. };
+        }
+    }
 
-    let s_inv = faer::mat::from_row_major_slice(&s_inv, s_inv.len(), 1);
-    let s_inv = s_inv.column_vector_as_diagonal();
-
-    let weights = svd.v() * s_inv * svd.u().transpose() * xt * y;
+    let weights = svd.V() * s_inv * svd.U().transpose() * xt * y;
     (weights, singular_values)
 }
 
@@ -539,29 +577,28 @@ pub fn faer_solve_ridge_rcond(
     for i in 0..n1 {
         *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
     }
-
-    let svd = xtx_plus.thin_svd();
-    let singular_values = svd
-        .s_diagonal()
+    // need work here
+    let svd = xtx_plus.thin_svd().unwrap();
+    let s = svd.S().column_vector();
+    let singular_values = s
         .iter()
         .copied()
         .map(f64::sqrt)
         .collect::<Vec<_>>();
 
+    let n = singular_values.len();
+
     let max_singular_value = singular_values.iter().copied().fold(f64::MIN, f64::max);
     let threshold = rcond * max_singular_value;
+    // Safe, because i <= n
+    let mut s_inv = Mat::<f64>::zeros(n, n);
+    unsafe {
+        for (i, v) in s.iter().copied().enumerate() {
+            *s_inv.get_mut_unchecked(i, i) = if v >= threshold { v.recip() } else { 0. };
+        }
+    }
 
-    let s_inv = svd
-        .s_diagonal()
-        .iter()
-        .copied()
-        .map(|x| if x >= threshold { x.recip() } else { 0. })
-        .collect::<Vec<_>>();
-
-    let s_inv = faer::mat::from_row_major_slice(&s_inv, s_inv.len(), 1);
-    let s_inv = s_inv.column_vector_as_diagonal();
-
-    let weights = svd.v() * s_inv * svd.u().transpose() * xt * y;
+    let weights = svd.V() * s_inv * svd.U().transpose() * xt * y;
     (weights, singular_values)
 }
 
@@ -586,11 +623,25 @@ pub fn faer_solve_ridge(
     }
 
     match how {
-        LRSolverMethods::Choleskey => match xtx_plus.cholesky(Side::Lower) {
-            Ok(cho) => cho.solve(xt * y),
-            Err(_) => xtx_plus.thin_svd().solve(xt * y),
+
+
+        LRSolverMethods::Choleskey => {
+            todo!()
+        }
+        
+        // xtx_plus.cholesky(Side::Lower) {
+        //     Ok(cho) => cho.solve(xt * y),
+        //     Err(_) => xtx_plus.thin_svd().solve(xt * y),
+        // },
+        LRSolverMethods::SVD => {
+            let svd = xtx_plus
+                .thin_svd()
+                .unwrap();
+            
+            svd.solve(xt * y)
+
+            // xtx_plus.thin_svd().solve(xt * y)
         },
-        LRSolverMethods::SVD => xtx_plus.thin_svd().solve(xt * y),
         LRSolverMethods::QR => xtx_plus.col_piv_qr().solve(xt * y),
     }
 }
@@ -600,7 +651,7 @@ pub fn faer_solve_ridge(
 /// Column Pivot QR is chosen to deal with rank deficient cases. It is also slightly
 /// faster compared to other methods.
 #[inline(always)]
-pub fn faer_qr_lstsq_with_inv(x: MatRef<f64>, y: MatRef<f64>) -> (Mat<f64>, Mat<f64>) {
+pub fn faer_qr_lstsq_with_inv<T:RealField>(x: MatRef<T>, y: MatRef<T>) -> (Mat<T>, Mat<T>) {
     let xt = x.transpose();
     let qr = (xt * x).col_piv_qr();
     let inv = qr.inverse();
@@ -608,16 +659,16 @@ pub fn faer_qr_lstsq_with_inv(x: MatRef<f64>, y: MatRef<f64>) -> (Mat<f64>, Mat<
     (inv, weights)
 }
 
-/// Returns the coefficients for lstsq with l2 (Ridge) regularization atogether with the inverse of XtX
+/// Returns the coefficients for lstsq with l2 (Ridge) regularization together with the inverse of XtX
 /// By default this uses Choleskey to solve the system, and in case the matrix is not positive
 /// definite, it falls back to SVD. (I suspect the matrix in this case is always positive definite!)
 #[inline(always)]
-pub fn faer_cholesky_ridge_with_inv(
-    x: MatRef<f64>,
-    y: MatRef<f64>,
-    lambda: f64,
+pub fn faer_cholesky_ridge_with_inv<T:RealField>(
+    x: MatRef<T>,
+    y: MatRef<T>,
+    lambda: T,
     has_bias: bool,
-) -> (Mat<f64>, Mat<f64>) {
+) -> (Mat<T>, Mat<T>) {
     let n1 = x.ncols().abs_diff(has_bias as usize);
 
     let xt = x.transpose();
@@ -625,8 +676,12 @@ pub fn faer_cholesky_ridge_with_inv(
     // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
     // Safe. Index is valid and value is initialized.
     for i in 0..n1 {
-        *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
+        unsafe { 
+            *xtx_plus.get_mut_unchecked(i, i) = *xtx_plus.get_mut_unchecked(i, i) + lambda;
+        };
     }
+
+
 
     match xtx_plus.cholesky(Side::Lower) {
         Ok(cho) => {
@@ -648,8 +703,10 @@ pub fn faer_weighted_lstsq(
     w: &[f64],
     how: LRSolverMethods,
 ) -> Mat<f64> {
-    let weights = faer::mat::from_row_major_slice(w, x.nrows(), 1);
-    let w = weights.column_vector_as_diagonal();
+    
+    let weights = faer::ColRef::from_slice(w);
+    let w = weights.as_diagonal();
+
     let xt = x.transpose();
     let xtw = xt * w;
     match how {
@@ -725,7 +782,7 @@ pub fn faer_coordinate_descent(
             let xtx_j = unsafe { xtx.get_unchecked(j..j + 1, ..) };
 
             // Xi^t(y - X-i Beta-i)
-            let main_update = xty.read(j, 0) - (xtx_j * &beta).read(0, 0);
+            let main_update = xty.get(j, 0) - (xtx_j * &beta).get(0, 0);
 
             // update beta(j, 0).
             let after = soft_threshold_l1(main_update, lambda_l1) / norms[j];
@@ -737,7 +794,7 @@ pub fn faer_coordinate_descent(
             // Safe. The index is valid and the value is initialized.
             let xx = unsafe { x.get_unchecked(.., 0..n1) };
             let bb = unsafe { beta.get_unchecked(0..n1, ..) };
-            let ss = (y - xx * bb).sum() / m;
+            let ss = (y - xx * bb).as_ref().sum() / m;
             *unsafe { beta.get_mut_unchecked(n1, 0) } = ss;
         }
         converge = max_change < tol;
@@ -855,15 +912,18 @@ pub fn faer_rolling_skipping_lstsq(
         for i in left..right {
             let x_i = x.get(i, ..);
             let y_i = y.get(i, ..);
-            if !(x_i.has_nan() | y_i.has_nan()) {
+
+            if !(x_i.iter().any(|x| is_nan(x)) | y_i.iter().any(|y| is_nan(y))) {
                 non_null_cnt_in_window += 1;
                 x_slice.extend(x_i.iter());
                 y_slice.extend(y_i.iter());
             }
         }
         if non_null_cnt_in_window >= m {
-            let x0 = faer::mat::from_row_major_slice(&x_slice, y_slice.len(), ncols);
-            let y0 = faer::mat::from_row_major_slice(&y_slice, y_slice.len(), 1);
+            let x0 = MatRef::from_row_major_slice(&x_slice, y_slice.len(), ncols);
+            // faer::mat::from_row_major_slice(&x_slice, y_slice.len(), ncols);
+            let y0 = MatRef::from_column_major_slice(&y_slice, y_slice.len(), 1);
+            // faer::mat::from_row_major_slice(&y_slice, y_slice.len(), 1);
             online_lr.fit_unchecked(x0, y0);
             coefficients.push(online_lr.get_coefficients());
             break;
@@ -881,14 +941,18 @@ pub fn faer_rolling_skipping_lstsq(
     for j in right..xn {
         let remove_x = x.get(j - n..j - n + 1, ..);
         let remove_y = y.get(j - n..j - n + 1, ..);
-        if !(remove_x.has_nan() || remove_y.has_nan()) {
+        
+        // remove-x.
+        // let nan_check = is_nan(&remove_x.sum());
+        
+        if !(remove_x.has_nan() | remove_y.has_nan()) {
             non_null_cnt_in_window -= 1; // removed one non-null column
             online_lr.update_unchecked(remove_x, remove_y, -1.0); // No need to check for nan
         }
 
         let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
         let next_y = y.get(j..j + 1, ..); // 1 by 1
-        if !(next_x.has_nan() || next_y.has_nan()) {
+        if !(next_x.has_nan() | next_y.has_nan()) {
             non_null_cnt_in_window += 1;
             online_lr.update_unchecked(next_x, next_y, 1.0); // No need to check for nan
         }

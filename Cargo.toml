@@ -16,8 +16,9 @@ polars = {version = "0.44.2", features = ["performant", "lazy",
 "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", 
 "cum_agg", "round_series", "nightly","dtype-array", "dtype-struct"], default-features = false}
 num = "0.4.1"
-faer = {version = "0.19", features = ["nightly"]}
-faer-ext = {version = "0.2.0", features = ["ndarray"]}
+faer = {version = "0.21", features = ["nightly"]}
+faer-traits = {version = "0.21"}
+faer-ext = {version = "0.4.1", features = ["ndarray"]}
 serde = {version = "*", features=["derive"]}
 ndarray = {version="0.15.6"}
 hashbrown = {version = "0.15", features=["nightly"]}
