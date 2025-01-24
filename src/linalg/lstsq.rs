@@ -1,14 +1,19 @@
 #![allow(non_snake_case)]
 use faer_traits::RealField;
 use faer_traits::math_utils::is_nan;
-use faer::{diag::AsDiagRef, linalg::solvers::DenseSolveCore};
+use faer::linalg::solvers::DenseSolveCore;
 use faer::mat::Mat;
+use faer::{linalg::solvers::Solve, prelude::*};
 
 use super::LinalgErrors;
 use core::f64;
-use faer::{linalg::solvers::{Solve, SolveLstsqCore}, prelude::*, Side};
-use num::traits::real::Real;
 use std::ops::Neg;
+
+#[inline]
+pub fn has_nan<T:RealField>(mat: MatRef<T>) -> bool {
+    mat.col_iter().any(|col| col.iter().any(|x| is_nan(x)))
+}
+
 
 #[derive(Clone, Copy, Default)]
 pub enum LRSolverMethods {
@@ -67,32 +72,33 @@ impl From<(f64, f64)> for LRMethods {
     }
 }
 
-// add elastic net
-#[derive(Clone, Copy, Default, PartialEq)]
-pub enum ClosedFormLRMethods {
-    #[default]
-    Normal, // Normal. Normal Equation
-    L2, // Ridge, L2 regularized
-}
+// // add elastic net ???
 
-impl From<&str> for ClosedFormLRMethods {
-    fn from(value: &str) -> Self {
-        match value {
-            "l2" | "ridge" => Self::L2,
-            _ => Self::Normal,
-        }
-    }
-}
+// #[derive(Clone, Copy, Default, PartialEq)]
+// pub enum ClosedFormLRMethods {
+//     #[default]
+//     Normal, // Normal. Normal Equation
+//     L2, // Ridge, L2 regularized
+// }
 
-impl From<f64> for ClosedFormLRMethods {
-    fn from(value: f64) -> Self {
-        if value > 0. {
-            Self::L2
-        } else {
-            Self::Normal
-        }
-    }
-}
+// impl From<&str> for ClosedFormLRMethods {
+//     fn from(value: &str) -> Self {
+//         match value {
+//             "l2" | "ridge" => Self::L2,
+//             _ => Self::Normal,
+//         }
+//     }
+// }
+
+// impl From<f64> for ClosedFormLRMethods {
+//     fn from(value: f64) -> Self {
+//         if value > 0. {
+//             Self::L2
+//         } else {
+//             Self::Normal
+//         }
+//     }
+// }
 
 pub trait LinearRegression {
     fn coefficients(&self) -> MatRef<f64>;
@@ -168,7 +174,6 @@ pub trait LinearRegression {
 /// A struct that handles regular linear regression and Ridge regression.
 pub struct LR {
     pub solver: LRSolverMethods,
-    pub method: ClosedFormLRMethods,
     pub lambda: f64,
     pub coefficients: Mat<f64>, // n_features x 1 matrix, doesn't contain bias
     pub fit_bias: bool,
@@ -179,7 +184,6 @@ impl LR {
     pub fn new(solver: &str, lambda: f64, fit_bias: bool) -> Self {
         LR {
             solver: solver.into(),
-            method: lambda.into(),
             lambda: lambda,
             coefficients: Mat::new(),
             fit_bias: fit_bias,
@@ -190,7 +194,6 @@ impl LR {
     pub fn from_values(coeffs: &[f64], bias: f64) -> Self {
         LR {
             solver: LRSolverMethods::default(),
-            method: ClosedFormLRMethods::default(),
             lambda: 0.,
             coefficients: faer::mat::Mat::from_fn(coeffs.len(), 1, |i, _| coeffs[i]),
             // from_row_major_slice(coeffs, coeffs.len(), 1).to_owned(),
@@ -223,19 +226,9 @@ impl LinearRegression for LR {
         let all_coefficients = if self.fit_bias {
             let ones = Mat::full(X.nrows(), 1, 1.0);
             let new = faer::concat![[X, ones]];
-            match self.method {
-                ClosedFormLRMethods::Normal => faer_solve_lstsq(new.as_ref(), y, self.solver),
-                ClosedFormLRMethods::L2 => {
-                    faer_solve_ridge(new.as_ref(), y, self.lambda, self.fit_bias, self.solver)
-                }
-            }
+            faer_solve_lstsq(new.as_ref(), y, self.lambda, true, self.solver)
         } else {
-            match self.method {
-                ClosedFormLRMethods::Normal => faer_solve_lstsq(X, y, self.solver),
-                ClosedFormLRMethods::L2 => {
-                    faer_solve_ridge(X, y, self.lambda, self.fit_bias, self.solver)
-                }
-            }
+            faer_solve_lstsq(X, y, self.lambda, false, self.solver)
         };
         if self.fit_bias {
             let n = all_coefficients.nrows();
@@ -250,7 +243,6 @@ impl LinearRegression for LR {
 
 /// A struct that handles online linear regression
 pub struct OnlineLR {
-    pub method: ClosedFormLRMethods,
     pub lambda: f64,
     pub fit_bias: bool,
     pub bias: f64,
@@ -261,7 +253,6 @@ pub struct OnlineLR {
 impl OnlineLR {
     pub fn new(lambda: f64, fit_bias: bool) -> Self {
         OnlineLR {
-            method: lambda.into(),
             lambda: lambda,
             fit_bias: fit_bias,
             bias: 0.,
@@ -331,7 +322,7 @@ impl OnlineLR {
     }
 
     pub fn update(&mut self, new_x: MatRef<f64>, new_y: MatRef<f64>, c: f64) {
-        if !(new_x.has_nan() || new_y.has_nan()) {
+        if !(has_nan(new_x) || has_nan(new_y)) {
             self.update_unchecked(new_x, new_y, c)
         }
     }
@@ -355,20 +346,15 @@ impl LinearRegression for OnlineLR {
             let actual_features = X.ncols();
             let ones = Mat::full(X.nrows(), 1, 1.0);
             let new_x = faer::concat![[X, ones]];
-            let (inv, all_coefficients) = match self.method {
-                ClosedFormLRMethods::Normal => faer_qr_lstsq_with_inv(new_x.as_ref(), y),
-                ClosedFormLRMethods::L2 => {
-                    faer_cholesky_ridge_with_inv(new_x.as_ref(), y, self.lambda, true)
-                }
-            };
+            let (inv, all_coefficients) = 
+                faer_qr_lstsq_with_inv(new_x.as_ref(), y, self.lambda, true);
+
             self.inv = inv;
             self.coefficients = all_coefficients.get(..actual_features, ..).to_owned();
             self.bias = *all_coefficients.get(actual_features, 0);
         } else {
-            (self.inv, self.coefficients) = match self.method {
-                ClosedFormLRMethods::Normal => faer_qr_lstsq_with_inv(X, y),
-                ClosedFormLRMethods::L2 => faer_cholesky_ridge_with_inv(X, y, self.lambda, false),
-            };
+            (self.inv, self.coefficients) = 
+                faer_qr_lstsq_with_inv(X.as_ref(), y, self.lambda, true);
         }
     }
 }
@@ -481,48 +467,24 @@ impl LinearRegression for ElasticNet {
 
 //------------------------------------ The Basic Functions ---------------------------------------
 
-/// Returns the coefficients for lstsq as a nrows x 1 matrix
 // #[inline(always)]
-// pub fn faer_solve_lstsq(x: MatRef<f64>, y: MatRef<f64>, how: LRSolverMethods) -> Mat<f64> {
+// pub fn faer_solve_lstsq<T:RealField>(
+//     x: MatRef<T>, 
+//     y: MatRef<T>,
+//     how: LRSolverMethods
+// ) -> Mat<T> {
+//     let lhs = x.transpose() * x;
+//     let rhs = x.transpose() * y;
+
 //     match how {
-//         LRSolverMethods::SVD => (x.transpose() * x).thin_svd().solve(x.transpose() * y),
-//         LRSolverMethods::QR => x.col_piv_qr().solve_lstsq(y),
-//         LRSolverMethods::Choleskey => match (x.transpose() * x).cholesky(Side::Lower) {
-//             Ok(cho) => cho.solve(x.transpose() * y),
-//             Err(_) => x.col_piv_qr().solve_lstsq(y),
+//         LRSolverMethods::SVD => match lhs.thin_svd() {
+//             Ok(l) => l.solve(rhs),
+//             Err(_) => lhs.col_piv_qr().solve(rhs)
 //         },
+//         LRSolverMethods::QR => lhs.col_piv_qr().solve(rhs),
+//         LRSolverMethods::Choleskey => todo!(),
 //     }
 // }
-
-
-
-
-#[inline(always)]
-pub fn faer_solve_lstsq<T:RealField>(x: MatRef<T>, y: MatRef<T>, how: LRSolverMethods) -> Mat<T> {
-    let lhs = x.transpose() * x;
-    let rhs = x.transpose() * y;
-
-    match how {
-        LRSolverMethods::SVD => match lhs.thin_svd() {
-            Ok(l) => l.solve(rhs),
-            Err(_) => lhs.col_piv_qr().solve(rhs)
-        },
-        LRSolverMethods::QR => lhs.col_piv_qr().solve(rhs),
-        LRSolverMethods::Choleskey => {
-
-            
-
-            todo!()
-        }
-        
-        // match (x.transpose() * x).cholesky(Side::Lower) {
-        //     Ok(cho) => cho.solve(x.transpose() * y),
-        //     Err(_) => x.col_piv_qr().solve_lstsq(y),
-        // },
-    }
-}
-
-
 
 
 /// Least square that sets all singular values below threshold to 0.
@@ -603,46 +565,39 @@ pub fn faer_solve_ridge_rcond(
 }
 
 /// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
+/// If lambda is 0, then this is the regular lstsq
 #[inline(always)]
-pub fn faer_solve_ridge(
-    x: MatRef<f64>,
-    y: MatRef<f64>,
-    lambda: f64,
+pub fn faer_solve_lstsq<T: RealField + Copy>(
+    x: MatRef<T>,
+    y: MatRef<T>,
+    lambda: T,
     has_bias: bool,
     how: LRSolverMethods,
-) -> Mat<f64> {
+) -> Mat<T> {
     // Add ridge SVD with rconditional number later.
 
     let n1 = x.ncols().abs_diff(has_bias as usize);
     let xt = x.transpose();
-    let mut xtx_plus = xt * x;
+    let mut xtx = xt * x;
     // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
     // Safe. Index is valid and value is initialized.
-    for i in 0..n1 {
-        *unsafe { xtx_plus.get_mut_unchecked(i, i) } += lambda;
+    if lambda >= T::zero() && n1 >= 1 {
+        unsafe {
+            for i in 0..n1 {
+                *xtx.get_mut_unchecked(i, i) = *xtx.get_mut_unchecked(i, i) + lambda; 
+            }
+        }
     }
 
     match how {
-
-
-        LRSolverMethods::Choleskey => {
-            todo!()
-        }
-        
-        // xtx_plus.cholesky(Side::Lower) {
-        //     Ok(cho) => cho.solve(xt * y),
-        //     Err(_) => xtx_plus.thin_svd().solve(xt * y),
-        // },
         LRSolverMethods::SVD => {
-            let svd = xtx_plus
-                .thin_svd()
-                .unwrap();
-            
-            svd.solve(xt * y)
-
-            // xtx_plus.thin_svd().solve(xt * y)
+            match xtx.thin_svd() {
+                Ok(svd) => svd.solve(xt * y),
+                _ => xtx.col_piv_qr().solve(xt * y)
+            }
         },
-        LRSolverMethods::QR => xtx_plus.col_piv_qr().solve(xt * y),
+        LRSolverMethods::QR => xtx.col_piv_qr().solve(xt * y),
+        LRSolverMethods::Choleskey => todo!(),
     }
 }
 
@@ -651,80 +606,57 @@ pub fn faer_solve_ridge(
 /// Column Pivot QR is chosen to deal with rank deficient cases. It is also slightly
 /// faster compared to other methods.
 #[inline(always)]
-pub fn faer_qr_lstsq_with_inv<T:RealField>(x: MatRef<T>, y: MatRef<T>) -> (Mat<T>, Mat<T>) {
-    let xt = x.transpose();
-    let qr = (xt * x).col_piv_qr();
-    let inv = qr.inverse();
-    let weights = qr.solve(xt * y);
-    (inv, weights)
-}
-
-/// Returns the coefficients for lstsq with l2 (Ridge) regularization together with the inverse of XtX
-/// By default this uses Choleskey to solve the system, and in case the matrix is not positive
-/// definite, it falls back to SVD. (I suspect the matrix in this case is always positive definite!)
-#[inline(always)]
-pub fn faer_cholesky_ridge_with_inv<T:RealField>(
-    x: MatRef<T>,
+pub fn faer_qr_lstsq_with_inv<T:RealField + Copy>(
+    x: MatRef<T>, 
     y: MatRef<T>,
     lambda: T,
     has_bias: bool,
 ) -> (Mat<T>, Mat<T>) {
+
     let n1 = x.ncols().abs_diff(has_bias as usize);
-
     let xt = x.transpose();
-    let mut xtx_plus = xt * x;
-    // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
-    // Safe. Index is valid and value is initialized.
-    for i in 0..n1 {
-        unsafe { 
-            *xtx_plus.get_mut_unchecked(i, i) = *xtx_plus.get_mut_unchecked(i, i) + lambda;
-        };
-    }
+    let mut xtx = xt * x;
 
-
-
-    match xtx_plus.cholesky(Side::Lower) {
-        Ok(cho) => {
-            let inv = cho.inverse();
-            (inv, cho.solve(xt * y))
-        }
-        Err(_) => {
-            let svd = xtx_plus.thin_svd();
-            (svd.inverse(), svd.solve(xt * y))
+    if lambda > T::zero() && n1 >= 1 {
+        unsafe {
+            for i in 0..n1 {
+                *xtx.get_mut_unchecked(i, i) = *xtx.get_mut_unchecked(i, i) + lambda;
+            }
         }
     }
+
+    let qr = xtx.col_piv_qr();
+    let inv = qr.inverse();
+    let weights = qr.solve(xt * y);
+    
+    (inv, weights)
 }
+
 
 /// Solves the weighted least square with weights given by the user
 #[inline(always)]
-pub fn faer_weighted_lstsq(
-    x: MatRef<f64>,
-    y: MatRef<f64>,
-    w: &[f64],
+pub fn faer_weighted_lstsq<T: RealField>(
+    x: MatRef<T>,
+    y: MatRef<T>,
+    w: &[T],
     how: LRSolverMethods,
-) -> Mat<f64> {
+) -> Mat<T> {
     
     let weights = faer::ColRef::from_slice(w);
     let w = weights.as_diagonal();
 
     let xt = x.transpose();
     let xtw = xt * w;
+    let xtwx = &xtw * x;
     match how {
         LRSolverMethods::SVD => {
-            let svd = (&xtw * x).thin_svd();
-            svd.solve(xtw * y)
-        }
-        LRSolverMethods::QR => {
-            let qr = (&xtw * x).col_piv_qr();
-            qr.solve(xtw * y)
-        }
-        LRSolverMethods::Choleskey => match (&xtw * x).cholesky(Side::Lower) {
-            Ok(cho) => cho.solve(xtw * y),
-            Err(_) => {
-                let svd = (&xtw * x).thin_svd();
-                svd.solve(xtw * y)
+            match xtwx.thin_svd() {
+                Ok(svd) => svd.solve(xtw * y),
+                Err(_) => xtwx.col_piv_qr().solve(xtw * y),
             }
-        },
+        }
+        LRSolverMethods::QR => xtwx.col_piv_qr().solve(xtw * y),
+        LRSolverMethods::Choleskey => todo!()
     }
 }
 
@@ -942,17 +874,14 @@ pub fn faer_rolling_skipping_lstsq(
         let remove_x = x.get(j - n..j - n + 1, ..);
         let remove_y = y.get(j - n..j - n + 1, ..);
         
-        // remove-x.
-        // let nan_check = is_nan(&remove_x.sum());
-        
-        if !(remove_x.has_nan() | remove_y.has_nan()) {
+        if !(has_nan(remove_x) | has_nan(remove_y)) {
             non_null_cnt_in_window -= 1; // removed one non-null column
             online_lr.update_unchecked(remove_x, remove_y, -1.0); // No need to check for nan
         }
 
         let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
         let next_y = y.get(j..j + 1, ..); // 1 by 1
-        if !(next_x.has_nan() | next_y.has_nan()) {
+        if !(has_nan(next_x) | has_nan(next_y)) {
             non_null_cnt_in_window += 1;
             online_lr.update_unchecked(next_x, next_y, 1.0); // No need to check for nan
         }
@@ -980,28 +909,28 @@ fn woodbury_step(
     // It is truly amazing that the C in the Woodbury identity essentially controls the update and
     // and removal of a new record (rolling)... Linear regression seems to be designed by God to work so well
 
-    let left = &inverse * new_x.transpose(); // corresponding to u in the reference
+    let u = &inverse * new_x.transpose(); // corresponding to u in the reference
                                              // right = left.transpose() by the fact that if A is symmetric, invertible, A-1 is also symmetric
-    let z = (c + (new_x * &left).read(0, 0)).recip();
+    let z = (c + (new_x * &u).get(0, 0)).recip();
     // Update the information matrix's inverse. Page 56 of the gatech reference
     faer::linalg::matmul::matmul(
         inverse,
-        &left,
-        left.transpose(),
-        Some(1.0),
+        faer::Accum::Add,
+        &u,
+        &u.transpose(),
         z.neg(),
-        faer::Parallelism::Rayon(0), //
+        Par::rayon(0), //
     ); // inv is updated
 
-    // Difference from esitmate using prior weights vs. actual next y
+    // Difference from estimate using prior weights vs. actual next y
     let y_diff = new_y - (new_x * &weights);
     // Update weights. Page 56, after 'Then',.. in gatech reference
     faer::linalg::matmul::matmul(
         weights,
-        left,
+        faer::Accum::Add,
         y_diff,
-        Some(1.0),
+        u,
         z,
-        faer::Parallelism::Rayon(0), //
+        Par::rayon(0), //
     ); // weights are updated
 }

@@ -41,28 +41,30 @@ fn pl_singular_values(inputs: &[Series]) -> PolarsResult<Series> {
 
     let dim = Ord::min(mat.nrows(), mat.ncols());
     let mut s = Col::zeros(dim);
-    let parallelism = faer::Parallelism::Rayon(0); // use current num threads
+    let par = Par::rayon(0);
     let params = Default::default();
 
-    faer::linalg::svd::compute_svd(
-        mat.canonicalize().0,
-        s.as_mut(),
-        None,
-        None,
-        parallelism,
-        PodStack::new(&mut GlobalPodBuffer::new(
-            faer::linalg::svd::compute_svd_req::<f64>(
-                mat.nrows(),
-                mat.ncols(),
-                faer::linalg::svd::ComputeVectors::No,
-                faer::linalg::svd::ComputeVectors::No,
-                parallelism,
-                params,
-            )
-            .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?,
-        )),
-        params,
-    );
+    faer::linalg::svd::svd(A, s, u, v, par, stack, params);
+
+    // faer::linalg::svd::compute_svd(
+    //     mat.canonicalize().0,
+    //     s.as_mut(),
+    //     None,
+    //     None,
+    //     parallelism,
+    //     PodStack::new(&mut GlobalPodBuffer::new(
+    //         faer::linalg::svd::compute_svd_req::<f64>(
+    //             mat.nrows(),
+    //             mat.ncols(),
+    //             faer::linalg::svd::ComputeVectors::No,
+    //             faer::linalg::svd::ComputeVectors::No,
+    //             parallelism,
+    //             params,
+    //         )
+    //         .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?,
+    //     )),
+    //     params,
+    // );
 
     let mut list_builder: ListPrimitiveChunkedBuilder<Float64Type> =
         ListPrimitiveChunkedBuilder::new("singular_values".into(), 1, dim, DataType::Float64);
@@ -89,7 +91,7 @@ fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
         let dim = Ord::min(mat.nrows(), mat.ncols());
         let mut s = Col::zeros(dim);
         let mut v = Mat::<f64>::zeros(dim, dim);
-        let parallelism = faer::Parallelism::Rayon(0); // use current num threads
+        let par = Par::rayon(0);
         let params = Default::default();
         faer::linalg::svd::compute_svd(
             mat.canonicalize().0,
@@ -133,7 +135,7 @@ fn pl_pca(inputs: &[Series]) -> PolarsResult<Series> {
     let dim = Ord::min(mat.nrows(), mat.ncols());
     let mut s = Col::zeros(dim);
     let mut v = Mat::<f64>::zeros(dim, dim);
-    let parallelism = faer::Parallelism::Rayon(0); // use current num threads
+    let par = Par::rayon(0);
     let params = Default::default();
     faer::linalg::svd::compute_svd(
         mat.canonicalize().0,
