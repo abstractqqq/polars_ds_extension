@@ -8,9 +8,9 @@ from polars.testing import assert_frame_equal
 def test_linear_impute():
     df = pl.DataFrame(
         {
-            "a": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            "a": [3, 2, 3, 4, 5, 6, 7, 8, 9, 11],
             "b": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            "c": [2.0, 4.0, None, 8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0],
+            "c": [4.0, 4.0, None, 8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 21.0],
         }
     )
 
@@ -22,16 +22,19 @@ def test_linear_impute():
 
     assert_frame_equal(imputed_c, correct_c)
 
+
 def test_conditional_impute():
-    df = pl.DataFrame({
-        "a": [float('nan'), None, float("inf"), 9999, 100, 100, 100, 800],
-    })
+    df = pl.DataFrame(
+        {
+            "a": [float("nan"), None, float("inf"), 9999, 100, 100, 100, 800],
+        }
+    )
 
     res = df.with_columns(
         t.conditional_impute(
-            df, 
+            df,
             {"a": ((pl.col("a").is_finite().not_()) | pl.col("a").is_null() | (pl.col("a") > 899))},
-            method = "mean"
+            method="mean",
         )[0].alias("result")
     )["result"]
 
@@ -39,9 +42,9 @@ def test_conditional_impute():
 
     res = df.with_columns(
         t.conditional_impute(
-            df, 
+            df,
             {"a": ((pl.col("a").is_finite().not_()) | pl.col("a").is_null() | (pl.col("a") > 899))},
-            method = "median"
+            method="median",
         )[0].alias("result")
     )["result"]
 

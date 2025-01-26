@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import polars as pl
 import polars.selectors as cs
-from typing import List
+from typing import List, Dict
+
 # Internal dependencies
 from polars_ds.typing import (
     PolarsFrame,
@@ -20,6 +21,7 @@ from polars_ds.typing import (
 )
 import polars_ds.exprs.num as pds_num
 import polars_ds.exprs.expr_linear as lr
+
 
 def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean") -> ExprTransform:
     """
@@ -47,10 +49,9 @@ def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean"
     else:
         raise ValueError(f"Unknown impute method: `{method}`")
 
+
 def conditional_impute(
-    df: PolarsFrame, 
-    rules_dict: Dict[str, str | pl.Expr],
-    method: SimpleImputeMethod = "mean"
+    df: PolarsFrame, rules_dict: Dict[str, str | pl.Expr], method: SimpleImputeMethod = "mean"
 ) -> ExprTransform:
     """
     Conditionally imputes values in the given columns. This transform will collect if input is lazy.
@@ -60,32 +61,56 @@ def conditional_impute(
     df
         Either a lazy or an eager dataframe
     rules_dict
-        Dictionary where keys are column names (must be string), and values are SQL/Polars Conditions 
-        that when true, those values in the column will be imputed, 
+        Dictionary where keys are column names (must be string), and values are SQL/Polars Conditions
+        that when true, those values in the column will be imputed,
         and the value to impute will be learned on the data where the condition is false.
     method
         One of `mean`, `median`, `mode`. If `mode`, a random value will be chosen if there is
         a tie.
     """
     rules_dict = {
-        c: (r if isinstance(r, pl.Expr) else pl.sql_expr(r))
-        for c, r in rules_dict.items()
+        c: (r if isinstance(r, pl.Expr) else pl.sql_expr(r)) for c, r in rules_dict.items()
     }
     cols = list(rules_dict.keys())
     # Learn on the data where the condition is false
     if method == "mean":
-        temp = df.lazy().select(
-            *(pl.col(c).filter(rules_dict[c].not_()).mean() for c in rules_dict.keys())
-        ).collect().row(0)
-        return [pl.when(rules_dict[c]).then(m).otherwise(pl.col(c)).alias(c) for c, m in zip(cols, temp)]
+        temp = (
+            df.lazy()
+            .select(*(pl.col(c).filter(rules_dict[c].not_()).mean() for c in rules_dict.keys()))
+            .collect()
+            .row(0)
+        )
+        return [
+            pl.when(rules_dict[c]).then(m).otherwise(pl.col(c)).alias(c) for c, m in zip(cols, temp)
+        ]
     elif method == "median":
-        temp = df.lazy().select(*(pl.col(c).filter(rules_dict[c].not_()).median() for c in rules_dict.keys())).collect().row(0)
-        return [pl.when(rules_dict[c]).then(m).otherwise(pl.col(c)).alias(c) for c, m in zip(cols, temp)]
-    elif method == "mode": 
-        temp = df.lazy().select(*(pl.col(c).filter(rules_dict[c].not_()).mode().list.first() for c in rules_dict.keys())).collect().row(0)
-        return [pl.when(rules_dict[c]).then(m).otherwise(pl.col(c)).alias(c) for c, m in zip(cols, temp)]
+        temp = (
+            df.lazy()
+            .select(*(pl.col(c).filter(rules_dict[c].not_()).median() for c in rules_dict.keys()))
+            .collect()
+            .row(0)
+        )
+        return [
+            pl.when(rules_dict[c]).then(m).otherwise(pl.col(c)).alias(c) for c, m in zip(cols, temp)
+        ]
+    elif method == "mode":
+        temp = (
+            df.lazy()
+            .select(
+                *(
+                    pl.col(c).filter(rules_dict[c].not_()).mode().list.first()
+                    for c in rules_dict.keys()
+                )
+            )
+            .collect()
+            .row(0)
+        )
+        return [
+            pl.when(rules_dict[c]).then(m).otherwise(pl.col(c)).alias(c) for c, m in zip(cols, temp)
+        ]
     else:
         raise ValueError(f"Unknown impute method: `{method}`")
+
 
 def linear_impute(
     df: PolarsFrame, features: List[str], target: str | pl.Expr, add_bias: bool = False
@@ -122,17 +147,12 @@ def linear_impute(
         )
         .collect()
     )  # Add streaming config
-    coeffs = temp.item(0, 0)
+    coeffs = temp.item(0, 0)  # coeffs is a series
     linear_eq = [f * coeffs[i] for i, f in enumerate(features_as_expr)]
     if add_bias:
         linear_eq.append(pl.lit(coeffs[-1], dtype=pl.Float64))
 
-    return [
-        pl.when(target_as_expr.is_null())
-        .then(pl.sum_horizontal(linear_eq))
-        .otherwise(target_as_expr.cast(pl.Float64))
-        .alias(target_name)
-    ]
+    return [pl.col(target_name).fill_null(pl.sum_horizontal(linear_eq)).alias(target_name)]
 
 
 def center(df: PolarsFrame, cols: List[str]) -> ExprTransform:
@@ -228,7 +248,9 @@ def robust_scale(
         Method to compute quantile. One of `nearest`, `higher`, `lower`, `midpoint`, `linear`.
     """
     if q_low > 1.0 or q_low < 0.0 or q_high > 1.0 or q_high < 0.0 or q_low >= q_high:
-        raise ValueError("Input `q_low` and `q_high` must be between 0 and 1 and q_low must be < than q_high.")
+        raise ValueError(
+            "Input `q_low` and `q_high` must be between 0 and 1 and q_low must be < than q_high."
+        )
 
     temp = (
         df.lazy()
@@ -267,7 +289,9 @@ def winsorize(
         Method to compute quantile. One of `nearest`, `higher`, `lower`, `midpoint`, `linear`.
     """
     if q_low > 1.0 or q_low < 0.0 or q_high > 1.0 or q_high < 0.0 or q_low >= q_high:
-        raise ValueError("Input `q_low` and `q_high` must be between 0 and 1 and q_low must be < than q_high.")
+        raise ValueError(
+            "Input `q_low` and `q_high` must be between 0 and 1 and q_low must be < than q_high."
+        )
 
     temp = (
         df.lazy()
@@ -434,9 +458,7 @@ def target_encode(
     https://contrib.scikit-learn.org/category_encoders/targetencoder.html
     """
     temp = df.lazy()
-    valid_cols = (
-        temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
-    )
+    valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
 
     if len(valid_cols) == 0:
         raise ValueError(
@@ -491,9 +513,7 @@ def woe_encode(
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
     temp = df.lazy()
-    valid_cols = (
-        temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
-    )
+    valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
 
     if len(valid_cols) == 0:
         raise ValueError(
@@ -546,9 +566,7 @@ def iv_encode(
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
     temp = df.lazy()
-    valid_cols = (
-        temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
-    )
+    valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
 
     if len(valid_cols) == 0:
         raise ValueError(
