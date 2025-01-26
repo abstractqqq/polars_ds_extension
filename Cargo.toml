@@ -18,7 +18,7 @@ polars = {version = "0.44.2", features = ["performant", "lazy",
 num = "0.4.1"
 faer = {version = "0.21", features = ["nightly"]}
 faer-traits = {version = "0.21"}
-faer-ext = {version = "0.4.1", features = ["ndarray"]}
+# faer-ext = {version = "0.4.1", features = ["ndarray"]}
 serde = {version = "*", features=["derive"]}
 ndarray = {version="0.15.6"}
 hashbrown = {version = "0.15", features=["nightly"]}

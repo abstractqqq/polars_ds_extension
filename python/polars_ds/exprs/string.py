@@ -916,6 +916,7 @@ def normalize_string(c: str | pl.Expr, form: Literal["NFC", "NFKC", "NFD", "NFKD
     warnings.warn(
         "This function is deprecated because Polars>=1.20 has a native str.normalize() method. "
         + "This will be removed in a future version.",
+        DeprecationWarning,
         stacklevel=2,
     )
 
