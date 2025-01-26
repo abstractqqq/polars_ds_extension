@@ -1,10 +1,14 @@
 #![allow(non_snake_case)]
 /// Linear Regression Interop with Python
 use crate::linalg::{
-    lstsq::{ElasticNet, LinearRegression, OnlineLR, LR},
-    LinalgErrors,
+    lr_online_solvers::OnlineLR, 
+    lr_solvers::{ElasticNet, LR}, 
+    IntoFaer, 
+    IntoNdarray, 
+    LinalgErrors, 
+    LinearRegression
 };
-use faer_ext::{IntoFaer, IntoNdarray};
+
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -27,11 +31,11 @@ impl PyLR {
     #[pyo3(signature=(
         solver = "qr",
         lambda_ = 0.,
-        fit_bias = false,
+        has_bias = false,
     ))]
-    pub fn new(solver: &str, lambda_: f64, fit_bias: bool) -> Self {
+    pub fn new(solver: &str, lambda_: f64, has_bias: bool) -> Self {
         PyLR {
-            lr: LR::new(solver, lambda_, fit_bias),
+            lr: LR::new(solver, lambda_, has_bias),
         }
     }
 
@@ -86,7 +90,7 @@ impl PyLR {
 
     #[getter]
     pub fn bias(&self) -> f64 {
-        self.lr.bias
+        self.lr.bias()
     }
 
     #[getter]
@@ -107,13 +111,13 @@ impl PyElasticNet {
     #[pyo3(signature=(
         l1_reg,
         l2_reg,
-        fit_bias = false,
+        has_bias = false,
         tol = 1e-5,
         max_iter = 2000,
     ))]
-    pub fn new(l1_reg: f64, l2_reg: f64, fit_bias: bool, tol: f64, max_iter: usize) -> Self {
+    pub fn new(l1_reg: f64, l2_reg: f64, has_bias: bool, tol: f64, max_iter: usize) -> Self {
         PyElasticNet {
-            lr: ElasticNet::new(l1_reg, l2_reg, fit_bias, tol, max_iter),
+            lr: ElasticNet::new(l1_reg, l2_reg, has_bias, tol, max_iter),
         }
     }
 
@@ -158,8 +162,8 @@ impl PyElasticNet {
         }
     }
 
-    pub fn fit_bias(&self) -> bool {
-        self.lr.fit_bias()
+    pub fn has_bias(&self) -> bool {
+        self.lr.has_bias()
     }
 
     #[getter]
@@ -172,7 +176,7 @@ impl PyElasticNet {
 
     #[getter]
     pub fn bias(&self) -> f64 {
-        self.lr.bias
+        self.lr.bias()
     }
 
     #[getter]
@@ -190,10 +194,10 @@ pub struct PyOnlineLR {
 impl PyOnlineLR {
     #[new]
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature=(lambda_=0., fit_bias=false))]
-    pub fn new(lambda_: f64, fit_bias: bool) -> Self {
+    #[pyo3(signature=(lambda_=0., has_bias=false))]
+    pub fn new(lambda_: f64, has_bias: bool) -> Self {
         PyOnlineLR {
-            lr: OnlineLR::new(lambda_, fit_bias),
+            lr: OnlineLR::new(lambda_, has_bias),
         }
     }
 

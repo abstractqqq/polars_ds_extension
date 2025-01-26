@@ -1,7 +1,6 @@
 use crate::utils::{to_f64_matrix_fail_on_nulls, to_f64_matrix_without_nulls};
-use faer::dyn_stack::{GlobalPodBuffer, PodStack};
-use faer::prelude::*;
-use faer_ext::IntoFaer;
+use faer::{dyn_stack::{MemBuffer, MemStack}, linalg::svd::ComputeSvdVectors, prelude::*};
+use crate::linalg::IntoFaer;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
@@ -39,34 +38,30 @@ fn pl_singular_values(inputs: &[Series]) -> PolarsResult<Series> {
     let mat = to_f64_matrix_without_nulls(inputs, IndexOrder::Fortran)?;
     let mat = mat.view().into_faer();
 
+    let (m, n) = mat.shape();
+    let compute = ComputeSvdVectors::Thin;
+
     let dim = Ord::min(mat.nrows(), mat.ncols());
-    let mut s = Col::zeros(dim);
-    let parallelism = faer::Parallelism::Rayon(0); // use current num threads
-    let params = Default::default();
-    faer::linalg::svd::compute_svd(
-        mat.canonicalize().0,
-        s.as_mut(),
-        None,
-        None,
-        parallelism,
-        PodStack::new(&mut GlobalPodBuffer::new(
-            faer::linalg::svd::compute_svd_req::<f64>(
-                mat.nrows(),
-                mat.ncols(),
-                faer::linalg::svd::ComputeVectors::No,
-                faer::linalg::svd::ComputeVectors::No,
-                parallelism,
-                params,
-            )
-            .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?,
-        )),
-        params,
-    );
+
+    let mut s = vec![0f64; dim];
+    let cs = ColMut::from_slice_mut(&mut s);
+
+    let par = Par::rayon(0);
+
+    faer::linalg::svd::svd(
+        mat, 
+        cs.as_diagonal_mut(), 
+        None, 
+        None, 
+        par, 
+        MemStack::new(&mut MemBuffer::new(faer::linalg::svd::svd_scratch::<f64>(m, n, compute, compute, par, default()))), 
+        Default::default()
+    ).map_err(|_| PolarsError::ComputeError("SVD algorithm did not converge.".into()))?;
 
     let mut list_builder: ListPrimitiveChunkedBuilder<Float64Type> =
         ListPrimitiveChunkedBuilder::new("singular_values".into(), 1, dim, DataType::Float64);
 
-    list_builder.append_slice(s.as_slice());
+    list_builder.append_slice(&s);
     let out = list_builder.finish();
     Ok(out.into_series())
 }
@@ -85,30 +80,21 @@ fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
             .map(|i| Series::from_vec(format!("pc{}", i + 1).into(), vec![f64::NAN]).into_column())
             .collect::<Vec<Column>>()
     } else {
+        let (m, n) = mat.shape();
+        let compute = ComputeSvdVectors::Thin;
         let dim = Ord::min(mat.nrows(), mat.ncols());
-        let mut s = Col::zeros(dim);
+        let mut s = Col::<f64>::zeros(dim);
         let mut v = Mat::<f64>::zeros(dim, dim);
-        let parallelism = faer::Parallelism::Rayon(0); // use current num threads
-        let params = Default::default();
-        faer::linalg::svd::compute_svd(
-            mat.canonicalize().0,
-            s.as_mut(),
+        let par = Par::rayon(0);
+        faer::linalg::svd::svd(
+            mat,
+            s.as_diagonal_mut(),
             None,
             Some(v.as_mut()),
-            parallelism,
-            PodStack::new(&mut GlobalPodBuffer::new(
-                faer::linalg::svd::compute_svd_req::<f64>(
-                    mat.nrows(),
-                    mat.ncols(),
-                    faer::linalg::svd::ComputeVectors::No,
-                    faer::linalg::svd::ComputeVectors::Thin,
-                    parallelism,
-                    params,
-                )
-                .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?,
-            )),
-            params,
-        );
+            par,
+            MemStack::new(&mut MemBuffer::new(faer::linalg::svd::svd_scratch::<f64>(m, n, compute, compute, par, default()))), 
+            Default::default()
+        ).map_err(|_| PolarsError::ComputeError("SVD algorithm did not converge.".into()))?;
 
         let components = mat * v;
 
@@ -129,30 +115,23 @@ fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
 fn pl_pca(inputs: &[Series]) -> PolarsResult<Series> {
     let mat = to_f64_matrix_without_nulls(inputs, IndexOrder::Fortran)?;
     let mat = mat.view().into_faer();
+    let (m, n) = mat.shape();
     let dim = Ord::min(mat.nrows(), mat.ncols());
-    let mut s = Col::zeros(dim);
+    let mut s = vec![0f64; dim];
+    let cs = ColMut::from_slice_mut(&mut s);
     let mut v = Mat::<f64>::zeros(dim, dim);
-    let parallelism = faer::Parallelism::Rayon(0); // use current num threads
-    let params = Default::default();
-    faer::linalg::svd::compute_svd(
-        mat.canonicalize().0,
-        s.as_mut(),
+    let par = Par::rayon(0);
+    let compute = ComputeSvdVectors::Thin;
+
+    faer::linalg::svd::svd(
+        mat,
+        cs.as_diagonal_mut(),
         None,
         Some(v.as_mut()),
-        parallelism,
-        PodStack::new(&mut GlobalPodBuffer::new(
-            faer::linalg::svd::compute_svd_req::<f64>(
-                mat.nrows(),
-                mat.ncols(),
-                faer::linalg::svd::ComputeVectors::No,
-                faer::linalg::svd::ComputeVectors::Thin,
-                parallelism,
-                params,
-            )
-            .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?,
-        )),
-        params,
-    );
+        par,
+        MemStack::new(&mut MemBuffer::new(faer::linalg::svd::svd_scratch::<f64>(m, n, compute, compute, par, default()))),
+        Default::default(),
+    ).map_err(|_| PolarsError::ComputeError("SVD algorithm did not converge.".into()))?;
 
     let mut builder: PrimitiveChunkedBuilder<Float64Type> =
         PrimitiveChunkedBuilder::new("singular_value".into(), dim);
@@ -160,7 +139,7 @@ fn pl_pca(inputs: &[Series]) -> PolarsResult<Series> {
         ListPrimitiveChunkedBuilder::new("weight_vector".into(), dim, dim, DataType::Float64);
 
     for i in 0..v.nrows() {
-        builder.append_value(s.read(i));
+        builder.append_value(s[i]);
         list_builder.append_slice(v.col_as_slice(i));
     }
 
