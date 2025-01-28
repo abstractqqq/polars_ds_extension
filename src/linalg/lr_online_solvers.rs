@@ -5,8 +5,8 @@ use faer::{
     mat::Mat, 
     prelude::*
 };
+use num::Float;
 use core::f64;
-use std::ops::Neg;
 
 use super::{LinalgErrors, LinearRegression};
 
@@ -16,15 +16,15 @@ pub fn has_nan<T:RealField>(mat: MatRef<T>) -> bool {
     mat.col_iter().any(|col| col.iter().any(|x| is_nan(x)))
 }
 
-pub struct OnlineLR {
-    pub lambda: f64,
+pub struct OnlineLR<T: RealField + Float> {
+    pub lambda: T,
     pub has_bias: bool,
-    pub coefficients: Mat<f64>, // n_features x 1 matrix, or (n_features + ) x 1 if there is bias
-    pub inv: Mat<f64>,          // Current Inverse of X^t X
+    pub coefficients: Mat<T>, // n_features x 1 matrix, or (n_features + ) x 1 if there is bias
+    pub inv: Mat<T>,          // Current Inverse of X^t X
 }
 
-impl OnlineLR {
-    pub fn new(lambda: f64, has_bias: bool) -> Self {
+impl <T: RealField + Float> OnlineLR<T> {
+    pub fn new(lambda: T, has_bias: bool) -> Self {
         OnlineLR {
             lambda: lambda,
             has_bias: has_bias,
@@ -35,14 +35,14 @@ impl OnlineLR {
 
     pub fn set_coeffs_bias_inverse(
         &mut self,
-        coeffs: &[f64],
-        bias: f64,
-        inv: MatRef<f64>,
+        coeffs: &[T],
+        bias: T,
+        inv: MatRef<T>,
     ) -> Result<(), LinalgErrors> {
         if coeffs.len() != inv.ncols() {
             Err(LinalgErrors::DimensionMismatch)
         } else {
-            self.has_bias = bias.abs() > f64::EPSILON;
+            self.has_bias = bias.abs() > T::epsilon();
             if self.has_bias {
                 self.coefficients = Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
                     if i < coeffs.len() {
@@ -52,14 +52,14 @@ impl OnlineLR {
                     }
                 })
             } else {
-                self.coefficients = ColRef::<f64>::from_slice(coeffs).as_mat().to_owned();
+                self.coefficients = ColRef::<T>::from_slice(coeffs).as_mat().to_owned();
             }
             self.inv = inv.to_owned();
             Ok(())
         }
     }
 
-    pub fn get_inv(&self) -> Result<MatRef<f64>, LinalgErrors> {
+    pub fn get_inv(&self) -> Result<MatRef<T>, LinalgErrors> {
         if self.inv.shape() == (0, 0) {
             Err(LinalgErrors::MatNotLearnedYet)
         } else {
@@ -67,9 +67,9 @@ impl OnlineLR {
         }
     }
 
-    pub fn update_unchecked(&mut self, new_x: MatRef<f64>, new_y: MatRef<f64>, c: f64) {
+    pub fn update_unchecked(&mut self, new_x: MatRef<T>, new_y: MatRef<T>, c: T) {
         if self.has_bias() {
-            let ones = Mat::full(new_x.nrows(), 1, 1.0);
+            let ones = Mat::full(new_x.nrows(), 1, T::one());
             let new_new_x = faer::concat![[new_x, ones]];
             woodbury_step(
                 self.inv.as_mut(),
@@ -89,16 +89,16 @@ impl OnlineLR {
         }
     }
 
-    pub fn update(&mut self, new_x: MatRef<f64>, new_y: MatRef<f64>, c: f64) {
+    pub fn update(&mut self, new_x: MatRef<T>, new_y: MatRef<T>, c: T) {
         if !(has_nan(new_x) || has_nan(new_y)) {
             self.update_unchecked(new_x, new_y, c)
         }
     }
 }
 
-impl LinearRegression for OnlineLR {
+impl <T: RealField + Float> LinearRegression<T> for OnlineLR<T> {
 
-    fn fitted_values(&self) -> MatRef<f64> {
+    fn fitted_values(&self) -> MatRef<T> {
         self.coefficients.as_ref()
     }
 
@@ -106,9 +106,9 @@ impl LinearRegression for OnlineLR {
         self.has_bias
     }
 
-    fn fit_unchecked(&mut self, X: MatRef<f64>, y: MatRef<f64>) {
+    fn fit_unchecked(&mut self, X: MatRef<T>, y: MatRef<T>) {
         if self.has_bias {
-            let ones = Mat::full(X.nrows(), 1, 1.0);
+            let ones = Mat::full(X.nrows(), 1, T::one());
             let new_x = faer::concat![[X, ones]];
             let (inv, all_coefficients) = 
                 faer_qr_lstsq_with_inv(new_x.as_ref(), y, self.lambda, true);
@@ -159,12 +159,12 @@ pub fn faer_qr_lstsq_with_inv<T:RealField + Copy>(
 /// Given all data, we start running a lstsq starting at position n and compute new coefficients 
 /// recurisively.
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
-pub fn faer_recursive_lstsq(
-    x: MatRef<f64>,
-    y: MatRef<f64>,
+pub fn faer_recursive_lstsq<T: RealField + Float>(
+    x: MatRef<T>,
+    y: MatRef<T>,
     n: usize,
-    lambda: f64,
-) -> Vec<Mat<f64>> {
+    lambda: T,
+) -> Vec<Mat<T>> {
     let xn = x.nrows();
     // x: size xn x m
     // y: size xn x 1
@@ -182,7 +182,7 @@ pub fn faer_recursive_lstsq(
     for j in n..xn {
         let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
         let next_y = y.get(j..j + 1, ..); // 1 by 1
-        online_lr.update(next_x, next_y, 1.0);
+        online_lr.update(next_x, next_y, T::one());
         coefficients.push(online_lr.fitted_values().to_owned());
     }
     coefficients
@@ -229,13 +229,13 @@ pub fn faer_rolling_lstsq(
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
 /// If # of non-null rows in the window is < m, a Matrix with size (0, 0) will be returned.
 /// This supports Normal or Ridge regression
-pub fn faer_rolling_skipping_lstsq(
-    x: MatRef<f64>,
-    y: MatRef<f64>,
+pub fn faer_rolling_skipping_lstsq<T: RealField + Float>(
+    x: MatRef<T>,
+    y: MatRef<T>,
     n: usize,
     m: usize,
-    lambda: f64,
-) -> Vec<Mat<f64>> {
+    lambda: T,
+) -> Vec<Mat<T>> {
     let xn = x.nrows();
     let ncols = x.ncols();
     // x: size xn x m
@@ -248,8 +248,8 @@ pub fn faer_rolling_skipping_lstsq(
     let mut non_null_cnt_in_window = 0;
     let mut left = 0;
     let mut right = n;
-    let mut x_slice: Vec<f64> = Vec::with_capacity(n * ncols);
-    let mut y_slice: Vec<f64> = Vec::with_capacity(n);
+    let mut x_slice: Vec<T> = Vec::with_capacity(n * ncols);
+    let mut y_slice: Vec<T> = Vec::with_capacity(n);
 
     // This is because if add_bias, the 1 is added to
     // all data already. No need to let OnlineLR add the 1 for the user.
@@ -294,14 +294,14 @@ pub fn faer_rolling_skipping_lstsq(
         
         if !(has_nan(remove_x) | has_nan(remove_y)) {
             non_null_cnt_in_window -= 1; // removed one non-null column
-            online_lr.update_unchecked(remove_x, remove_y, -1.0); // No need to check for nan
+            online_lr.update_unchecked(remove_x, remove_y, T::one().neg()); // No need to check for nan
         }
 
         let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
         let next_y = y.get(j..j + 1, ..); // 1 by 1
         if !(has_nan(next_x) | has_nan(next_y)) {
             non_null_cnt_in_window += 1;
-            online_lr.update_unchecked(next_x, next_y, 1.0); // No need to check for nan
+            online_lr.update_unchecked(next_x, next_y, T::one()); // No need to check for nan
         }
 
         if non_null_cnt_in_window >= m {
@@ -317,19 +317,19 @@ pub fn faer_rolling_skipping_lstsq(
 /// Reference: https://cpb-us-w2.wpmucdn.com/sites.gatech.edu/dist/2/436/files/2017/07/22-notes-6250-f16.pdf
 /// https://en.wikipedia.org/wiki/Woodbury_matrix_identity
 #[inline(always)]
-pub fn woodbury_step(
-    inverse: MatMut<f64>,
-    weights: MatMut<f64>,
-    new_x: MatRef<f64>,
-    new_y: MatRef<f64>,
-    c: f64, // +1 or -1, for a "update" and a "removal"
+pub fn woodbury_step<T: RealField + Float>(
+    inverse: MatMut<T>,
+    weights: MatMut<T>,
+    new_x: MatRef<T>,
+    new_y: MatRef<T>,
+    c: T, // +1 or -1, for a "update" and a "removal"
 ) {
     // It is truly amazing that the C in the Woodbury identity essentially controls the update and
     // and removal of a new record (rolling)... Linear regression seems to be designed by God to work so well
 
     let u = &inverse * new_x.transpose(); // corresponding to u in the reference
                                              // right = left.transpose() by the fact that if A is symmetric, invertible, A-1 is also symmetric
-    let z = (c + (new_x * &u).get(0, 0)).recip();
+    let z = (c + *(new_x * &u).get(0, 0)).recip();
     // Update the information matrix's inverse. Page 56 of the gatech reference
     faer::linalg::matmul::matmul(
         inverse,

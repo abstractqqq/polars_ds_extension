@@ -575,26 +575,23 @@ def lin_reg_report(
 
     t = lr_formula(target)
     if weights is None:
-        cols = [t]
+        cols = [t.var(), t]
         cols.extend(lr_formula(z) for z in x)
-        return pl_plugin(
-            symbol="pl_lin_reg_report",
-            args=cols,
-            kwargs=lr_kwargs,
-            changes_length=True,
-            pass_name_to_apply=True,
-        )
+        symbol = "pl_lin_reg_report"
+
     else:
         w = lr_formula(weights)
-        cols = [w.cast(pl.Float64).rechunk(), t]
+        cols = [w.cast(pl.Float64).rechunk(), t.var(), t]
         cols.extend(lr_formula(z) for z in x)
-        return pl_plugin(
-            symbol="pl_wls_report",
-            args=cols,
-            kwargs=lr_kwargs,
-            changes_length=True,
-            pass_name_to_apply=True,
-        )
+        symbol = "pl_wls_report"
+
+    return pl_plugin(
+        symbol=symbol,
+        args=cols,
+        kwargs=lr_kwargs,
+        changes_length=True,
+        pass_name_to_apply=True,
+    )
 
 
 def query_lstsq_report(

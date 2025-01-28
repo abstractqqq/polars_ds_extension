@@ -7,7 +7,7 @@ use crate::linalg::{
         faer_solve_lstsq_rcond, 
         faer_weighted_lstsq,
     },
-    lr_online_solvers:: {
+    lr_online_solvers::{
         faer_recursive_lstsq, 
         faer_rolling_lstsq, 
         faer_rolling_skipping_lstsq, 
@@ -63,7 +63,9 @@ fn report_output(_: &[Field]) -> PolarsResult<Field> {
     let p = Field::new("p>|t|".into(), DataType::Float64); // p value for this coefficient
     let ci_lower = Field::new("0.025".into(), DataType::Float64); // CI lower bound at 0.025
     let ci_upper = Field::new("0.975".into(), DataType::Float64); // CI upper bound at 0.975
-    let v: Vec<Field> = vec![features, beta, stderr, t, p, ci_lower, ci_upper]; //  ci_lower, ci_upper
+    let r2 = Field::new("r2".into(), DataType::Float64); // Coefficient of determination
+    let adj_r2 = Field::new("adj_r2".into(), DataType::Float64); // adjusted 
+    let v: Vec<Field> = vec![features, beta, stderr, t, p, ci_lower, ci_upper, r2, adj_r2];
     Ok(Field::new("lin_reg_report".into(), DataType::Struct(v)))
 }
 
@@ -530,10 +532,12 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
     let has_bias = kwargs.bias;
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
-    // index 0 is target y. Skip
+    // index 0 is y_var, 1 is target y. Skip
+    let y_var = inputs[0].f64().unwrap();
+    let y_var = y_var.get(0).unwrap_or(f64::NAN);
     let mut name_builder =
-        StringChunkedBuilder::new("features".into(), inputs.len() + (has_bias) as usize);
-    for s in inputs[1..].iter().map(|s| s.name()) {
+        StringChunkedBuilder::new("features".into(), inputs.len().abs_diff(2) + (has_bias) as usize);
+    for s in inputs[2..].iter().map(|s| s.name()) {
         name_builder.append_value(s);
     }
     if has_bias {
@@ -541,7 +545,7 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
     }
     // Copy data
     // Target y is at index 0
-    match series_to_mat_for_lstsq(inputs, has_bias, null_policy) {
+    match series_to_mat_for_lstsq(&inputs[1..], has_bias, null_policy) {
         Ok((mat, _)) => {
             let ncols = mat.ncols() - 1;
             let nrows = mat.nrows();
@@ -560,6 +564,13 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
             let res = y - x * &coeffs;
             // total residue, sum of squares
             let mse = (res.transpose() * &res).get(0, 0) / dof;
+
+            // r2, adj_r2
+            let nf64 = nrows as f64;
+            let ratio = res.col(0).squared_norm_l2() / (y_var * nf64);
+            let r2 = 1.0 - ratio;
+            let adj_r2 = 1.0 - ratio * ((nrows - 1) as f64 / (dof - 1.0));
+
             // std err
             let std_err = (0..ncols)
                 .map(|i| (mse * xtx_inv.get(i, i)).sqrt())
@@ -608,6 +619,10 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
             let lower = lower.into_series();
             let upper = Float64Chunked::from_vec("0.975".into(), ci_upper);
             let upper = upper.into_series();
+            let r2 = Float64Chunked::from_vec("r2".into(), vec![r2]);
+            let r2_series = r2.into_series();
+            let adj_r2 = Float64Chunked::from_vec("adj_r2".into(), vec![adj_r2]);
+            let adj_r2_series = adj_r2.into_series();
             let out = StructChunked::from_series(
                 "lin_reg_report".into(),
                 names_series.len(),
@@ -619,6 +634,8 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
                     &p_series,
                     &lower,
                     &upper,
+                    &r2_series,
+                    &adj_r2_series
                 ]
                 .into_iter(),
             )?;
@@ -636,18 +653,20 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
 
     let weights = inputs[0].f64().unwrap();
     let weights = weights.cont_slice().unwrap();
-    // index 0 is weights, 1 is target y. Skip them
+    let y_var = inputs[1].f64().unwrap();
+    let y_var = y_var.get(0).unwrap_or(f64::NAN);
+    // index 0 is weights, 1 is y_var, 2 is target y. Skip them
     let mut name_builder =
-        StringChunkedBuilder::new("features".into(), inputs.len() + (has_bias) as usize);
-    for s in inputs[2..].iter().map(|s| s.name()) {
+        StringChunkedBuilder::new("features".into(), inputs.len().abs_diff(3) + (has_bias) as usize);
+    for s in inputs[3..].iter().map(|s| s.name()) {
         name_builder.append_value(s);
     }
     if has_bias {
         name_builder.append_value("__bias__");
     }
     // Copy data
-    // Target y is at index 1, weights 0
-    match series_to_mat_for_lstsq(&inputs[1..], has_bias, null_policy) {
+    // Target y is at index 2, weights at index 0
+    match series_to_mat_for_lstsq(&inputs[2..], has_bias, null_policy) {
         Ok((mat, _)) => {
             let ncols = mat.ncols() - 1;
             let nrows = mat.nrows();
@@ -673,6 +692,13 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let res = y - x * &coeffs;
             let mse =
                 (0..y.nrows()).fold(0., |acc, i| acc + weights[i] * res.get(i, 0).powi(2)) / dof;
+            
+            // r2, adj_r2
+            let nf64 = nrows as f64;
+            let ratio = res.col(0).squared_norm_l2() / (y_var * nf64);
+            let r2 = 1.0 - ratio;
+            let adj_r2 = 1.0 - ratio * ((nrows - 1) as f64 / (dof - 1.0));
+
             // std err
             let std_err = (0..ncols)
                 .map(|i| (mse * xtwx_inv.get(i, i)).sqrt())
@@ -720,6 +746,10 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let lower = lower.into_series();
             let upper = Float64Chunked::from_vec("0.975".into(), ci_upper);
             let upper = upper.into_series();
+            let r2 = Float64Chunked::from_vec("r2".into(), vec![r2]);
+            let r2_series = r2.into_series();
+            let adj_r2 = Float64Chunked::from_vec("adj_r2".into(), vec![adj_r2]);
+            let adj_r2_series = adj_r2.into_series();
             let out = StructChunked::from_series(
                 "lin_reg_report".into(),
                 names_series.len(),
@@ -731,6 +761,8 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
                     &p_series,
                     &lower,
                     &upper,
+                    &r2_series,
+                    &adj_r2_series
                 ]
                 .into_iter(),
             )?;

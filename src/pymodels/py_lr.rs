@@ -21,7 +21,7 @@ impl From<LinalgErrors> for PyErr {
 
 #[pyclass(subclass)]
 pub struct PyLR {
-    lr: LR,
+    lr: LR<f64>,
 }
 
 #[pymethods]
@@ -101,7 +101,7 @@ impl PyLR {
 
 #[pyclass(subclass)]
 pub struct PyElasticNet {
-    lr: ElasticNet,
+    lr: ElasticNet<f64>,
 }
 
 #[pymethods]
@@ -187,7 +187,7 @@ impl PyElasticNet {
 
 #[pyclass(subclass)]
 pub struct PyOnlineLR {
-    lr: OnlineLR,
+    lr: OnlineLR<f64>,
 }
 
 #[pymethods]

@@ -5,6 +5,7 @@ pub mod lr_online_solvers;
 use faer::{Mat, MatRef};
 use faer_traits::RealField;
 use ndarray::{ArrayView, Ix2, ShapeBuilder};
+use num::Float;
 
 pub enum LinalgErrors {
     DimensionMismatch,
@@ -85,25 +86,25 @@ impl From<(f64, f64)> for LRMethods {
     }
 }
 
-pub trait LinearRegression {
+pub trait LinearRegression<T: RealField + Float> {
 
     /// Typically coefficients + the bias as a single matrix (single slice)
-    fn fitted_values(&self) -> MatRef<f64>;
+    fn fitted_values(&self) -> MatRef<T>;
 
     fn has_bias(&self) -> bool;
 
-    fn bias(&self) -> f64 {
+    fn bias(&self) -> T {
         if self.has_bias() {
             let n = self.fitted_values().nrows() - 1;
             *self.fitted_values().get(n, 0)
         } else {
-            0f64
+            T::zero()
         }
     }
     
     /// Returns a copy of the coefficients
     
-    fn coefficients(&self) -> MatRef<f64> {
+    fn coefficients(&self) -> MatRef<T> {
         if self.has_bias() {
             let n = self.fitted_values().nrows() - 1;
             self.fitted_values().get(.., 0..n)
@@ -112,12 +113,12 @@ pub trait LinearRegression {
         }
     }
 
-    fn fit_unchecked(&mut self, X: MatRef<f64>, y: MatRef<f64>);
+    fn fit_unchecked(&mut self, X: MatRef<T>, y: MatRef<T>);
 
     /// Fits the linear regression. Input X is any m x n matrix. Input y must be a m x 1 matrix.
     /// Note, if there is a bias term in the data, then it must be in the matrix X as the last
     /// column and has_bias must be true. This will not append a bias column to X.
-    fn fit(&mut self, X: MatRef<f64>, y: MatRef<f64>) -> Result<(), LinalgErrors> {
+    fn fit(&mut self, X: MatRef<T>, y: MatRef<T>) -> Result<(), LinalgErrors> {
         if X.nrows() != y.nrows() {
             return Err(LinalgErrors::DimensionMismatch);
         } else if X.nrows() < X.ncols() || X.nrows() == 0 || y.nrows() == 0 {
@@ -131,7 +132,7 @@ pub trait LinearRegression {
         !(self.coefficients().shape() == (0, 0))
     }
 
-    fn coeffs_as_vec(&self) -> Result<Vec<f64>, LinalgErrors> {
+    fn coeffs_as_vec(&self) -> Result<Vec<T>, LinalgErrors> {
         match self.check_is_fit() {
             Ok(_) => Ok(self
                 .coefficients()
@@ -151,7 +152,7 @@ pub trait LinearRegression {
         }
     }
 
-    fn predict(&self, X: MatRef<f64>) -> Result<Mat<f64>, LinalgErrors> {
+    fn predict(&self, X: MatRef<T>) -> Result<Mat<T>, LinalgErrors> {
         if X.ncols() != self.coefficients().nrows() {
             Err(LinalgErrors::DimensionMismatch)
         } else if !self.is_fit() {
@@ -159,10 +160,10 @@ pub trait LinearRegression {
         } else {
             let mut result = X * self.coefficients();
             let bias = self.bias();
-            if self.has_bias() && self.bias().abs() > f64::EPSILON {
+            if self.has_bias() && self.bias().abs() > T::epsilon() {
                 unsafe {
                     for i in 0..result.nrows() {
-                        *result.get_mut_unchecked(i, 0) += bias;
+                        *result.get_mut_unchecked(i, 0) = *result.get_mut_unchecked(i, 0) +  bias;
                     }
                 }
             }

@@ -10,15 +10,15 @@ use core::f64;
 use super::{LRSolverMethods, LinalgErrors, LinearRegression};
 
 /// A struct that handles regular linear regression and Ridge regression.
-pub struct LR {
+pub struct LR<T:RealField + Float> {
     pub solver: LRSolverMethods,
-    pub lambda: f64,
-    pub coefficients: Mat<f64>, // n_features x 1 matrix, doesn't contain bias
+    pub lambda: T,
+    pub coefficients: Mat<T>, // n_features x 1 matrix, doesn't contain bias
     pub has_bias: bool,
 }
 
-impl LR {
-    pub fn new(solver: &str, lambda: f64, has_bias: bool) -> Self {
+impl <T:RealField + Float> LR<T> {
+    pub fn new(solver: &str, lambda: T, has_bias: bool) -> Self {
         LR {
             solver: solver.into(),
             lambda: lambda,
@@ -27,17 +27,17 @@ impl LR {
         }
     }
 
-    pub fn from_values(coeffs: &[f64], bias: f64) -> Self {
+    pub fn from_values(coeffs: &[T], bias: T) -> Self {
         LR {
             solver: LRSolverMethods::default(),
-            lambda: 0.,
+            lambda: T::zero(),
             coefficients: faer::mat::Mat::from_fn(coeffs.len(), 1, |i, _| coeffs[i]),
-            has_bias: bias.abs() > f64::EPSILON,
+            has_bias: bias.abs() > T::epsilon(),
         }
     }
 
-    pub fn set_coeffs_and_bias(&mut self, coeffs: &[f64], bias: f64) {
-        self.has_bias = bias.abs() > f64::EPSILON;
+    pub fn set_coeffs_and_bias(&mut self, coeffs: &[T], bias: T) {
+        self.has_bias = bias.abs() > T::epsilon();
         if self.has_bias {
             self.coefficients = Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
                 if i < coeffs.len() {
@@ -47,14 +47,14 @@ impl LR {
                 }
             })
         } else {
-            self.coefficients = ColRef::<f64>::from_slice(coeffs).as_mat().to_owned();
+            self.coefficients = ColRef::<T>::from_slice(coeffs).as_mat().to_owned();
         }
     }
 }
 
-impl LinearRegression for LR {
+impl <T: RealField + Float>LinearRegression<T> for LR<T> {
 
-    fn fitted_values(&self) -> MatRef<f64> {
+    fn fitted_values(&self) -> MatRef<T> {
         self.coefficients.as_ref()
     }
 
@@ -62,9 +62,9 @@ impl LinearRegression for LR {
         self.has_bias
     }
 
-    fn fit_unchecked(&mut self, X: MatRef<f64>, y: MatRef<f64>) {
+    fn fit_unchecked(&mut self, X: MatRef<T>, y: MatRef<T>) {
         self.coefficients = if self.has_bias {
-            let ones = Mat::full(X.nrows(), 1, 1.0);
+            let ones = Mat::full(X.nrows(), 1, T::one());
             let new = faer::concat![[X, ones]];
             faer_solve_lstsq(new.as_ref(), y, self.lambda, true, self.solver)
         } else {
@@ -74,17 +74,17 @@ impl LinearRegression for LR {
     
 }
 
-pub struct ElasticNet {
-    pub l1_reg: f64,
-    pub l2_reg: f64,
-    pub coefficients: Mat<f64>, // n_features x 1 matrix, doesn't contain bias
+pub struct ElasticNet<T: RealField + Float> {
+    pub l1_reg: T,
+    pub l2_reg: T,
+    pub coefficients: Mat<T>, // n_features x 1 matrix, doesn't contain bias
     pub has_bias: bool,
-    pub tol: f64,
+    pub tol: T,
     pub max_iter: usize,
 }
 
-impl ElasticNet {
-    pub fn new(l1_reg: f64, l2_reg: f64, has_bias: bool, tol: f64, max_iter: usize) -> Self {
+impl <T: RealField + Float>ElasticNet<T> {
+    pub fn new(l1_reg: T, l2_reg: T, has_bias: bool, tol: T, max_iter: usize) -> Self {
         ElasticNet {
             l1_reg: l1_reg,
             l2_reg: l2_reg,
@@ -95,8 +95,8 @@ impl ElasticNet {
         }
     }
 
-    pub fn from_values(coeffs: &[f64], bias: f64) -> Self {
-        let has_bias = bias.abs() > f64::EPSILON;
+    pub fn from_values(coeffs: &[T], bias: T) -> Self {
+        let has_bias = bias.abs() > T::epsilon();
         let coefficients = if has_bias {
             Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
                 if i < coeffs.len() {
@@ -106,21 +106,21 @@ impl ElasticNet {
                 }
             })
         } else {
-            ColRef::<f64>::from_slice(coeffs).as_mat().to_owned()
+            ColRef::<T>::from_slice(coeffs).as_mat().to_owned()
         };
 
         ElasticNet {
-            l1_reg: f64::NAN,
-            l2_reg: f64::NAN,
+            l1_reg: T::nan(),
+            l2_reg: T::nan(),
             coefficients: coefficients,
             has_bias: has_bias,
-            tol: 1e-5,
+            tol: T::from(1e-5).unwrap(),
             max_iter: 2000,
         }
     }
 
-    pub fn set_coeffs_and_bias(&mut self, coeffs: &[f64], bias: f64) {
-        self.has_bias = bias.abs() > f64::EPSILON;
+    pub fn set_coeffs_and_bias(&mut self, coeffs: &[T], bias: T) {
+        self.has_bias = bias.abs() > T::epsilon();
         self.coefficients = if self.has_bias {
             Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
                 if i < coeffs.len() {
@@ -130,18 +130,18 @@ impl ElasticNet {
                 }
             })
         } else {
-            ColRef::<f64>::from_slice(coeffs).as_mat().to_owned()
+            ColRef::<T>::from_slice(coeffs).as_mat().to_owned()
         };
     }
 
-    pub fn regularizers(&self) -> (f64, f64) {
+    pub fn regularizers(&self) -> (T, T) {
         (self.l1_reg, self.l2_reg)
     }
 }
 
-impl LinearRegression for ElasticNet {
+impl <T:RealField + Float>LinearRegression<T> for ElasticNet<T> {
 
-    fn fitted_values(&self) -> MatRef<f64> {
+    fn fitted_values(&self) -> MatRef<T> {
         self.coefficients.as_ref()
     }
 
@@ -149,9 +149,9 @@ impl LinearRegression for ElasticNet {
         self.has_bias
     }
 
-    fn fit_unchecked(&mut self, X: MatRef<f64>, y: MatRef<f64>) {
+    fn fit_unchecked(&mut self, X: MatRef<T>, y: MatRef<T>) {
         self.coefficients = if self.has_bias {
-            let ones = Mat::full(X.nrows(), 1, 1.0);
+            let ones = Mat::full(X.nrows(), 1, T::one());
             let new_x = faer::concat![[X, ones]];
             faer_coordinate_descent(
                 new_x.as_ref(),
@@ -176,7 +176,7 @@ impl LinearRegression for ElasticNet {
 
     }
 
-    fn fit(&mut self, X: MatRef<f64>, y: MatRef<f64>) -> Result<(), LinalgErrors> {
+    fn fit(&mut self, X: MatRef<T>, y: MatRef<T>) -> Result<(), LinalgErrors> {
         if X.nrows() != y.nrows() {
             return Err(LinalgErrors::DimensionMismatch);
         } else if X.nrows() == 0 || y.nrows() == 0 {
@@ -242,7 +242,7 @@ pub fn faer_solve_lstsq_rcond<T: RealField + Float>(
 /// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
 /// If lambda is 0, then this is the regular lstsq
 #[inline(always)]
-pub fn faer_solve_lstsq<T: RealField + Copy>(
+pub fn faer_solve_lstsq<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
     lambda: T,
@@ -305,8 +305,8 @@ pub fn faer_weighted_lstsq<T: RealField>(
 }
 
 #[inline(always)]
-fn soft_threshold_l1(z: f64, lambda: f64) -> f64 {
-    z.signum() * (z.abs() - lambda).max(0f64)
+fn soft_threshold_l1<T: Float>(z: T, lambda: T) -> T {
+    z.signum() * (z.abs() - lambda).max(T::zero())
 }
 
 /// Computes Lasso/Elastic Regression coefficients by the use of Coordinate Descent.
@@ -319,22 +319,22 @@ fn soft_threshold_l1(z: f64, lambda: f64) -> f64 {
 /// https://github.com/minatosato/Lasso/blob/master/coordinate_descent_lasso.py
 /// https://en.wikipedia.org/wiki/Lasso_(statistics)
 #[inline(always)]
-pub fn faer_coordinate_descent(
-    x: MatRef<f64>,
-    y: MatRef<f64>,
-    l1_reg: f64,
-    l2_reg: f64,
+pub fn faer_coordinate_descent<T:RealField + Float>(
+    x: MatRef<T>,
+    y: MatRef<T>,
+    l1_reg: T,
+    l2_reg: T,
     has_bias: bool,
-    tol: f64,
+    tol: T,
     max_iter: usize,
-) -> Mat<f64> {
-    let m = x.nrows() as f64;
+) -> Mat<T> {
+    let m = T::from(x.nrows()).unwrap();
     let ncols = x.ncols();
     let n1 = ncols.abs_diff(has_bias as usize);
 
     let lambda_l1 = m * l1_reg;
 
-    let mut beta: Mat<f64> = Mat::zeros(ncols, 1);
+    let mut beta: Mat<T> = Mat::zeros(ncols, 1);
     let mut converge = false;
 
     // compute column squared l2 norms.
@@ -349,16 +349,16 @@ pub fn faer_coordinate_descent(
 
     // Random selection often leads to faster convergence?
     for _ in 0..max_iter {
-        let mut max_change = 0f64;
+        let mut max_change = T::zero();
         for j in 0..n1 {
             // temporary set beta(j, 0) to 0.
             // Safe. The index is valid and the value is initialized.
             let before = *unsafe { beta.get_unchecked(j, 0) };
-            *unsafe { beta.get_mut_unchecked(j, 0) } = 0f64;
+            *unsafe { beta.get_mut_unchecked(j, 0) } = T::zero();
             let xtx_j = unsafe { xtx.get_unchecked(j..j + 1, ..) };
 
             // Xi^t(y - X-i Beta-i)
-            let main_update = xty.get(j, 0) - (xtx_j * &beta).get(0, 0);
+            let main_update = *xty.get(j, 0) - *(xtx_j * &beta).get(0, 0);
 
             // update beta(j, 0).
             let after = soft_threshold_l1(main_update, lambda_l1) / norms[j];
