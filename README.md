@@ -27,11 +27,14 @@ PDS is a modern data science package that
 
 It stands on the shoulders of the great **Polars** dataframe. You can see [examples](./examples/basics.ipynb). Here are some highlights!
 
+### Parallel ML Metrics Calculation
+
 ```python
 import polars as pl
 import polars_ds as pds
 # Parallel evaluation of multiple ML metrics on different segments of data
 df.lazy().group_by("segments").agg( 
+    # any other metrics you want in here
     pds.query_roc_auc("actual", "predicted").alias("roc_auc"),
     pds.query_log_loss("actual", "predicted").alias("log_loss"),
 ).collect()
@@ -47,7 +50,53 @@ shape: (2, 3)
 └──────────┴──────────┴──────────┘
 ```
 
-Tabular Machine Learning Data Transformation Pipeline (See [SKLEARN_COMPATIBILITY](SKLEARN_COMPATIBILITY.md) for more details.)
+### In-dataframe linear regression + feature transformations
+
+```python
+import polars_ds as pds
+from polars_ds.modeling.transforms import polynomial_features
+# If you want the underlying computation to be done in f32, set pds.config.LIN_REG_EXPR_F64 = False
+df.select(
+    pds.lin_reg_report(
+        *(
+            ["x1", "x2", "x3"] +
+            polynomial_features(["x1", "x2", "x3"], degree = 2, interaction_only=True)
+        )
+        , target = "target"
+        , add_bias = False
+    ).alias("result")
+).unnest("result")
+
+┌──────────┬───────────┬──────────┬───────────┬───────┬───────────┬──────────┬──────────┬──────────┐
+│ features ┆ beta      ┆ std_err  ┆ t         ┆ p>|t| ┆ 0.025     ┆ 0.975    ┆ r2       ┆ adj_r2   │
+│ ---      ┆ ---       ┆ ---      ┆ ---       ┆ ---   ┆ ---       ┆ ---      ┆ ---      ┆ ---      │
+│ str      ┆ f64       ┆ f64      ┆ f64       ┆ f64   ┆ f64       ┆ f64      ┆ f64      ┆ f64      │
+╞══════════╪═══════════╪══════════╪═══════════╪═══════╪═══════════╪══════════╪══════════╪══════════╡
+│ x1       ┆ 0.26332   ┆ 0.000315 ┆ 835.68677 ┆ 0.0   ┆ 0.262703  ┆ 0.263938 ┆ 0.971087 ┆ 0.971085 │
+│          ┆           ┆          ┆ 8         ┆       ┆           ┆          ┆          ┆          │
+│ x2       ┆ 0.413824  ┆ 0.000311 ┆ 1331.9883 ┆ 0.0   ┆ 0.413216  ┆ 0.414433 ┆ 0.971087 ┆ 0.971085 │
+│          ┆           ┆          ┆ 32        ┆       ┆           ┆          ┆          ┆          │
+│ x3       ┆ 0.113688  ┆ 0.000315 ┆ 361.29924 ┆ 0.0   ┆ 0.113072  ┆ 0.114305 ┆ 0.971087 ┆ 0.971085 │
+│ x1*x2    ┆ -0.097272 ┆ 0.000543 ┆ -179.0377 ┆ 0.0   ┆ -0.098337 ┆ -0.09620 ┆ 0.971087 ┆ 0.971085 │
+│          ┆           ┆          ┆ 76        ┆       ┆           ┆ 7        ┆          ┆          │
+│ x1*x3    ┆ -0.097266 ┆ 0.000542 ┆ -179.4486 ┆ 0.0   ┆ -0.098329 ┆ -0.09620 ┆ 0.971087 ┆ 0.971085 │
+│          ┆           ┆          ┆ 32        ┆       ┆           ┆ 4        ┆          ┆          │
+│ x2*x3    ┆ -0.097987 ┆ 0.000542 ┆ -180.7579 ┆ 0.0   ┆ -0.099049 ┆ -0.09692 ┆ 0.971087 ┆ 0.971085 │
+│          ┆           ┆          ┆ 6         ┆       ┆           ┆ 4        ┆          ┆          │
+└──────────┴───────────┴──────────┴───────────┴───────┴───────────┴──────────┴──────────┴──────────┘
+```
+
+- [x] Normal Linear Regression (pds.lin_reg)
+- [x] Lasso, Ridge, Elastic Net (pds.lin_reg)
+- [x] Rolling linear regression with skipping (pds.rolling_lin_reg)
+- [x] Recursive linear regression (pds.recursive_lin_reg)
+- [ ] Non-negative linear regression 
+- [x] Statsmodel-like linear regression table (pds.lin_reg_report)
+- [x] f32 support
+
+### Tabular Machine Learning Data Transformation Pipeline
+
+See [SKLEARN_COMPATIBILITY](SKLEARN_COMPATIBILITY.md) for more details.
 
 ```Python
 import polars as pl
@@ -88,7 +137,10 @@ df_transformed = pipe.transform(df)
 df_transformed.head()
 ```
 
-Get all neighbors within radius r, call them best friends, and count the number
+### Nearest Neighbors Related Queries
+
+Get all neighbors within radius r, call them best friends, and count the number. Due to limitations, 
+this currently doesn't preserve the index, and is not fast when k or dimension of data is large.
 
 ```python
 df.select(
@@ -118,42 +170,7 @@ shape: (5, 3)
 └─────┴───────────────────┴────────────────────┘
 ```
 
-Run a linear regression on each category:
-
-```Python
-
-df = pds.random_data(size=5_000, n_cols=0).select(
-    pds.random(0.0, 1.0).alias("x1"),
-    pds.random(0.0, 1.0).alias("x2"),
-    pds.random(0.0, 1.0).alias("x3"),
-    pds.random_int(0, 3).alias("categories")
-).with_columns(
-    y = pl.col("x1") * 0.5 + pl.col("x2") * 0.25 - pl.col("x3") * 0.15 + pds.random() * 0.0001
-)
-
-df.group_by("categories").agg(
-    pds.lin_reg(
-        "x1", "x2", "x3", 
-        target = "y",
-        method = "l2",
-        l2_reg = 0.05,
-        add_bias = False
-    ).alias("coeffs")
-) 
-
-shape: (3, 2)
-┌────────────┬─────────────────────────────────┐
-│ categories ┆ coeffs                          │
-│ ---        ┆ ---                             │
-│ i32        ┆ list[f64]                       │
-╞════════════╪═════════════════════════════════╡
-│ 0          ┆ [0.499912, 0.250005, -0.149846… │
-│ 1          ┆ [0.499922, 0.250004, -0.149856… │
-│ 2          ┆ [0.499923, 0.250004, -0.149855… │
-└────────────┴─────────────────────────────────┘
-```
-
-Various String Edit distances
+### Various String Edit distances
 
 ```Python
 df.select( # Column "word", compared to string in pl.lit(). It also supports column vs column comparison
@@ -163,7 +180,7 @@ df.select( # Column "word", compared to string in pl.lit(). It also supports col
 )
 ```
 
-In-dataframe statistical tests
+### In-dataframe statistical tests
 
 ```Python
 df.group_by("market_id").agg(
@@ -184,7 +201,7 @@ shape: (3, 4)
 └───────────┴──────────────────────┴──────────────────────┴─────────────────────┘
 ```
 
-Multiple Convolutions at once!
+### Multiple Convolutions at once!
 
 ```Python
 # Multiple Convolutions at once
@@ -241,7 +258,7 @@ This package is not tested with Polars streaming mode and is not designed to wor
 
 1. Rust Snowball Stemmer is taken from Tsoding's Seroost project (MIT). See [here](https://github.com/tsoding/seroost)
 2. Some statistics functions are taken from Statrs (MIT) and internalized. See [here](https://github.com/statrs-dev/statrs/tree/master)
-3. Linear algebra routines are powered partly by [faer](https://crates.io/crates/faer)
+3. Linear algebra routines are powered mostly by [faer](https://crates.io/crates/faer)
 4. String similarity metrics are soooo fast because of [RapidFuzz](https://github.com/maxbachmann/rapidfuzz-rs)
 
 # Other related Projects
