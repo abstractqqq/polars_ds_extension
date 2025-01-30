@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use cfavml::safe_trait_distance_ops::DistanceOps;
 use ndarray::Array2;
 use num::Float;
@@ -48,16 +50,6 @@ pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
         inputs.iter().map(|s| Column::Series(s.clone())),
     ))
 }
-
-// #[inline(always)]
-// pub fn series_to_ndarray(inputs: &[Series], order: IndexOrder) -> PolarsResult<Array2<f64>> {
-//     let df = DataFrame::new(inputs.to_vec())?;
-//     if df.is_empty() {
-//         Err(PolarsError::ComputeError("Empty data.".into()))
-//     } else {
-//         df.to_ndarray::<Float64Type>(order)
-//     }
-// }
 
 /// Organizes the series data into a `matrix`, and return the underlying slice
 /// as a row-major slice. This code here is taken from polars dataframe.to_ndarray()
@@ -219,16 +211,16 @@ pub fn float_output(fields: &[Field]) -> PolarsResult<Field> {
 // Common, Structures
 // -------------------------------------------------------------------------------
 #[derive(PartialEq, Clone, Copy)]
-pub enum NullPolicy {
+pub enum NullPolicy<T: Float + FromStr>{
     RAISE,
     SKIP,
     SKIP_WINDOW, // `SKIP` in rolling. Skip, but doesn't really drop data. A specialized algorithm will handle this.
     IGNORE,
-    FILL(f64),
-    FILL_WINDOW(f64), // `FILL`` rolling. Doesn't really drop data. A specialized algorithm will handle this.
+    FILL(T),
+    FILL_WINDOW(T), // `FILL`` rolling. Doesn't really drop data. A specialized algorithm will handle this.
 }
 
-impl TryFrom<String> for NullPolicy {
+impl <T: Float + FromStr> TryFrom<String> for NullPolicy<T> {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
@@ -237,11 +229,11 @@ impl TryFrom<String> for NullPolicy {
         match test {
             "raise" => Ok(Self::RAISE),
             "skip" => Ok(Self::SKIP),
-            "zero" => Ok(Self::FILL(0.)),
-            "one" => Ok(Self::FILL(1.)),
+            "zero" => Ok(Self::FILL(T::zero())),
+            "one" => Ok(Self::FILL(T::one())),
             "ignore" => Ok(Self::IGNORE),
             "skip_window" => Ok(Self::SKIP_WINDOW),
-            _ => match test.parse::<f64>() {
+            _ => match test.parse::<T>() {
                 Ok(x) => Ok(Self::FILL(x)),
                 Err(_) => Err("Invalid NullPolicy.".into()),
             },

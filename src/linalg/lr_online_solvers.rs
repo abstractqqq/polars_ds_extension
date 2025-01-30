@@ -191,12 +191,12 @@ pub fn faer_recursive_lstsq<T: RealField + Float>(
 /// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
 /// This supports Normal or Ridge regression
-pub fn faer_rolling_lstsq(
-    x: MatRef<f64>, 
-    y: MatRef<f64>, 
+pub fn faer_rolling_lstsq<T: RealField + Float>(
+    x: MatRef<T>, 
+    y: MatRef<T>, 
     n: usize, 
-    lambda: f64,
-) -> Vec<Mat<f64>> {
+    lambda: T,
+) -> Vec<Mat<T>> {
     let xn = x.nrows();
     // x: size xn x m
     // y: size xn x 1
@@ -215,11 +215,11 @@ pub fn faer_rolling_lstsq(
     for j in n..xn {
         let remove_x = x.get(j - n..j - n + 1, ..);
         let remove_y = y.get(j - n..j - n + 1, ..);
-        online_lr.update(remove_x, remove_y, -1.0);
+        online_lr.update(remove_x, remove_y, T::one().neg());
 
         let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
         let next_y = y.get(j..j + 1, ..); // 1 by 1
-        online_lr.update(next_x, next_y, 1.0);
+        online_lr.update(next_x, next_y, T::one());
         coefficients.push(online_lr.fitted_values().to_owned());
     }
     coefficients

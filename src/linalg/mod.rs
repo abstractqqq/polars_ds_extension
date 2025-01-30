@@ -42,7 +42,7 @@ impl From<&str> for LRSolverMethods {
         match value {
             "qr" => Self::QR,
             "svd" => Self::SVD,
-            "choleskey" => Self::Choleskey,
+            "choleskey" => Self::QR, // choleskey not available 
             _ => Self::QR,
         }
     }
@@ -74,6 +74,20 @@ impl From<&str> for LRMethods {
 /// the second is assumed to be the l2 regularization factor
 impl From<(f64, f64)> for LRMethods {
     fn from(value: (f64, f64)) -> Self {
+        if value.0 > 0. && value.1 <= 0. {
+            LRMethods::L1
+        } else if value.0 <= 0. && value.1 > 0. {
+            LRMethods::L2
+        } else if value.0 > 0. && value.1 > 0. {
+            LRMethods::ElasticNet
+        } else {
+            LRMethods::Normal
+        }
+    }
+}
+
+impl From<(f32, f32)> for LRMethods {
+    fn from(value: (f32, f32)) -> Self {
         if value.0 > 0. && value.1 <= 0. {
             LRMethods::L1
         } else if value.0 <= 0. && value.1 > 0. {

@@ -11,6 +11,7 @@ mod jaccard;
 mod knn;
 mod lempel_ziv;
 mod linear_regression;
+mod linear_regression_f32;
 mod pca;
 mod psi;
 mod subseq_sim;

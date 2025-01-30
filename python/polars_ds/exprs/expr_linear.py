@@ -8,6 +8,7 @@ from typing import List, Any
 # Internal dependencies
 from polars_ds.typing import LRSolverMethods, NullPolicy
 from polars_ds._utils import pl_plugin
+from polars_ds.config import _lin_reg_expr_symbol
 
 __all__ = [
     "lin_reg",
@@ -53,9 +54,9 @@ def simple_lin_reg(
 
     Parameters
     ----------
-    x : str | pl.Expr
+    x
         The variables used to predict target
-    target : str | pl.Expr
+    target
         The target variable
     add_bias
         Whether to add a bias term
@@ -129,9 +130,9 @@ def lin_reg(
 
     Parameters
     ----------
-    x : str | pl.Expr
+    x
         The variables used to predict target
-    target : str | pl.Expr
+    target
         The target variable, or a list of targets for a multi-target linear regression
     add_bias
         Whether to add a bias term
@@ -143,16 +144,16 @@ def lin_reg(
         for coefficients, it reduces to one output (like max/min), but for predictions and
         residue, it will return the same number of rows as in input.
     l1_reg
-        Regularization factor for Lasso. Should be nonzero when method = l1. This is ignored if this is multi-target.
+        Regularization factor for Lasso. Should be nonzero when method = l1.
+        This is ignored if this is multi-target.
     l2_reg
         Regularization factor for Ridge. Should be nonzero when method = l2.
     tol
         For Lasso or elastic net regression, if maximum coordinate update is < tol, the algorithm is considered
         to have converged. If not, it will run for at most 2000 iterations. This doesn't work if this is multi-target.
     solver
-        Only applies when this is normal or l2 regression. One of ['svd', 'qr', 'cholesky'].
-        Both 'svd' and 'qr' can handle rank deficient cases relatively well, while cholesky may fail or
-        slow down. When cholesky fails, it falls back to svd.
+        Only applies when this is normal or l2 regression. One of ['svd', 'qr'].
+        Both 'svd' and 'qr' can handle rank deficient cases relatively well.
     null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
         One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
@@ -189,14 +190,14 @@ def lin_reg(
             cols.extend(lr_formula(z) for z in x)
             if return_pred:
                 return pl_plugin(
-                    symbol="pl_lstsq_multi_pred",
+                    symbol=_lin_reg_expr_symbol("pl_lstsq_multi_pred"),
                     args=cols,
                     kwargs=multi_target_lr_kwargs,
                     pass_name_to_apply=True,
                 ).alias("lr_pred")
             else:
                 return pl_plugin(
-                    symbol="pl_lstsq_multi",
+                    symbol=_lin_reg_expr_symbol("pl_lstsq_multi"),
                     args=cols,
                     kwargs=multi_target_lr_kwargs,
                     returns_scalar=True,
@@ -223,14 +224,14 @@ def lin_reg(
 
         if return_pred:
             return pl_plugin(
-                symbol="pl_lstsq_pred",
+                symbol=_lin_reg_expr_symbol("pl_lstsq_pred"),
                 args=cols,
                 kwargs=lr_kwargs,
                 pass_name_to_apply=True,
             ).alias("lr_pred")
         else:
             return pl_plugin(
-                symbol="pl_lstsq",
+                symbol=_lin_reg_expr_symbol("pl_lstsq"),
                 args=cols,
                 kwargs=lr_kwargs,
                 returns_scalar=True,
@@ -287,9 +288,9 @@ def lin_reg_w_rcond(
 
     Parameters
     ----------
-    x : str | pl.Expr
+    x
         The variables used to predict target
-    target : str | pl.Expr
+    target
         The target variable
     add_bias
         Whether to add a bias term
@@ -316,7 +317,7 @@ def lin_reg_w_rcond(
         "tol": abs(rcond),
     }
     return pl_plugin(
-        symbol="pl_lstsq_w_rcond",
+        symbol=_lin_reg_expr_symbol("pl_lstsq_w_rcond"),
         args=cols,
         kwargs=lr_kwargs,
         pass_name_to_apply=True,
@@ -363,11 +364,11 @@ def recursive_lin_reg(
 
     Parameters
     ----------
-    x : str | pl.Expr
+    x:
         The variables used to predict target
-    target : str | pl.Expr
+    target:
         The target variable
-    start_with: int
+    start_with:
         Must be >= 1. You `start_with` n rows of data to train the first linear regression. If `start_with` = N,
         the first N-1 rows will be null. If you start with N < # features, result will be numerically very
         unstable and potentially wrong.
@@ -403,7 +404,7 @@ def recursive_lin_reg(
         "min_size": 0,  # Not used for recursive
     }
     return pl_plugin(
-        symbol="pl_recursive_lstsq",
+        symbol=_lin_reg_expr_symbol("pl_recursive_lstsq"),
         args=cols,
         kwargs=kwargs,
         pass_name_to_apply=True,
@@ -453,11 +454,11 @@ def rolling_lin_reg(
 
     Parameters
     ----------
-    x : str | pl.Expr
+    x
         The variables used to predict target
-    target : str | pl.Expr
+    target
         The target variable
-    window_size: int
+    window_size
         Must be >= 2. Window size for the rolling regression
     add_bias
         Whether to add a bias term
@@ -501,7 +502,7 @@ def rolling_lin_reg(
         "min_size": min_size,
     }
     return pl_plugin(
-        symbol="pl_rolling_lstsq",
+        symbol=_lin_reg_expr_symbol("pl_rolling_lstsq"),
         args=cols,
         kwargs=kwargs,
         pass_name_to_apply=True,
@@ -549,11 +550,11 @@ def lin_reg_report(
 
     Parameters
     ----------
-    x : str | pl.Expr
+    x
         The variables used to predict target
-    target : str | pl.Expr
+    target
         The target variable
-    weights : str | pl.Expr | None
+    weights
         If not None, this will then compute the stats for a weights least square.
     add_bias
         Whether to add a bias term. If bias is added, it is always the last feature.
@@ -577,13 +578,13 @@ def lin_reg_report(
     if weights is None:
         cols = [t.var(), t]
         cols.extend(lr_formula(z) for z in x)
-        symbol = "pl_lin_reg_report"
+        symbol = _lin_reg_expr_symbol("pl_lin_reg_report")
 
     else:
         w = lr_formula(weights)
         cols = [w.cast(pl.Float64).rechunk(), t.var(), t]
         cols.extend(lr_formula(z) for z in x)
-        symbol = "pl_wls_report"
+        symbol = _lin_reg_expr_symbol("pl_wls_report")
 
     return pl_plugin(
         symbol=symbol,
