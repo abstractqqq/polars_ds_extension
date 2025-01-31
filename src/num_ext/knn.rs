@@ -178,7 +178,7 @@ where
                 if *b {
                     match tree.knn_bounded(k + 1, p, max_bound, epsilon) {
                         Some(nbs) => {
-                            builder.append_iter_values(nbs.into_iter().map(|nb| nb.to_item()));
+                            builder.append_values_iter(nbs.into_iter().map(|nb| nb.to_item()));
                         }
                         None => builder.append_null(),
                     }
@@ -201,7 +201,7 @@ where
         for (b, p) in eval_mask.into_iter().zip(data.chunks_exact(ncols)) {
             if b {
                 match tree.knn_bounded(k + 1, p, max_bound, epsilon) {
-                    Some(nbs) => builder.append_iter_values(nbs.into_iter().map(|nb| nb.to_item())),
+                    Some(nbs) => builder.append_values_iter(nbs.into_iter().map(|nb| nb.to_item())),
                     None => builder.append_null(),
                 }
             } else {
@@ -529,7 +529,7 @@ where
             let subslice = &data[offset * ncols..(offset + len) * ncols];
             for p in subslice.chunks_exact(ncols) {
                 if let Some(v) = tree.within(p, r, sort) {
-                    builder.append_iter_values(v.into_iter().map(|nb| nb.to_item()));
+                    builder.append_values_iter(v.into_iter().map(|nb| nb.to_item()));
                 } else {
                     builder.append_null();
                 }
@@ -550,7 +550,7 @@ where
         for p in data.chunks_exact(ncols) {
             // C order (row major) makes sure rows are contiguous
             if let Some(v) = tree.within(p, r, sort) {
-                builder.append_iter_values(v.into_iter().map(|nb| nb.to_item()));
+                builder.append_values_iter(v.into_iter().map(|nb| nb.to_item()));
             } else {
                 builder.append_null();
             }

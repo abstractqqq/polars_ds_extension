@@ -24,7 +24,7 @@ pub fn to_f64_matrix_without_nulls(
     inputs: &[Series],
     order: IndexOrder,
 ) -> PolarsResult<Array2<f64>> {
-    let df = DataFrame::from_iter(inputs.iter().map(|s| Column::Series(s.clone())));
+    let df = DataFrame::from_iter(inputs.iter().map(|s| Column::Series(s.clone().into())));
     let df = df.drop_nulls::<String>(None)?;
     df.to_ndarray::<Float64Type>(order)
 }
@@ -39,16 +39,18 @@ pub fn to_f64_matrix_fail_on_nulls(
             "Nulls are found in data and this method doesn't allow nulls.".into(),
         ))
     } else {
-        let df = DataFrame::from_iter(inputs.iter().map(|s| Column::Series(s.clone())));
+        let df = DataFrame::new(
+            inputs.iter().map(|s| s.clone().into_column()).collect()
+        )?;
         df.to_ndarray::<Float64Type>(order)
     }
 }
 
 #[inline(always)]
 pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
-    Ok(DataFrame::from_iter(
-        inputs.iter().map(|s| Column::Series(s.clone())),
-    ))
+    DataFrame::new(
+        inputs.iter().map(|s| s.clone().into_column()).collect()
+    )
 }
 
 /// Organizes the series data into a `matrix`, and return the underlying slice

@@ -32,7 +32,7 @@ fn tp_fp_frame(
     if (actual.len() != predicted.len())
         || actual.is_empty()
         || predicted.is_empty()
-        || (!predicted.dtype().is_numeric())
+        || (!predicted.dtype().is_primitive_numeric())
         || actual.has_nulls()
         || predicted.has_nulls()
     {
@@ -307,16 +307,16 @@ fn pl_binary_confusion_matrix(inputs: &[Series]) -> PolarsResult<Series> {
     let combined_series = inputs[0].u32()?;
     let confusion = binary_confusion_matrix(combined_series);
     let tn = UInt32Chunked::from_vec("tn".into(), vec![confusion[0]]);
-    let tn = Column::Series(tn.into_series());
+    let tn = Column::Series(tn.into_series().into());
 
     let fp = UInt32Chunked::from_vec("fp".into(), vec![confusion[1]]);
-    let fp = Column::Series(fp.into_series());
+    let fp = Column::Series(fp.into_series().into());
 
     let fn_ = UInt32Chunked::from_vec("fn".into(), vec![confusion[2]]);
-    let fn_ = Column::Series(fn_.into_series());
+    let fn_ = Column::Series(fn_.into_series().into());
 
     let tp = UInt32Chunked::from_vec("tp".into(), vec![confusion[3]]);
-    let tp = Column::Series(tp.into_series());
+    let tp = Column::Series(tp.into_series().into());
     // All series have length 1 and no duplicate names
 
     let df = DataFrame::new(vec![tn, fp, fn_, tp])?;

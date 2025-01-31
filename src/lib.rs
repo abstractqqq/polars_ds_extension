@@ -7,10 +7,9 @@ mod stats;
 mod stats_utils;
 mod str_ext;
 mod utils;
-
 mod pymodels;
 
-use pyo3::{pymodule, types::PyModule, Bound, PyResult, Python};
+use pyo3::{pymodule, types::{PyModule, PyModuleMethods}, Bound, PyResult, Python};
 
 #[pymodule]
 #[pyo3(name = "_polars_ds")]
@@ -21,3 +20,7 @@ fn _polars_ds(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<pymodels::py_kdt::PyKDT>()?;
     Ok(())
 }
+
+use pyo3_polars::PolarsAllocator;
+#[global_allocator]
+static ALLOC: PolarsAllocator = PolarsAllocator::new();
