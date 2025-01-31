@@ -141,6 +141,13 @@ fn pl_jaccard(inputs: &[Series]) -> PolarsResult<Series> {
                 let hs2 = ca2.into_no_null_iter().collect::<PlHashSet<_>>();
                 (hs1.len(), hs2.len(), hs1.intersection(&hs2).count())
             }
+            Int128 => {
+                let ca1 = s1.i128().unwrap();
+                let ca2 = s2.i128().unwrap();
+                let hs1 = ca1.into_no_null_iter().collect::<PlHashSet<_>>();
+                let hs2 = ca2.into_no_null_iter().collect::<PlHashSet<_>>();
+                (hs1.len(), hs2.len(), hs1.intersection(&hs2).count())
+            }
             UInt8 => {
                 let ca1 = s1.u8().unwrap();
                 let ca2 = s2.u8().unwrap();

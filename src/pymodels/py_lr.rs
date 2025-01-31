@@ -74,7 +74,7 @@ impl PyLR {
                 // result should be n by 1, where n = x.nrows()
                 let res = result.col_as_slice(0);
                 let v = res.to_vec();
-                Ok(v.into_pyarray_bound(py))
+                Ok(v.into_pyarray(py))
             }
             Err(e) => Err(e.into()),
         }
@@ -83,7 +83,7 @@ impl PyLR {
     #[getter]
     pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<f64>>> {
         match self.lr.coeffs_as_vec() {
-            Ok(v) => Ok(v.into_pyarray_bound(py)),
+            Ok(v) => Ok(v.into_pyarray(py)),
             Err(e) => Err(e.into()),
         }
     }
@@ -156,7 +156,7 @@ impl PyElasticNet {
                 // result should be n by 1, where n = x.nrows()
                 let res = result.col_as_slice(0);
                 let v = res.to_vec();
-                Ok(v.into_pyarray_bound(py))
+                Ok(v.into_pyarray(py))
             }
             Err(e) => Err(e.into()),
         }
@@ -169,7 +169,7 @@ impl PyElasticNet {
     #[getter]
     pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<f64>>> {
         match self.lr.coeffs_as_vec() {
-            Ok(v) => Ok(v.into_pyarray_bound(py)),
+            Ok(v) => Ok(v.into_pyarray(py)),
             Err(e) => Err(e.into()),
         }
     }
@@ -249,7 +249,7 @@ impl PyOnlineLR {
                 // result should be n by 1, where n = x.nrows()
                 let res = result.col_as_slice(0);
                 let v = res.to_vec();
-                Ok(v.into_pyarray_bound(py))
+                Ok(v.into_pyarray(py))
             }
             Err(e) => Err(e.into()),
         }
@@ -258,7 +258,7 @@ impl PyOnlineLR {
     #[getter]
     pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<f64>>> {
         match self.lr.coeffs_as_vec() {
-            Ok(v) => Ok(v.into_pyarray_bound(py)),
+            Ok(v) => Ok(v.into_pyarray(py)),
             Err(e) => Err(e.into()),
         }
     }
@@ -268,7 +268,7 @@ impl PyOnlineLR {
         match self.lr.get_inv() {
             Ok(matrix) => {
                 let mat = matrix.into_ndarray().to_owned();
-                Ok(mat.into_pyarray_bound(py))
+                Ok(mat.into_pyarray(py))
             }
             Err(e) => Err(e.into()),
         }
