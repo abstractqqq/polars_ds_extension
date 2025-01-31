@@ -158,6 +158,7 @@ jobs:
         run: |
           pip install --force-reinstall --verbose dist/*.whl
           pip install typing_extensions
+          pip install -r requirements.txt
           python -c 'import polars_ds'
           python -c 'from polars_ds import linear_models'
           python -c 'from polars_ds.spatial import *'
