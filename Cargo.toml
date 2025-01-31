@@ -36,7 +36,7 @@ ahash = ">=0.8.5"
 hashbrown = {version = "0.15", features=["nightly"]}
 # Serialization
 serde = {version = "*", features=["derive"]}
-# String Manipulations
+# String related
 rapidfuzz = "0.5.0"
 inflections = "1.1.1"
 # Deprecated
