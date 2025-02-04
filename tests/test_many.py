@@ -1968,3 +1968,28 @@ def test_kth_nb_dist():
     )
 
     assert test is True
+
+
+#
+
+
+def test_combinations():
+    df = pl.DataFrame({"category": ["a", "a", "a", "b", "b"], "values": [1, 2, 3, 4, 5]})
+
+    result = df.select(pds.combinations("category", 2, unique=True))
+
+    answer = pl.DataFrame({"category": [["a", "b"]]})
+
+    assert_frame_equal(result, answer)
+
+    try:
+        _ = df.select(pds.combinations("category", 3, unique=True))
+        assert False  # Should not reach here. 2 uniques, 2 choose 3 is not possible.
+    except:  # noqa : E722
+        assert True
+
+    result = df.group_by("category").agg(pds.combinations("values", 2)).sort("category")
+
+    answer = pl.DataFrame({"category": ["a", "b"], "values": [[[1, 2], [1, 3], [2, 3]], [[4, 5]]]})
+
+    assert_frame_equal(result, answer)

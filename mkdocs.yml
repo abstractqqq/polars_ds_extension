@@ -7,17 +7,18 @@ nav:
 - Home: index.md
 - Explorative Data Analysis: eda.md
 - Pipeline: pipeline.md
-- Sample and Split: sample_and_split.md
+- ML Metrics/Loss: metrics.md
+- Linear Regression as Polars Expr: expr_linear.md
 - Numerical Functions: num.md
 - Statistics: stats.md
 - String Related: string.md
-- ML Metrics/Loss: metrics.md
+- Itertools for Polars Lists: expr_iter.md
+- Sample and Split: sample_and_split.md
 - Linear Models: linear_models.md
-- Linear Regression as Polars Expr: expr_linear.md
 - Spatial Models: spatial.md
 - KNN as Polars Expr: expr_knn.md
 - Time Series Features: ts_features.md
-- Compatibility with Other DataFrames: compat.md
+- Compatibility with Arrays: compat.md
 - Miscellaneous: polars_ds.md
 
 theme:
@@ -35,3 +36,4 @@ plugins:
         options:
           summary: true
           docstring_style: numpy
+          show_submodules: true

@@ -7,6 +7,7 @@ mod float_extras;
 mod gcd_lcm;
 mod haversine;
 mod isotonic_regression;
+mod iterations;
 mod jaccard;
 mod knn;
 mod lempel_ziv;
