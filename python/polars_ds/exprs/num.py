@@ -15,6 +15,7 @@ from polars_ds._utils import pl_plugin, str_to_expr
 
 if TYPE_CHECKING:
     from numpy import ndarray
+
 __all__ = [
     "singular_values",
     "principal_components",

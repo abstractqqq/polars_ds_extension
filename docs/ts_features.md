@@ -1,3 +1,3 @@
 ## Feature Engineering Queries and Time Series Features
 
-::: polars_ds.ts_features
+::: polars_ds.exprs.ts_features

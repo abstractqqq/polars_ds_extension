@@ -1,3 +1,3 @@
 ## Polars Native Machine Learning Pipeline
 
-::: polars_ds.pipeline
+::: polars_ds.modeling.pipeline

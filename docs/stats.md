@@ -1,3 +1,3 @@
 ## Extension for Statistical Tests and Samples
 
-::: polars_ds.stats
+::: polars_ds.exprs.stats

@@ -1,3 +1,3 @@
-## Compatibility with other DataFrames
+## Compatibility with Arrays
 
 ::: polars_ds.compat
