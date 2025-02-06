@@ -1,7 +1,7 @@
 """
 Data Inspection Assistant and Visualizations for Polars Dataframe.
 
-Currently, the plot backend is Altair but this is subject to change, and will be decided base on 
+Currently, the plot backend is Altair but this is subject to change, and will be decided base on
 which plotting backend supports Polars more natively.
 """
 
@@ -13,26 +13,27 @@ import altair as alt
 
 import polars.selectors as cs
 from polars._typing import IntoExpr
+from typing import Tuple, List
 import polars as pl
 import graphviz
 import warnings
 
-from typing import List, Iterable, Dict, Tuple
+from typing import Iterable, Dict
 from functools import lru_cache
 from itertools import combinations
 from great_tables import GT
+
 # Internal dependencies
 from polars_ds.exprs.ts_features import query_cond_entropy
 from polars_ds.exprs.stats import corr
 from polars_ds.typing import CorrMethod, PolarsFrame
 
-from polars_ds.sample_and_split import sample
 from .plots import plot_feature_distr
-
 
 alt.data_transformers.enable("vegafusion")
 
 __all__ = ["DIA"]
+
 
 # DIA = Data Inspection Assistant / DIAgonsis
 class DIA:
@@ -232,6 +233,78 @@ class DIA:
         else:
             return df_final
 
+    def validation_report(
+        self,
+        *rules: Tuple[pl.Expr, str],
+        id_col: str | None = None,
+        columns_to_keep: List[str] | None = None,
+        all_reasons: bool = False,
+    ) -> pl.DataFrame:
+        """
+        Generates a validation report based on columnar rules (rules by different columns).
+
+        Parameters
+        ----------
+        rules
+            A tuple of (pl.Expr, str), where the pl.Expr should evaluate to a boolean value
+            per row. If the boolean is False, then the row is considered a violation. The string
+            should be an explanation of the violation.
+        id_col
+            If None, an "__index__" column will be generated which is the row number.
+        columns_to_keep
+            Other columns you wish to keep in the final report.
+        all_reasons
+            If true, all reasons for violations will be returned. If false, only 1 will be returned.
+        """
+
+        if id_col is None:
+            df = self._frame.with_row_index(name="__index__")
+            to_keep = ["__index__"]
+        else:
+            df = self._frame
+            to_keep = [id_col]
+
+        rules_to_check = list(rules)
+        rules_exprs = [r.alias(n) for r, n in rules_to_check]
+        all_rule_names = [n for _, n in rules_to_check]
+        # Do not allow duplicate rule names
+        existing_names = set()
+        for name in all_rule_names:
+            if name not in existing_names:
+                existing_names.add(name)
+            else:
+                raise ValueError(f"Rule name {name} is duplicate. Please rename it.")
+
+        # We cannot use list(set(..)) because that might change the order of all_rule_names
+
+        if columns_to_keep is not None:
+            to_keep += columns_to_keep
+
+        df_temp = df.select(*to_keep, *rules_exprs).filter(
+            # Filter to the violators.
+            # pl.all_horizontal(*all_rule_names) = people who pass all rules
+            # pl.all_horizontal(*all_rule_names).not_() = people who failed any one of the rules
+            pl.all_horizontal(*all_rule_names).not_()
+        )
+
+        if all_reasons:
+            reasons = [
+                pl.when(pl.col(c)).then(None).otherwise(pl.lit(c, dtype=pl.String))
+                for c in all_rule_names
+            ]  # When true, return None. When false, return reason
+
+            return df_temp.select(
+                *to_keep, pl.concat_list(reasons).list.drop_nulls().list.sort().alias("__reason__")
+            ).collect()
+        else:
+            return df_temp.select(
+                *to_keep,
+                pl.concat_list(all_rule_names)
+                .list.arg_min()
+                .replace_strict(old=list(range(len(all_rule_names))), new=all_rule_names)
+                .alias("__reason__"),
+            ).collect()
+
     def null_corr(
         self,
         subset: IntoExpr | Iterable[IntoExpr] = pl.all(),
@@ -241,7 +314,7 @@ class DIA:
         Computes the correlation between A is null and B is null for all (A, B) combinations
         in the given subset of columns.
 
-        If either A or B is all null or all non-null, the null correlation will not be 
+        If either A or B is all null or all non-null, the null correlation will not be
         computed, since the value is not going to be meaningful.
 
         Parameters
@@ -263,9 +336,7 @@ class DIA:
         n = frame.shape[0]
 
         invalid = set(
-            c
-            for c, cnt in zip(df_null_cnt.columns, df_null_cnt.row(0))
-            if (cnt == 0 or cnt == n)
+            c for c, cnt in zip(df_null_cnt.columns, df_null_cnt.row(0)) if (cnt == 0 or cnt == n)
         )
 
         xx = []
@@ -274,26 +345,23 @@ class DIA:
             if not (x in invalid or y in invalid):
                 xx.append(x)
                 yy.append(y)
-        
+
         if len(xx) == 0:
-            return pl.DataFrame({
-                "column_1": [],
-                "column_2": [],
-                "null_corr": []
-            }, schema = {
-                "column_1": pl.String,
-                "column_2": pl.String,
-                "null_corr": pl.Float64,
-            })
+            return pl.DataFrame(
+                {"column_1": [], "column_2": [], "null_corr": []},
+                schema={
+                    "column_1": pl.String,
+                    "column_2": pl.String,
+                    "null_corr": pl.Float64,
+                },
+            )
         else:
             corrs = frame.select(
-                pl.corr(x, y).alias(str(i)) for i, (x, y) in enumerate(zip(xx, yy)) 
+                pl.corr(x, y).alias(str(i)) for i, (x, y) in enumerate(zip(xx, yy))
             ).row(0)
-            return pl.DataFrame({
-                "column_1": xx,
-                "column_2": yy,
-                "null_corr": corrs
-            }).sort(pl.col("null_corr").abs(), descending=True)
+            return pl.DataFrame({"column_1": xx, "column_2": yy, "null_corr": corrs}).sort(
+                pl.col("null_corr").abs(), descending=True
+            )
 
     def meta(self) -> Dict:
         """
@@ -353,7 +421,7 @@ class DIA:
             self._frame.select(
                 # This calls corr from .stats
                 pl.lit(x).alias("column"),
-                *(corr(x, y, method = method).alias(y) for y in self.numerics),
+                *(corr(x, y, method=method).alias(y) for y in self.numerics),
             )
             for x in to_check
         ]
@@ -590,10 +658,7 @@ class DIA:
 
         corrs = (
             self._frame.with_columns(pl.col(c).cast(pl.UInt8) for c in self.bools)
-            .select(
-                corr(x, y, method=method).alias(f"{i}")
-                for i, (x, y) in enumerate(zip(xx, yy))
-            )
+            .select(corr(x, y, method=method).alias(f"{i}") for i, (x, y) in enumerate(zip(xx, yy)))
             .collect()
             .row(0)
         )
@@ -667,7 +732,6 @@ class DIA:
             .row(0)
         )
 
-
         out = pl.DataFrame({"column": column, "by": by, "cond_entropy": ce}).sort("cond_entropy")
 
         return out
@@ -696,12 +760,8 @@ class DIA:
         )
         cp = df_local.group_by("child").agg(pl.col("parent"))
         pc = df_local.group_by("parent").agg(pl.col("child"))
-        child_parent: dict[str, pl.Series] = dict(
-            zip(cp["child"], cp["parent"])
-        )
-        parent_child: dict[str, pl.Series] = dict(
-            zip(pc["parent"], pc["child"])
-        )
+        child_parent: dict[str, pl.Series] = dict(zip(cp["child"], cp["parent"]))
+        parent_child: dict[str, pl.Series] = dict(zip(pc["parent"], pc["child"]))
 
         dot = graphviz.Digraph(
             "Dependency Plot", comment=f"Conditional Entropy < {threshold:.2f}", format="png"
@@ -767,17 +827,15 @@ class DIA:
             conditions.append(pl.col(feature) <= max_)
 
         if len(conditions) > 0:
-            df = self._frame.filter(
-                pl.all_horizontal(*conditions)
-            ).select(feature, over).collect()
+            df = self._frame.filter(pl.all_horizontal(*conditions)).select(feature, over).collect()
         else:
             df = self._frame.select(feature, over).collect()
 
         return plot_feature_distr(
-            df = df,
-            feature = feature,
-            n_bins = n_bins,
-            density = density,
-            show_bad_values = show_bad_values,
-            over = over 
+            df=df,
+            feature=feature,
+            n_bins=n_bins,
+            density=density,
+            show_bad_values=show_bad_values,
+            over=over,
         )
