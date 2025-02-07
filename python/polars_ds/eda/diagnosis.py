@@ -233,7 +233,39 @@ class DIA:
         else:
             return df_final
 
-    def validation_report(
+    def col_validation(
+        self,
+        *rules: Tuple[pl.Expr, str],
+    ) -> pl.DataFrame:
+        """
+        Generates a validation report based on rules (pl.Expr) which evaluates to a single
+        boolean per column.
+
+        Parameters
+        ----------
+        rules
+            A tuple of (pl.Expr, str), where the pl.Expr should evaluate to a single boolean value.
+            If the boolean is False, then the entire column is considered to be violiating the rule.
+        """
+        rules_to_check = list(rules)
+        rules_exprs = [r.name.keep() for r, _ in rules_to_check]
+        violation_messages = [msg for _, msg in rules_to_check]
+
+        df_temp = self._frame.select(*rules_exprs).collect()
+
+        if len(df_temp) > 1:
+            raise ValueError(
+                "Column rules must evaluate to a single boolean expression for each rule. "
+                f"But a dataframe of shape {df_temp.shape} is produced."
+            )
+
+        df_violation = df_temp.transpose(include_header=True, column_names=["pass"]).with_columns(
+            pl.Series(name="__reason__", values=violation_messages)
+        )
+
+        return df_violation.filter(pl.col("pass").not_()).select("column", "__reason__")
+
+    def row_validation(
         self,
         *rules: Tuple[pl.Expr, str],
         id_col: str | None = None,
@@ -241,7 +273,8 @@ class DIA:
         all_reasons: bool = False,
     ) -> pl.DataFrame:
         """
-        Generates a validation report based on columnar rules (rules by different columns).
+        Generates a validation report based on rules (pl.Expr) which evaluates to booleans
+        per row.
 
         Parameters
         ----------
