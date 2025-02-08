@@ -1,0 +1,79 @@
+name: Test Python
+
+on:
+  pull_request:
+    paths:
+      - Cargo.lock
+      - python/**
+      - src/**
+      - .github/workflows/python-tests.yml
+  push:
+    branches:
+      - main
+    paths:
+      - Cargo.lock
+      - python/**
+      - src/**
+      - .github/workflows/python-tests.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUSTFLAGS: -C debuginfo=0  # Do not produce debug symbols to keep memory usage down
+  RUST_BACKTRACE: 1
+  PYTHONUTF8: 1
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test-python:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.9', '3.12', '3.13']
+        # include:
+        #   - os: windows-latest
+        #     python-version: '3.13'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Create virtual environment
+        env:
+          BIN: ${{ matrix.os == 'windows-latest' && 'Scripts' || 'bin' }}
+        run: |
+          python -m venv .venv
+          echo "$GITHUB_WORKSPACE/.venv/$BIN" >> $GITHUB_PATH
+          echo "VIRTUAL_ENV=$GITHUB_WORKSPACE/.venv" >> $GITHUB_ENV
+      
+      - name: Install package
+        run: | 
+          pip install -r requirements.txt
+          maturin develop --release
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install jupyter ipython ipykernel nbconvert pytest
+          pip install -r tests/requirements-test.txt
+
+      - name: Test Notebooks
+        run: | 
+          jupyter execute examples/basics.ipynb
+          jupyter execute examples/pipeline.ipynb
+          jupyter execute examples/eda.ipynb
+          jupyter execute examples/sample_and_split.ipynb
+
+      - name: Test Pytests
+        run: pytest tests/test_*
