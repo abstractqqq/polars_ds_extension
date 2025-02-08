@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [polars_ds]
+        package: [polars_ds, polars_ds_lts_cpu]
 
     steps:
       - uses: actions/checkout@v4
@@ -49,23 +49,25 @@ jobs:
           args: >
             --manifest-path Cargo.toml
             --out dist
+          maturin-version: 1.7.4
 
       - name: Test sdist
+        env:
+          IS_LTS: ${{ matrix.package == 'polars_ds_lts_cpu' }}
         run: |
-          pip install --force-reinstall --verbose dist/*.tar.gz
-          pip install typing_extensions
           pip install -r requirements.txt
+          pip install typing_extensions
+          if [[ "$IS_LTS" = true ]]; then
+            pip uninstall polars
+            pip install polars-lts-cpu>=1.4
+          fi
+
+          pip install --force-reinstall --verbose dist/*.tar.gz
           python -c 'import polars_ds as pds'
           python -c 'from polars_ds import linear_models'
           python -c 'from polars_ds.spatial import *'
           python -c 'from polars_ds.sample_and_split import *'
           python -c 'from polars_ds.exprs.ts_features import *'
-
-      - name: Upload sdist
-        uses: actions/upload-artifact@v4
-        with:
-          name: sdist-${{ matrix.package }}
-          path: dist/*.tar.gz
 
       - name: Test Correctness
         run: | 
@@ -85,6 +87,12 @@ jobs:
           jupyter execute examples/eda.ipynb
           jupyter execute examples/sample_and_split.ipynb
 
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist-${{ matrix.package }}
+          path: dist/*.tar.gz
+
 
   build-wheels:
     runs-on: ${{ matrix.os }}
@@ -92,7 +100,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [polars_ds]
+        package: [polars_ds, polars_ds_lts_cpu]
         os: [ubuntu-latest, macos-13, windows-latest]
         architecture: [x86-64, aarch64]
         exclude:
@@ -113,26 +121,48 @@ jobs:
         id: features
         if: matrix.architecture == 'x86-64'
         env:
-          IS_MACOS: ${{ matrix.os == 'macos-13' }}
+          IS_LTS_CPU: ${{ matrix.package == 'polars_ds_lts_cpu' }}
+        # IMPORTANT: All features enabled here should also be included in py-polars/polars/_cpu_check.py
         run: |
-          if [[ "$IS_MACOS" = true ]]; then
-            FEATURES=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+fma,+pclmulqdq
+          if [[ "$IS_LTS_CPU" = true ]]; then
+            FEATURES=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b
+            CC_FEATURES="-msse3 -mssse3 -msse4.1 -msse4.2 -mpopcnt -mcx16"
           else
-            FEATURES=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+avx2,+fma,+bmi1,+bmi2,+lzcnt,+pclmulqdq
+            TUNE_CPU=skylake
+            FEATURES=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b,+avx,+avx2,+fma,+bmi1,+bmi2,+lzcnt,+pclmulqdq,+movbe
+            CC_FEATURES="-msse3 -mssse3 -msse4.1 -msse4.2 -mpopcnt -mcx16 -mavx -mavx2 -mfma -mbmi -mbmi2 -mlzcnt -mpclmul -mmovbe"
           fi
           echo "features=$FEATURES" >> $GITHUB_OUTPUT
+          echo "tune_cpu=$TUNE_CPU" >> $GITHUB_OUTPUT
+          echo "cc_features=$CC_FEATURES" >> $GITHUB_OUTPUT
 
       - name: Set RUSTFLAGS for x86-64
         if: matrix.architecture == 'x86-64'
         env:
           FEATURES: ${{ steps.features.outputs.features }}
-        run: echo "RUSTFLAGS=-C target-feature=${{ steps.features.outputs.features }}" >> $GITHUB_ENV
+          TUNE_CPU: ${{ steps.features.outputs.tune_cpu }}
+          CC_FEATURES: ${{ steps.features.outputs.cc_features }}
+          CFG: ${{ matrix.package == 'polars_ds_lts_cpu' && '--cfg allocator="default"' || '' }}
+        run: |
+          if [[ -z "$TUNE_CPU" ]]; then
+            echo "RUSTFLAGS=-C target-feature=$FEATURES $CFG" >> $GITHUB_ENV
+            echo "CFLAGS=$CC_FEATURES" >> $GITHUB_ENV
+          else
+            echo "RUSTFLAGS=-C target-feature=$FEATURES -Z tune-cpu=$TUNE_CPU $CFG" >> $GITHUB_ENV
+            echo "CFLAGS=$CC_FEATURES -mtune=$TUNE_CPU" >> $GITHUB_ENV
+          fi
 
       - name: Set Rust target for aarch64
         if: matrix.architecture == 'aarch64'
         id: target
         run: |
-          TARGET=${{ matrix.os == 'macos-13' && 'aarch64-apple-darwin' || 'aarch64-unknown-linux-gnu'}}
+          TARGET=$(
+            if [[ "${{ matrix.os }}" == "macos-13" ]]; then
+              echo "aarch64-apple-darwin";
+            else
+              echo "aarch64-unknown-linux-gnu";
+            fi
+          )
           echo "target=$TARGET" >> $GITHUB_OUTPUT
 
       - name: Set jemalloc for aarch64 Linux

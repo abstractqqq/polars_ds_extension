@@ -252,7 +252,9 @@ If your code already executes under 1s and you only use your code in non-product
 
 **Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars (for most of its core) and will try to be as stable as possible for polars>=1. Exceptions will be made when Polars's update forces changes in the plugins.**
 
-This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed.
+This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. By the same token, Polars large index version is not intentionally supported at this point.
+
+On the other hand, for polars-lts-cpu users, there will be support.
 
 # Credits
 
