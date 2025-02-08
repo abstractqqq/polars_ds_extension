@@ -60,7 +60,7 @@ jobs:
       - name: Install package
         run: | 
           pip install -r requirements.txt
-          maturin develop
+          maturin develop --release
 
       - name: Install Python dependencies
         run: |
