@@ -242,7 +242,39 @@ If your code already executes under 1s and you only use your code in non-product
 
 **Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars (for most of its core) and will try to be as stable as possible for polars>=1. Exceptions will be made when Polars's update forces changes in the plugins.**
 
-This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed.
+This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. This concerns the plugin expressions like `pds.lin_reg`, etc.. By the same token, Polars large index version is not intentionally supported at this point. However, non-plugin Polars utilities provided by the function should work with the streaming engine, as they are native Polars code.
+
+## Polars LTS CPU Support / Build From Source
+
+The guide here is not specific to LTS CPU, and can be used generally.
+
+The best advice for LTS CPU is that you should compile the package yourself. First clone the repo and make sure Rust is installed on the system. Create a python virtual environment and install maturin in it. Next set the RUSTFLAG environment variable. The official polars-lts-cpu features are the following:
+```
+RUSTFLAGS=-C target-feature=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b
+```
+If you simply want to compile from source, you may set target cpu to native, which autodetects CPU features.
+```
+RUSTFLAGS=-C target-cpu=native
+```
+If you are compiling for LTS CPU, then in pyproject.toml, update the polars dependency to polars-lts-cpu:
+```
+polars >= 1.4.0 # polars-lts-cpu >= 1.4.0
+```
+Lastly, run 
+```
+maturin develop --release
+```
+If you want to test the build locally, you may run 
+```
+# pip install -r requirements-test.txt
+pytest tests/test_*
+```
+If you see this error in pytest, it means setuptools is not installed and you may ignore it. It is just a legacy python builtin package.
+```
+tests/test_many.py::test_xi_corr - ModuleNotFoundError: No module named 'pkg_resources'
+```
+
+You can then publish it to your private PYPI server, or just use it locally.
 
 # Credits
 
