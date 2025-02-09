@@ -252,9 +252,34 @@ If your code already executes under 1s and you only use your code in non-product
 
 **Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars (for most of its core) and will try to be as stable as possible for polars>=1. Exceptions will be made when Polars's update forces changes in the plugins.**
 
-This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. By the same token, Polars large index version is not intentionally supported at this point.
+This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. This concerns the plugin expressions like `pds.lin_reg`, etc.. By the same token, Polars large index version is not intentionally supported at this point. However, non-plugin Polars utilities provided by the function should work with the streaming engine, as they are native Polars code.
 
-On the other hand, for polars-lts-cpu users, there will be support.
+## Polars LTS CPU Support
+
+For LTS CPU, you may compile the package yourself. First clone the repo and make sure Rust is install on the system. Create a python virtual environment and install maturin in it. Next set the RUSTFLAG environment variable to
+
+```
+RUSTFLAGS=-C target-feature=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b
+```
+In pyproject.toml, update the polars dependency to polars-lts-cpu:
+```
+polars >= 1.4.0 # polars-lts-cpu >= 1.4.0
+```
+Lastly, run 
+```
+maturin develop --release
+```
+If you want to test the lts-cpu build locally, you may run 
+```
+# pip install -r requirements-test.txt
+pytest tests/test_*
+```
+If you see this error in pytest, it means setuptools is not installed and you may ignore it. It is just a legacy python builtin package.
+```
+tests/test_many.py::test_xi_corr - ModuleNotFoundError: No module named 'pkg_resources'
+```
+
+You can then publish it to your private PYPI server, or just use it locally.
 
 # Credits
 
