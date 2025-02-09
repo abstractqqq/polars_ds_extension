@@ -5,7 +5,6 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct CombinationKwargs {
-    pub(crate) unique: bool,
     pub(crate) k: usize,
 }
 
@@ -70,11 +69,7 @@ fn get_combinations_str(
 #[polars_expr(output_type_func=combination_output)]
 fn pl_combinations(inputs: &[Series], kwargs: CombinationKwargs) -> PolarsResult<Series> {
 
-    let s = if kwargs.unique {
-        inputs[0].unique()?
-    } else {
-        inputs[0].clone()
-    };
+    let s = &inputs[0];
     let k = kwargs.k;
 
     if s.len() < k {

@@ -65,12 +65,12 @@ def combinations(source: str | pl.Expr, k: int, unique: bool = False) -> pl.Expr
     │ b        ┆ [[4, 5]]                 │
     └──────────┴──────────────────────────┘
     """
+    s = str_to_expr(source).unique().sort() if unique else str_to_expr(source)
     return pl_plugin(
         symbol="pl_combinations",
-        args=[str_to_expr(source)],
+        args=[s],
         changes_length=True,
         kwargs={
-            "unique": unique,
             "k": k,
         },
     )
