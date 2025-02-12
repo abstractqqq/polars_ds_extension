@@ -20,9 +20,10 @@ fn psi_with_bps_helper(s: &[f64], bp: &[f64]) -> Vec<u32> {
     // s: data
     // bp: breakpoints
 
+    // safe, data at this stage is gauranteed to be finite
     let s = unsafe {
         std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(s)
-    }; // safe
+    }; 
 
     let bp = unsafe {
         std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(bp)
@@ -81,11 +82,13 @@ fn pl_psi_w_bps(inputs: &[Series]) -> PolarsResult<Series> {
     let data2 = inputs[1].f64().unwrap();
     let breakpoints = inputs[2].f64().unwrap();
 
-    let s1 = data1.cont_slice().unwrap();
-    let s2 = data2.cont_slice().unwrap();
+    let binding = data1.rechunk();
+    let s1 = binding.cont_slice().unwrap();
+    let binding = data2.rechunk();
+    let s2 = binding.cont_slice().unwrap();
 
-    let bp = breakpoints.cont_slice().unwrap();
-
+    let binding = breakpoints.rechunk();
+    let bp = binding.cont_slice().unwrap();
 
     let c1 = psi_with_bps_helper(s1, bp);
     let c2 = psi_with_bps_helper(s2, bp);
@@ -104,9 +107,12 @@ fn pl_psi_report(inputs: &[Series]) -> PolarsResult<Series> {
     // The cnts for the baseline/reference
     let cnt = inputs[2].u32().unwrap();
 
-    let data_new = new.cont_slice().unwrap();
-    let ref_brk = brk.cont_slice().unwrap();
-    let ref_cnt = cnt.cont_slice().unwrap();
+    let binding = new.rechunk();
+    let data_new = binding.cont_slice().unwrap();
+    let binding = brk.rechunk();
+    let ref_brk = binding.cont_slice().unwrap();
+    let binding = cnt.rechunk();
+    let ref_cnt = binding.cont_slice().unwrap();
 
     let new_cnt = psi_with_bps_helper(data_new, ref_brk);
     let psi_report = psi_frame(ref_brk, "<=", ref_cnt, &new_cnt)?.collect()?;

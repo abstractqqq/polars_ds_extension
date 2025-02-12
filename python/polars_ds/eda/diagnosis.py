@@ -825,7 +825,7 @@ class DIA:
         max_: float | pl.Expr | None = None,
         over: str | None = None,
         filter_by: pl.Expr | None = None,
-    ) -> Tuple[pl.DataFrame, alt.Chart]:
+    ) -> alt.Chart:
         """
         Plot distribution of the feature with a few statistical details.
 

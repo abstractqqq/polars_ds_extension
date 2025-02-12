@@ -738,7 +738,7 @@ def integrate_trapz(y: str | pl.Expr, x: float | pl.Expr) -> pl.Expr:
         distance between points. If it is an expression, it must be sorted, does not contain
         null, and have the same length as self.
     """
-    yy = str_to_expr(y).cast(pl.Float64)
+    yy = str_to_expr(y).cast(pl.Float64).rechunk()
     if isinstance(x, float):
         xx = pl.lit(abs(x), pl.Float64)
     else:
