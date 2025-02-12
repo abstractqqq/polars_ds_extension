@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import polars as pl
 from typing import Iterable, Literal
+
 # Internal dependencies
 from polars_ds.typing import Distance, NullPolicy
 from polars_ds._utils import pl_plugin, str_to_expr
@@ -277,9 +278,9 @@ def query_similar_count(
         qq = pl.lit(q)
         args = [
             t.cast(pl.Float64).rechunk(),
-            (qq - qq.mean()) / qq.std(),
-            rolling_mean,
-            rolling_var,
+            ((qq - qq.mean()) / qq.std()).rechunk(),
+            rolling_mean.rechunk(),
+            rolling_var.rechunk(),
         ]
         result = pl_plugin(
             symbol="pl_subseq_sim_cnt_zl2",
