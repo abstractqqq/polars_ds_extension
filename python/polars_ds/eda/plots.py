@@ -67,7 +67,7 @@ def plot_feature_distr(
                 .mark_area()
                 .encode(
                     x=f"{feat}:Q",
-                    y="density:Q",
+                    y=alt.Y("density:Q").stack(None),
                 )
             )
         else:
@@ -78,7 +78,7 @@ def plot_feature_distr(
                 .mark_area()
                 .encode(
                     x=f"{feat}:Q",
-                    y="density:Q",
+                    y=alt.Y("density:Q").stack(None),
                     color=over,
                     opacity=alt.condition(selection, alt.value(0.8), alt.value(0.2)),
                 )
@@ -91,7 +91,7 @@ def plot_feature_distr(
                 .mark_bar()
                 .encode(
                     alt.X(f"{feat}:Q").bin(maxbins=n_bins).title(feat),
-                    y="count()",
+                    y=alt.Y("count()").stack(None),
                 )
             )
         else:
@@ -101,7 +101,7 @@ def plot_feature_distr(
                 .mark_bar()
                 .encode(
                     alt.X(f"{feat}:Q").bin(maxbins=n_bins).title(feat),
-                    y="count()",
+                    y=alt.Y("count()").stack(None),
                     color=over,
                     opacity=alt.condition(selection, alt.value(0.8), alt.value(0.2)),
                 )
