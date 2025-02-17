@@ -221,7 +221,7 @@ pip install "polars_ds[plot]"
 
 ## How Fast is it?
 
-Feel free to take a look at our [benchmark notebook](./benchmarks/benchmarks.ipynb)!
+Feel free to take a look at our [benchmark notebook](https://github.com/abstractqqq/polars_ds_extension/blob/main/benchmarks/benchmarks.ipynb)!
 
 Generally speaking, the more expressions you want to evaluate simultaneously, the faster Polars + PDS will be than Pandas + (SciPy / Sklearn / NumPy). The more CPU cores you have on your machine, the bigger the time difference will be in favor of Polars + PDS. 
 
