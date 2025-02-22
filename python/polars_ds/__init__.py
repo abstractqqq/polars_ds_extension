@@ -4,7 +4,7 @@ import polars as pl
 # Internal dependencies
 from polars_ds.exprs import *  # noqa F403
 
-__version__ = "0.8.1"
+__version__ = "0.8.2"
 
 
 def frame(size: int = 2_000, index_name: str = "row_num") -> pl.DataFrame:

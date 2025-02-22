@@ -1993,3 +1993,17 @@ def test_combinations():
     answer = pl.DataFrame({"category": ["a", "b"], "values": [[[1, 2], [1, 3], [2, 3]], [[4, 5]]]})
 
     assert_frame_equal(result, answer)
+
+
+@pytest.mark.parametrize(
+    "df, ans",
+    [
+        (
+            pl.DataFrame({"a": [1, None, None], "b": [1, 2, 3]}),
+            pl.DataFrame({"product": [[1, 1], [1, 2], [1, 3]]}),
+        ),
+    ],
+)
+def test_product(df, ans):
+    result = df.select(pds.product("a", "b").alias("product"))
+    assert_frame_equal(result, ans)

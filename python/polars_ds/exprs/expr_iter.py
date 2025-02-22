@@ -7,9 +7,79 @@ import polars as pl
 # Internal dependencies
 from polars_ds._utils import pl_plugin, str_to_expr
 
-__all__ = [
-    "combinations",
-]
+__all__ = ["combinations", "product"]
+
+
+def product(s1: str | pl.Expr, s2: str | pl.Expr) -> pl.Expr:
+    """
+    Get the cartesian product of two series. Only non-nulls values will be used.
+
+    Parameters
+    ----------
+    s1
+        The first column / series
+    s2
+        The second column / series
+
+    Examples
+    --------
+    >>> df = pl.DataFrame({
+    >>> "a": [1, 2]
+    >>> , "b": [4, 5]
+    >>> })
+    >>> df.select(
+    >>>     pds.product("a", "b")
+    >>> )
+    shape: (4, 1)
+    ┌───────────┐
+    │ a         │
+    │ ---       │
+    │ list[i64] │
+    ╞═══════════╡
+    │ [1, 4]    │
+    │ [1, 5]    │
+    │ [2, 4]    │
+    │ [2, 5]    │
+    └───────────┘
+
+    >>> df = pl.DataFrame({
+    >>>     "a": [[1,2], [3,4]]
+    >>>     , "b": [[3], [1, 2]]
+    >>> }).with_row_index()
+    >>> df
+    shape: (2, 3)
+    ┌───────┬───────────┬───────────┐
+    │ index ┆ a         ┆ b         │
+    │ ---   ┆ ---       ┆ ---       │
+    │ u32   ┆ list[i64] ┆ list[i64] │
+    ╞═══════╪═══════════╪═══════════╡
+    │ 0     ┆ [1, 2]    ┆ [3]       │
+    │ 1     ┆ [3, 4]    ┆ [1, 2]    │
+    └───────┴───────────┴───────────┘
+
+    >>> df.group_by(
+    >>>     "index"
+    >>> ).agg(
+    >>>     pds.product(
+    >>>         pl.col("a").list.explode()
+    >>>         , pl.col("b").list.explode()
+    >>>     ).alias("product")
+    >>> )
+    shape: (2, 2)
+    ┌───────┬────────────────────────────┐
+    │ index ┆ product                    │
+    │ ---   ┆ ---                        │
+    │ u32   ┆ list[list[i64]]            │
+    ╞═══════╪════════════════════════════╡
+    │ 0     ┆ [[1, 3], [2, 3]]           │
+    │ 1     ┆ [[3, 1], [3, 2], … [4, 2]] │
+    └───────┴────────────────────────────┘
+    """
+    return pl_plugin(
+        symbol="pl_product",
+        args=[str_to_expr(s1).drop_nulls(), str_to_expr(s2).drop_nulls()],
+        changes_length=True,
+    )
 
 
 def combinations(source: str | pl.Expr, k: int, unique: bool = False) -> pl.Expr:
@@ -65,7 +135,11 @@ def combinations(source: str | pl.Expr, k: int, unique: bool = False) -> pl.Expr
     │ b        ┆ [[4, 5]]                 │
     └──────────┴──────────────────────────┘
     """
-    s = str_to_expr(source).unique().sort() if unique else str_to_expr(source)
+    s = (
+        str_to_expr(source).unique().drop_nulls().sort()
+        if unique
+        else str_to_expr(source).drop_nulls()
+    )
     return pl_plugin(
         symbol="pl_combinations",
         args=[s],
