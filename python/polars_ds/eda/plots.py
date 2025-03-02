@@ -15,6 +15,66 @@ alt.data_transformers.enable("vegafusion")
 # Interactivity should only be enabled by the end user
 
 
+def plot_prob_calibration(
+    *,
+    target: Iterable[int],
+    score: pl.Series | None = None,
+    name: str | None = None,
+    scores: List[pl.Series] | None = None,
+    names: List[str] | None = None,
+    n_bins: int = 10,
+) -> alt.Chart:
+    if score is not None:
+        if name is None:
+            raise ValueError("If `score` is not None, then `name` must not be none.")
+        else:
+            new_dict = {name: pl.Series(values=score)}
+
+    else:  # score is None
+        if (scores is None) or (names is None):
+            raise ValueError("If `score` is None, then `scores` and `names` must be not None.")
+
+            new_dict = {n: pl.Series(values=s) for n, s in zip(names, scores)}
+
+    target_series = pl.Series(name="__actual__", values=target)
+
+    if any(len(s) != len(target_series) for s in new_dict.values()):
+        raise ValueError("All input `score(s)` and `target` must have the same length.")
+
+    new_dict["__actual__"] = target_series
+
+    df = pl.from_dict(new_dict)
+    df_all = []
+    perfect_line = pl.int_range(1, 100, step=5, eager=True) / 100
+    df_all.append(
+        pl.DataFrame(
+            {"mean_predicted_prob": perfect_line, "fraction_of_positives": perfect_line}
+        ).with_columns(score=pl.lit("Perferctly Calibrated", dtype=pl.String))
+    )
+
+    df_all.extend(
+        df.select(s, "__actual__")
+        .with_columns(
+            pl.col(s).qcut(n_bins, labels=[str(i) for i in range(n_bins)]).alias("__qcuts__")
+        )
+        .group_by("__qcuts__")
+        .agg(
+            mean_predicted_prob=pl.col(s).mean().cast(pl.Float64),
+            fraction_of_positives=pl.col("__actual__").mean().cast(pl.Float64),
+        )
+        .sort("__qcuts__")
+        .select("mean_predicted_prob", "fraction_of_positives", score=pl.lit(s, dtype=pl.String))
+        for s in new_dict.keys()
+        if s != "__actual__"
+    )
+
+    return (
+        alt.Chart(pl.concat(df_all))
+        .mark_line(point=True)
+        .encode(x="mean_predicted_prob:Q", y="fraction_of_positives:Q", color="score:N")
+    )
+
+
 def plot_feature_distr(
     *,
     feature: str | Iterable[float],
