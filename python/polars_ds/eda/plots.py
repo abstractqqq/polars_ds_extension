@@ -15,66 +15,6 @@ alt.data_transformers.enable("vegafusion")
 # Interactivity should only be enabled by the end user
 
 
-def plot_prob_calibration(
-    *,
-    target: Iterable[int],
-    score: pl.Series | None = None,
-    name: str | None = None,
-    scores: List[pl.Series] | None = None,
-    names: List[str] | None = None,
-    n_bins: int = 10,
-) -> alt.Chart:
-    if score is not None:
-        if name is None:
-            raise ValueError("If `score` is not None, then `name` must not be none.")
-        else:
-            new_dict = {name: pl.Series(values=score)}
-
-    else:  # score is None
-        if (scores is None) or (names is None):
-            raise ValueError("If `score` is None, then `scores` and `names` must be not None.")
-
-            new_dict = {n: pl.Series(values=s) for n, s in zip(names, scores)}
-
-    target_series = pl.Series(name="__actual__", values=target)
-
-    if any(len(s) != len(target_series) for s in new_dict.values()):
-        raise ValueError("All input `score(s)` and `target` must have the same length.")
-
-    new_dict["__actual__"] = target_series
-
-    df = pl.from_dict(new_dict)
-    df_all = []
-    perfect_line = pl.int_range(1, 100, step=5, eager=True) / 100
-    df_all.append(
-        pl.DataFrame(
-            {"mean_predicted_prob": perfect_line, "fraction_of_positives": perfect_line}
-        ).with_columns(score=pl.lit("Perferctly Calibrated", dtype=pl.String))
-    )
-
-    df_all.extend(
-        df.select(s, "__actual__")
-        .with_columns(
-            pl.col(s).qcut(n_bins, labels=[str(i) for i in range(n_bins)]).alias("__qcuts__")
-        )
-        .group_by("__qcuts__")
-        .agg(
-            mean_predicted_prob=pl.col(s).mean().cast(pl.Float64),
-            fraction_of_positives=pl.col("__actual__").mean().cast(pl.Float64),
-        )
-        .sort("__qcuts__")
-        .select("mean_predicted_prob", "fraction_of_positives", score=pl.lit(s, dtype=pl.String))
-        for s in new_dict.keys()
-        if s != "__actual__"
-    )
-
-    return (
-        alt.Chart(pl.concat(df_all))
-        .mark_line(point=True)
-        .encode(x="mean_predicted_prob:Q", y="fraction_of_positives:Q", color="score:N")
-    )
-
-
 def plot_feature_distr(
     *,
     feature: str | Iterable[float],
@@ -393,6 +333,114 @@ def plot_pca(
         )  # .interactive()
     else:  # 3d
         raise NotImplementedError
+
+
+def plot_prob_calibration(
+    *,
+    target: Iterable[int],
+    score: pl.Series | None = None,
+    name: str | None = None,
+    scores: List[pl.Series] | None = None,
+    names: List[str] | None = None,
+    n_bins: int = 10,
+) -> alt.Chart:
+    """
+    Plots probability calibration of score(s) with respect to the binary target.
+
+    Parameters
+    ----------
+    target
+        The target binary varialbe
+    score
+        The probability score values
+    name
+        The name of the probability score values
+    scores
+        If score is None, and scores is a list of probability scores, this will
+        generate a plot with all probability calibrations.
+    names
+        If scores is population, this must be a list of corresponding score names.
+    n_bins
+        N quantile bins for the score(s).
+    """
+
+    if score is not None:
+        if name is None:
+            raise ValueError("If `score` is not None, then `name` must not be none.")
+        else:
+            new_dict = {name: pl.Series(values=score)}
+
+    else:  # score is None
+        if (scores is None) or (names is None):
+            raise ValueError("If `score` is None, then `scores` and `names` must be populated.")
+
+        if hasattr(scores, "__len__") and (hasattr(names, "__len__")):
+            if len(scores) != len(names):
+                raise ValueError("Input `scores` and `names` must have the same length.")
+
+            new_dict = {n: pl.Series(values=s) for n, s in zip(names, scores)}
+        else:
+            raise ValueError("Input `scores` and `names` must iterables with a length.")
+
+    target_series = pl.Series(name="__actual__", values=target)
+
+    if any(len(s) != len(target_series) for s in new_dict.values()):
+        raise ValueError("All input `score(s)` and `target` must have the same length.")
+
+    new_dict["__actual__"] = target_series
+
+    df = pl.from_dict(new_dict)
+    perfect_line = pl.int_range(1, 100, step=5, eager=True) / 100
+    df_line = pl.DataFrame(
+        {"mean_predicted_prob": perfect_line, "fraction_of_positives": perfect_line}
+    ).with_columns(score=pl.lit(" y=x", dtype=pl.String), __point__=pl.lit(False, dtype=pl.Boolean))
+
+    df_socres = [
+        df.select(s, "__actual__")
+        .with_columns(
+            pl.col(s).qcut(n_bins, labels=[str(i) for i in range(n_bins)]).alias("__qcuts__")
+        )
+        .group_by("__qcuts__")
+        .agg(
+            mean_predicted_prob=pl.col(s).mean().cast(pl.Float64),
+            fraction_of_positives=pl.col("__actual__").mean().cast(pl.Float64),
+        )
+        .sort("__qcuts__")
+        .select(
+            "mean_predicted_prob",
+            "fraction_of_positives",
+            score=pl.lit(s, dtype=pl.String),
+            __point__=pl.lit(False, dtype=pl.Boolean),
+        )
+        for s in new_dict.keys()
+        if s != "__actual__"
+    ]
+
+    chart1 = (
+        alt.Chart(df_line)
+        .mark_line(point=False)
+        .encode(
+            x="mean_predicted_prob:Q",
+            y="fraction_of_positives:Q",
+            color="score:N",
+            strokeDash=alt.value([5, 5]),
+        )
+    )
+    selection = alt.selection_multi(fields=["score"], bind="legend")
+    chart2 = (
+        alt.Chart(pl.concat(df_socres))
+        .mark_line(point=True)
+        .encode(
+            x="mean_predicted_prob:Q",
+            y="fraction_of_positives:Q",
+            color="score:N",
+            tooltip=["mean_predicted_prob", "fraction_of_positives"],
+            opacity=alt.condition(selection, alt.value(0.8), alt.value(0.1)),
+        )
+        .add_params(selection)
+    )
+
+    return chart1 + chart2
 
 
 def plot_roc_auc(
