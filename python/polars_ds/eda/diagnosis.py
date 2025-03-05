@@ -330,6 +330,7 @@ class DIA:
                 *to_keep, pl.concat_list(reasons).list.drop_nulls().list.sort().alias("__reason__")
             ).collect()
         else:
+            # df_temp = all people who failed any one of the rules. So there must be at least one 0 in concat-ed list.
             return df_temp.select(
                 *to_keep,
                 pl.concat_list(all_rule_names)
