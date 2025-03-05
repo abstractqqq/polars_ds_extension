@@ -46,16 +46,26 @@ def plot_feature_distr(
     if n_bins <= 2:
         raise ValueError("Input `n_bins` must be > 2.")
 
+    if over is not None and df is None:
+        raise ValueError("Input `over` can only be used when df is not None.")
+
     if isinstance(feature, str):
         if df is None:
             raise ValueError("If `feature` is str, then df cannot be none.")
-        data = df.lazy().collect()
         feat = feature
+        if over is None:
+            data = df.lazy().select(pl.col(feat).cast(pl.Float64)).collect()
+        else:
+            data = df.lazy().select(pl.col(feat).cast(pl.Float64), over).collect()
     else:
-        data = pl.Series(name="feature", values=feature).to_frame()
-        feat = "feature"
+        if over is None:
+            data = pl.Series(name="feature", values=feature, dtype=pl.Float64).to_frame()
+            feat = "feature"
+        else:
+            raise ValueError("If input `feature` is a Series, then `over` cannot be used.")
 
     # selection = alt.selection_point(fields=['species'], bind='legend')
+    # .filter(pl.col(feat).is_not_null())
     if density:
         if over is None:
             chart = (
@@ -380,7 +390,7 @@ def plot_prob_calibration(
 
             new_dict = {n: pl.Series(values=s) for n, s in zip(names, scores)}
         else:
-            raise ValueError("Input `scores` and `names` must iterables with a length.")
+            raise ValueError("Input `scores` and `names` must be iterables with a length.")
 
     target_series = pl.Series(name="__actual__", values=target)
 
@@ -445,46 +455,66 @@ def plot_prob_calibration(
 
 def plot_roc_auc(
     *,
-    actual: Iterable[int] | str | pl.Expr,
-    pred: Iterable[float] | str | pl.Expr,
-    df: pl.DataFrame | pl.LazyFrame | None = None,
+    target: Iterable[int],
+    pred: pl.Series | None = None,
+    name: str | None = None,
+    preds: List[pl.Series] | None = None,
+    names: List[str] | None = None,
     show_auc: bool = True,
     estimator_name: str = "",
     n_decimals: int = 4,
-    auc_y_offset: int = 0,
-    text_color: str = "black",
     **kwargs,
 ) -> alt.Chart:
     """
-    Plots ROC AUC curve.
-
     Paramters
     ---------
-    df
-        Either an eager or lazy Polars Dataframe
-    actual
+    target
         A column which has the actual binary target information
     pred
-        The prediction
+        The prediction probability variable
+    name
+        The name for the prediction
+    preds
+        The prediction probability variables
+    names
+        The names for the predictions
     show_auc
         Whether to show the AUC value or not
-    estimator_name
-        Name for the estiamtor. Only shown if show_auc is True
     n_decimals
         Round to n-th decimal digit if show_auc is True
-    auc_y_offset
-        Y offset for the roc auc value if show_auc is True. The more negative, the higher it gets.
-    text_color
-        Color for the model AUC text
     kwargs
         Other keyword arguments to Altair's mark_line
     """
-    # expr_based = isinstance(actual, (str, pl.Expr)) and isinstance(pred, (str, pl.Expr)) and isinstance(df, (pl.DataFrame, pl.LazyFrame))
-    if (
-        isinstance(actual, (str, pl.Expr))
-        and isinstance(pred, (str, pl.Expr))
-        and isinstance(df, (pl.DataFrame, pl.LazyFrame))
-    ):
+
+    if pred is not None:
+        if name is None:
+            raise ValueError("If `pred` is not None, then `name` must not be none.")
+        else:
+            new_dict = {name: pl.Series(values=pred)}
+
+    else:  # pred is None
+        if (preds is None) or (names is None):
+            raise ValueError("If `pred` is None, then `preds` and `names` must be populated.")
+
+        if hasattr(preds, "__len__") and (hasattr(names, "__len__")):
+            if len(preds) != len(names):
+                raise ValueError("Input `preds` and `names` must have the same length.")
+
+            new_dict = {n: pl.Series(values=s) for n, s in zip(names, preds)}
+        else:
+            raise ValueError("Input `preds` and `names` must be iterables with a length.")
+
+    target_series = pl.Series(name="__actual__", values=target)
+
+    if any(len(s) != len(target_series) for s in new_dict.values()):
+        raise ValueError("All input `score(s)` and `target` must have the same length.")
+
+    pred_names = list(new_dict.keys())
+    new_dict["__actual__"] = target_series
+    df_tmp = pl.from_dict(new_dict)
+    dfs = []
+
+    for p in pred_names:
         zero = pl.DataFrame(
             {
                 "tpr": [0.0],
@@ -495,65 +525,44 @@ def plot_roc_auc(
                 "fpr": pl.Float64,
             },
         )
-
         tpr_fpr = (
-            df.lazy()
-            .select(tpr_fpr=query_tpr_fpr(actual, pred).reverse())
+            df_tmp.select(tpr_fpr=query_tpr_fpr("__actual__", p).reverse())
             .unnest("tpr_fpr")
-            .select(
-                "tpr",
-                "fpr",
-            )
-            .collect()
+            .select("tpr", "fpr")
         )
 
-        df_plot = pl.concat([zero, tpr_fpr])
-
-        base = alt.Chart(df_plot)
-        chart = base.mark_rule(strokeDash=[4, 4]).encode(
-            x="min(fpr)",
-            x2="max(fpr)",
-            y="min(tpr)",
-            y2="max(tpr)",
-        ) + base.mark_line(interpolate="step", **kwargs).encode(
-            x=alt.X("fpr", title="False Positive Rate"),
-            y=alt.Y("tpr", title="True Positive Rate"),
-        )
-
+        text = p
         if show_auc:
             auc = tpr_fpr.select(integrate_trapz("tpr", "fpr")).item(0, 0)
-            df_text = pl.DataFrame({"x": [0.97], "y": [0.03]})
-            estimator = estimator_name.strip()
-            auc_text = (
-                f"AUC = {round(auc, n_decimals)}"
-                if estimator == ""
-                else f"{estimator} (AUC = {round(auc, n_decimals)})"
-            )
-            base_text = alt.Chart(df_text)
-            text = base_text.mark_text(
-                dy=auc_y_offset, color=text_color, fontWeight="bold", text=auc_text, align="right"
-            ).encode(
-                x=alt.X("x"),
-                y=alt.Y("y"),
-            )
-            return chart + text
-        else:
-            return chart
-    else:  # May fail. User should catch
-        s1 = pl.Series("actual", values=actual, dtype=pl.UInt32)
-        s2 = pl.Series("pred", values=pred)
-        df_temp = pl.DataFrame(
-            {
-                "actual": s1,
-                "pred": s2,
-            }
+            text += f" (AUC = {round(auc, n_decimals)})"
+
+        dfs.append(pl.concat([zero, tpr_fpr]).with_columns(name=pl.lit(text, dtype=pl.String)))
+
+    perfect_line = pl.int_range(1, 100, step=5, eager=True) / 100
+    df_line = pl.DataFrame({"fpr": perfect_line, "tpr": perfect_line}).with_columns(
+        name=pl.lit(" y=x", dtype=pl.String),
+    )
+    chart1 = (
+        alt.Chart(df_line)
+        .mark_line()
+        .encode(
+            x=alt.X("fpr", title="False Positive Rate"),
+            y=alt.Y("tpr", title="True Positive Rate"),
+            color="name:N",
+            strokeDash=alt.value([5, 5]),
         )
-        return plot_roc_auc(
-            df=df_temp,
-            actual="actual",
-            pred="pred",
-            show_auc=show_auc,
-            estimator_name=estimator_name,
-            auc_y_offset=auc_y_offset,
-            n_decimals=n_decimals,
+    )
+    selection = alt.selection_multi(fields=["name"], bind="legend")
+    chart2 = (
+        alt.Chart(pl.concat(dfs))
+        .mark_line(interpolate="step", **kwargs)
+        .encode(
+            x=alt.X("fpr", title="False Positive Rate"),
+            y=alt.Y("tpr", title="True Positive Rate"),
+            color="name:N",
+            opacity=alt.condition(selection, alt.value(0.8), alt.value(0.1)),
         )
+        .add_params(selection)
+    )
+
+    return chart1 + chart2
