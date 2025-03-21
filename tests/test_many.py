@@ -1347,9 +1347,17 @@ def test_welch_t(df):
                 }
             )
         ),
+        (
+            pl.DataFrame(
+                {
+                    "x": np.random.RandomState(42).permutation([0] * 2**16 + [1] * 2**16),
+                    "y": np.random.RandomState(43).permutation([0] * 2**16 + [1] * 2**16),
+                }
+            )
+        )
     ],
 )
-def test_chi2(df):
+def test_chi2(df: pl.DataFrame):
     import pandas as pd
     from scipy.stats import chi2_contingency
 
@@ -1358,7 +1366,7 @@ def test_chi2(df):
 
     df2 = df.to_pandas()
     contigency = pd.crosstab(index=df2["x"], columns=df2["y"])
-    sp_res = chi2_contingency(contigency.to_numpy(), correction=True)
+    sp_res = chi2_contingency(contigency.to_numpy(), correction=False)
     sp_stats, sp_p = sp_res.statistic, sp_res.pvalue
     assert np.isclose(stats, sp_stats)
     assert np.isclose(p, sp_p)

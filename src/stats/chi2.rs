@@ -37,7 +37,7 @@ fn _chi2(inputs: &[Series]) -> PolarsResult<(LazyFrame, usize, usize)> {
     let df3 = df!(s1_name => s1, s2_name => s2)?
         .lazy()
         .group_by([col(s1_name), col(s2_name)])
-        .agg([len().alias("ob")]);
+        .agg([len().cast(DataType::UInt64).alias("ob")]);
 
     let df4 = cross
         .join(
