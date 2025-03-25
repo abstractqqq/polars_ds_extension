@@ -121,7 +121,7 @@ pub trait LinearRegression<T: RealField + Float> {
     fn coefficients(&self) -> MatRef<T> {
         if self.has_bias() {
             let n = self.fitted_values().nrows() - 1;
-            self.fitted_values().get(.., 0..n)
+            self.fitted_values().get(0..n, ..)
         } else {
             self.fitted_values()
         }
@@ -147,6 +147,7 @@ pub trait LinearRegression<T: RealField + Float> {
     }
 
     fn coeffs_as_vec(&self) -> Result<Vec<T>, LinalgErrors> {
+
         match self.check_is_fit() {
             Ok(_) => Ok(self
                 .coefficients()

@@ -89,11 +89,13 @@ def test_online_lr():
         assert np.all(np.abs(coeffs - sklearn_coeffs) < 1e-6)
 
 
-def test_elastic_net():
+def _test_elastic_net(add_bias: bool = False):
     import sklearn.linear_model as lm
 
     l1_reg = 0.1
     l2_reg = 0.1
+    alpha = l1_reg + l2_reg
+    l1_ratio = l1_reg / (l1_reg + l2_reg)
 
     df = (
         pds.frame(size=5000)
@@ -111,16 +113,21 @@ def test_elastic_net():
 
     X = df.select("x1", "x2", "x3").to_numpy()
     y = df.select("y").to_numpy()
+    en = ElasticNet(l1_reg=l1_reg, l2_reg=l2_reg, fit_bias=add_bias)
+    elastic = lm.ElasticNet(alpha=alpha, l1_ratio=l1_ratio, fit_intercept=add_bias)
 
-    en = ElasticNet(l1_reg=l1_reg, l2_reg=l2_reg)
     en.fit(X, y)
     pds_res = en.coeffs()
-
-    alpha = l1_reg + l2_reg
-    l1_ratio = l1_reg / (l1_reg + l2_reg)
-
-    elastic = lm.ElasticNet(alpha=alpha, l1_ratio=l1_ratio, fit_intercept=False)
     elastic.fit(X, y)
     sklearn_res = elastic.coef_
-    # bigger difference because of different stopping criterions
     assert np.all(np.abs(pds_res - sklearn_res) < 1e-4)
+
+    if add_bias is True:
+        pds_bias = en.bias()
+        sklearn_bias = elastic.intercept_
+        assert np.all(np.abs(pds_bias - sklearn_bias) < 1e-4)
+
+
+def test_elastic_net():
+    _test_elastic_net(add_bias=False)
+    _test_elastic_net(add_bias=True)
