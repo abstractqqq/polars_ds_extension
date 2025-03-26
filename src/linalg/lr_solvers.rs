@@ -6,7 +6,6 @@ use faer::{
     prelude::*
 };
 use num::Float;
-use core::f64;
 use super::{LRSolverMethods, LinalgErrors, LinearRegression};
 
 /// A struct that handles regular linear regression and Ridge regression.

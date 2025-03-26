@@ -95,7 +95,6 @@ def _handle_nans_in_np(
 
 
 class LR:
-
     """
     Normal or Ridge Regression.
     """
@@ -305,7 +304,6 @@ class LR:
 
 
 class ElasticNet:
-
     """
     Elastic Net Regression.
     """
@@ -407,8 +405,11 @@ class ElasticNet:
         """
         return self._en.coeffs
 
+    def has_bias(self) -> bool:
+        return self._en.has_bias()
+
     def bias(self) -> float:
-        self._en.bias
+        return self._en.bias
 
     def fit(self, X: np.ndarray, y: np.ndarray, null_policy: NullPolicy = "ignore") -> Self:
         """

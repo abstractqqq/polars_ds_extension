@@ -15,7 +15,7 @@ fn chi2_full_output(fields: &[Field]) -> PolarsResult<Field> {
 }
 
 
-fn _chi2(inputs: &[Series]) -> PolarsResult<(LazyFrame, usize, usize)> {
+fn _chi2_helper(inputs: &[Series]) -> PolarsResult<(LazyFrame, usize, usize)> {
 
     // Return a df with necessary values to compute chi2, together
     // with nrows and ncols
@@ -76,7 +76,7 @@ fn _chi2_pvalue(stats: f64, dof: usize) -> PolarsResult<f64> {
 #[polars_expr(output_type_func=simple_stats_output)]
 fn pl_chi2(inputs: &[Series]) -> PolarsResult<Series> {
 
-    let (df, u1_len, u2_len) = _chi2(inputs)?;
+    let (df, u1_len, u2_len) = _chi2_helper(inputs)?;
 
     let mut final_df = df.select([
         ((col("ob").cast(DataType::Float64) - col("ex")).pow(2) / col("ex"))
@@ -100,7 +100,7 @@ fn pl_chi2_full(inputs: &[Series]) -> PolarsResult<Series> {
     let s1_name = inputs[0].name();
     let s2_name = inputs[1].name();
 
-    let (df, u1_len, u2_len) = _chi2(inputs)?;
+    let (df, u1_len, u2_len) = _chi2_helper(inputs)?;
     // cheap clone
     let mut df2 = df.clone().select([
         col("s1").alias(s1_name.clone()),
