@@ -25,7 +25,7 @@ use crate::linalg::{
 use crate::utils::{to_frame, NullPolicy};
 /// Least Squares using Faer and ndarray.
 use core::f32;
-use faer::linalg::solvers::{DenseSolveCore, Solve};
+use faer::{linalg::solvers::{DenseSolveCore, Solve}, Col};
 use itertools::Itertools;
 use ndarray::{s, Array2};
 use polars::prelude as pl;
@@ -34,7 +34,8 @@ use pyo3_polars::derive::polars_expr;
 use super::linear_regression::{
     LstsqKwargs,
     MultiLstsqKwargs,
-    SWWLstsqKwargs
+    SWWLstsqKwargs,
+    StandardError
 };
 
 fn report_output(_: &[Field]) -> PolarsResult<Field> {
@@ -518,6 +519,7 @@ fn pl_lstsq_pred_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
 #[polars_expr(output_type_func=report_output)]
 fn pl_lin_reg_report_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let has_bias = kwargs.bias;
+    let se_type = StandardError::from(kwargs.std_err);
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
     // index 0 is y_var, 1 is target y. Skip
@@ -545,14 +547,13 @@ fn pl_lin_reg_report_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult
             let xtx = x.transpose() * &x;
             let xtx_qr = xtx.col_piv_qr();
             let xtx_inv = xtx_qr.inverse();
-            let coeffs = &xtx_inv * x.transpose() * y;
+            let xtx_inv_xt = &xtx_inv * x.transpose();
+            let coeffs = &xtx_inv_xt * y;
             let betas = coeffs.col_as_slice(0);
             // Degree of Freedom
             let dof = nrows as f32 - ncols as f32;
             // Residue
             let res = y - x * &coeffs;
-            // total residue, sum of squares
-            let mse = (res.transpose() * &res).get(0, 0) / dof;
 
             // r2, adj_r2
             let nf32 = nrows as f32;
@@ -561,9 +562,47 @@ fn pl_lin_reg_report_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult
             let adj_r2 = 1.0 - ratio * ((nrows - 1) as f32 / (dof - 1.0));
 
             // std err
-            let std_err = (0..ncols)
-                .map(|i| (mse * xtx_inv.get(i, i)).sqrt())
-                .collect_vec();
+            let std_err= match se_type {
+                StandardError::SE => {
+                    // total residue, sum of squares
+                    let mse = (res.transpose() * &res).get(0, 0) / dof;
+                    (0..ncols)
+                    .map(|i| (mse * xtx_inv.get(i, i)).sqrt())
+                    .collect_vec()
+                },
+                StandardError::HC0 | StandardError::HC1 => {
+                    let temp_diag = res.get(.., 0).as_diagonal();
+                    let diag = temp_diag * temp_diag;
+                    let var_hc = &xtx_inv_xt * diag * xtx_inv_xt.transpose();
+                    let factor = if se_type == StandardError::HC1 {
+                        (nrows as f32) / ((nrows - ncols) as f32)
+                    } else {
+                        1f32
+                    };
+                    (0..ncols)
+                    .map(|i| (var_hc.get(i, i) * factor).sqrt())
+                    .collect_vec()
+                },
+                StandardError::HC2 | StandardError::HC3 => {
+                    let temp_diag = res.get(.., 0).as_diagonal();
+                    let temp_diag_scalers = Col::from_fn(nrows, |i| {
+                        let d = x.get_r(i) * xtx_inv_xt.get(.., i);
+                        if se_type == StandardError::HC3 {
+                            1f32 / (1f32 - d).powi(2)
+                        } else {
+                            1f32 / (1f32 - d)
+                        }
+                    });
+                    let diag_scalers = temp_diag_scalers.as_diagonal();
+                    // (diagonal residue squared matrix) * (1 / (1 -h_ii)) or * (1 / (1 -h_ii)^2)
+                    let diag = temp_diag * temp_diag * diag_scalers; 
+
+                    let var_hc = &xtx_inv_xt * diag * xtx_inv_xt.transpose();
+                    (0..ncols)
+                    .map(|i| (var_hc.get(i, i)).sqrt())
+                    .collect_vec()
+                },
+            };
             // T values
             let t_values = betas
                 .iter()
@@ -598,7 +637,7 @@ fn pl_lin_reg_report_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult
             let names_series = names_ca.into_series();
             let coeffs_series = Float32Chunked::from_slice("beta".into(), betas);
             let coeffs_series = coeffs_series.into_series();
-            let stderr_series = Float32Chunked::from_vec("std_err".into(), std_err);
+            let stderr_series = Float32Chunked::from_vec(se_type.into(), std_err);
             let stderr_series = stderr_series.into_series();
             let t_series = Float32Chunked::from_vec("t".into(), t_values);
             let t_series = t_series.into_series();

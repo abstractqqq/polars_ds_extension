@@ -3,7 +3,7 @@
 from __future__ import annotations
 import polars as pl
 import warnings
-from typing import List, Any
+from typing import List, Any, Literal
 
 # Internal dependencies
 from polars_ds.typing import LRSolverMethods, NullPolicy
@@ -541,6 +541,7 @@ def lin_reg_report(
     weights: str | pl.Expr | None = None,
     add_bias: bool = False,
     null_policy: NullPolicy = "raise",
+    std_err: Literal["se", "hc0", "hc1", "hc2", "hc3"] = "se",
 ) -> pl.Expr:
     """
     Creates an ordinary least square report with more stats about each coefficient.
@@ -563,6 +564,13 @@ def lin_reg_report(
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
         the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
         columns.
+    std_err
+        One of "se", "hc0", "hc1", "hc2", "hc3", where "se" means we compute the standard error
+        under the assumption of homoskedasticity, and the hc options are different options for
+        heteroskedasticity. The hc0-hc3 are called Heteroskedasticity-Consistent Standard Errors, and their
+        formulas can be found here: https://jslsoc.sitehost.iu.edu/files_research/testing_tests/hccm/00TAS.pdf.
+        This won't be used if weights are used (The author is not super familiar with the theory). If any other
+        string is provided, it will default to "se".
     """
 
     lr_kwargs = {
@@ -572,6 +580,7 @@ def lin_reg_report(
         "l2_reg": 0.0,
         "solver": "qr",
         "tol": 0.0,
+        "std_err": std_err.lower(),
     }
 
     t = lr_formula(target)

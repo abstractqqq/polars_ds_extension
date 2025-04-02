@@ -16,7 +16,7 @@ use crate::linalg::{
 use crate::utils::{to_frame, NullPolicy};
 /// Least Squares using Faer and ndarray.
 use core::f64;
-use faer::linalg::solvers::{DenseSolveCore, Solve};
+use faer::{linalg::solvers::{DenseSolveCore, Solve}, Col};
 use itertools::Itertools;
 use ndarray::{s, Array2};
 use polars::prelude as pl;
@@ -34,6 +34,8 @@ pub(crate) struct LstsqKwargs {
     pub(crate) tol: f64,
     #[serde(default)]
     pub(crate) weighted: bool,
+    #[serde(default)]
+    pub(crate) std_err: String
 }
 
 #[derive(Deserialize, Debug)]
@@ -56,7 +58,6 @@ pub(crate) struct SWWLstsqKwargs {
 }
 
 fn report_output(_: &[Field]) -> PolarsResult<Field> {
-
     let features = Field::new("features".into(), DataType::String); // index of feature
     let beta = Field::new("beta".into(), DataType::Float64); // estimated value for this coefficient
     let stderr = Field::new("std_err".into(), DataType::Float64); // Std Err for this coefficient
@@ -99,6 +100,39 @@ fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
         "coeffs".into(),
         DataType::List(Box::new(DataType::Float64)),
     ))
+}
+
+#[derive(PartialEq)]
+pub enum StandardError {
+    SE
+    , HC0
+    , HC1
+    , HC2
+    , HC3
+}
+
+impl From<String> for StandardError {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "hc0" => Self::HC0,
+            "hc1" => Self::HC1,
+            "hc2" => Self::HC2,
+            "hc3" => Self::HC3,
+            _ => Self::SE
+        }
+    }
+}
+
+impl Into<PlSmallStr> for StandardError {
+    fn into(self) -> PlSmallStr {
+        match self {
+            StandardError::SE => "std_err".into(),
+            StandardError::HC0 => "hc0_se".into(),
+            StandardError::HC1 => "hc1_se".into(),
+            StandardError::HC2 => "hc2_se".into(),
+            StandardError::HC3 => "hc3_se".into(),
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------------------------------
@@ -538,6 +572,7 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
 #[polars_expr(output_type_func=report_output)]
 fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
     let has_bias = kwargs.bias;
+    let se_type = StandardError::from(kwargs.std_err);
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
     // index 0 is y_var, 1 is target y. Skip
@@ -565,14 +600,13 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
             let xtx = x.transpose() * &x;
             let xtx_qr = xtx.col_piv_qr();
             let xtx_inv = xtx_qr.inverse();
-            let coeffs = &xtx_inv * x.transpose() * y;
+            let xtx_inv_xt = &xtx_inv * x.transpose();
+            let coeffs = &xtx_inv_xt * y;
             let betas = coeffs.col_as_slice(0);
             // Degree of Freedom
             let dof = nrows as f64 - ncols as f64;
             // Residue
             let res = y - x * &coeffs;
-            // total residue, sum of squares
-            let mse = (res.transpose() * &res).get(0, 0) / dof;
 
             // r2, adj_r2
             let nf64 = nrows as f64;
@@ -581,9 +615,48 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
             let adj_r2 = 1.0 - ratio * ((nrows - 1) as f64 / (dof - 1.0));
 
             // std err
-            let std_err = (0..ncols)
-                .map(|i| (mse * xtx_inv.get(i, i)).sqrt())
-                .collect_vec();
+            let std_err= match se_type {
+                StandardError::SE => {
+                    // total residue, sum of squares
+                    let mse = (res.transpose() * &res).get(0, 0) / dof;
+                    (0..ncols)
+                    .map(|i| (mse * xtx_inv.get(i, i)).sqrt())
+                    .collect_vec()
+                },
+                StandardError::HC0 | StandardError::HC1 => {
+                    let temp_diag = res.get(.., 0).as_diagonal();
+                    let diag = temp_diag * temp_diag;
+                    let var_hc = &xtx_inv_xt * diag * xtx_inv_xt.transpose();
+                    let factor = if se_type == StandardError::HC1 {
+                        (nrows as f64) / ((nrows - ncols) as f64)
+                    } else {
+                        1f64
+                    };
+                    (0..ncols)
+                    .map(|i| (var_hc.get(i, i) * factor).sqrt())
+                    .collect_vec()
+                },
+                StandardError::HC2 | StandardError::HC3 => {
+                    let temp_diag = res.get(.., 0).as_diagonal();
+                    let temp_diag_scalers = Col::from_fn(nrows, |i| {
+                        let d = x.get_r(i) * xtx_inv_xt.get(.., i);
+                        if se_type == StandardError::HC3 {
+                            1f64 / (1f64 - d).powi(2)
+                        } else {
+                            1f64 / (1f64 - d)
+                        }
+                    });
+                    let diag_scalers = temp_diag_scalers.as_diagonal();
+                    // (diagonal residue squared matrix) * (1 / (1 -h_ii)) or * (1 / (1 -h_ii)^2)
+                    let diag = temp_diag * temp_diag * diag_scalers; 
+
+                    let var_hc = &xtx_inv_xt * diag * xtx_inv_xt.transpose();
+                    (0..ncols)
+                    .map(|i| (var_hc.get(i, i)).sqrt())
+                    .collect_vec()
+                },
+            };
+
             // T values
             let t_values = betas
                 .iter()
@@ -618,7 +691,7 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
             let names_series = names_ca.into_series();
             let coeffs_series = Float64Chunked::from_slice("beta".into(), betas);
             let coeffs_series = coeffs_series.into_series();
-            let stderr_series = Float64Chunked::from_vec("std_err".into(), std_err);
+            let stderr_series = Float64Chunked::from_vec(se_type.into(), std_err);
             let stderr_series = stderr_series.into_series();
             let t_series = Float64Chunked::from_vec("t".into(), t_values);
             let t_series = t_series.into_series();
@@ -653,6 +726,7 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
         Err(e) => Err(e),
     }
 }
+
 
 #[polars_expr(output_type_func=report_output)]
 fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {

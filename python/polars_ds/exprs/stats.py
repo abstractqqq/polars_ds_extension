@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import polars as pl
 import math
+
 # Internal dependencies
 from polars_ds.typing import Alternative, CorrMethod, Noise, QuantileMethod
 from polars_ds._utils import pl_plugin, str_to_expr
@@ -29,6 +30,7 @@ __all__ = [
     "random_normal",
     "hmean",
     "gmean",
+    "weighted_hmean",
     "weighted_gmean",
     "weighted_mean",
     "weighted_var",
@@ -258,7 +260,7 @@ def f_test(*variables: str | pl.Expr, group: str | pl.Expr) -> pl.Expr:
         return pl_plugin(symbol="pl_f_test", args=vars_, changes_length=True)
 
 
-def chi2(var1: str | pl.Expr, var2: str | pl.Expr, return_full:bool=False) -> pl.Expr:
+def chi2(var1: str | pl.Expr, var2: str | pl.Expr, return_full: bool = False) -> pl.Expr:
     """
     Computes the Chi Squared statistic and p value between two categorical values.
 
@@ -278,9 +280,7 @@ def chi2(var1: str | pl.Expr, var2: str | pl.Expr, return_full:bool=False) -> pl
     """
     if return_full:
         return pl_plugin(
-            symbol="pl_chi2_full",
-            args=[str_to_expr(var1), str_to_expr(var2)],
-            changes_length=True
+            symbol="pl_chi2_full", args=[str_to_expr(var1), str_to_expr(var2)], changes_length=True
         )
     else:
         return pl_plugin(
@@ -288,7 +288,6 @@ def chi2(var1: str | pl.Expr, var2: str | pl.Expr, return_full:bool=False) -> pl
             args=[str_to_expr(var1), str_to_expr(var2)],
             returns_scalar=True,
         )
-
 
 
 def mann_whitney_u(
@@ -538,8 +537,8 @@ def random_null(x: str | pl.Expr, pct: float, seed: int | None = None) -> pl.Exp
 
 
 def random_int(
-    lower: int | pl.Expr, 
-    upper: int | pl.Expr, 
+    lower: int | pl.Expr,
+    upper: int | pl.Expr,
     seed: int | None = None,
     length: int | pl.Expr = pl.len(),
 ) -> pl.Expr:
@@ -576,8 +575,8 @@ def random_int(
 
 
 def random_str(
-    min_size: int, 
-    max_size: int, 
+    min_size: int,
+    max_size: int,
     seed: int | None = None,
     length: int | pl.Expr = pl.len(),
 ) -> pl.Expr:
@@ -612,7 +611,9 @@ def random_str(
     )
 
 
-def random_binomial(n: int, p: int, seed: int | None = None, length: int | pl.Expr = pl.len()) -> pl.Expr:
+def random_binomial(
+    n: int, p: int, seed: int | None = None, length: int | pl.Expr = pl.len()
+) -> pl.Expr:
     """
     Generates random integer following a binomial distribution.
 
@@ -642,7 +643,9 @@ def random_binomial(n: int, p: int, seed: int | None = None, length: int | pl.Ex
     )
 
 
-def random_exp(lambda_: float, seed: int | None = None, length: int | pl.Expr = pl.len()) -> pl.Expr:
+def random_exp(
+    lambda_: float, seed: int | None = None, length: int | pl.Expr = pl.len()
+) -> pl.Expr:
     """
     Generates random numbers following an exponential distribution.
 
@@ -659,18 +662,18 @@ def random_exp(lambda_: float, seed: int | None = None, length: int | pl.Expr = 
         symbol="pl_rand_exp",
         args=[
             pl.lit(length, pl.UInt32) if isinstance(length, int) else length,
-            pl.lit(lambda_, pl.Float64), 
-            pl.lit(seed, pl.UInt64)
+            pl.lit(lambda_, pl.Float64),
+            pl.lit(seed, pl.UInt64),
         ],
         is_elementwise=True,
     )
 
 
 def random_normal(
-    mean: pl.Expr | float, 
-    std: pl.Expr | float, 
+    mean: pl.Expr | float,
+    std: pl.Expr | float,
     seed: int | None = None,
-    length: int | pl.Expr = pl.len()
+    length: int | pl.Expr = pl.len(),
 ) -> pl.Expr:
     """
     Generates random number following a normal distribution.
@@ -689,10 +692,10 @@ def random_normal(
     return pl_plugin(
         symbol="pl_rand_normal",
         args=[
-            pl.lit(length, pl.UInt32) if isinstance(length, int) else length, 
-            pl.lit(mean, pl.Float64) if isinstance(mean, float) else mean, 
-            pl.lit(std, pl.Float64) if isinstance(std, float) else std, 
-            pl.lit(seed, pl.UInt64)
+            pl.lit(length, pl.UInt32) if isinstance(length, int) else length,
+            pl.lit(mean, pl.Float64) if isinstance(mean, float) else mean,
+            pl.lit(std, pl.Float64) if isinstance(std, float) else std,
+            pl.lit(seed, pl.UInt64),
         ],
         is_elementwise=True,
     )
@@ -711,9 +714,33 @@ def hmean(var: str | pl.Expr) -> pl.Expr:
     return x.count() / (1.0 / x).sum()
 
 
+def weighted_hmean(
+    var: str | pl.Expr, weights: str | pl.Expr, is_normalized: bool = False
+) -> pl.Expr:
+    """
+    Computes the weighted harmonic mean of the variable.
+
+    Parameters
+    ----------
+    var
+        The variable
+    weights
+        An expr representing weights. Must be of same length as var.
+    is_normalized
+        If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
+    """
+    w = str_to_expr(weights)
+    x = str_to_expr(var)
+    dot = x.dot(pl.lit(1.0, dtype=pl.Float32) / x)
+    if is_normalized:
+        return 1.0 / dot
+    else:
+        return 1.0 / (dot / w.sum())
+
+
 def gmean(var: str | pl.Expr) -> pl.Expr:
     """
-    Computes the geometric mean.
+    Computes the geometric mean of the variable.
 
     Parameters
     ----------
@@ -727,7 +754,7 @@ def weighted_gmean(
     var: str | pl.Expr, weights: str | pl.Expr, is_normalized: bool = False
 ) -> pl.Expr:
     """
-    Computes the weighted geometric mean.
+    Computes the weighted geometric mean of the variable.
 
     Parameters
     ----------
