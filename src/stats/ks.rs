@@ -1,7 +1,7 @@
 /// KS statistics.
 use super::{generic_stats_output, simple_stats_output};
-use polars::prelude::*;
 use ordered_float::OrderedFloat;
+use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
 #[inline(always)]
@@ -33,13 +33,9 @@ fn ks_2samp(v1: &[f64], v2: &[f64], alpha: f64) -> (f64, f64) {
     let n1: f64 = v1.len() as f64;
     let n2: f64 = v2.len() as f64;
 
-    let v1 = unsafe {
-        std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(v1)
-    };
+    let v1 = unsafe { std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(v1) };
 
-    let v2 = unsafe {
-        std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(v2)
-    };
+    let v2 = unsafe { std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(v2) };
 
     // Follow SciPy's trick to compute the difference between two CDFs
     let stats = v1

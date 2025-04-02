@@ -886,6 +886,41 @@ def test_rolling_ridge():
         assert_frame_equal(df_to_test, df_answer)
 
 
+def test_hc_lin_reg_report():
+    import statsmodels.api as sm
+
+    df = (
+        pds.frame(size=1000)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+            pds.random(0.0, 1.0).round().cast(pl.UInt8).alias("binary"),
+        )
+        .with_columns(target=pl.col("x1") * 0.15 + pl.col("x2") * 0.3 + 0.1)
+    )
+
+    for se_type in ("se", "hc0", "hc1", "hc2", "hc3"):
+        pds_result = df.select(
+            pds.lin_reg_report("x1", "x2", "x3", target="target", std_err=se_type).alias("report")
+        ).unnest("report")
+
+        Y = df["target"].to_numpy()
+        X = df.select("x1", "x2", "x3").to_numpy()
+
+        model = sm.OLS(Y, X)
+        results = model.fit()
+
+        if se_type == "se":
+            pds_se = pds_result["std_err"].to_numpy()
+            sm_se = results.bse
+        else:
+            pds_se = pds_result[f"{se_type}_se"].to_numpy()
+            sm_se = getattr(results, f"{se_type.upper()}_se")
+
+        assert np.all((pds_se - sm_se) < 1e-7)
+
+
 def test_f32_lin_reg():
     # If they run, they are correct. This is because the underlying functions in src/linalg/ are all
     # generic
@@ -1354,7 +1389,7 @@ def test_welch_t(df):
                     "y": np.random.RandomState(43).permutation([0] * 2**16 + [1] * 2**16),
                 }
             )
-        )
+        ),
     ],
 )
 def test_chi2(df: pl.DataFrame):

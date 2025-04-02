@@ -14,9 +14,7 @@ fn chi2_full_output(fields: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new("chi2_full".into(), DataType::Struct(v)))
 }
 
-
 fn _chi2_helper(inputs: &[Series]) -> PolarsResult<(LazyFrame, usize, usize)> {
-
     // Return a df with necessary values to compute chi2, together
     // with nrows and ncols
     let s1_name = "s1";
@@ -49,16 +47,13 @@ fn _chi2_helper(inputs: &[Series]) -> PolarsResult<(LazyFrame, usize, usize)> {
         .with_column(col("ob").fill_null(0));
 
     // Compute the statistic
-    let frame = df4
-        .with_columns([
-            ((col("ob").sum().over([s2_name]) * col("ob").sum().over([s1_name]))
-                .cast(DataType::Float64)
-                / col("ob").sum().cast(DataType::Float64))
-            .alias("ex"),
-        ]);
+    let frame = df4.with_columns([((col("ob").sum().over([s2_name])
+        * col("ob").sum().over([s1_name]))
+    .cast(DataType::Float64)
+        / col("ob").sum().cast(DataType::Float64))
+    .alias("ex")]);
 
     Ok((frame, u1_len, u2_len))
-    
 }
 
 fn _chi2_pvalue(stats: f64, dof: usize) -> PolarsResult<f64> {
@@ -75,15 +70,15 @@ fn _chi2_pvalue(stats: f64, dof: usize) -> PolarsResult<f64> {
 
 #[polars_expr(output_type_func=simple_stats_output)]
 fn pl_chi2(inputs: &[Series]) -> PolarsResult<Series> {
-
     let (df, u1_len, u2_len) = _chi2_helper(inputs)?;
 
-    let mut final_df = df.select([
-        ((col("ob").cast(DataType::Float64) - col("ex")).pow(2) / col("ex"))
-            .sum()
-            .alias("output"),
-    ])
-    .collect()?;
+    let mut final_df = df
+        .select([
+            ((col("ob").cast(DataType::Float64) - col("ex")).pow(2) / col("ex"))
+                .sum()
+                .alias("output"),
+        ])
+        .collect()?;
 
     // Get the statistic
     let out = final_df.drop_in_place("output").unwrap();
@@ -102,21 +97,25 @@ fn pl_chi2_full(inputs: &[Series]) -> PolarsResult<Series> {
 
     let (df, u1_len, u2_len) = _chi2_helper(inputs)?;
     // cheap clone
-    let mut df2 = df.clone().select([
-        col("s1").alias(s1_name.clone()),
-        col("s2").alias(s2_name.clone()),
-        col("ex").alias("E[freq]"),
-    ]).collect()?;
+    let mut df2 = df
+        .clone()
+        .select([
+            col("s1").alias(s1_name.clone()),
+            col("s2").alias(s2_name.clone()),
+            col("ex").alias("E[freq]"),
+        ])
+        .collect()?;
     let ef = df2.drop_in_place("E[freq]").unwrap();
     let s1 = df2.drop_in_place(s1_name).unwrap();
     let s2 = df2.drop_in_place(s2_name).unwrap();
 
-    let mut final_df = df.select([
-        ((col("ob").cast(DataType::Float64) - col("ex")).pow(2) / col("ex"))
-            .sum()
-            .alias("output"),
-    ])
-    .collect()?;
+    let mut final_df = df
+        .select([
+            ((col("ob").cast(DataType::Float64) - col("ex")).pow(2) / col("ex"))
+                .sum()
+                .alias("output"),
+        ])
+        .collect()?;
 
     // Get the statistic
     let out = final_df.drop_in_place("output").unwrap();
@@ -129,10 +128,9 @@ fn pl_chi2_full(inputs: &[Series]) -> PolarsResult<Series> {
     let dof_column = Column::new_scalar("dof".into(), (dof as u32).into(), 1);
 
     let ca = StructChunked::from_columns(
-        "chi2_full".into(), 
-        ef.len(), 
-        &[stats_column, pval_column, dof_column, s1, s2, ef]
+        "chi2_full".into(),
+        ef.len(),
+        &[stats_column, pval_column, dof_column, s1, s2, ef],
     )?;
     Ok(ca.into_series())
 }
-

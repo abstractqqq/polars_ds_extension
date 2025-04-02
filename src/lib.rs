@@ -3,13 +3,17 @@
 mod arkadia;
 mod linalg;
 mod num_ext;
+mod pymodels;
 mod stats;
 mod stats_utils;
 mod str_ext;
 mod utils;
-mod pymodels;
 
-use pyo3::{pymodule, types::{PyModule, PyModuleMethods}, Bound, PyResult, Python};
+use pyo3::{
+    pymodule,
+    types::{PyModule, PyModuleMethods},
+    Bound, PyResult, Python,
+};
 
 #[pymodule]
 #[pyo3(name = "_polars_ds")]

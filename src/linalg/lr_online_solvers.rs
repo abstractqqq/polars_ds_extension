@@ -1,18 +1,17 @@
 #![allow(non_snake_case)]
-use faer_traits::{RealField, math_utils::is_nan};
-use faer::{
-    linalg::solvers::{Solve, DenseSolveCore},
-    mat::Mat, 
-    prelude::*
-};
-use num::Float;
 use core::f64;
+use faer::{
+    linalg::solvers::{DenseSolveCore, Solve},
+    mat::Mat,
+    prelude::*,
+};
+use faer_traits::{math_utils::is_nan, RealField};
+use num::Float;
 
 use super::{LinalgErrors, LinearRegression};
 
-
 #[inline]
-pub fn has_nan<T:RealField>(mat: MatRef<T>) -> bool {
+pub fn has_nan<T: RealField>(mat: MatRef<T>) -> bool {
     mat.col_iter().any(|col| col.iter().any(|x| is_nan(x)))
 }
 
@@ -23,7 +22,7 @@ pub struct OnlineLR<T: RealField + Float> {
     pub inv: Mat<T>,          // Current Inverse of X^t X
 }
 
-impl <T: RealField + Float> OnlineLR<T> {
+impl<T: RealField + Float> OnlineLR<T> {
     pub fn new(lambda: T, has_bias: bool) -> Self {
         OnlineLR {
             lambda: lambda,
@@ -96,8 +95,7 @@ impl <T: RealField + Float> OnlineLR<T> {
     }
 }
 
-impl <T: RealField + Float> LinearRegression<T> for OnlineLR<T> {
-
+impl<T: RealField + Float> LinearRegression<T> for OnlineLR<T> {
     fn fitted_values(&self) -> MatRef<T> {
         self.coefficients.as_ref()
     }
@@ -110,33 +108,29 @@ impl <T: RealField + Float> LinearRegression<T> for OnlineLR<T> {
         if self.has_bias {
             let ones = Mat::full(X.nrows(), 1, T::one());
             let new_x = faer::concat![[X, ones]];
-            let (inv, all_coefficients) = 
+            let (inv, all_coefficients) =
                 faer_qr_lstsq_with_inv(new_x.as_ref(), y, self.lambda, true);
 
             self.inv = inv;
             self.coefficients = all_coefficients;
         } else {
-            (self.inv, self.coefficients) = 
+            (self.inv, self.coefficients) =
                 faer_qr_lstsq_with_inv(X.as_ref(), y, self.lambda, false);
         }
     }
-    
-
 }
-
 
 /// Returns the coefficients for lstsq as a nrows x 1 matrix together with the inverse of XtX
 /// The uses QR (column pivot) decomposition as default method to compute inverse,
 /// Column Pivot QR is chosen to deal with rank deficient cases. It is also slightly
 /// faster compared to other methods.
 #[inline(always)]
-pub fn faer_qr_lstsq_with_inv<T:RealField + Copy>(
-    x: MatRef<T>, 
+pub fn faer_qr_lstsq_with_inv<T: RealField + Copy>(
+    x: MatRef<T>,
     y: MatRef<T>,
     lambda: T,
     has_bias: bool,
 ) -> (Mat<T>, Mat<T>) {
-
     let n1 = x.ncols().abs_diff(has_bias as usize);
     let xt = x.transpose();
     let mut xtx = xt * x;
@@ -152,11 +146,11 @@ pub fn faer_qr_lstsq_with_inv<T:RealField + Copy>(
     let qr = xtx.col_piv_qr();
     let inv = qr.inverse();
     let weights = qr.solve(xt * y);
-    
+
     (inv, weights)
 }
 
-/// Given all data, we start running a lstsq starting at position n and compute new coefficients 
+/// Given all data, we start running a lstsq starting at position n and compute new coefficients
 /// recurisively.
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
 pub fn faer_recursive_lstsq<T: RealField + Float>(
@@ -192,9 +186,9 @@ pub fn faer_recursive_lstsq<T: RealField + Float>(
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
 /// This supports Normal or Ridge regression
 pub fn faer_rolling_lstsq<T: RealField + Float>(
-    x: MatRef<T>, 
-    y: MatRef<T>, 
-    n: usize, 
+    x: MatRef<T>,
+    y: MatRef<T>,
+    n: usize,
     lambda: T,
 ) -> Vec<Mat<T>> {
     let xn = x.nrows();
@@ -291,7 +285,7 @@ pub fn faer_rolling_skipping_lstsq<T: RealField + Float>(
     for j in right..xn {
         let remove_x = x.get(j - n..j - n + 1, ..);
         let remove_y = y.get(j - n..j - n + 1, ..);
-        
+
         if !(has_nan(remove_x) | has_nan(remove_y)) {
             non_null_cnt_in_window -= 1; // removed one non-null column
             online_lr.update_unchecked(remove_x, remove_y, T::one().neg()); // No need to check for nan
@@ -328,7 +322,7 @@ pub fn woodbury_step<T: RealField + Float>(
     // and removal of a new record (rolling)... Linear regression seems to be designed by God to work so well
 
     let u = &inverse * new_x.transpose(); // corresponding to u in the reference
-                                             // right = left.transpose() by the fact that if A is symmetric, invertible, A-1 is also symmetric
+                                          // right = left.transpose() by the fact that if A is symmetric, invertible, A-1 is also symmetric
     let z = (c + *(new_x * &u).get(0, 0)).recip();
     // Update the information matrix's inverse. Page 56 of the gatech reference
     faer::linalg::matmul::matmul(

@@ -11,6 +11,7 @@ from polars_ds.typing import Distance, NullPolicy
 from polars_ds._utils import pl_plugin, str_to_expr
 
 __all__ = [
+    "query_mid_range",
     "query_abs_energy",
     "query_symm_ratio",
     "query_mean_abs_change",
@@ -46,7 +47,13 @@ __all__ = [
 # Time series features, some from tsfresh       #
 #################################################
 
-# index_mass_quantile
+
+def query_mid_range(x: str | pl.Expr) -> pl.Expr:
+    """
+    A shorthand for (pl.col(x).max() - pl.col(x).min()) / 2.
+    """
+    xx = str_to_expr(x)
+    return (xx.max() - xx.min()) / 2
 
 
 def query_symm_ratio(x: str | pl.Expr) -> pl.Expr:
@@ -219,6 +226,14 @@ def query_first_digit_cnt(var: str | pl.Expr) -> pl.Expr:
         args=[str_to_expr(var)],
         returns_scalar=True,
     )
+
+
+def query_benford(var: str | pl.Expr) -> pl.Expr:
+    """
+    Finds the first digit counts which is used in Benford's law. This is an alias to
+    `query_first_digit_cnt`.
+    """
+    return query_first_digit_cnt(var)
 
 
 def query_similar_count(

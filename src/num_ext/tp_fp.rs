@@ -153,28 +153,30 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     Ok(out.into_series())
 }
 
-
 #[polars_expr(output_type_func=tpr_fpr_output)]
 fn pl_tpr_fpr(inputs: &[Series]) -> PolarsResult<Series> {
     // actual, when passed in, is always u32 (done in Python extension side)
     let actual = &inputs[0];
     let predicted = &inputs[1];
     let positive_cnt = actual.sum::<u32>().unwrap_or(0);
-    
+
     if positive_cnt == 0 {
         let tpr = Series::from_vec("tpr".into(), vec![f64::NAN]);
         let fpr = Series::from_vec("fpr".into(), vec![f64::NAN]);
-        let ca = StructChunked::from_columns("tpr_fpr".into(), 1, &[tpr.into_column(), fpr.into_column()])?;
+        let ca = StructChunked::from_columns(
+            "tpr_fpr".into(),
+            1,
+            &[tpr.into_column(), fpr.into_column()],
+        )?;
         Ok(ca.into_series())
     } else {
         let frame = tp_fp_frame(predicted, actual, positive_cnt, true)?
             .select([col("threshold"), col("tpr"), col("fpr")])
             .collect()?;
-       
+
         let ca = frame.into_struct("tpr_fpr".into());
         Ok(ca.into_series())
     }
-
 }
 
 fn binary_confusion_matrix(combined_series: &UInt32Chunked) -> [u32; 4] {

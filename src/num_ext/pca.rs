@@ -1,6 +1,10 @@
-use crate::utils::{to_f64_matrix_fail_on_nulls, to_f64_matrix_without_nulls};
-use faer::{dyn_stack::{MemBuffer, MemStack}, linalg::svd::ComputeSvdVectors, prelude::*};
 use crate::linalg::IntoFaer;
+use crate::utils::{to_f64_matrix_fail_on_nulls, to_f64_matrix_without_nulls};
+use faer::{
+    dyn_stack::{MemBuffer, MemStack},
+    linalg::svd::ComputeSvdVectors,
+    prelude::*,
+};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
@@ -49,14 +53,22 @@ fn pl_singular_values(inputs: &[Series]) -> PolarsResult<Series> {
     let par = Par::rayon(0);
 
     faer::linalg::svd::svd(
-        mat, 
-        cs.as_diagonal_mut(), 
-        None, 
-        None, 
-        par, 
-        MemStack::new(&mut MemBuffer::new(faer::linalg::svd::svd_scratch::<f64>(m, n, compute, compute, par, default()))), 
-        Default::default()
-    ).map_err(|_| PolarsError::ComputeError("SVD algorithm did not converge.".into()))?;
+        mat,
+        cs.as_diagonal_mut(),
+        None,
+        None,
+        par,
+        MemStack::new(&mut MemBuffer::new(faer::linalg::svd::svd_scratch::<f64>(
+            m,
+            n,
+            compute,
+            compute,
+            par,
+            default(),
+        ))),
+        Default::default(),
+    )
+    .map_err(|_| PolarsError::ComputeError("SVD algorithm did not converge.".into()))?;
 
     let mut list_builder: ListPrimitiveChunkedBuilder<Float64Type> =
         ListPrimitiveChunkedBuilder::new("singular_values".into(), 1, dim, DataType::Float64);
@@ -92,9 +104,17 @@ fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
             None,
             Some(v.as_mut()),
             par,
-            MemStack::new(&mut MemBuffer::new(faer::linalg::svd::svd_scratch::<f64>(m, n, compute, compute, par, default()))), 
-            Default::default()
-        ).map_err(|_| PolarsError::ComputeError("SVD algorithm did not converge.".into()))?;
+            MemStack::new(&mut MemBuffer::new(faer::linalg::svd::svd_scratch::<f64>(
+                m,
+                n,
+                compute,
+                compute,
+                par,
+                default(),
+            ))),
+            Default::default(),
+        )
+        .map_err(|_| PolarsError::ComputeError("SVD algorithm did not converge.".into()))?;
 
         let components = mat * v;
 
@@ -129,9 +149,17 @@ fn pl_pca(inputs: &[Series]) -> PolarsResult<Series> {
         None,
         Some(v.as_mut()),
         par,
-        MemStack::new(&mut MemBuffer::new(faer::linalg::svd::svd_scratch::<f64>(m, n, compute, compute, par, default()))),
+        MemStack::new(&mut MemBuffer::new(faer::linalg::svd::svd_scratch::<f64>(
+            m,
+            n,
+            compute,
+            compute,
+            par,
+            default(),
+        ))),
         Default::default(),
-    ).map_err(|_| PolarsError::ComputeError("SVD algorithm did not converge.".into()))?;
+    )
+    .map_err(|_| PolarsError::ComputeError("SVD algorithm did not converge.".into()))?;
 
     let mut builder: PrimitiveChunkedBuilder<Float64Type> =
         PrimitiveChunkedBuilder::new("singular_value".into(), dim);
