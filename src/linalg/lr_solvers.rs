@@ -1,22 +1,18 @@
 #![allow(non_snake_case)]
-use faer_traits::RealField;
-use faer::{
-    mat::Mat,
-    linalg::solvers::Solve, 
-    prelude::*
-};
-use num::Float;
 use super::{LRSolverMethods, LinalgErrors, LinearRegression};
+use faer::{linalg::solvers::Solve, mat::Mat, prelude::*};
+use faer_traits::RealField;
+use num::Float;
 
 /// A struct that handles regular linear regression and Ridge regression.
-pub struct LR<T:RealField + Float> {
+pub struct LR<T: RealField + Float> {
     pub solver: LRSolverMethods,
     pub lambda: T,
     pub coefficients: Mat<T>, // n_features x 1 matrix, doesn't contain bias
     pub has_bias: bool,
 }
 
-impl <T:RealField + Float> LR<T> {
+impl<T: RealField + Float> LR<T> {
     pub fn new(solver: &str, lambda: T, has_bias: bool) -> Self {
         LR {
             solver: solver.into(),
@@ -51,8 +47,7 @@ impl <T:RealField + Float> LR<T> {
     }
 }
 
-impl <T: RealField + Float>LinearRegression<T> for LR<T> {
-
+impl<T: RealField + Float> LinearRegression<T> for LR<T> {
     fn fitted_values(&self) -> MatRef<T> {
         self.coefficients.as_ref()
     }
@@ -70,7 +65,6 @@ impl <T: RealField + Float>LinearRegression<T> for LR<T> {
             faer_solve_lstsq(X, y, self.lambda, false, self.solver)
         };
     }
-    
 }
 
 pub struct ElasticNet<T: RealField + Float> {
@@ -82,7 +76,7 @@ pub struct ElasticNet<T: RealField + Float> {
     pub max_iter: usize,
 }
 
-impl <T: RealField + Float>ElasticNet<T> {
+impl<T: RealField + Float> ElasticNet<T> {
     pub fn new(l1_reg: T, l2_reg: T, has_bias: bool, tol: T, max_iter: usize) -> Self {
         ElasticNet {
             l1_reg: l1_reg,
@@ -138,8 +132,7 @@ impl <T: RealField + Float>ElasticNet<T> {
     }
 }
 
-impl <T:RealField + Float>LinearRegression<T> for ElasticNet<T> {
-
+impl<T: RealField + Float> LinearRegression<T> for ElasticNet<T> {
     fn fitted_values(&self) -> MatRef<T> {
         self.coefficients.as_ref()
     }
@@ -172,7 +165,6 @@ impl <T:RealField + Float>LinearRegression<T> for ElasticNet<T> {
                 self.max_iter,
             )
         };
-
     }
 
     fn fit(&mut self, X: MatRef<T>, y: MatRef<T>) -> Result<(), LinalgErrors> {
@@ -200,7 +192,6 @@ pub fn faer_solve_lstsq_rcond<T: RealField + Float>(
     has_bias: bool,
     rcond: T,
 ) -> (Mat<T>, Vec<T>) {
-
     let n1 = x.ncols().abs_diff(has_bias as usize);
     let xt = x.transpose();
     let mut xtx = xt * x;
@@ -209,18 +200,14 @@ pub fn faer_solve_lstsq_rcond<T: RealField + Float>(
     if lambda >= T::zero() && n1 >= 1 {
         unsafe {
             for i in 0..n1 {
-                *xtx.get_mut_unchecked(i, i) = *xtx.get_mut_unchecked(i, i) + lambda; 
+                *xtx.get_mut_unchecked(i, i) = *xtx.get_mut_unchecked(i, i) + lambda;
             }
         }
     }
     // need work here
     let svd = xtx.thin_svd().unwrap();
     let s = svd.S().column_vector();
-    let singular_values = s
-        .iter()
-        .copied()
-        .map(T::sqrt)
-        .collect::<Vec<_>>();
+    let singular_values = s.iter().copied().map(T::sqrt).collect::<Vec<_>>();
 
     let n = singular_values.len();
 
@@ -258,23 +245,20 @@ pub fn faer_solve_lstsq<T: RealField + Float>(
     if lambda >= T::zero() && n1 >= 1 {
         unsafe {
             for i in 0..n1 {
-                *xtx.get_mut_unchecked(i, i) = *xtx.get_mut_unchecked(i, i) + lambda; 
+                *xtx.get_mut_unchecked(i, i) = *xtx.get_mut_unchecked(i, i) + lambda;
             }
         }
     }
 
     match how {
-        LRSolverMethods::SVD => {
-            match xtx.thin_svd() {
-                Ok(svd) => svd.solve(xt * y),
-                _ => xtx.col_piv_qr().solve(xt * y)
-            }
+        LRSolverMethods::SVD => match xtx.thin_svd() {
+            Ok(svd) => svd.solve(xt * y),
+            _ => xtx.col_piv_qr().solve(xt * y),
         },
         LRSolverMethods::QR => xtx.col_piv_qr().solve(xt * y),
         LRSolverMethods::Choleskey => todo!(),
     }
 }
-
 
 /// Solves the weighted least square with weights given by the user
 #[inline(always)]
@@ -284,7 +268,6 @@ pub fn faer_weighted_lstsq<T: RealField>(
     w: &[T],
     how: LRSolverMethods,
 ) -> Mat<T> {
-    
     let weights = faer::ColRef::from_slice(w);
     let w = weights.as_diagonal();
 
@@ -292,14 +275,12 @@ pub fn faer_weighted_lstsq<T: RealField>(
     let xtw = xt * w;
     let xtwx = &xtw * x;
     match how {
-        LRSolverMethods::SVD => {
-            match xtwx.thin_svd() {
-                Ok(svd) => svd.solve(xtw * y),
-                Err(_) => xtwx.col_piv_qr().solve(xtw * y),
-            }
-        }
+        LRSolverMethods::SVD => match xtwx.thin_svd() {
+            Ok(svd) => svd.solve(xtw * y),
+            Err(_) => xtwx.col_piv_qr().solve(xtw * y),
+        },
         LRSolverMethods::QR => xtwx.col_piv_qr().solve(xtw * y),
-        LRSolverMethods::Choleskey => todo!()
+        LRSolverMethods::Choleskey => todo!(),
     }
 }
 
@@ -318,7 +299,7 @@ fn soft_threshold_l1<T: Float>(z: T, lambda: T) -> T {
 /// https://github.com/minatosato/Lasso/blob/master/coordinate_descent_lasso.py
 /// https://en.wikipedia.org/wiki/Lasso_(statistics)
 #[inline(always)]
-pub fn faer_coordinate_descent<T:RealField + Float>(
+pub fn faer_coordinate_descent<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
     l1_reg: T,
@@ -386,4 +367,3 @@ pub fn faer_coordinate_descent<T:RealField + Float>(
 
     beta
 }
-

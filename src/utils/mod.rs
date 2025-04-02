@@ -39,18 +39,14 @@ pub fn to_f64_matrix_fail_on_nulls(
             "Nulls are found in data and this method doesn't allow nulls.".into(),
         ))
     } else {
-        let df = DataFrame::new(
-            inputs.iter().map(|s| s.clone().into_column()).collect()
-        )?;
+        let df = DataFrame::new(inputs.iter().map(|s| s.clone().into_column()).collect())?;
         df.to_ndarray::<Float64Type>(order)
     }
 }
 
 #[inline(always)]
 pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
-    DataFrame::new(
-        inputs.iter().map(|s| s.clone().into_column()).collect()
-    )
+    DataFrame::new(inputs.iter().map(|s| s.clone().into_column()).collect())
 }
 
 /// Organizes the series data into a `matrix`, and return the underlying slice
@@ -213,7 +209,7 @@ pub fn float_output(fields: &[Field]) -> PolarsResult<Field> {
 // Common, Structures
 // -------------------------------------------------------------------------------
 #[derive(PartialEq, Clone, Copy)]
-pub enum NullPolicy<T: Float + FromStr>{
+pub enum NullPolicy<T: Float + FromStr> {
     RAISE,
     SKIP,
     SKIP_WINDOW, // `SKIP` in rolling. Skip, but doesn't really drop data. A specialized algorithm will handle this.
@@ -222,7 +218,7 @@ pub enum NullPolicy<T: Float + FromStr>{
     FILL_WINDOW(T), // `FILL`` rolling. Doesn't really drop data. A specialized algorithm will handle this.
 }
 
-impl <T: Float + FromStr> TryFrom<String> for NullPolicy<T> {
+impl<T: Float + FromStr> TryFrom<String> for NullPolicy<T> {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {

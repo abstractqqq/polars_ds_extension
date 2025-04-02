@@ -11,7 +11,6 @@ use realfft::RealFftPlanner;
 // Optimization ideas: small size, e.g. <= 2048, always allocate a fixed sized slice?
 // 2^n padding in the general case
 
-
 #[polars_expr(output_type_func=complex_output)]
 fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
     let s = inputs[0].f64()?;

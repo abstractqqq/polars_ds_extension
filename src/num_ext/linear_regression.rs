@@ -1,22 +1,17 @@
 use crate::linalg::{
-    IntoFaer, 
-    LRMethods,
+    lr_online_solvers::{faer_recursive_lstsq, faer_rolling_lstsq, faer_rolling_skipping_lstsq},
     lr_solvers::{
-        faer_coordinate_descent, 
-        faer_solve_lstsq, 
-        faer_solve_lstsq_rcond, 
-        faer_weighted_lstsq,
+        faer_coordinate_descent, faer_solve_lstsq, faer_solve_lstsq_rcond, faer_weighted_lstsq,
     },
-    lr_online_solvers::{
-        faer_recursive_lstsq, 
-        faer_rolling_lstsq, 
-        faer_rolling_skipping_lstsq, 
-    }
+    IntoFaer, LRMethods,
 };
 use crate::utils::{to_frame, NullPolicy};
 /// Least Squares using Faer and ndarray.
 use core::f64;
-use faer::{linalg::solvers::{DenseSolveCore, Solve}, Col};
+use faer::{
+    linalg::solvers::{DenseSolveCore, Solve},
+    Col,
+};
 use itertools::Itertools;
 use ndarray::{s, Array2};
 use polars::prelude as pl;
@@ -35,7 +30,7 @@ pub(crate) struct LstsqKwargs {
     #[serde(default)]
     pub(crate) weighted: bool,
     #[serde(default)]
-    pub(crate) std_err: String
+    pub(crate) std_err: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -66,7 +61,7 @@ fn report_output(_: &[Field]) -> PolarsResult<Field> {
     let ci_lower = Field::new("0.025".into(), DataType::Float64); // CI lower bound at 0.025
     let ci_upper = Field::new("0.975".into(), DataType::Float64); // CI upper bound at 0.975
     let r2 = Field::new("r2".into(), DataType::Float64); // Coefficient of determination
-    let adj_r2 = Field::new("adj_r2".into(), DataType::Float64); // adjusted 
+    let adj_r2 = Field::new("adj_r2".into(), DataType::Float64); // adjusted
     let v: Vec<Field> = vec![features, beta, stderr, t, p, ci_lower, ci_upper, r2, adj_r2];
     Ok(Field::new("lin_reg_report".into(), DataType::Struct(v)))
 }
@@ -104,11 +99,11 @@ fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
 
 #[derive(PartialEq)]
 pub enum StandardError {
-    SE
-    , HC0
-    , HC1
-    , HC2
-    , HC3
+    SE,
+    HC0,
+    HC1,
+    HC2,
+    HC3,
 }
 
 impl From<String> for StandardError {
@@ -118,7 +113,7 @@ impl From<String> for StandardError {
             "hc1" => Self::HC1,
             "hc2" => Self::HC2,
             "hc3" => Self::HC3,
-            _ => Self::SE
+            _ => Self::SE,
         }
     }
 }
@@ -318,13 +313,19 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                 faer_weighted_lstsq(x, y, weights, solver)
             } else {
                 match LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)) {
-                    LRMethods::Normal | LRMethods::L2 => 
-                        faer_solve_lstsq(x, y, kwargs.l2_reg, has_bias, solver),
-                    
-                    LRMethods::L1 | LRMethods::ElasticNet => 
-                        faer_coordinate_descent(
-                            x, y, kwargs.l1_reg, kwargs.l2_reg, has_bias, kwargs.tol, 2000
-                        )
+                    LRMethods::Normal | LRMethods::L2 => {
+                        faer_solve_lstsq(x, y, kwargs.l2_reg, has_bias, solver)
+                    }
+
+                    LRMethods::L1 | LRMethods::ElasticNet => faer_coordinate_descent(
+                        x,
+                        y,
+                        kwargs.l1_reg,
+                        kwargs.l2_reg,
+                        has_bias,
+                        kwargs.tol,
+                        2000,
+                    ),
                 }
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
@@ -342,7 +343,6 @@ fn pl_lstsq(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
         Err(e) => Err(e),
     }
 }
-
 
 // Strictly speaking, this output type is not correct. Should be struct of last_target_idx many
 // coeff_outputs
@@ -364,9 +364,9 @@ fn pl_lstsq_multi(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsResult<S
     let x = mat.slice(s![.., last_target_idx..]).into_faer();
 
     let coeffs = match LRMethods::from((0., kwargs.l2_reg)) {
-        LRMethods::Normal | LRMethods::L2 => Ok(
-            faer_solve_lstsq(x, y, kwargs.l2_reg, has_bias, solver)
-        ),
+        LRMethods::Normal | LRMethods::L2 => {
+            Ok(faer_solve_lstsq(x, y, kwargs.l2_reg, has_bias, solver))
+        }
         _ => Err(PolarsError::ComputeError(
             "The method is not supported.".into(),
         )),
@@ -390,7 +390,7 @@ fn pl_lstsq_multi(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsResult<S
             })
             .collect::<Vec<_>>(),
     )?;
-    
+
     Ok(df_out.into_struct("coeffs".into()).into_series())
 }
 
@@ -413,9 +413,9 @@ fn pl_lstsq_multi_pred(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsRes
     let x = mat.slice(s![.., last_target_idx..]).into_faer();
 
     let coeffs = match LRMethods::from((0., kwargs.l2_reg)) {
-        LRMethods::Normal | LRMethods::L2 => Ok(
-            faer_solve_lstsq(x, y, kwargs.l2_reg, has_bias, solver)
-        ),
+        LRMethods::Normal | LRMethods::L2 => {
+            Ok(faer_solve_lstsq(x, y, kwargs.l2_reg, has_bias, solver))
+        }
         _ => Err(PolarsError::ComputeError(
             "The method is not supported.".into(),
         )),
@@ -456,10 +456,9 @@ fn pl_lstsq_w_rcond(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Seri
             let y = mat.slice(s![.., 0..1]).into_faer();
 
             //     // faer_solve_ridge_rcond
-            let (coeffs, singular_values) = faer_solve_lstsq_rcond(
-                x, y, kwargs.l2_reg, has_bias, rcond
-            );
-            
+            let (coeffs, singular_values) =
+                faer_solve_lstsq_rcond(x, y, kwargs.l2_reg, has_bias, rcond);
+
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(
                     "coeffs".into(),
@@ -519,13 +518,18 @@ fn pl_lstsq_pred(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
                 faer_weighted_lstsq(x, y, weights, solver)
             } else {
                 match LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)) {
-                    LRMethods::Normal | LRMethods::L2 => 
-                        faer_solve_lstsq(x, y, kwargs.l2_reg, has_bias, solver),
-                    LRMethods::L1 | LRMethods::ElasticNet => 
-                        faer_coordinate_descent(
-                            x, y, kwargs.l1_reg, kwargs.l2_reg, has_bias, kwargs.tol, 2000
-                        )
-                    
+                    LRMethods::Normal | LRMethods::L2 => {
+                        faer_solve_lstsq(x, y, kwargs.l2_reg, has_bias, solver)
+                    }
+                    LRMethods::L1 | LRMethods::ElasticNet => faer_coordinate_descent(
+                        x,
+                        y,
+                        kwargs.l1_reg,
+                        kwargs.l2_reg,
+                        has_bias,
+                        kwargs.tol,
+                        2000,
+                    ),
                 }
             };
 
@@ -579,8 +583,10 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
     let binding = inputs[0].cast(&DataType::Float64)?;
     let y_var = binding.f64().unwrap();
     let y_var = y_var.get(0).unwrap_or(f64::NAN);
-    let mut name_builder =
-        StringChunkedBuilder::new("features".into(), inputs.len().abs_diff(2) + (has_bias) as usize);
+    let mut name_builder = StringChunkedBuilder::new(
+        "features".into(),
+        inputs.len().abs_diff(2) + (has_bias) as usize,
+    );
     for s in inputs[2..].iter().map(|s| s.name()) {
         name_builder.append_value(s);
     }
@@ -615,14 +621,14 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
             let adj_r2 = 1.0 - ratio * ((nrows - 1) as f64 / (dof - 1.0));
 
             // std err
-            let std_err= match se_type {
+            let std_err = match se_type {
                 StandardError::SE => {
                     // total residue, sum of squares
                     let mse = (res.transpose() * &res).get(0, 0) / dof;
                     (0..ncols)
-                    .map(|i| (mse * xtx_inv.get(i, i)).sqrt())
-                    .collect_vec()
-                },
+                        .map(|i| (mse * xtx_inv.get(i, i)).sqrt())
+                        .collect_vec()
+                }
                 StandardError::HC0 | StandardError::HC1 => {
                     let temp_diag = res.get(.., 0).as_diagonal();
                     let diag = temp_diag * temp_diag;
@@ -633,9 +639,9 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
                         1f64
                     };
                     (0..ncols)
-                    .map(|i| (var_hc.get(i, i) * factor).sqrt())
-                    .collect_vec()
-                },
+                        .map(|i| (var_hc.get(i, i) * factor).sqrt())
+                        .collect_vec()
+                }
                 StandardError::HC2 | StandardError::HC3 => {
                     let temp_diag = res.get(.., 0).as_diagonal();
                     let temp_diag_scalers = Col::from_fn(nrows, |i| {
@@ -648,13 +654,11 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
                     });
                     let diag_scalers = temp_diag_scalers.as_diagonal();
                     // (diagonal residue squared matrix) * (1 / (1 -h_ii)) or * (1 / (1 -h_ii)^2)
-                    let diag = temp_diag * temp_diag * diag_scalers; 
+                    let diag = temp_diag * temp_diag * diag_scalers;
 
                     let var_hc = &xtx_inv_xt * diag * xtx_inv_xt.transpose();
-                    (0..ncols)
-                    .map(|i| (var_hc.get(i, i)).sqrt())
-                    .collect_vec()
-                },
+                    (0..ncols).map(|i| (var_hc.get(i, i)).sqrt()).collect_vec()
+                }
             };
 
             // T values
@@ -717,7 +721,7 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
                     &lower,
                     &upper,
                     &r2_series,
-                    &adj_r2_series
+                    &adj_r2_series,
                 ]
                 .into_iter(),
             )?;
@@ -726,7 +730,6 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
         Err(e) => Err(e),
     }
 }
-
 
 #[polars_expr(output_type_func=report_output)]
 fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
@@ -741,8 +744,10 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
     let y_var = binding2.f64().unwrap();
     let y_var = y_var.get(0).unwrap_or(f64::NAN);
     // index 0 is weights, 1 is y_var, 2 is target y. Skip them
-    let mut name_builder =
-        StringChunkedBuilder::new("features".into(), inputs.len().abs_diff(3) + (has_bias) as usize);
+    let mut name_builder = StringChunkedBuilder::new(
+        "features".into(),
+        inputs.len().abs_diff(3) + (has_bias) as usize,
+    );
     for s in inputs[3..].iter().map(|s| s.name()) {
         name_builder.append_value(s);
     }
@@ -777,7 +782,7 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
             let res = y - x * &coeffs;
             let mse =
                 (0..y.nrows()).fold(0., |acc, i| acc + weights[i] * res.get(i, 0).powi(2)) / dof;
-            
+
             // r2, adj_r2
             let nf64 = nrows as f64;
             let ratio = res.col(0).squared_norm_l2() / (y_var * nf64);
@@ -847,7 +852,7 @@ fn pl_wls_report(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series>
                     &lower,
                     &upper,
                     &r2_series,
-                    &adj_r2_series
+                    &adj_r2_series,
                 ]
                 .into_iter(),
             )?;

@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
-pub mod lr_solvers;
 pub mod lr_online_solvers;
+pub mod lr_solvers;
 
 use faer::{Mat, MatRef};
 use faer_traits::RealField;
@@ -42,7 +42,7 @@ impl From<&str> for LRSolverMethods {
         match value {
             "qr" => Self::QR,
             "svd" => Self::SVD,
-            "choleskey" => Self::QR, // choleskey not available 
+            "choleskey" => Self::QR, // choleskey not available
             _ => Self::QR,
         }
     }
@@ -101,7 +101,6 @@ impl From<(f32, f32)> for LRMethods {
 }
 
 pub trait LinearRegression<T: RealField + Float> {
-
     /// Typically coefficients + the bias as a single matrix (single slice)
     fn fitted_values(&self) -> MatRef<T>;
 
@@ -115,9 +114,9 @@ pub trait LinearRegression<T: RealField + Float> {
             T::zero()
         }
     }
-    
+
     /// Returns a copy of the coefficients
-    
+
     fn coefficients(&self) -> MatRef<T> {
         if self.has_bias() {
             let n = self.fitted_values().nrows() - 1;
@@ -147,7 +146,6 @@ pub trait LinearRegression<T: RealField + Float> {
     }
 
     fn coeffs_as_vec(&self) -> Result<Vec<T>, LinalgErrors> {
-
         match self.check_is_fit() {
             Ok(_) => Ok(self
                 .coefficients()
@@ -178,7 +176,7 @@ pub trait LinearRegression<T: RealField + Float> {
             if self.has_bias() && self.bias().abs() > T::epsilon() {
                 unsafe {
                     for i in 0..result.nrows() {
-                        *result.get_mut_unchecked(i, 0) = *result.get_mut_unchecked(i, 0) +  bias;
+                        *result.get_mut_unchecked(i, 0) = *result.get_mut_unchecked(i, 0) + bias;
                     }
                 }
             }
@@ -186,7 +184,6 @@ pub trait LinearRegression<T: RealField + Float> {
         }
     }
 }
-
 
 // Ndarray and Faer Interop. Copied from faer-ext.
 pub trait IntoFaer {
@@ -207,9 +204,7 @@ impl<'a, T: RealField> IntoFaer for ArrayView<'a, T, Ix2> {
         let ncols = self.ncols();
         let strides: [isize; 2] = self.strides().try_into().unwrap();
         let ptr = self.as_ptr();
-        unsafe {
-            MatRef::from_raw_parts(ptr, nrows, ncols, strides[0], strides[1])
-        }
+        unsafe { MatRef::from_raw_parts(ptr, nrows, ncols, strides[0], strides[1]) }
     }
 }
 

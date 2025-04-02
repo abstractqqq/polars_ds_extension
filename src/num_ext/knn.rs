@@ -225,50 +225,43 @@ fn pl_dist_from_kth_nb(
     let data = series_to_row_major_slice::<Float64Type>(inputs)?;
     match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
         Ok(d) => {
-            let mut leaves: Vec<Leaf<f64, ()>> = data
-                .chunks_exact(ncols)
-                .map(|sl| ((), sl).into())
-                .collect();
+            let mut leaves: Vec<Leaf<f64, ()>> =
+                data.chunks_exact(ncols).map(|sl| ((), sl).into()).collect();
             // let mut leaves = row_major_slice_to_leaves(&data, ncols, id, null_mask);
             let tree = KDT::from_leaves_unchecked(&mut leaves, d);
             let nrows = data.len() / ncols;
             let ca = if can_parallel {
                 let n_threads = POOL.current_num_threads();
                 let splits = split_offsets(nrows, n_threads);
-                let chunks_iter = splits.into_par_iter()
-                    .map(|(i, n)| {
-                        let start = i * ncols;
-                        let end = (i + n) * ncols;
-                        let slice = &data[start..end];
-                        let mut builder: PrimitiveChunkedBuilder<Float64Type> 
-                            = PrimitiveChunkedBuilder::new("".into(), n);
-                        
-                        for point in slice.chunks_exact(ncols) {
-                            match tree.knn_bounded(k + 1, point, kwargs.max_bound, kwargs.epsilon) {
-                                Some(mut nbs) => {
-                                    builder.append_option(
-                                        nbs.pop().map(|nb| nb.to_dist())
-                                    );
-                                },
-                                _ => builder.append_null()
+                let chunks_iter = splits.into_par_iter().map(|(i, n)| {
+                    let start = i * ncols;
+                    let end = (i + n) * ncols;
+                    let slice = &data[start..end];
+                    let mut builder: PrimitiveChunkedBuilder<Float64Type> =
+                        PrimitiveChunkedBuilder::new("".into(), n);
+
+                    for point in slice.chunks_exact(ncols) {
+                        match tree.knn_bounded(k + 1, point, kwargs.max_bound, kwargs.epsilon) {
+                            Some(mut nbs) => {
+                                builder.append_option(nbs.pop().map(|nb| nb.to_dist()));
                             }
+                            _ => builder.append_null(),
                         }
-                        let ca = builder.finish();
-                        ca.downcast_iter().cloned().collect::<Vec<_>>()
-                    });
+                    }
+                    let ca = builder.finish();
+                    ca.downcast_iter().cloned().collect::<Vec<_>>()
+                });
                 let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-                Float64Chunked::from_chunk_iter("".into(), chunks.into_iter().flatten()) 
+                Float64Chunked::from_chunk_iter("".into(), chunks.into_iter().flatten())
             } else {
-                let mut builder: PrimitiveChunkedBuilder<Float64Type> 
-                    = PrimitiveChunkedBuilder::new("".into(), nrows);
+                let mut builder: PrimitiveChunkedBuilder<Float64Type> =
+                    PrimitiveChunkedBuilder::new("".into(), nrows);
                 for point in data.chunks_exact(ncols) {
                     match tree.knn_bounded(k + 1, point, kwargs.max_bound, kwargs.epsilon) {
                         Some(mut nbs) => {
-                            builder.append_option(
-                                nbs.pop().map(|nb| nb.to_dist())
-                            );
-                        },
-                        _ => builder.append_null()
+                            builder.append_option(nbs.pop().map(|nb| nb.to_dist()));
+                        }
+                        _ => builder.append_null(),
                     }
                 }
                 builder.finish()
@@ -325,11 +318,11 @@ fn pl_knn_ptwise(
                 can_parallel,
                 kwargs.max_bound,
                 kwargs.epsilon,
-            ).into_series())
+            )
+            .into_series())
         }
         Err(e) => Err(PolarsError::ComputeError(e.into())),
     }
-
 }
 
 pub fn knn_ptwise_w_dist<'a, Kdt>(
@@ -685,11 +678,9 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
             Ok(d) => {
                 let mut leaves = slice_to_empty_leaves(&data, ncols);
                 let tree = KDT::from_leaves_unchecked(&mut leaves, d);
-                Ok(
-                    query_nb_cnt(tree, &data, r, can_parallel)
+                Ok(query_nb_cnt(tree, &data, r, can_parallel)
                     .with_name("cnt".into())
-                    .into_series()
-                )
+                    .into_series())
             }
             Err(e) => Err(PolarsError::ComputeError(e.into())),
         }
@@ -698,11 +689,9 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
             Ok(d) => {
                 let mut leaves = slice_to_empty_leaves(&data, ncols);
                 let tree = KDT::from_leaves_unchecked(&mut leaves, d);
-                Ok(
-                    query_nb_cnt_w_radius(tree, &data, radius, can_parallel)
+                Ok(query_nb_cnt_w_radius(tree, &data, radius, can_parallel)
                     .with_name("cnt".into())
-                    .into_series()
-                )
+                    .into_series())
             }
             Err(e) => Err(PolarsError::ComputeError(e.into())),
         }

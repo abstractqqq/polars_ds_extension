@@ -1,12 +1,9 @@
 #![allow(non_snake_case)]
 /// Linear Regression Interop with Python
 use crate::linalg::{
-    lr_online_solvers::OnlineLR, 
-    lr_solvers::{ElasticNet, LR}, 
-    IntoFaer, 
-    IntoNdarray, 
-    LinalgErrors, 
-    LinearRegression
+    lr_online_solvers::OnlineLR,
+    lr_solvers::{ElasticNet, LR},
+    IntoFaer, IntoNdarray, LinalgErrors, LinearRegression,
 };
 
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
