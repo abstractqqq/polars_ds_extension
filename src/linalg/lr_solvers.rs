@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 use super::{LRSolverMethods, LinalgErrors, LinearRegression};
-use faer::{linalg::solvers::Solve, mat::Mat, prelude::*};
+use faer::{Side, linalg::solvers::Solve, mat::Mat, prelude::*};
 use faer_traits::RealField;
 use num::Float;
 
@@ -255,8 +255,11 @@ pub fn faer_solve_lstsq<T: RealField + Float>(
             Ok(svd) => svd.solve(xt * y),
             _ => xtx.col_piv_qr().solve(xt * y),
         },
+        LRSolverMethods::Choleskey => match xtx.llt(Side::Lower) {
+            Ok(llt) => llt.solve(xt * y),
+            _ => xtx.col_piv_qr().solve(xt * y),
+        },
         LRSolverMethods::QR => xtx.col_piv_qr().solve(xt * y),
-        LRSolverMethods::Choleskey => todo!(),
     }
 }
 
@@ -279,8 +282,11 @@ pub fn faer_weighted_lstsq<T: RealField>(
             Ok(svd) => svd.solve(xtw * y),
             Err(_) => xtwx.col_piv_qr().solve(xtw * y),
         },
+        LRSolverMethods::Choleskey => match xtwx.llt(Side::Lower) {
+            Ok(llt) => llt.solve(xtw * y),
+            _ => xtwx.col_piv_qr().solve(xtw * y),
+        },
         LRSolverMethods::QR => xtwx.col_piv_qr().solve(xtw * y),
-        LRSolverMethods::Choleskey => todo!(),
     }
 }
 
