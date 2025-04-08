@@ -119,7 +119,7 @@ class LR:
             Names for the incoming features, if available. If None, the names will be empty. They will be
             learned if .fit_df() is run later, or .set_input_features() is set later.
         """
-        self._lr = PyLR(solver=solver, lambda_=lambda_, fit_bias=fit_bias)
+        self._lr = PyLR(solver, lambda_, fit_bias)
         self.feature_names_in_: List[str] = (
             [] if feature_names_in_ is None else list(feature_names_in_)
         )
