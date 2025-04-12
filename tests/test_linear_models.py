@@ -2,7 +2,9 @@ import polars as pl
 import polars_ds as pds
 import pytest
 import numpy as np
-from polars_ds.linear_models import OnlineLR, ElasticNet
+from sklearn.linear_model import LinearRegression
+
+from polars_ds.linear_models import OnlineLR, ElasticNet, LR
 
 
 def test_lr_null_policies_for_np():
@@ -48,8 +50,33 @@ def test_lr_null_policies_for_np():
     )  # checking out the first column because only that has nulls
 
 
+@pytest.mark.parametrize("solver", ["svd", "cholesky", "qr"])
+def test_lr(solver):
+    ols = LR(False, 0.0, solver)
+    df = (
+        pds.frame(size=5000)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_row_index()
+        .with_columns(
+            y=pl.col("x1") + pl.col("x2") * 0.2 - 0.3 * pl.col("x3") + pds.random() * 0.0001
+        )
+    )
+    X = df.select("x1", "x2", "x3").to_numpy()
+    y = df.select("y").to_numpy()
+
+    ols.fit(X, y)
+    coeffs = ols.coeffs()
+    sk_ols = LinearRegression(fit_intercept=False)
+    sk_ols.fit(X, y)
+    sklearn_coeffs = sk_ols.coef_
+    assert np.all(np.abs(coeffs - sklearn_coeffs) < 1e-6)
+
+
 def test_online_lr():
-    from sklearn.linear_model import LinearRegression
 
     size = 5000
     df = (
