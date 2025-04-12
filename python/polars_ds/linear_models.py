@@ -101,7 +101,7 @@ class LR:
 
     def __init__(
         self,
-        fit_bias: bool = False,
+        has_bias: bool = False,
         lambda_: float = 0.0,
         solver: LRSolverMethods = "qr",
         feature_names_in_: List[str] | None = None,
@@ -113,13 +113,13 @@ class LR:
             The regularization parameters for ridge. If this is positive, then this class will solve Ridge.
         solver
             Use one of 'svd', 'cholesky' and 'qr' method to solve the least square equation. Default is 'qr'.
-        fit_bias
+        has_bias
             Whether to add a bias term. Also known as intercept in other packages.
         feature_names_in_
             Names for the incoming features, if available. If None, the names will be empty. They will be
             learned if .fit_df() is run later, or .set_input_features() is set later.
         """
-        self._lr = PyLR(solver, lambda_, fit_bias)
+        self._lr = PyLR(solver, lambda_, has_bias)
         self.feature_names_in_: List[str] = (
             [] if feature_names_in_ is None else list(feature_names_in_)
         )
@@ -143,7 +143,7 @@ class LR:
         """
         coefficients = np.ascontiguousarray(coeffs, dtype=np.float64).flatten()
         lr = cls(
-            fit_bias=(bias != 0.0),
+            has_bias=(bias != 0.0),
             lambda_=0.0,
             solver="Not Solved",
             feature_names_in_=feature_names_in_,
@@ -312,7 +312,7 @@ class ElasticNet:
         self,
         l1_reg: float,
         l2_reg: float,
-        fit_bias: bool = False,
+        has_bias: bool = False,
         tol: float = 1e-5,
         max_iter: int = 2000,
         feature_names_in_: List[str] | None = None,
@@ -327,7 +327,7 @@ class ElasticNet:
             The l1 regularization parameters for the elastic net.
         l2_reg
             The l2 regularization parameters for the elastic net.
-        fit_bias
+        has_bias
             Whether to add a bias term. Also known as intercept in other packages.
         tol
             When updates are smaller than tol, the algorithm will stop.
@@ -340,7 +340,7 @@ class ElasticNet:
         if l1_reg <= 0.0 and l2_reg <= 0.0:
             raise ValueError("Cannot have both l1_reg and l2_reg <= 0.")
 
-        self._en = PyElasticNet(l1_reg, l2_reg, fit_bias, tol, max_iter)
+        self._en = PyElasticNet(l1_reg, l2_reg, has_bias, tol, max_iter)
         self.feature_names_in_: List[str] = (
             [] if feature_names_in_ is None else list(feature_names_in_)
         )
@@ -366,7 +366,7 @@ class ElasticNet:
         elastic_net = cls(
             float("nan"),
             float("nan"),
-            fit_bias=(bias != 0.0),
+            has_bias=(bias != 0.0),
             tol=1e-5,
             max_iter=2000,
             feature_names_in_=feature_names_in_,
@@ -510,7 +510,7 @@ class OnlineLR:
     """
     Normal or Ridge Online Regression. This doesn't support dataframe inputs.
 
-    Because of implementation details, it is not recommended to set fit_bias = True here
+    Because of implementation details, it is not recommended to set has_bias = True here
     if runtime speed is crucial.
 
     Null Behaviors:
@@ -521,15 +521,15 @@ class OnlineLR:
     def __init__(
         self,
         lambda_: float = 0.0,
-        fit_bias: bool = False,
+        has_bias: bool = False,
     ):
         """
         lambda_
             The L2 regularization factor
-        fit_bias
+        has_bias
             Whether this should fit the bias term
         """
-        self._lr = PyOnlineLR(lambda_, fit_bias)
+        self._lr = PyOnlineLR(lambda_, has_bias)
 
     @classmethod
     def from_coeffs_bias_inverse(cls, coeffs: List[float], bias: float, inv: np.ndarray) -> Self:
@@ -547,7 +547,7 @@ class OnlineLR:
             2D NumPy matrix representing the inverse of XtX in a regression problem.
         """
         coefficients = np.ascontiguousarray(coeffs, dtype=np.float64).flatten()
-        lr = cls(fit_bias=(bias > 0.0), lambda_=0.0)
+        lr = cls(has_bias=(bias > 0.0), lambda_=0.0)
         lr._lr.set_coeffs_bias_inverse(coefficients, bias, inv)
         return lr
 
