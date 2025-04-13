@@ -1,10 +1,11 @@
 from __future__ import annotations
+import importlib.metadata
 import polars as pl
+
+__version__ = importlib.metadata.version("polars_ds")
 
 # Internal dependencies
 from polars_ds.exprs import *  # noqa F403
-
-__version__ = "0.8.3"
 
 
 def frame(size: int = 2_000, index_name: str = "row_num") -> pl.DataFrame:

@@ -140,7 +140,7 @@ def _test_elastic_net(add_bias: bool = False):
 
     X = df.select("x1", "x2", "x3").to_numpy()
     y = df.select("y").to_numpy()
-    en = ElasticNet(l1_reg=l1_reg, l2_reg=l2_reg, fit_bias=add_bias)
+    en = ElasticNet(l1_reg=l1_reg, l2_reg=l2_reg, has_bias=add_bias)
     elastic = lm.ElasticNet(alpha=alpha, l1_ratio=l1_ratio, fit_intercept=add_bias)
 
     en.fit(X, y)
