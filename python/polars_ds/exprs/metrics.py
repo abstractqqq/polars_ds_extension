@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import polars as pl
 
 # Internal dependencies
@@ -655,3 +656,121 @@ def query_p_pct_score(pred: str | pl.Expr, sensitive_cond: pl.Expr) -> pl.Expr:
     p_y1_z0 = p.filter(~sensitive_cond).mean()
     ratio = p_y1_z1 / p_y1_z0
     return pl.min_horizontal(ratio, 1 / ratio)
+
+def calculate_ndcg(df, relevance_col, score_col, group_col, k =None, ignore_ties = False):
+    """
+    Calculates Normalized Discounted Cumulative Gain (NDCG) using Polars.
+
+    Args:
+      df (pl.DataFrame): The input DataFrame.
+      relevance_col (str): The name of the column containing relevance scores.
+      group_col (str): The name of the column defining the groups for ranking.
+
+    Returns:
+      pl.Series: A Series containing the NDCG scores for each group.
+    """
+
+    ignore_flag = df.group_by("example_id").len().with_columns(pl.when(pl.col('len')==1).then(1).otherwise(0).alias('is_single_candidate'))
+    if ignore_ties:
+        dcg_per_group = _get_dcg_score_with_ties(df, relevance_col, group_col, sort_by_column=score_col, k=k)
+    else:
+        dcg_per_group = _get_dcg_score_ignore_ties(df, relevance_col, group_col, sort_by_column=score_col, k=k)
+
+    
+    ideal_dcg_per_group = _get_dcg_score_ignore_ties(df, relevance_col,
+                                                   group_col, sort_by_column=relevance_col, k=k)
+    ideal_dcg_per_group = ideal_dcg_per_group.rename({"discounted_relevance": "discounted_ideal_relevance"})
+    
+    ndcg_df = dcg_per_group.join(ideal_dcg_per_group, on ='example_id')
+    ndcg_df = ndcg_df.join(ignore_flag, on='example_id')
+    
+    ndcg_df = ndcg_df.with_columns((pl.col('discounted_relevance')/pl.col('discounted_ideal_relevance')).alias('ndcg'))
+    
+    ndcg_df = ndcg_df.fill_nan(0)
+    
+    ndcg_df = ndcg_df.filter(pl.col("is_single_candidate")==0)
+    return ndcg_df.select(pl.col('ndcg').mean())
+
+
+
+def _get_dcg_score_ignore_ties(df,  relevance_col, group_col, sort_by_column, k):
+    df = df.sort([group_col, sort_by_column], descending=True)
+    df = _get_rank_discount_at_k(df, k, group_col)
+    df = df.with_columns((pl.col(relevance_col) * pl.col("discount")).alias("discounted_relevance"))
+    return df.group_by(group_col, maintain_order=True).agg(pl.col("discounted_relevance").sum())
+
+def _get_rank_discount_at_k(df, k, group_col):
+    df = (df.with_columns(pl.lit(1).alias("ones"))
+            .select(
+                [
+                    pl.all().exclude("ones"),
+                    pl.col("ones")
+                    .cum_sum()
+                    .over(group_col)
+                    .flatten()
+                    .alias("rank"),
+                ]
+            )
+        )
+
+    if k:
+        df = df.with_columns(
+            pl.when(pl.col("rank") <= k)
+            .then(1)
+            .otherwise(0)
+            .alias("discount_mask")
+        )
+    else:
+        df = df.with_columns(pl.lit(1).alias("discount_mask"))
+
+    df = df.with_columns(
+            ((1 / np.log2(pl.col("rank") + 1))*pl.col('discount_mask')).alias("discount")
+        )
+    return df 
+
+def _get_dcg_score_with_ties(df,  relevance_col, group_col, sort_by_column, k):
+    df = df.sort([group_col, sort_by_column], descending=True)
+
+    df = _get_rank_discount_at_k(df, k, group_col)
+
+    df = df.with_columns((pl.col(relevance_col) * pl.col("discount")).alias("discounted_relevance"))
+    df = df.with_columns(pl.col('discount').cum_sum().over('example_id').flatten().alias('discount_cumsum'))
+    df = df.with_columns(
+            pl.col(sort_by_column)
+            .rank(method='min', descending=True)
+            .over('example_id')
+            .alias("rank_groups")
+        )
+
+    df_diff = df.group_by('example_id', 'rank_groups').agg(pl.col('discount_cumsum').last(), 
+                                                        pl.col(relevance_col).sum(),
+                                                          pl.len().alias('num_rows')).sort('rank_groups')
+    df_diff.sort('example_id', 'rank_groups')
+
+    df_diff = df_diff.group_by('example_id').agg(pl.col('discount_cumsum').diff().alias('discount_diff'), 
+                                                 pl.col(relevance_col), 
+                                                 pl.col('discount_cumsum'),
+                                                 pl.col('rank_groups'), 
+                                                 pl.col('rank_groups').diff(-1).alias('num_repetitions'),
+                                                 pl.col('num_rows'),
+                                                 pl.len().alias('num_rows_diff')
+                                                 )
+
+    df_diff = df_diff.explode(['discount_diff','rank_groups', 'num_repetitions','num_rows',
+                               'discount_cumsum', relevance_col])
+
+    # deal with the cases when the first-ranked scores are tied, e.g. top-2 score are the same
+    df_diff = df_diff.with_columns(pl.when(pl.col("rank_groups") ==1).then(pl.col('discount_cumsum')).otherwise(pl.col("discount_diff")).alias("discount_diff"))
+
+    #deal with cases when the reward happened in the last positions
+    df_diff = df_diff.with_columns(pl.when(pl.col("num_repetitions").is_null()).then(-1*pl.col('num_rows')).otherwise(pl.col("num_repetitions")).alias("num_repetitions"))
+    # get the average relevance per group with the discount applicable only to this group 
+#    discount_diff is the difference in discount between the start of the group and the end
+
+    df_diff = df_diff.with_columns((pl.col(relevance_col)/pl.col('num_repetitions')*(-1)).alias('average_gain'))
+    df_diff = df_diff.with_columns(( pl.col('average_gain')*pl.col('discount_diff')).alias('discounted_relevance'))
+    return df_diff.group_by(group_col, maintain_order=True).agg(pl.col("discounted_relevance").sum())
+
+
+
+
