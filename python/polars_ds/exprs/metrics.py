@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import polars as pl
 
 # Internal dependencies
@@ -655,3 +656,232 @@ def query_p_pct_score(pred: str | pl.Expr, sensitive_cond: pl.Expr) -> pl.Expr:
     p_y1_z0 = p.filter(~sensitive_cond).mean()
     ratio = p_y1_z1 / p_y1_z0
     return pl.min_horizontal(ratio, 1 / ratio)
+
+def calculate_ndcg(df, relevance_col, score_col, group_col, k=None, ignore_ties=False):
+    """
+    Calculates Normalized Discounted Cumulative Gain (NDCG) using Polars.
+
+    NDCG is a measure of ranking quality that considers both the relevance of items
+    and their positions in the ranked list. It normalizes the DCG score by the ideal
+    DCG score (the maximum possible DCG for a given set of relevance scores).
+
+    Args:
+        df (pl.DataFrame): The input DataFrame containing the data to be ranked.
+        relevance_col (str): The name of the column containing relevance scores.
+            These scores represent the true relevance/importance of each item.
+        score_col (str): The name of the column containing the predicted scores
+            used for ranking the items.
+        group_col (str): The name of the column defining the groups for ranking.
+            Typically this would be something like 'query_id' or 'user_id'.
+        k (int, optional): The number of top items to consider in the NDCG calculation.
+            If None, all items are considered. Defaults to None.
+        ignore_ties (bool, optional): If True, handles tied scores by averaging their
+            contributions. If False, ranks items with the same score sequentially.
+            Defaults to False.
+
+    Returns:
+        pl.Series: A Series containing the mean NDCG score across all groups.
+            Groups with only one item are excluded from the calculation.
+
+    Examples:
+        Basic usage with a simple ranking task:
+        >>> df = pl.DataFrame({
+        ...     "query_id": [1, 1, 1, 2, 2],
+        ...     "relevance": [3, 2, 1, 2, 1],
+        ...     "score": [0.9, 0.8, 0.7, 0.6, 0.5]
+        ... })
+        >>> ndcg = calculate_ndcg(df, "relevance", "score", "query_id", k=2)
+        >>> print(ndcg)  # Shows the mean NDCG@2 across all queries
+
+        Using with search results:
+        >>> search_results = pl.DataFrame({
+        ...     "query_id": [1, 1, 1, 1, 2, 2, 2],
+        ...     "doc_id": ["d1", "d2", "d3", "d4", "d5", "d6", "d7"],
+        ...     "relevance": [4, 3, 2, 1, 3, 2, 1],
+        ...     "bm25_score": [0.95, 0.85, 0.75, 0.65, 0.9, 0.8, 0.7]
+        ... })
+        >>> ndcg = calculate_ndcg(search_results, "relevance", "bm25_score", "query_id", k=5)
+        >>> print(ndcg)  # Shows the mean NDCG@5 across all queries
+
+        Handling tied scores:
+        >>> tied_scores = pl.DataFrame({
+        ...     "query_id": [1, 1, 1, 1],
+        ...     "relevance": [3, 2, 2, 1],
+        ...     "score": [0.9, 0.8, 0.8, 0.7]  # Note the tied scores
+        ... })
+        >>> # Without handling ties
+        >>> ndcg_no_ties = calculate_ndcg(tied_scores, "relevance", "score", "query_id", k=3)
+        >>> # With proper tie handling
+        >>> ndcg_with_ties = calculate_ndcg(tied_scores, "relevance", "score", "query_id", k=3, ignore_ties=True)
+
+        Using with recommendation systems:
+        >>> recommendations = pl.DataFrame({
+        ...     "user_id": [1, 1, 1, 2, 2, 2],
+        ...     "item_id": ["i1", "i2", "i3", "i4", "i5", "i6"],
+        ...     "relevance": [5, 4, 3, 4, 3, 2],  # User ratings or engagement metrics
+        ...     "pred_score": [0.95, 0.85, 0.75, 0.9, 0.8, 0.7]  # Model predictions
+        ... })
+        >>> ndcg = calculate_ndcg(recommendations, "relevance", "pred_score", "user_id", k=10)
+        >>> print(ndcg)  # Shows the mean NDCG@10 across all users
+    """
+
+    ignore_flag = df.group_by("example_id").len().with_columns(pl.when(pl.col('len')==1).then(1).otherwise(0).alias('is_single_candidate'))
+    if ignore_ties:
+        dcg_per_group = _get_dcg_score_with_ties(df, relevance_col, group_col, sort_by_column=score_col, k=k)
+    else:
+        dcg_per_group = _get_dcg_score_ignore_ties(df, relevance_col, group_col, sort_by_column=score_col, k=k)
+
+    
+    ideal_dcg_per_group = _get_dcg_score_ignore_ties(df, relevance_col,
+                                                   group_col, sort_by_column=relevance_col, k=k)
+    ideal_dcg_per_group = ideal_dcg_per_group.rename({"discounted_relevance": "discounted_ideal_relevance"})
+    
+    ndcg_df = dcg_per_group.join(ideal_dcg_per_group, on ='example_id')
+    ndcg_df = ndcg_df.join(ignore_flag, on='example_id')
+    
+    ndcg_df = ndcg_df.with_columns((pl.col('discounted_relevance')/pl.col('discounted_ideal_relevance')).alias('ndcg'))
+    
+    ndcg_df = ndcg_df.fill_nan(0)
+    
+    ndcg_df = ndcg_df.filter(pl.col("is_single_candidate")==0)
+    return ndcg_df.select(pl.col('ndcg').mean())
+
+
+
+def _get_dcg_score_ignore_ties(df, relevance_col, group_col, sort_by_column, k):
+    """
+    Calculates Discounted Cumulative Gain (DCG) without handling tied scores.
+
+    This function computes DCG by ranking items strictly based on their scores,
+    even when scores are equal. Items with the same score will be ranked sequentially.
+
+    Args:
+        df (pl.DataFrame): The input DataFrame.
+        relevance_col (str): Column name containing relevance scores.
+        group_col (str): Column name defining the groups for ranking.
+        sort_by_column (str): Column name to sort by for ranking.
+        k (int, optional): Number of top items to consider.
+
+    Returns:
+        pl.DataFrame: A DataFrame containing the DCG score for each group.
+    """
+    df = df.sort([group_col, sort_by_column], descending=True)
+    df = _get_rank_discount_at_k(df, k, group_col)
+    df = df.with_columns((pl.col(relevance_col) * pl.col("discount")).alias("discounted_relevance"))
+    return df.group_by(group_col, maintain_order=True).agg(pl.col("discounted_relevance").sum())
+
+def _get_rank_discount_at_k(df, k, group_col):
+    """
+    Computes rank-based discount factors for DCG calculation.
+
+    The discount factor for rank r is 1/log2(r+1). This function also handles
+    the top-k cutoff if specified.
+
+    Args:
+        df (pl.DataFrame): The input DataFrame.
+        k (int, optional): Number of top items to consider. If None, all items
+            are considered.
+        group_col (str): Column name defining the groups for ranking.
+
+    Returns:
+        pl.DataFrame: The input DataFrame with an additional 'discount' column
+            containing the rank-based discount factors.
+    """
+    df = (df.with_columns(pl.lit(1).alias("ones"))
+            .select(
+                [
+                    pl.all().exclude("ones"),
+                    pl.col("ones")
+                    .cum_sum()
+                    .over(group_col)
+                    .flatten()
+                    .alias("rank"),
+                ]
+            )
+        )
+
+    if k:
+        df = df.with_columns(
+            pl.when(pl.col("rank") <= k)
+            .then(1)
+            .otherwise(0)
+            .alias("discount_mask")
+        )
+    else:
+        df = df.with_columns(pl.lit(1).alias("discount_mask"))
+
+    df = df.with_columns(
+            ((1 / np.log2(pl.col("rank") + 1))*pl.col('discount_mask')).alias("discount")
+        )
+    return df 
+
+def _get_dcg_score_with_ties(df, relevance_col, group_col, sort_by_column, k):
+    """
+    Calculates Discounted Cumulative Gain (DCG) with proper handling of tied scores.
+
+    This function computes DCG by properly handling cases where multiple items
+    have the same score. It averages the contribution of tied items to ensure
+    fair treatment of items with equal scores.
+
+    Args:
+        df (pl.DataFrame): The input DataFrame.
+        relevance_col (str): Column name containing relevance scores.
+        group_col (str): Column name defining the groups for ranking.
+        sort_by_column (str): Column name to sort by for ranking.
+        k (int, optional): Number of top items to consider.
+
+    Returns:
+        pl.DataFrame: A DataFrame containing the DCG score for each group,
+            with tied scores handled appropriately.
+
+    Note:
+        This implementation handles tied scores by:
+        1. Grouping items with the same score
+        2. Computing the average discount factor for each group
+        3. Distributing the relevance scores evenly among tied items
+    """
+    df = df.sort([group_col, sort_by_column], descending=True)
+
+    df = _get_rank_discount_at_k(df, k, group_col)
+
+    df = df.with_columns((pl.col(relevance_col) * pl.col("discount")).alias("discounted_relevance"))
+    df = df.with_columns(pl.col('discount').cum_sum().over('example_id').flatten().alias('discount_cumsum'))
+    df = df.with_columns(
+            pl.col(sort_by_column)
+            .rank(method='min', descending=True)
+            .over('example_id')
+            .alias("rank_groups")
+        )
+
+    df_diff = df.group_by('example_id', 'rank_groups').agg(pl.col('discount_cumsum').last(), 
+                                                        pl.col(relevance_col).sum(),
+                                                          pl.len().alias('num_rows')).sort('rank_groups')
+    df_diff.sort('example_id', 'rank_groups')
+
+    df_diff = df_diff.group_by('example_id').agg(pl.col('discount_cumsum').diff().alias('discount_diff'), 
+                                                 pl.col(relevance_col), 
+                                                 pl.col('discount_cumsum'),
+                                                 pl.col('rank_groups'), 
+                                                 pl.col('rank_groups').diff(-1).alias('num_repetitions'),
+                                                 pl.col('num_rows'),
+                                                 pl.len().alias('num_rows_diff')
+                                                 )
+
+    df_diff = df_diff.explode(['discount_diff','rank_groups', 'num_repetitions','num_rows',
+                               'discount_cumsum', relevance_col])
+
+    # deal with the cases when the first-ranked scores are tied, e.g. top-2 score are the same
+    df_diff = df_diff.with_columns(pl.when(pl.col("rank_groups") ==1).then(pl.col('discount_cumsum')).otherwise(pl.col("discount_diff")).alias("discount_diff"))
+
+    #deal with cases when the reward happened in the last positions
+    df_diff = df_diff.with_columns(pl.when(pl.col("num_repetitions").is_null()).then(-1*pl.col('num_rows')).otherwise(pl.col("num_repetitions")).alias("num_repetitions"))
+    # get the average relevance per group with the discount applicable only to this group 
+#    discount_diff is the difference in discount between the start of the group and the end
+
+    df_diff = df_diff.with_columns((pl.col(relevance_col)/pl.col('num_repetitions')*(-1)).alias('average_gain'))
+    df_diff = df_diff.with_columns(( pl.col('average_gain')*pl.col('discount_diff')).alias('discounted_relevance'))
+    return df_diff.group_by(group_col, maintain_order=True).agg(pl.col("discounted_relevance").sum())
+
+
+
+
