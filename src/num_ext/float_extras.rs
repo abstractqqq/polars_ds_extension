@@ -5,6 +5,7 @@ use crate::stats_utils::gamma::digamma;
 use crate::utils::{first_field_output, float_output};
 use arity::binary_elementwise_values;
 use num::traits::Float;
+use polars::prelude::buffer::validate_utf8;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
@@ -300,5 +301,34 @@ fn pl_diagamma(inputs: &[Series]) -> PolarsResult<Series> {
         _ => Err(PolarsError::ComputeError(
             "Input column must be numerical.".into(),
         )),
+    }
+}
+
+#[polars_expr(output_type=Float64)]
+fn pl_add_at(inputs: &[Series]) -> PolarsResult<Series> {
+
+    // an equivalent function to numpy add at 
+    // but only for f64 dtype
+    // The data type + one-chunk-ness should be gauranteed in Python
+
+    let indices = inputs[0].u32().unwrap();
+    let values = inputs[1].f64().unwrap();
+
+    if indices.len() != values.len() {
+        Err(PolarsError::ComputeError(
+            "Indices and values don't have the same length.".into(),
+        )) 
+    } else {
+        let mut output = vec![0f64; indices.len()];
+        let indices_slice = indices.cont_slice().unwrap(); 
+        let values_slice = values.cont_slice().unwrap();
+
+        for (i, v) in indices_slice.iter().zip(values_slice.iter()) {
+            let j = *i as usize;
+            output[j] += v;
+        }
+
+        let ca = Float64Chunked::from_vec("".into(), output);
+        Ok(ca.into_series())
     }
 }

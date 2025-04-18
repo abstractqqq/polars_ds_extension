@@ -54,6 +54,7 @@ __all__ = [
     "next_down",
     "digamma",
     "xlogy",
+    "add_at",
     "l_inf_horizontal",
     "l1_horizontal",
     "l2_sq_horizontal",
@@ -1063,12 +1064,33 @@ def next_down(x: str | pl.Expr) -> pl.Expr:
 
 def digamma(x: str | pl.Expr) -> pl.Expr:
     """
-    The diagamma function
+    The diagamma function.
     """
     return pl_plugin(
         symbol="pl_diagamma",
         args=[str_to_expr(x)],
         is_elementwise=True,
+    )
+
+
+def add_at(indices: str | pl.Expr, values: str | pl.Expr) -> pl.Expr:
+    """
+    Creates a zero column first. Then the j-th value in `values` will be added to
+    the j-th index in `indices`. This is the equivalent to NumPy's add.at.
+
+    Parameters
+    ----------
+    indices
+        Expression or name of a column. Must be castable to u32.
+    values
+        Expression or name of a column. Must be castable to f64 and have the same length
+        as the indices.
+    """
+    ind = str_to_expr(indices).cast(pl.UInt32).rechunk()
+    val = str_to_expr(values).cast(pl.Float64).rechunk()
+    return pl_plugin(
+        symbol="pl_add_at",
+        args=[ind, val],
     )
 
 

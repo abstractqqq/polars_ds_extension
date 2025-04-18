@@ -15,7 +15,7 @@ numpy = "0.23" # matrix interop
 pyo3 = {version = "0.23", features = ["abi3-py39", "extension-module"]}
 pyo3-polars = {version = "0.20", features = ["derive", "dtype-array", "dtype-struct"]}
 # Polars
-polars = {version = "0.46", features = ["performant", "lazy",
+polars = {version = "0.46", features = ["performant", "lazy", "range",
 "diff", "array_count", "abs", "cross_join", "rank", "ndarray", "log", 
 "cum_agg", "round_series", "nightly","dtype-array", "dtype-struct", "dtype-i128"], default-features = false}
 polars-arrow = "0.46.0"
