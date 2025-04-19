@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 use super::{LRSolverMethods, LinalgErrors, LinearRegression};
-use faer::{Side, linalg::solvers::Solve, mat::Mat, prelude::*};
+use faer::{linalg::solvers::Solve, mat::Mat, prelude::*, Side};
 use faer_traits::RealField;
 use num::Float;
 
