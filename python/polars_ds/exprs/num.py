@@ -1073,10 +1073,13 @@ def digamma(x: str | pl.Expr) -> pl.Expr:
     )
 
 
-def add_at(indices: str | pl.Expr, values: str | pl.Expr) -> pl.Expr:
+def add_at(
+    indices: str | pl.Expr, values: str | pl.Expr, buffer_size: int | pl.Expr | None = None
+) -> pl.Expr:
     """
-    Creates a zero column first. Then the j-th value in `values` will be added to
-    the j-th index in `indices`. This is the equivalent to NumPy's add.at.
+    Creates a zero column of length `buffer_size` first. Then the j-th value in `values`
+    will be added to the j-th index in `indices` in the buffer. This is the equivalent to
+    NumPy's add.at.
 
     Parameters
     ----------
@@ -1085,12 +1088,23 @@ def add_at(indices: str | pl.Expr, values: str | pl.Expr) -> pl.Expr:
     values
         Expression or name of a column. Must be castable to f64 and have the same length
         as the indices.
+    buffer_size
+        If this is None, buffer size will be inferred from unique values in indices, which
+        should range from [0..n), where n is the actual buffer size. If this is an integer,
+        then the buffer will have the exact size given here, which might cause out of bounds
+        error if indices are not checked. If this is an expression, only the first element
+        in the represented column will be used.
     """
     ind = str_to_expr(indices).cast(pl.UInt32).rechunk()
     val = str_to_expr(values).cast(pl.Float64).rechunk()
+    if isinstance(buffer_size, pl.Expr):
+        size = buffer_size
+    else:
+        size = pl.lit(buffer_size, dtype=pl.UInt32)
+
     return pl_plugin(
         symbol="pl_add_at",
-        args=[ind, val],
+        args=[ind, val, size],
     )
 
 

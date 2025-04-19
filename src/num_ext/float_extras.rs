@@ -313,13 +313,31 @@ fn pl_add_at(inputs: &[Series]) -> PolarsResult<Series> {
 
     let indices = inputs[0].u32().unwrap();
     let values = inputs[1].f64().unwrap();
+    let buffer_size = inputs[2].u32().unwrap();
+    let buffer_size = buffer_size
+        .get(0).map(|u| u as usize).unwrap_or(
+        indices.n_unique().unwrap_or_default()
+    );
+
+    if buffer_size == 0 {
+        return Err(PolarsError::ComputeError(
+            "Buffer size cannot be 0 or indices is emtpy.".into(),
+        )) 
+    }
+
+    let imax = indices.max().unwrap_or(0) as usize;
+    if imax >= buffer_size {
+        return Err(PolarsError::ComputeError(
+            "Max index is >= buffer size.".into(),
+        )) 
+    }
 
     if indices.len() != values.len() {
         Err(PolarsError::ComputeError(
             "Indices and values don't have the same length.".into(),
         )) 
     } else {
-        let mut output = vec![0f64; indices.len()];
+        let mut output = vec![0f64; buffer_size];
         let indices_slice = indices.cont_slice().unwrap(); 
         let values_slice = values.cont_slice().unwrap();
 
