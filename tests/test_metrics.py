@@ -241,68 +241,89 @@ def test_log_loss():
     res = df.select(pds.query_log_loss("y", "x")).item(0, 0)
     ans = log_loss(df["y"].to_numpy(), df["x"].to_numpy())
     assert np.isclose(res, ans, rtol=1e-10)
-    
-    
 
 
-def test_calculate_ndcg():
-    import numpy as np
-    import polars as pl
+def test_dcg_score():
+    from sklearn.metrics import dcg_score
+
+    df = pds.frame(size=1000, index_name="id").with_columns(
+        pl.col("id").mod(3).alias("example_id"),
+        pds.random_int(0, 10).alias("relevance"),
+        pds.random().alias("score"),
+    )
+
+    for tie in [True, False]:
+        df_agg = (
+            df.group_by("example_id")
+            .agg(dcg_score=pds.query_dcg_score("relevance", "score", ignore_ties=tie))
+            .sort("example_id")
+        )
+
+        sklearn_results = []
+        for by, subdf in df.sort("example_id").partition_by("example_id", as_dict=True).items():
+            rel = subdf["relevance"].to_numpy().reshape((1, -1))
+            score = subdf["score"].to_numpy().reshape((1, -1))
+            sklearn_results.append(dcg_score(rel, score, ignore_ties=tie))
+
+        sklearn_results = np.array(sklearn_results)
+
+        np.testing.assert_allclose(df_agg["dcg_score"].to_numpy(), sklearn_results, rtol=1e-5)
+
+    for k in range(1, 5):
+        df_agg = (
+            df.group_by("example_id")
+            .agg(dcg_score=pds.query_dcg_score("relevance", "score", k=k, ignore_ties=False))
+            .sort("example_id")
+        )
+
+        sklearn_results = []
+        for by, subdf in df.sort("example_id").partition_by("example_id", as_dict=True).items():
+            rel = subdf["relevance"].to_numpy().reshape((1, -1))
+            score = subdf["score"].to_numpy().reshape((1, -1))
+            sklearn_results.append(dcg_score(rel, score, k=k, ignore_ties=False))
+
+        sklearn_results = np.array(sklearn_results)
+
+        np.testing.assert_allclose(df_agg["dcg_score"].to_numpy(), sklearn_results, rtol=1e-5)
+
+
+def test_ndcg_score():
     from sklearn.metrics import ndcg_score
-    import pytest
 
-    from polars_ds.exprs.metrics import calculate_ndcg
-    # Create test data
-    data = {
-        'example_id': [1, 1, 1, 2, 2, 2, 3, 3],
-        'relevance': [3, 2, 1, 0, 1, 2, 2, 1],
-        'score': [0.9, 0.8, 0.7, 0.4, 0.5, 0.6, 0.8, 0.7]
-    }
-    df = pl.DataFrame(data)
+    df = pds.frame(size=1000, index_name="id").with_columns(
+        pl.col("id").mod(3).alias("example_id"),
+        pds.random_int(0, 10).alias("relevance"),
+        pds.random().alias("score"),
+    )
 
-    # Calculate NDCG using our implementation
-    result = calculate_ndcg(df, 'relevance', 'score', 'example_id')
-    
-    # Calculate NDCG per group using sklearn and then average
-    
-    
-    # Average NDCG across groups
-    df_pandas = df.to_pandas()
-    sklearn_ndcg = df_pandas.groupby('example_id').apply(lambda x: ndcg_score([x['relevance']], [x['score']])).mean()
-    
-    # Compare results (allowing for small numerical differences)
-    np.testing.assert_allclose(result.item(), sklearn_ndcg, rtol=1e-5)
+    for tie in [True, False]:
+        df_agg = (
+            df.group_by("example_id")
+            .agg(ndcg_score=pds.query_ndcg_score("relevance", "score", ignore_ties=tie))
+            .sort("example_id")
+        )
 
-    # Test with k parameter
-    k = 2
-    result_k = calculate_ndcg(df, 'relevance', 'score', 'example_id', k=k)
-    
-    # Calculate NDCG per group with k parameter and then average
-    group_ndcgs_k = []
-    for group_id in sorted(set(data['example_id'])):
-        group_mask = [i == group_id for i in data['example_id']]
-        group_relevance = [r for r, m in zip(data['relevance'], group_mask) if m]
-        group_score = [s for s, m in zip(data['score'], group_mask) if m]
-        
-        # Calculate NDCG for this group with k
-        group_ndcg = ndcg_score([group_relevance], [group_score], k=k)
-        group_ndcgs_k.append(group_ndcg)
-    
-    # Average NDCG across groups
-    sklearn_ndcg_k = np.mean(group_ndcgs_k)
-    np.testing.assert_allclose(result_k.item(), sklearn_ndcg_k, rtol=1e-5)
+        sklearn_results = []
+        for by, subdf in df.sort("example_id").partition_by("example_id", as_dict=True).items():
+            rel = subdf["relevance"].to_numpy().reshape((1, -1))
+            score = subdf["score"].to_numpy().reshape((1, -1))
+            sklearn_results.append(ndcg_score(rel, score, ignore_ties=tie))
 
-    # Test with ties
-    data_with_ties = {
-        'example_id': [1, 1, 1, 2, 2, 2],
-        'relevance': [3, 2, 1, 2, 2, 1],
-        'score': [0.9, 0.9, 0.7, 0.8, 0.8, 0.6]
-    }
-    df_ties = pl.DataFrame(data_with_ties)
-    
-    # Test both with and without ignore_ties
-    result_with_ties = calculate_ndcg(df_ties, 'relevance', 'score', 'example_id', ignore_ties=True)
-    result_without_ties = calculate_ndcg(df_ties, 'relevance', 'score', 'example_id', ignore_ties=False)
-    
-    # The results should be different when handling ties differently
-    assert result_with_ties.item() != result_without_ties.item() 
+        sklearn_results = np.array(sklearn_results)
+        np.testing.assert_allclose(df_agg["ndcg_score"].to_numpy(), sklearn_results, rtol=1e-5)
+
+    for k in range(1, 5):
+        df_agg = (
+            df.group_by("example_id")
+            .agg(ndcg_score=pds.query_ndcg_score("relevance", "score", k=k, ignore_ties=False))
+            .sort("example_id")
+        )
+
+        sklearn_results = []
+        for by, subdf in df.sort("example_id").partition_by("example_id", as_dict=True).items():
+            rel = subdf["relevance"].to_numpy().reshape((1, -1))
+            score = subdf["score"].to_numpy().reshape((1, -1))
+            sklearn_results.append(ndcg_score(rel, score, k=k, ignore_ties=False))
+
+        sklearn_results = np.array(sklearn_results)
+        np.testing.assert_allclose(df_agg["ndcg_score"].to_numpy(), sklearn_results, rtol=1e-5)
