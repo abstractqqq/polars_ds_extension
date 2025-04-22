@@ -74,6 +74,18 @@ def ttest_ind(
     equal_var
         If true, perform standard student t 2 sample test. Otherwise, perform Welch's
         t test.
+
+    Examples
+    --------
+    Same length, equal variance comparisons.
+    >>> df.select(pds.ttest_ind("x1", "x2", equal_var=True))
+
+    Potentially unequal length, unequal variance.
+    >>> df.select(
+    ...     pds.ttest_ind(
+    ...         pl.col("x1").filter(condition_A), pl.col("x1").filter(condition_B), equal_var=False
+    ...     )
+    ... )
     """
     y1, y2 = str_to_expr(var1), str_to_expr(var2)
     if equal_var:

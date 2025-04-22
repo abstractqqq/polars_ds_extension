@@ -139,8 +139,8 @@ impl PyKDT {
                 }
             }
 
-            let dist_mat = dist_vec.into_pyarray_bound(py).reshape((nrows, k))?;
-            let idx_mat = idx_vec.into_pyarray_bound(py).reshape((nrows, k))?;
+            let dist_mat = dist_vec.into_pyarray(py).reshape((nrows, k))?;
+            let idx_mat = idx_vec.into_pyarray(py).reshape((nrows, k))?;
 
             Ok((dist_mat, idx_mat))
         } else {
@@ -387,7 +387,7 @@ impl PyKDT {
                     .map(|sl| self.kdt.within_count(sl, r).unwrap_or(0) as i32)
                     .collect()
             };
-            Ok(output.into_pyarray_bound(py))
+            Ok(output.into_pyarray(py))
         } else {
             Err(LinalgErrors::NotContiguousOrEmpty.into())
         }
@@ -429,7 +429,7 @@ impl PyKDT {
                     .map(|(sl, r)| self.kdt.within_count(sl, r).unwrap_or(0) as i32)
                     .collect()
             };
-            Ok(output.into_pyarray_bound(py))
+            Ok(output.into_pyarray(py))
         } else {
             Err(LinalgErrors::NotContiguousOrEmpty.into())
         }

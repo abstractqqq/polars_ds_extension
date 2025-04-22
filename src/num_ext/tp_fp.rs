@@ -1,4 +1,3 @@
-use faer::reborrow::IntoConst;
 /// All things true positive, false positive related.
 /// ROC AUC, Average Precision, precision, recall, etc. m
 use polars::prelude::*;

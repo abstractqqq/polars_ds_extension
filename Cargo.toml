@@ -26,8 +26,8 @@ realfft = "3.3.0"
 num = "0.4.1"
 ordered-float = "4.2.0"
 approx = "*"
-faer = {version = "0.21", features = ["nightly"]}
-faer-traits = {version = "0.21"}
+faer = {version = "0.22", default-features = false, features = ["nightly", "rayon", "sparse-linalg"]}
+faer-traits = {version = "0.22"}
 ndarray = {version="0.16"}
 cfavml = {version = "0.3.0", features=["nightly"]} # easy simd, wait till Pulp gets better then we can replace
 # Data Structures, Iteration Helpers
