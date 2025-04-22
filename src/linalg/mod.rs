@@ -42,7 +42,7 @@ impl From<&str> for LRSolverMethods {
         match value {
             "qr" => Self::QR,
             "svd" => Self::SVD,
-            "choleskey" => Self::QR, // choleskey not available
+            "choleskey" => Self::Choleskey, // choleskey not available
             _ => Self::QR,
         }
     }

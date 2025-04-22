@@ -1,4 +1,4 @@
-#![feature(float_gamma, float_next_up_down)]
+#![feature(float_gamma)]
 
 mod arkadia;
 mod linalg;
