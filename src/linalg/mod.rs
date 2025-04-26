@@ -42,8 +42,25 @@ impl From<&str> for LRSolverMethods {
         match value {
             "qr" => Self::QR,
             "svd" => Self::SVD,
-            "choleskey" => Self::Choleskey, // choleskey not available
+            "choleskey" => Self::Choleskey,
             _ => Self::QR,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+pub enum GLMSolverMethods {
+    LBFGS, // Limited-memory BFGS Not Implemented
+    #[default]
+    IRLS, // Iteratively Reweighted Least Squares
+}
+
+impl From<&str> for GLMSolverMethods {
+    fn from(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "irls" => GLMSolverMethods::IRLS,
+            "lbfgs" => panic!("LBFGS not available"), // lbfgs not available
+            _ => GLMSolverMethods::IRLS,
         }
     }
 }
@@ -181,6 +198,91 @@ pub trait LinearRegression<T: RealField + Float> {
                 }
             }
             Ok(result)
+        }
+    }
+}
+
+pub trait GeneralizedLinearModel<T: RealField + Float> {
+    fn fitted_values(&self) -> MatRef<T>;
+
+    fn has_bias(&self) -> bool;
+
+    fn fit_unchecked(&mut self, X: MatRef<T>, y: MatRef<T>);
+
+    fn is_fit(&self) -> bool {
+        let shape = self.fitted_values().shape();
+        shape.0 > 0 && shape.1 > 0
+    }
+
+    fn fit(&mut self, X: MatRef<T>, y: MatRef<T>) -> Result<(), LinalgErrors> {
+        if X.nrows() != y.nrows() {
+            return Err(LinalgErrors::DimensionMismatch);
+        } else if X.nrows() == 0 || y.nrows() == 0 {
+            return Err(LinalgErrors::NotEnoughData);
+        }
+
+        self.fit_unchecked(X, y);
+        Ok(())
+    }
+
+    /// Calculate the linear predictor (eta) without applying the inverse link function
+    fn linear_predictor(&self, X: MatRef<T>) -> Result<Mat<T>, LinalgErrors> {
+        if !self.is_fit() {
+            return Err(LinalgErrors::MatNotLearnedYet);
+        }
+
+        let coeffs = self.fitted_values();
+
+        if self.has_bias() {
+            if X.ncols() != coeffs.nrows() - 1 {
+                return Err(LinalgErrors::DimensionMismatch);
+            }
+            let bias = *coeffs.get(coeffs.nrows() - 1, 0);
+
+            // Get coefficient matrix excluding bias
+            let mut result = Mat::zeros(X.nrows(), 1);
+            for i in 0..X.nrows() {
+                let mut sum = T::zero();
+                for j in 0..X.ncols() {
+                    sum = sum + *X.get(i, j) * *coeffs.get(j, 0);
+                }
+                result[(i, 0)] = sum + bias;
+            }
+            Ok(result)
+        } else {
+            if X.ncols() != coeffs.nrows() {
+                return Err(LinalgErrors::DimensionMismatch);
+            }
+            Ok(X * coeffs)
+        }
+    }
+
+    fn coeffs_as_vec(&self) -> Result<Vec<T>, LinalgErrors> {
+        if !self.is_fit() {
+            return Err(LinalgErrors::MatNotLearnedYet);
+        }
+
+        let coeffs = self.fitted_values();
+        let n = if self.has_bias() {
+            coeffs.nrows() - 1
+        } else {
+            coeffs.nrows()
+        };
+
+        let mut result = Vec::with_capacity(n);
+        for i in 0..n {
+            result.push(*coeffs.get(i, 0));
+        }
+
+        Ok(result)
+    }
+
+    fn bias(&self) -> T {
+        if !self.is_fit() || !self.has_bias() {
+            T::zero()
+        } else {
+            let coeffs = self.fitted_values();
+            *coeffs.get(coeffs.nrows() - 1, 0)
         }
     }
 }
