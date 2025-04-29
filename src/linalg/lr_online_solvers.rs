@@ -18,7 +18,7 @@ pub fn has_nan<T: RealField>(mat: MatRef<T>) -> bool {
 pub struct OnlineLR<T: RealField + Float> {
     pub lambda: T,
     pub has_bias: bool,
-    pub coefficients: Mat<T>, // n_features x 1 matrix, or (n_features + ) x 1 if there is bias
+    pub fitted_values: Mat<T>, // n_features x 1 matrix, or (n_features + 1) x 1 if there is bias
     pub inv: Mat<T>,          // Current Inverse of X^t X
 }
 
@@ -27,7 +27,7 @@ impl<T: RealField + Float> OnlineLR<T> {
         OnlineLR {
             lambda: lambda,
             has_bias: has_bias,
-            coefficients: Mat::new(),
+            fitted_values: Mat::new(),
             inv: Mat::new(),
         }
     }
@@ -43,7 +43,7 @@ impl<T: RealField + Float> OnlineLR<T> {
         } else {
             self.has_bias = bias.abs() > T::epsilon();
             if self.has_bias {
-                self.coefficients = Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
+                self.fitted_values = Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
                     if i < coeffs.len() {
                         coeffs[i]
                     } else {
@@ -51,7 +51,7 @@ impl<T: RealField + Float> OnlineLR<T> {
                     }
                 })
             } else {
-                self.coefficients = ColRef::<T>::from_slice(coeffs).as_mat().to_owned();
+                self.fitted_values = ColRef::<T>::from_slice(coeffs).as_mat().to_owned();
             }
             self.inv = inv.to_owned();
             Ok(())
@@ -72,7 +72,7 @@ impl<T: RealField + Float> OnlineLR<T> {
             let new_new_x = faer::concat![[new_x, ones]];
             woodbury_step(
                 self.inv.as_mut(),
-                self.coefficients.as_mut(),
+                self.fitted_values.as_mut(),
                 new_new_x.as_ref(),
                 new_y,
                 c,
@@ -80,7 +80,7 @@ impl<T: RealField + Float> OnlineLR<T> {
         } else {
             woodbury_step(
                 self.inv.as_mut(),
-                self.coefficients.as_mut(),
+                self.fitted_values.as_mut(),
                 new_x,
                 new_y,
                 c,
@@ -97,7 +97,7 @@ impl<T: RealField + Float> OnlineLR<T> {
 
 impl<T: RealField + Float> LinearRegression<T> for OnlineLR<T> {
     fn fitted_values(&self) -> MatRef<T> {
-        self.coefficients.as_ref()
+        self.fitted_values.as_ref()
     }
 
     fn has_bias(&self) -> bool {
@@ -112,9 +112,9 @@ impl<T: RealField + Float> LinearRegression<T> for OnlineLR<T> {
                 faer_qr_lstsq_with_inv(new_x.as_ref(), y, self.lambda, true);
 
             self.inv = inv;
-            self.coefficients = all_coefficients;
+            self.fitted_values = all_coefficients;
         } else {
-            (self.inv, self.coefficients) =
+            (self.inv, self.fitted_values) =
                 faer_qr_lstsq_with_inv(X.as_ref(), y, self.lambda, false);
         }
     }

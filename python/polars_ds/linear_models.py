@@ -239,6 +239,16 @@ class LR:
             regression. E.g. Nothing will be printed if lambda_ > 0.
         """
         if show_report and self._lr.lambda_ == 0.0:
+            import warnings
+
+            msg = "\n".join(
+                [
+                    "The `show_report` argument is deprecated is will be removed in the future."
+                    "Please directly use `pds.query_lstsq_report` expression in a dataframe."
+                ]
+            )
+            warnings.warn(msg, UserWarning, stacklevel=2)
+
             from . import query_lstsq_report
 
             print(
@@ -639,3 +649,7 @@ class OnlineLR:
             Data to predict on, as a matrix
         """
         return self._lr.predict(X).reshape((-1, 1))
+
+
+class GLM:
+    pass
