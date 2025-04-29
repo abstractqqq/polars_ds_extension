@@ -1,18 +1,22 @@
 #![allow(non_snake_case)]
 pub mod lr_online_solvers;
 pub mod lr_solvers;
+pub mod glm_solvers;
+pub mod link_functions;
 
-use faer::{Mat, MatRef};
+use faer::{Mat, MatRef, Par};
 use faer_traits::RealField;
 use ndarray::{ArrayView, Ix2, ShapeBuilder};
 use num::Float;
 
+#[derive(Debug)]
 pub enum LinalgErrors {
     DimensionMismatch,
     NotContiguousArray,
     NotEnoughData,
     MatNotLearnedYet,
     NotContiguousOrEmpty,
+    NotConvergent,
     Other(String),
 }
 
@@ -24,6 +28,7 @@ impl LinalgErrors {
             Self::MatNotLearnedYet => "Matrix is not learned yet.".to_string(),
             Self::NotEnoughData => "Not enough rows / columns.".to_string(),
             Self::NotContiguousOrEmpty => "Input is not contiguous or is empty".to_string(),
+            Self::NotConvergent => "The algorithm failed to converge.".to_string(),
             LinalgErrors::Other(s) => s,
         }
     }
@@ -58,9 +63,9 @@ pub enum GLMSolverMethods {
 impl From<&str> for GLMSolverMethods {
     fn from(s: &str) -> Self {
         match s.to_lowercase().as_str() {
-            "irls" => GLMSolverMethods::IRLS,
+            "irls" => Self::IRLS,
             "lbfgs" => panic!("LBFGS not available"), // lbfgs not available
-            _ => GLMSolverMethods::IRLS,
+            _ => Self::IRLS,
         }
     }
 }
@@ -105,20 +110,12 @@ impl From<(f64, f64)> for LRMethods {
 
 impl From<(f32, f32)> for LRMethods {
     fn from(value: (f32, f32)) -> Self {
-        if value.0 > 0. && value.1 <= 0. {
-            LRMethods::L1
-        } else if value.0 <= 0. && value.1 > 0. {
-            LRMethods::L2
-        } else if value.0 > 0. && value.1 > 0. {
-            LRMethods::ElasticNet
-        } else {
-            LRMethods::Normal
-        }
+        (value.0 as f64, value.1 as f64).into()
     }
 }
 
 pub trait LinearRegression<T: RealField + Float> {
-    /// Typically coefficients + the bias as a single matrix (single slice)
+    /// Typically coefficients + the bias as a single matrix (n x 1) (single slice)
     fn fitted_values(&self) -> MatRef<T>;
 
     fn has_bias(&self) -> bool;
@@ -132,11 +129,11 @@ pub trait LinearRegression<T: RealField + Float> {
         }
     }
 
-    /// Returns a copy of the coefficients
-
+    /// Returns the coefficients as a MatRef
+    /// If the model is not fitted yet, empty array will be returned.
     fn coefficients(&self) -> MatRef<T> {
-        if self.has_bias() {
-            let n = self.fitted_values().nrows() - 1;
+        if self.is_fit() {
+            let n = self.fitted_values().nrows().abs_diff(self.has_bias() as usize);
             self.fitted_values().get(0..n, ..)
         } else {
             self.fitted_values()
@@ -158,133 +155,60 @@ pub trait LinearRegression<T: RealField + Float> {
         Ok(())
     }
 
+    // If coefficient is an empty Mat, e.g. shape = (0 , 0), then it is not fitted yet.
     fn is_fit(&self) -> bool {
-        !(self.coefficients().shape() == (0, 0))
+        self.fitted_values().nrows() > 0
     }
 
     fn coeffs_as_vec(&self) -> Result<Vec<T>, LinalgErrors> {
-        match self.check_is_fit() {
-            Ok(_) => Ok(self
+        match self.is_fit() {
+            true => Ok(self
                 .coefficients()
                 .col(0)
                 .iter()
                 .copied()
                 .collect::<Vec<_>>()),
-            Err(e) => Err(e),
+            false => Err(LinalgErrors::MatNotLearnedYet),
         }
     }
 
-    fn check_is_fit(&self) -> Result<(), LinalgErrors> {
-        if self.is_fit() {
-            Ok(())
-        } else {
-            Err(LinalgErrors::MatNotLearnedYet)
-        }
-    }
-
+    /// Run the linear regression to predict the target variable.
+    /// In the case of GLM, this runs the linear predictor.
     fn predict(&self, X: MatRef<T>) -> Result<Mat<T>, LinalgErrors> {
         if X.ncols() != self.coefficients().nrows() {
             Err(LinalgErrors::DimensionMismatch)
         } else if !self.is_fit() {
             Err(LinalgErrors::MatNotLearnedYet)
         } else {
-            let mut result = X * self.coefficients();
-            let bias = self.bias();
-            if self.has_bias() && self.bias().abs() > T::epsilon() {
-                unsafe {
-                    for i in 0..result.nrows() {
-                        *result.get_mut_unchecked(i, 0) = *result.get_mut_unchecked(i, 0) + bias;
+            let mut pred = Mat::full(
+                X.nrows()
+                , 1
+                , {
+                    if self.has_bias() {
+                        self.bias()
+                    } else {
+                        T::zero()
                     }
                 }
-            }
-            Ok(result)
+            );
+            // Result is 0 if no bias, result is [bias] (ncols x 1) if has bias.
+            // result = result + 1.0 * (X * coeffs)
+            faer::linalg::matmul::matmul(
+                pred.as_mut(), 
+                faer::Accum::Add, 
+                X, 
+                self.coefficients(), 
+                T::one(), 
+                Par::rayon(0),
+            );
+            Ok(pred)
+
         }
     }
 }
 
-pub trait GeneralizedLinearModel<T: RealField + Float> {
-    fn fitted_values(&self) -> MatRef<T>;
-
-    fn has_bias(&self) -> bool;
-
-    fn fit_unchecked(&mut self, X: MatRef<T>, y: MatRef<T>);
-
-    fn is_fit(&self) -> bool {
-        let shape = self.fitted_values().shape();
-        shape.0 > 0 && shape.1 > 0
-    }
-
-    fn fit(&mut self, X: MatRef<T>, y: MatRef<T>) -> Result<(), LinalgErrors> {
-        if X.nrows() != y.nrows() {
-            return Err(LinalgErrors::DimensionMismatch);
-        } else if X.nrows() == 0 || y.nrows() == 0 {
-            return Err(LinalgErrors::NotEnoughData);
-        }
-
-        self.fit_unchecked(X, y);
-        Ok(())
-    }
-
-    /// Calculate the linear predictor (eta) without applying the inverse link function
-    fn linear_predictor(&self, X: MatRef<T>) -> Result<Mat<T>, LinalgErrors> {
-        if !self.is_fit() {
-            return Err(LinalgErrors::MatNotLearnedYet);
-        }
-
-        let coeffs = self.fitted_values();
-
-        if self.has_bias() {
-            if X.ncols() != coeffs.nrows() - 1 {
-                return Err(LinalgErrors::DimensionMismatch);
-            }
-            let bias = *coeffs.get(coeffs.nrows() - 1, 0);
-
-            // Get coefficient matrix excluding bias
-            let mut result = Mat::zeros(X.nrows(), 1);
-            for i in 0..X.nrows() {
-                let mut sum = T::zero();
-                for j in 0..X.ncols() {
-                    sum = sum + *X.get(i, j) * *coeffs.get(j, 0);
-                }
-                result[(i, 0)] = sum + bias;
-            }
-            Ok(result)
-        } else {
-            if X.ncols() != coeffs.nrows() {
-                return Err(LinalgErrors::DimensionMismatch);
-            }
-            Ok(X * coeffs)
-        }
-    }
-
-    fn coeffs_as_vec(&self) -> Result<Vec<T>, LinalgErrors> {
-        if !self.is_fit() {
-            return Err(LinalgErrors::MatNotLearnedYet);
-        }
-
-        let coeffs = self.fitted_values();
-        let n = if self.has_bias() {
-            coeffs.nrows() - 1
-        } else {
-            coeffs.nrows()
-        };
-
-        let mut result = Vec::with_capacity(n);
-        for i in 0..n {
-            result.push(*coeffs.get(i, 0));
-        }
-
-        Ok(result)
-    }
-
-    fn bias(&self) -> T {
-        if !self.is_fit() || !self.has_bias() {
-            T::zero()
-        } else {
-            let coeffs = self.fitted_values();
-            *coeffs.get(coeffs.nrows() - 1, 0)
-        }
-    }
+pub trait GeneralizedLinearModel<T: RealField + Float>: LinearRegression<T> {
+    fn glm_predict(&self, X: MatRef<T>) -> Result<Mat<T>, LinalgErrors>;
 }
 
 // Ndarray and Faer Interop. Copied from faer-ext.

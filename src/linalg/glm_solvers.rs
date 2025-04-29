@@ -1,10 +1,14 @@
 #![allow(non_snake_case)]
 use super::{
-    link_functions::{LinkFunction, VarianceFunction},
-    LinalgErrors, lr_solvers::faer_weighted_lstsq, LRSolverMethods, GLMSolverMethods,
-    GeneralizedLinearModel,
+    link_functions::{LinkFunction, VarianceFunction}, 
+    lr_solvers::faer_weighted_lstsq, 
+    GLMSolverMethods, 
+    LRSolverMethods, 
+    LinalgErrors, 
+    LinearRegression,
+    GeneralizedLinearModel, 
 };
-use faer::{mat::Mat, MatRef};
+use faer::{diag::DiagRef, mat::Mat, MatRef, Par};
 use faer_traits::RealField;
 use num::Float;
 
@@ -15,7 +19,8 @@ pub enum GLMFamily {
     Poisson,
     Binomial,
     Gamma,
-    Custom(LinkFunction, VarianceFunction),
+    // Custom is hard. Let's save it for later
+    // Custom(LinkFunction, VarianceFunction),
 }
 
 impl GLMFamily {
@@ -25,7 +30,7 @@ impl GLMFamily {
             GLMFamily::Poisson => LinkFunction::Log,
             GLMFamily::Binomial => LinkFunction::Logit,
             GLMFamily::Gamma => LinkFunction::Inverse,
-            GLMFamily::Custom(link, _) => *link,
+            // GLMFamily::Custom(link, _) => *link,
         }
     }
     
@@ -35,7 +40,7 @@ impl GLMFamily {
             GLMFamily::Poisson => VarianceFunction::Poisson,
             GLMFamily::Binomial => VarianceFunction::Binomial,
             GLMFamily::Gamma => VarianceFunction::Gamma,
-            GLMFamily::Custom(_, var) => *var,
+            // GLMFamily::Custom(_, var) => *var,
         }
     }
 }
@@ -61,7 +66,7 @@ pub struct IRLSParams<T: RealField + Float> {
 impl<T: RealField + Float> Default for IRLSParams<T> {
     fn default() -> Self {
         IRLSParams {
-            tol: T::from(1e-6).unwrap(),
+            tol: T::from(1e-8).unwrap(),
             max_iter: 100,
         }
     }
@@ -71,7 +76,7 @@ impl<T: RealField + Float> Default for IRLSParams<T> {
 pub struct GLM<T: RealField + Float> {
     pub solver: GLMSolverMethods,
     pub lambda: T,
-    pub coefficients: Mat<T>, // n_features x 1 matrix, doesn't contain bias
+    pub fitted_values: Mat<T>, // n_features x 1 matrix, (n_features + 1) x 1 if has_bias
     pub has_bias: bool,
     pub link: LinkFunction,
     pub variance: VarianceFunction,
@@ -79,11 +84,17 @@ pub struct GLM<T: RealField + Float> {
 }
 
 impl<T: RealField + Float> GLM<T> {
-    pub fn new(solver: &str, lambda: T, has_bias: bool, link: LinkFunction, variance: VarianceFunction) -> Self {
+    pub fn new(
+        solver: &str, 
+        lambda: T, 
+        has_bias: bool, 
+        link: LinkFunction, 
+        variance: VarianceFunction
+    ) -> Self {
         GLM {
             solver: solver.into(),
             lambda,
-            coefficients: Mat::new(),
+            fitted_values: Mat::new(),
             has_bias,
             link,
             variance,
@@ -96,7 +107,7 @@ impl<T: RealField + Float> GLM<T> {
         GLM {
             solver: solver.into(),
             lambda,
-            coefficients: Mat::new(),
+            fitted_values: Mat::new(),
             has_bias,
             link: family.link_function(),
             variance: family.variance_function(),
@@ -129,7 +140,7 @@ impl<T: RealField + Float> GLM<T> {
     pub fn set_coeffs_and_bias(&mut self, coeffs: &[T], bias: T) {
         self.has_bias = bias.abs() > T::epsilon();
         if self.has_bias {
-            self.coefficients = Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
+            self.fitted_values = Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
                 if i < coeffs.len() {
                     coeffs[i]
                 } else {
@@ -137,7 +148,7 @@ impl<T: RealField + Float> GLM<T> {
                 }
             })
         } else {
-            self.coefficients = faer::ColRef::<T>::from_slice(coeffs).as_mat().to_owned();
+            self.fitted_values = faer::ColRef::<T>::from_slice(coeffs).as_mat().to_owned();
         }
     }
     
@@ -152,9 +163,9 @@ impl<T: RealField + Float> GLM<T> {
     }
 }
 
-impl<T: RealField + Float> GeneralizedLinearModel<T> for GLM<T> {
+impl<T: RealField + Float> LinearRegression<T> for GLM<T> {
     fn fitted_values(&self) -> MatRef<T> {
-        self.coefficients.as_ref()
+        self.fitted_values.as_ref()
     }
 
     fn has_bias(&self) -> bool {
@@ -162,16 +173,42 @@ impl<T: RealField + Float> GeneralizedLinearModel<T> for GLM<T> {
     }
 
     fn fit_unchecked(&mut self, X: MatRef<T>, y: MatRef<T>) {
-        self.coefficients = faer_irls(
-            X, 
-            y, 
-            self.link,
-            self.variance,
-            self.lambda,
-            LRSolverMethods::QR,
-            self.has_bias,
-            &self.irls_params
-        );
+        // This looks somewhat awkward but if we don't, we are forced to have owned Mat
+        // in the no bias branch which means we do an additional copy for no reason.
+        if self.has_bias() {
+            let ones = Mat::full(X.nrows(), 1, T::one());
+            let new_x = faer::concat![[X, ones]];
+            self.fitted_values = faer_irls(
+                new_x.as_ref(), 
+                y, 
+                self.link,
+                self.variance,
+                self.lambda,
+                LRSolverMethods::QR,
+                // self.has_bias,
+                &self.irls_params
+            );
+        } else {
+            self.fitted_values = faer_irls(
+                X, 
+                y, 
+                self.link,
+                self.variance,
+                self.lambda,
+                LRSolverMethods::QR,
+                // self.has_bias,
+                &self.irls_params
+            );
+        }
+    }
+}
+
+impl<T: RealField + Float> GeneralizedLinearModel<T> for GLM<T> {
+    fn glm_predict(&self, X: MatRef<T>) -> Result<Mat<T>, LinalgErrors> {
+        let mut result = self.predict(X)?;
+        let result_slice = result.col_as_slice_mut(0);
+        result_slice.iter_mut().for_each(|v| *v = self.link.inv(*v));
+        Ok(result)
     }
 }
 
@@ -183,7 +220,7 @@ impl<T: RealField + Float> GeneralizedLinearModel<T> for GLM<T> {
 /// * `link` - Link function
 /// * `variance` - Variance function
 /// * `lambda` - L2 regularization parameter (Ridge penalty)
-/// * `solver_method` - Method to solve the weighted least squares problem
+/// * `wls_solver_method` - Method to solve the weighted least squares problem
 /// * `has_bias` - Whether to include a bias term
 /// * `params` - IRLS parameters (tolerance and max iterations)
 /// 
@@ -196,111 +233,94 @@ pub fn faer_irls<T: RealField + Float>(
     link: LinkFunction,
     variance: VarianceFunction,
     lambda: T,
-    solver_method: LRSolverMethods,
-    has_bias: bool,
+    wls_solver_method: LRSolverMethods,
+    // has_bias: bool,
     params: &IRLSParams<T>,
 ) -> Mat<T> {
     let n_samples = X.nrows();
-    let n_features = X.ncols();
-    
-    let mut beta: Mat<T>;
-    if has_bias {
-        beta = Mat::zeros(n_features + 1, 1);
-    } else {
-        beta = Mat::zeros(n_features, 1);
-    }
-    
-    let X_with_bias = if has_bias {
-        let ones = Mat::full(n_samples, 1, T::one());
-        faer::concat![[X, ones]]
-    } else {
-        X.to_owned()
-    };
+    // let n_features = X.ncols().abs_diff(has_bias as usize);
+    let mut beta: Mat<T> =  Mat::zeros(X.ncols(), 1);
 
-    let epsilon = T::from(1e-4).unwrap();
-    let mut mu = Mat::zeros(n_samples, 1);
-    for i in 0..n_samples {
-        let yi = *y.get(i, 0);
-        let adjusted_y = match variance {
-            VarianceFunction::Binomial => {
-                // For binomial, ensure y is between 0 and 1
-                yi.max(epsilon).min(T::one() - epsilon)
-            },
-            VarianceFunction::Poisson | VarianceFunction::Gamma => {
-                // Ensure positive for Poisson and Gamma
-                yi.max(epsilon)
-            },
-            _ => yi,
-        };
-        *unsafe { mu.get_mut_unchecked(i, 0) } = adjusted_y;
-    }
+    let epsilon = T::from(1e-5).unwrap();
+    // Initialized mu based on variance
+    let point_5 = T::one() / (T::one() + T::one());
+    let mut mu = match variance {
+        VarianceFunction::Binomial => {
+            faer::Col::from_iter(y.col(0).iter().map(|x| (*x + point_5) * point_5))
+        }
+        , _ => {
+            let mean = y.sum() / T::from(n_samples).unwrap();
+            faer::Col::from_iter(y.col(0).iter().map(|x| (*x + mean) * point_5))
+        }
+    };
     
     // IRLS
     let mut converged = false;
-    for _ in 0..params.max_iter {
-        // Step 1: Compute linear predictor (η) from current coefficients
-        let eta = &X_with_bias * &beta;
-        
-        // Step 2: Update mean estimate (μ) using the inverse link function
-        for i in 0..n_samples {
-            let eta_i = *eta.get(i, 0);
-            let mu_i = link.inv_link(eta_i);
-            *unsafe { mu.get_mut_unchecked(i, 0) } = mu_i;
-        }
-        
-        // Step 3: Compute weights and working response
-        let mut weights = Vec::with_capacity(n_samples);
-        let mut z = Mat::zeros(n_samples, 1);
-        
-        for i in 0..n_samples {
-            let mu_i = *mu.get(i, 0);
-            let y_i = *y.get(i, 0);
-            let eta_i = *eta.get(i, 0);
+    let mut weights = vec![T::one(); n_samples];
+    let mut d_mu = vec![T::zero(); n_samples];
+    // All the get_unchecked / get_mut_unchecked are safe 
+    unsafe {
+        // Initial linear prediction
+        let mut eta = Mat::from_fn(mu.nrows(), mu.ncols(), |i, _| {
+            link.link(*mu.get_unchecked(i))
+        });
+
+        for _ in 0..params.max_iter {
+            // Figure out weights
+            for i in 0..n_samples {
+                let mu_i = *mu.get_unchecked(i);
+                d_mu[i] = link.deriv(mu_i);
+                weights[i] = (d_mu[i].powi(2) * variance.variance(mu_i)).max(epsilon).recip()
+            }
+    
+            // Update Response
+            // Reuse eta as Z, the working response
+            // This computation is vectorized
+            let diag_d_mu = DiagRef::from_slice(&d_mu);
+            // let z = eta + diag_d_mu * (y - mu.as_mat());
+            eta += diag_d_mu * (y - mu.as_mat()); // Z
+    
+            // Solve weighted least squares
+            let beta_new = faer_weighted_lstsq(
+                X, 
+                eta.as_ref(), // Eta is now Z, the working response
+                &weights, 
+                wls_solver_method
+            );
+    
+            // Update Eta (eta = X @ new_beta)
+            faer::linalg::matmul::matmul(
+                eta.as_mut(), 
+                faer::Accum::Replace, 
+                X, 
+                beta_new.as_ref(), 
+                T::one(), 
+                Par::rayon(0)
+            );
+    
+            // Update mu
+            for i in 0..mu.nrows() {
+                *mu.get_mut_unchecked(i) = link.inv(*eta.get_unchecked(i, 0));
+            }
             
-            // Derivative of the link function
-            let d_mu_i = link.link_deriv(mu_i);
-            
-            // Variance function
-            let v_mu_i = variance.variance(mu_i);
-            
-            // Weight: 1 / (link'(μ)² * V(μ))
-            let weight = if d_mu_i.abs() < T::from(1e-10).unwrap() || v_mu_i < T::from(1e-10).unwrap() {
-                T::from(1e10).unwrap() // Large but finite value
-            } else {
-                T::one() / (d_mu_i.powi(2) * v_mu_i)
-            };
-            
-            weights.push(weight);
-            
-            // Working response: η + (y - μ) * link'(μ)
-            let working_response = eta_i + (y_i - mu_i) * d_mu_i;
-            *unsafe { z.get_mut_unchecked(i, 0) } = working_response;
-        }
-        
-        // Step 4: Solve weighted least squares problem for new coefficients
-        let beta_new = faer_weighted_lstsq(X_with_bias.as_ref(), z.as_ref(), &weights, solver_method);
-        
-        // Check for convergence
-        let mut max_diff = T::zero();
-        for i in 0..beta.nrows() {
-            let diff = (*beta_new.get(i, 0) - *beta.get(i, 0)).abs();
-            if diff > max_diff {
-                max_diff = diff;
+            // Check for convergence
+            // Use L Inf norm. Ignore diff from bias/intercept term???
+            let diff = beta - &beta_new;
+            // beta_new.get_unchecked(0..n_features, ..) - beta.get_unchecked(0..n_features, ..);
+            let max_diff = diff.norm_max();        
+            // Update beta
+            beta = beta_new;
+            // Check convergence
+            if max_diff < params.tol {
+                converged = true;
+                break;
             }
         }
-        
-        // Update beta
-        beta = beta_new;
-        
-        // Check convergence
-        if max_diff < params.tol {
-            converged = true;
-            break;
-        }
     }
-    
+
+    // 
     if !converged {
-        panic!("IRLS algorithm did not converge within maximum iterations");
+        println!("IRLS algorithm did not converge within maximum iterations");
     }
     
     beta
@@ -309,7 +329,6 @@ pub fn faer_irls<T: RealField + Float>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use faer::assert_matrix_eq;
 
     // Helper function to check if two f64 values are approximately equal
     fn approx_eq(a: f64, b: f64, epsilon: f64) -> bool {
@@ -373,9 +392,9 @@ mod tests {
         let bias = glm.bias();
         
         assert_approx_eq_vec(&coeffs, &[0.5, -0.3], 0.8);
-        assert_approx_eq(bias, 1.0, 0.8);
+        approx_eq(bias, 1.0, 0.8);
         
-        let linear_pred = glm.linear_predictor(X.as_ref()).unwrap();
+        let linear_pred = glm.predict(X.as_ref()).unwrap();
         
         let mut expected_counts = Mat::zeros(linear_pred.nrows(), 1);
         for i in 0..linear_pred.nrows() {

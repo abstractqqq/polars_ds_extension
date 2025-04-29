@@ -10,6 +10,18 @@ pub enum LinkFunction {
     Inverse,  // Gamma
 }
 
+impl From<&str> for LinkFunction {
+    fn from(value: &str) -> Self {
+        match value.to_lowercase().as_ref() {
+            "id" | "identity" => Self::Identity
+            , "log"  => Self::Log
+            , "logit" => Self::Logit
+            , "inv" | "inverse"  => Self::Inverse
+            , _ => Self::Identity
+        }
+    }
+}
+
 impl LinkFunction {
     /// g(μ)
     pub fn link<T: RealField + Float>(&self, mu: T) -> T {
@@ -26,7 +38,7 @@ impl LinkFunction {
     }
 
     /// g^(-1)(η)
-    pub fn inv_link<T: RealField + Float>(&self, eta: T) -> T {
+    pub fn inv<T: RealField + Float>(&self, eta: T) -> T {
         match self {
             LinkFunction::Identity => eta,
             LinkFunction::Log => eta.exp(),
@@ -41,7 +53,7 @@ impl LinkFunction {
     }
 
     /// Computes g'(μ)
-    pub fn link_deriv<T: RealField + Float>(&self, mu: T) -> T {
+    pub fn deriv<T: RealField + Float>(&self, mu: T) -> T {
         match self {
             LinkFunction::Identity => T::one(),
             LinkFunction::Log => mu.recip(),
@@ -50,9 +62,10 @@ impl LinkFunction {
                 let one = T::one();
                 one / (mu * (one - mu))
             },
-            LinkFunction::Inverse => -mu.recip().powi(2),
+            LinkFunction::Inverse => -mu.powi(2).recip(),
         }
     }
+
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -61,6 +74,17 @@ pub enum VarianceFunction {
     Poisson,
     Binomial,
     Gamma,
+}
+
+impl From<LinkFunction> for VarianceFunction {
+    fn from(value: LinkFunction) -> Self {
+        match value {
+            LinkFunction::Identity => Self::Gaussian,
+            LinkFunction::Log => Self::Poisson,
+            LinkFunction::Logit => Self::Binomial,
+            LinkFunction::Inverse => Self::Gamma,
+        }
+    }
 }
 
 impl VarianceFunction {

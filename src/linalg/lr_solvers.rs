@@ -8,7 +8,7 @@ use num::Float;
 pub struct LR<T: RealField + Float> {
     pub solver: LRSolverMethods,
     pub lambda: T,
-    pub coefficients: Mat<T>, // n_features x 1 matrix, doesn't contain bias
+    pub fitted_values: Mat<T>, // n_features x 1 matrix, doesn't contain bias
     pub has_bias: bool,
 }
 
@@ -17,7 +17,7 @@ impl<T: RealField + Float> LR<T> {
         LR {
             solver: solver.into(),
             lambda: lambda,
-            coefficients: Mat::new(),
+            fitted_values: Mat::new(),
             has_bias: has_bias,
         }
     }
@@ -26,7 +26,7 @@ impl<T: RealField + Float> LR<T> {
         LR {
             solver: LRSolverMethods::default(),
             lambda: T::zero(),
-            coefficients: faer::mat::Mat::from_fn(coeffs.len(), 1, |i, _| coeffs[i]),
+            fitted_values: faer::mat::Mat::from_fn(coeffs.len(), 1, |i, _| coeffs[i]),
             has_bias: bias.abs() > T::epsilon(),
         }
     }
@@ -34,7 +34,7 @@ impl<T: RealField + Float> LR<T> {
     pub fn set_coeffs_and_bias(&mut self, coeffs: &[T], bias: T) {
         self.has_bias = bias.abs() > T::epsilon();
         if self.has_bias {
-            self.coefficients = Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
+            self.fitted_values = Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
                 if i < coeffs.len() {
                     coeffs[i]
                 } else {
@@ -42,14 +42,14 @@ impl<T: RealField + Float> LR<T> {
                 }
             })
         } else {
-            self.coefficients = ColRef::<T>::from_slice(coeffs).as_mat().to_owned();
+            self.fitted_values = ColRef::<T>::from_slice(coeffs).as_mat().to_owned();
         }
     }
 }
 
 impl<T: RealField + Float> LinearRegression<T> for LR<T> {
     fn fitted_values(&self) -> MatRef<T> {
-        self.coefficients.as_ref()
+        self.fitted_values.as_ref()
     }
 
     fn has_bias(&self) -> bool {
@@ -57,7 +57,7 @@ impl<T: RealField + Float> LinearRegression<T> for LR<T> {
     }
 
     fn fit_unchecked(&mut self, X: MatRef<T>, y: MatRef<T>) {
-        self.coefficients = if self.has_bias {
+        self.fitted_values = if self.has_bias {
             let ones = Mat::full(X.nrows(), 1, T::one());
             let new = faer::concat![[X, ones]];
             faer_solve_lstsq(new.as_ref(), y, self.lambda, true, self.solver)
@@ -204,7 +204,7 @@ pub fn faer_solve_lstsq_rcond<T: RealField + Float>(
             }
         }
     }
-    // need work here
+
     let svd = xtx.thin_svd().unwrap();
     let s = svd.S().column_vector();
     let singular_values = s.iter().copied().map(T::sqrt).collect::<Vec<_>>();
@@ -235,7 +235,6 @@ pub fn faer_solve_lstsq<T: RealField + Float>(
     has_bias: bool,
     how: LRSolverMethods,
 ) -> Mat<T> {
-    // Add ridge SVD with rconditional number later.
 
     let n1 = x.ncols().abs_diff(has_bias as usize);
     let xt = x.transpose();
@@ -334,34 +333,34 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
     let xtx = x.transpose() * x;
 
     // Random selection often leads to faster convergence?
-    for _ in 0..max_iter {
-        let mut max_change = T::zero();
-        for j in 0..n1 {
-            // temporary set beta(j, 0) to 0.
-            // Safe. The index is valid and the value is initialized.
-            let before = *unsafe { beta.get_unchecked(j, 0) };
-            *unsafe { beta.get_mut_unchecked(j, 0) } = T::zero();
-            let xtx_j = unsafe { xtx.get_unchecked(j..j + 1, ..) };
-
-            // Xi^t(y - X-i Beta-i)
-            let main_update = *xty.get(j, 0) - *(xtx_j * &beta).get(0, 0);
-
-            // update beta(j, 0).
-            let after = soft_threshold_l1(main_update, lambda_l1) / norms[j];
-            *unsafe { beta.get_mut_unchecked(j, 0) } = after;
-            max_change = (after - before).abs().max(max_change);
-        }
-        // if has_bias, n1 = last index = ncols - 1 = column of bias. If has_bias is False, n = ncols
-        if has_bias {
-            // Safe. The index is valid and the value is initialized.
-            let xx = unsafe { x.get_unchecked(.., 0..n1) };
-            let bb = unsafe { beta.get_unchecked(0..n1, ..) };
-            let ss = (y - xx * bb).as_ref().sum() / m;
-            *unsafe { beta.get_mut_unchecked(n1, 0) } = ss;
-        }
-        converge = max_change < tol;
-        if converge {
-            break;
+    // All the .get_unchecked() / get_mut_unchecked() here are safe, because the indices are valid. 
+    unsafe {
+        for _ in 0..max_iter {
+            let mut max_change = T::zero();
+            for j in 0..n1 {
+                // temporary set beta(j, 0) to 0.
+                let before = *beta.get(j, 0);
+                *beta.get_mut_unchecked(j, 0) = T::zero();
+                let xtx_j = xtx.get(j..j+1, ..);
+                // Xi^t(y - X-i Beta-i)
+                let main_update = *xty.get_unchecked(j, 0) - *(xtx_j * &beta).get_unchecked(0, 0);
+                // update beta(j, 0).
+                let after = soft_threshold_l1(main_update, lambda_l1) / norms[j];
+    
+                *beta.get_mut_unchecked(j, 0) = after;
+                max_change = (after - before).abs().max(max_change);
+            }
+            // if has_bias, n1 = last index = ncols - 1 = bias. If has_bias is False, n = ncols
+            if has_bias {
+                let xx = x.get_unchecked(.., 0..n1);
+                let bb = beta.get_unchecked(0..n1, ..);
+                let ss = (y - xx * bb).as_ref().sum() / m;
+                *beta.get_mut_unchecked(n1, 0) = ss;
+            }
+            converge = max_change < tol;
+            if converge {
+                break;
+            }
         }
     }
 
