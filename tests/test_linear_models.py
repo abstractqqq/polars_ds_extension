@@ -161,7 +161,7 @@ def test_elastic_net():
 
 def test_glm():
     import statsmodels.api as sm
-    from polars_ds._polars_ds import PyGLM
+    from polars_ds.linear_models import GLM
 
     data = sm.datasets.scotland.load()
     # has_bias = True
@@ -180,12 +180,12 @@ def test_glm():
     sm_bias = params[0]
     sm_coeffs = params[1:]
 
-    pds_glm = PyGLM(solver="irls", has_bias=True, family="gamma")
+    pds_glm = GLM(solver="irls", has_bias=True, family="gamma")
 
     pds_glm.fit(X2, y.reshape((-1, 1)))
 
-    pds_bias = pds_glm.bias
-    pds_coeffs = pds_glm.coeffs
+    pds_bias = pds_glm.bias()
+    pds_coeffs = pds_glm.coeffs()
 
     assert abs(sm_bias - pds_bias) < 1e-6
     np.testing.assert_allclose(sm_coeffs, pds_coeffs, rtol=1e-5)
