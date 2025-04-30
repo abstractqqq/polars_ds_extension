@@ -86,9 +86,15 @@ impl PyGLM {
         &self,
         py: Python<'py>,
         X: PyReadonlyArray2<f64>,
+        linear: bool,
     ) -> PyResult<Bound<'py, PyArray1<f64>>> {
         let x = X.as_array().into_faer();
-        match self.glm.glm_predict(x) {
+        let prediction = if linear {
+            self.glm.predict(x)
+        } else {
+            self.glm.glm_predict(x)
+        };
+        match prediction {
             Ok(result) => {
                 // result should be n by 1, where n = x.nrows()
                 let res = result.col_as_slice(0);
