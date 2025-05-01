@@ -3,18 +3,13 @@ from __future__ import annotations
 import polars as pl
 import random
 import math
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from itertools import combinations, islice
+
 # Internal dependency
 from polars_ds.typing import PolarsFrame
 
-__all__ = [
-    "sample",
-    "volume_neutral",
-    "downsample",
-    "random_cols",
-    "split_by_ratio"
-]
+__all__ = ["sample", "volume_neutral", "downsample", "random_cols", "split_by_ratio"]
 
 
 def _sampler_expr(value: float | int, seed: int | None = None) -> pl.Expr:
@@ -162,13 +157,13 @@ def downsample(
 
 
 def random_cols(
-    all_columns:List[str],
+    all_columns: List[str],
     k: int,
     keep: List[str] | None = None,
     seed: int | None = None,
 ) -> List[str]:
     """
-    Selects random columns from the given pool of columns. Returns the selected columns in a list. 
+    Selects random columns from the given pool of columns. Returns the selected columns in a list.
     Note, it is impossible for this to randomly select both ["x", "y"] and ["y", "x"].
 
     Parameters
@@ -199,16 +194,30 @@ def random_cols(
 
 
 def split_by_ratio(
-    df: PolarsFrame, split_ratio: float | List[float], seed: int | None = None
-) -> List[pl.DataFrame]:
+    df: PolarsFrame,
+    split_ratio: float | List[float] | Dict[str, float],
+    seed: int | None = None,
+    split_col: str = "__split",
+    default_split_1: str = "train",
+    default_split_2: str = "test",
+) -> PolarsFrame:
     """
-    Split the dataframe into multiple. If split_ratio is a single number, it is treated as the
-    ratio for the "train" set and the second is always the "test" set. If split_ratio is a list
-    of floats, then they must sum to 1 and the return will be dataframes split into the corresponding
-    ratios. Please avoid using floating point values with too many decimal places, which may cause
+    Creates a random `split` column in the dataframe.
+
+    If split_ratio is a single number, it is treated as the ratio for the default_split_1 set, which by
+    default has the name 'train', and (1-ratio) is always the ratio for the default_split_2 set, which by
+    default has the name 'test'.
+
+    If split_ratio is a list of floats, then they must sum to 1 and the return will be the corresponding ratios
+    and the split column values will be "split_i".
+
+    If the split_ratio is a dict, then the dict values will be the ratios and the dict keys will be the value
+    in the split column.
+
+    Please avoid using floating point values with too many decimal places, which may cause
     the splits to be off by a 1 row.
 
-    This will collect your LazyFrames.
+    This will return lazy frames if input is lazy, and eager frames if input is eager.
 
     Parameters
     ----------
@@ -218,49 +227,50 @@ def split_by_ratio(
         Either a single float or a list of floats.
     seed
         The random seed
+    default_split_1
+        Name of the first split when split_ratio is a scalar
+    default_split_2
+        Name of the second split when split_ratio is a scalar
     """
 
     if isinstance(split_ratio, float):
         if split_ratio <= 0.0 or split_ratio >= 1:
             raise ValueError("Split ratio must be > 0 and < 1.")
 
-        frames = (
-            df.lazy()
-            .with_row_index(name="__id")
-            .collect()
+        return (
+            df.with_row_index(name="__id")
             .with_columns(
-                (pl.col("__id").shuffle(seed=seed) < (pl.len() * split_ratio).cast(pl.Int64)).alias(
-                    "__tt"
-                )
+                pl.when(pl.col("__id").shuffle(seed=seed) < (pl.len() * split_ratio).cast(pl.Int64))
+                .then(pl.lit(default_split_1, dtype=pl.String))
+                .otherwise(pl.lit(default_split_2, dtype=pl.String))
+                .alias(split_col)
             )
-            .partition_by("__tt", as_dict=True)
+            .select(pl.all().exclude("__id"))
         )
-        train = frames[(True,)].select(pl.col("*").exclude(["__id", "__tt"]))
-        test = frames[(False,)].select(pl.col("*").exclude(["__id", "__tt"]))
-        return [train, test]
-    else: # Should work with iterable (with a length), not just list
+
+    else:
         if len(split_ratio) == 1:
-            return split_by_ratio(df, split_ratio[0], seed)
+            raise ValueError("If split_ratio is not a scalar, it must have length > 1.")
         else:
-            if sum(split_ratio) != 1:
+            if isinstance(split_ratio, dict):
+                ratios: pl.Series = pl.Series(split_ratio.values())
+                split_names = [str(k) for k in split_ratio.keys()]
+            else:  # should work with other iterables like tuple
+                ratios: pl.Series = pl.Series(split_ratio)
+                split_names = [f"split_{i}" for i in range(len(split_ratio))]
+
+            if ratios.sum() != 1:
                 raise ValueError("Sum of the ratios is not 1.")
 
-            df_eager = (
+            pct = ratios.cum_sum()
+            expr = pl.when(pl.lit(False)).then(None)
+            for p, k in zip(pct, split_names):
+                expr = expr.when(pl.col("__pct") < p).then(pl.lit(k, dtype=pl.String))
+
+            return (
                 df.with_row_index(name="__id")
                 .with_columns(pl.col("__id").shuffle(seed=seed).alias("__tt"))
                 .sort("__tt")
-                .lazy()
-                .collect()
+                .with_columns((pl.col("__tt") / pl.len()).alias("__pct"))
+                .select(expr.alias(split_col), pl.all().exclude(["__id", "__pct", "__tt"]))
             )
-
-            n = len(df_eager)
-            start = 0
-            dfs = []
-            for v in split_ratio:
-                length = int(n * v)
-                dfs.append(
-                    df_eager.slice(start, length=length).select(pl.col("*").exclude(["__id", "__tt"]))
-                )
-                start += length
-
-            return dfs
