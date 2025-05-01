@@ -36,11 +36,15 @@ def _handle_nulls_in_df(
     if null_policy == "ignore":
         return df
     elif null_policy == "raise":
-        total_null_count = (
-            df.lazy().select(*features, target).null_count().collect().sum_horizontal()[0]
+        null_count = (
+            df.lazy()
+            .select(*features, target)
+            .select(pl.sum_horizontal(pl.all().null_count()))
+            .collect()
+            .item(0, 0)
         )
-        if total_null_count > 0:
-            raise ValueError("Nulls found in Dataframe.")
+        if null_count > 0:
+            raise ValueError(f"A total of {null_count} null values found in Dataframe.")
         return df
     elif null_policy == "skip":
         return df.drop_nulls(subset=features + [target])
@@ -81,14 +85,15 @@ def _handle_nans_in_np(
         y_nans = np.any(np.isnan(y), axis=1)
         return (np.nan_to_num(X, nan=1.0)[~y_nans], y[~y_nans])
     else:
-        try:
-            fill_value = float(null_policy)
-            if np.isfinite(fill_value):
-                y_nans = np.any(np.isnan(y), axis=1)
-                return (np.nan_to_num(X, nan=fill_value)[~y_nans], y[~y_nans])
-            raise ValueError("When null_policy is a number, it cannot be nan or infinite.")
-        except Exception as e:
-            raise ValueError(f"Unknown null_policy. Error: {e}")
+        fill_value = float(null_policy)
+        if np.isfinite(fill_value):
+            y_nans = np.any(np.isnan(y), axis=1)
+            return (np.nan_to_num(X, nan=fill_value)[~y_nans], y[~y_nans])
+
+        raise ValueError(
+            "Input `null_policy` is either 'ignore', 'raise', 'skip', 'zero', 'one', or a a number string,"
+            " and it cannot be nan or infinite."
+        )
 
 
 # --------------------------------------------------------------------------------
