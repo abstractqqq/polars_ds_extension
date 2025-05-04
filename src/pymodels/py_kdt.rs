@@ -168,7 +168,7 @@ impl PyKDT {
 
             let matrix_slice = X.as_slice().unwrap();
 
-            if parallel && nrows > 16 {
+            if parallel && nrows > 64 {
                 let pairs = matrix_slice
                     .chunks_exact(ncols)
                     .zip(radius.iter().copied())
@@ -218,7 +218,7 @@ impl PyKDT {
             let ncols = X.shape()[1];
             let matrix_slice = X.as_slice().unwrap();
 
-            if parallel && nrows > 16 {
+            if parallel && nrows > 64 {
                 let pts = matrix_slice.chunks_exact(ncols).collect::<Vec<_>>();
                 let mut output_vec = Vec::with_capacity(nrows);
                 pts.into_par_iter()
@@ -269,7 +269,7 @@ impl PyKDT {
                 .into());
             }
 
-            if parallel && nrows > 16 {
+            if parallel && nrows > 64 {
                 let pairs = matrix_slice
                     .chunks_exact(ncols)
                     .zip(radius.iter().copied())
@@ -324,7 +324,7 @@ impl PyKDT {
             let ncols = X.shape()[1];
             let matrix_slice = X.as_slice().unwrap();
 
-            if parallel && nrows > 16 {
+            if parallel && nrows > 64 {
                 let pts = matrix_slice.chunks_exact(ncols).collect::<Vec<_>>();
                 let mut output_vec = Vec::with_capacity(nrows);
                 pts.into_par_iter()
