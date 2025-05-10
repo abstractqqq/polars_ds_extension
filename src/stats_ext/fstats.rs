@@ -1,7 +1,7 @@
+/// Multiple F-statistics at once and F test
 use super::simple_stats_output;
 use crate::stats_utils::beta::fisher_snedecor_sf;
 use crate::utils::{columns_to_vec, IndexOrder};
-/// Multiple F-statistics at once and F test
 use core::f64;
 use itertools::Itertools;
 use polars::frame::column::Column;
@@ -74,10 +74,7 @@ fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
 
     let scale = df_in_class / df_btw_class;
 
-    let mut fstats = columns_to_vec::<Float64Type>(
-        reference.take_columns(), 
-        IndexOrder::C
-    )?;
+    let mut fstats = columns_to_vec::<Float64Type>(reference.take_columns(), IndexOrder::C)?;
     fstats.iter_mut().for_each(|v| *v = *v * scale);
 
     let out_p: Vec<f64> = fstats

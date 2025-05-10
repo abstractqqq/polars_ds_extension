@@ -1,16 +1,16 @@
 #![allow(non_snake_case)]
 /// Linear Regression Interop with Python
 use crate::linear::{
-    LinalgErrors, 
-    LinearModel,
-    online_lr::lr_online_solvers::OnlineLR, 
-    lr::lr_solvers::{ElasticNet, LR}, 
+    lr::lr_solvers::{ElasticNet, LR},
+    online_lr::lr_online_solvers::OnlineLR,
+    LinalgErrors, LinearModel,
 };
 use faer_ext::{IntoFaer, IntoNdarray};
 
-use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
+use numpy::{
+    IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods,
+};
 use pyo3::prelude::*;
-
 
 #[pyclass(subclass)]
 pub struct PyLR {
@@ -37,7 +37,6 @@ impl PyLR {
     }
 
     pub fn fit(&mut self, X: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) -> PyResult<()> {
-
         let x = X.into_faer();
         let y = y.into_faer();
         match self.lr.fit(x, y) {
@@ -52,7 +51,7 @@ impl PyLR {
         bias: f64,
     ) -> PyResult<()> {
         if coeffs.is_empty() {
-            return Err(LinalgErrors::Other("Input coefficients array is empty.".into()).into())
+            return Err(LinalgErrors::Other("Input coefficients array is empty.".into()).into());
         }
         match coeffs.as_slice() {
             Ok(s) => Ok(self.lr.set_coeffs_and_bias(s, bias)),
@@ -60,7 +59,7 @@ impl PyLR {
                 // Copy if not contiguous
                 let vec = coeffs.as_array().iter().copied().collect::<Vec<_>>();
                 Ok(self.lr.set_coeffs_and_bias(&vec, bias))
-            },
+            }
         }
     }
 
@@ -127,7 +126,7 @@ impl PyElasticNet {
         bias: f64,
     ) -> PyResult<()> {
         if coeffs.is_empty() {
-            return Err(LinalgErrors::Other("Input coefficients array is empty.".into()).into())
+            return Err(LinalgErrors::Other("Input coefficients array is empty.".into()).into());
         }
         match coeffs.as_slice() {
             Ok(s) => Ok(self.lr.set_coeffs_and_bias(s, bias)),
@@ -135,7 +134,7 @@ impl PyElasticNet {
                 // Copy if not contiguous
                 let vec = coeffs.as_array().iter().copied().collect::<Vec<_>>();
                 Ok(self.lr.set_coeffs_and_bias(&vec, bias))
-            },
+            }
         }
     }
 
@@ -232,28 +231,26 @@ impl PyOnlineLR {
         bias: f64,
         inv: PyReadonlyArray2<f64>,
     ) -> PyResult<()> {
-
         if coeffs.is_empty() {
-            return Err(LinalgErrors::Other("Input coefficients array is empty.".into()).into())
+            return Err(LinalgErrors::Other("Input coefficients array is empty.".into()).into());
         }
         if inv.is_empty() {
-            return Err(LinalgErrors::Other("Inverse matrix is empty.".into()).into())
+            return Err(LinalgErrors::Other("Inverse matrix is empty.".into()).into());
         }
         if !inv.is_contiguous() {
-            return Err(LinalgErrors::NotContiguousArray.into())
+            return Err(LinalgErrors::NotContiguousArray.into());
         }
 
         let inv_ = inv.into_faer();
         match coeffs.as_slice() {
-            Ok(s) => match self
-                .lr
-                .set_coeffs_bias_inverse(s, bias, inv_)
-            {
+            Ok(s) => match self.lr.set_coeffs_bias_inverse(s, bias, inv_) {
                 Ok(_) => Ok(()),
                 Err(_) => {
                     let vec = coeffs.as_array().iter().copied().collect::<Vec<_>>();
-                    self.lr.set_coeffs_bias_inverse(&vec, bias, inv_).map_err(|e| e.into())
-                },
+                    self.lr
+                        .set_coeffs_bias_inverse(&vec, bias, inv_)
+                        .map_err(|e| e.into())
+                }
             },
             Err(e) => Err(e.into()),
         }

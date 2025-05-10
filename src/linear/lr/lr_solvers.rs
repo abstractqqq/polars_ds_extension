@@ -1,9 +1,6 @@
 #![allow(non_snake_case)]
-use crate::linear::{
-    LinearModel
-    , LinalgErrors
-};
 use super::LRSolverMethods;
+use crate::linear::{LinalgErrors, LinearModel};
 use faer::{linalg::solvers::Solve, mat::Mat, prelude::*, Side};
 use faer_traits::RealField;
 use num::Float;
@@ -239,7 +236,6 @@ pub fn faer_solve_lstsq<T: RealField + Float>(
     has_bias: bool,
     how: LRSolverMethods,
 ) -> Mat<T> {
-
     let n1 = x.ncols().abs_diff(has_bias as usize);
     let xt = x.transpose();
     let mut xtx = xt * x;
@@ -337,7 +333,7 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
     let xtx = x.transpose() * x;
 
     // Random selection often leads to faster convergence?
-    // All the .get_unchecked() / get_mut_unchecked() here are safe, because the indices are valid. 
+    // All the .get_unchecked() / get_mut_unchecked() here are safe, because the indices are valid.
     unsafe {
         for _ in 0..max_iter {
             let mut max_change = T::zero();
@@ -345,12 +341,12 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
                 // temporary set beta(j, 0) to 0.
                 let before = *beta.get(j, 0);
                 *beta.get_mut_unchecked(j, 0) = T::zero();
-                let xtx_j = xtx.get(j..j+1, ..);
+                let xtx_j = xtx.get(j..j + 1, ..);
                 // Xi^t(y - X-i Beta-i)
                 let main_update = *xty.get_unchecked(j, 0) - *(xtx_j * &beta).get_unchecked(0, 0);
                 // update beta(j, 0).
                 let after = soft_threshold_l1(main_update, lambda_l1) / norms[j];
-    
+
                 *beta.get_mut_unchecked(j, 0) = after;
                 max_change = (after - before).abs().max(max_change);
             }

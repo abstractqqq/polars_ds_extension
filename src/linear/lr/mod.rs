@@ -1,6 +1,5 @@
 pub mod lr_solvers;
 
-
 #[derive(Clone, Copy, Default)]
 pub enum LRSolverMethods {
     SVD,

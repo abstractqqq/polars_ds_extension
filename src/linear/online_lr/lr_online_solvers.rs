@@ -1,5 +1,5 @@
 #![allow(non_snake_case)]
-use crate::linear::{LinearModel, LinalgErrors};
+use crate::linear::{LinalgErrors, LinearModel};
 use faer::{
     linalg::solvers::{DenseSolveCore, Solve},
     mat::Mat,
@@ -17,7 +17,7 @@ pub struct OnlineLR<T: RealField + Float> {
     pub lambda: T,
     pub has_bias: bool,
     pub fitted_values: Mat<T>, // n_features x 1 matrix, or (n_features + 1) x 1 if there is bias
-    pub inv: Mat<T>,          // Current Inverse of X^t X
+    pub inv: Mat<T>,           // Current Inverse of X^t X
 }
 
 impl<T: RealField + Float> OnlineLR<T> {

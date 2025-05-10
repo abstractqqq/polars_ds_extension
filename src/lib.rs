@@ -4,7 +4,7 @@ mod arkadia;
 mod linear;
 mod num_ext;
 mod pymodels;
-mod stats;
+mod stats_ext;
 mod stats_utils;
 mod str_ext;
 mod utils;

@@ -1,33 +1,23 @@
 /// A copy of linear_regression, but with f32.
-/// Unfortunately, it is not so easily to write generic functions when interoperating with 
+/// Unfortunately, it is not so easily to write generic functions when interoperating with
 /// Polars.
 /// Any issue with linear regression should be solved first in f64, then copied into here.
 /// Most dtype casting is implicitly handled by the series_to_mat_for_lstsq function,
 /// but there are some exceptions, mainly from functions with weights. In those cases,
 /// a manual cast need to be used before calling .f64() or .f32() on the series.
-use super::linear_regression::{
-    LstsqKwargs, 
-    MultiLstsqKwargs, 
-    SWWLstsqKwargs, 
-    StandardError,
+use super::linear_regression::{LstsqKwargs, MultiLstsqKwargs, SWWLstsqKwargs, StandardError};
+use crate::linear::{
+    lr::{
+        lr_solvers::{
+            faer_coordinate_descent, faer_solve_lstsq, faer_solve_lstsq_rcond, faer_weighted_lstsq,
+        },
+        LRMethods,
+    },
+    online_lr::lr_online_solvers::{
+        faer_recursive_lstsq, faer_rolling_lstsq, faer_rolling_skipping_lstsq,
+    },
 };
 use crate::utils::{columns_to_vec, IndexOrder};
-use crate::linear::{
-    online_lr::lr_online_solvers::{
-        faer_recursive_lstsq, 
-        faer_rolling_lstsq, 
-        faer_rolling_skipping_lstsq
-    },
-    lr::{
-        LRMethods
-        , lr_solvers::{
-            faer_coordinate_descent, 
-            faer_solve_lstsq, 
-            faer_solve_lstsq_rcond, 
-            faer_weighted_lstsq,
-        },
-    }
-};
 use crate::utils::{to_frame, NullPolicy};
 /// Least Squares using Faer and ndarray.
 use core::f32;
@@ -87,7 +77,7 @@ fn coeff_output(_: &[Field]) -> PolarsResult<Field> {
 
 // --------------------------------------------------------------------------------------------------
 
-/// Returns a vec which is a col major matrix, together with nrows, nfeatures, 
+/// Returns a vec which is a col major matrix, together with nrows, nfeatures,
 /// and a mask, where true means the row doesn't contain null
 #[inline(always)]
 fn series_to_mat_for_lstsq_f32(
@@ -95,7 +85,7 @@ fn series_to_mat_for_lstsq_f32(
     has_bias: bool,
     null_policy: NullPolicy<f32>,
 ) -> PolarsResult<(Vec<f32>, usize, usize, BooleanChunked)> {
-    let ncols = inputs.len().abs_diff(1); 
+    let ncols = inputs.len().abs_diff(1);
     let n_features = ncols + has_bias as usize;
 
     // minus 1 because target is also in inputs. Target is at position 0.
@@ -259,16 +249,8 @@ fn pl_lstsq_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> 
     match series_to_mat_for_lstsq_f32(data_for_matrix, has_bias, null_policy) {
         Ok((mat_slice, nrows, nfeats, _)) => {
             // Solving Least Square
-            let y = MatRef::from_column_major_slice(
-                &mat_slice[..nrows], 
-                nrows, 
-                1
-            );
-            let x = MatRef::from_column_major_slice(
-                &mat_slice[nrows..], 
-                nrows, 
-                nfeats
-            );
+            let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
+            let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
 
             let coeffs = if weighted {
                 let binding = inputs[0].cast(&DataType::Float32)?;
@@ -327,19 +309,16 @@ fn pl_lstsq_multi_f32(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsResu
         .iter()
         .map(|s| s.name())
         .collect::<Vec<_>>();
-    let (mat_slice, nrows, nfeats) = series_to_mat_for_multi_lstsq_f32(inputs, last_target_idx, has_bias, null_policy)?;
+    let (mat_slice, nrows, nfeats) =
+        series_to_mat_for_multi_lstsq_f32(inputs, last_target_idx, has_bias, null_policy)?;
 
     let y = MatRef::from_column_major_slice(
-        &mat_slice[..nrows * last_target_idx], 
-        nrows, 
-        last_target_idx
+        &mat_slice[..nrows * last_target_idx],
+        nrows,
+        last_target_idx,
     );
 
-    let x = MatRef::from_column_major_slice(
-        &mat_slice[nrows * last_target_idx..], 
-        nrows, 
-        nfeats
-    );
+    let x = MatRef::from_column_major_slice(&mat_slice[nrows * last_target_idx..], nrows, nfeats);
 
     let coeffs = match LRMethods::from((0., kwargs.l2_reg)) {
         LRMethods::Normal | LRMethods::L2 => Ok(faer_solve_lstsq(
@@ -389,18 +368,11 @@ fn pl_lstsq_multi_pred_f32(inputs: &[Series], kwargs: MultiLstsqKwargs) -> Polar
         .iter()
         .map(|s| s.name())
         .collect::<Vec<_>>();
-    let (mat_slice, nrows, nfeats) = series_to_mat_for_multi_lstsq_f32(inputs, last_target_idx, has_bias, null_policy)?;
+    let (mat_slice, nrows, nfeats) =
+        series_to_mat_for_multi_lstsq_f32(inputs, last_target_idx, has_bias, null_policy)?;
 
-    let y = MatRef::from_column_major_slice(
-        &mat_slice[..nrows], 
-        nrows, 
-        1
-    );
-    let x = MatRef::from_column_major_slice(
-        &mat_slice[nrows..], 
-        nrows, 
-        nfeats
-    );
+    let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
+    let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
 
     let coeffs = match LRMethods::from((0., kwargs.l2_reg)) {
         LRMethods::Normal | LRMethods::L2 => Ok(faer_solve_lstsq(
@@ -441,19 +413,10 @@ fn pl_lstsq_w_rcond_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<
     match series_to_mat_for_lstsq_f32(inputs, has_bias, null_policy) {
         Ok((mat_slice, nrows, nfeats, _)) => {
             // rcond will be passed as tol
-            let rcond =
-                (kwargs.tol as f32).max(f32::EPSILON * (nrows.max(nfeats)) as f32);
+            let rcond = (kwargs.tol as f32).max(f32::EPSILON * (nrows.max(nfeats)) as f32);
 
-            let y = MatRef::from_column_major_slice(
-                &mat_slice[..nrows], 
-                nrows, 
-                1
-            );
-            let x = MatRef::from_column_major_slice(
-                &mat_slice[nrows..], 
-                nrows, 
-                nfeats
-            );
+            let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
+            let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
 
             // faer_solve_ridge_rcond
             let (coeffs, singular_values) =
@@ -504,16 +467,8 @@ fn pl_lstsq_pred_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
 
     match series_to_mat_for_lstsq_f32(data_for_matrix, has_bias, null_policy.clone()) {
         Ok((mat_slice, nrows, nfeats, mask)) => {
-            let y = MatRef::from_column_major_slice(
-                &mat_slice[..nrows], 
-                nrows, 
-                1
-            );
-            let x = MatRef::from_column_major_slice(
-                &mat_slice[nrows..], 
-                nrows, 
-                nfeats
-            );
+            let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
+            let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
             let coeffs = if weighted {
                 let binding = inputs[0].cast(&DataType::Float32)?;
                 let weights = binding.f32().unwrap();
@@ -605,16 +560,8 @@ fn pl_lin_reg_report_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult
     // Target y is at index 0
     match series_to_mat_for_lstsq_f32(&inputs[1..], has_bias, null_policy) {
         Ok((mat_slice, nrows, nfeats, _)) => {
-            let y = MatRef::from_column_major_slice(
-                &mat_slice[..nrows], 
-                nrows, 
-                1
-            );
-            let x = MatRef::from_column_major_slice(
-                &mat_slice[nrows..], 
-                nrows, 
-                nfeats
-            );
+            let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
+            let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
 
             // Solving Least Square
             let xtx = x.transpose() * &x;
@@ -703,7 +650,6 @@ fn pl_lin_reg_report_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult
                 .map(|(b, se)| b + t_alpha * se)
                 .collect_vec();
 
-
             // Finalize
             let names_ca = name_builder.finish();
             let names_series = names_ca.into_series();
@@ -772,18 +718,10 @@ fn pl_wls_report_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
     // Target y is at index 2, weights at index 0
     match series_to_mat_for_lstsq_f32(&inputs[2..], has_bias, null_policy) {
         Ok((mat_slice, nrows, nfeats, _)) => {
-            let y = MatRef::from_column_major_slice(
-                &mat_slice[..nrows], 
-                nrows, 
-                1
-            );
-        
-            let x = MatRef::from_column_major_slice(
-                &mat_slice[nrows..], 
-                nrows, 
-                nfeats
-            );
-        
+            let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
+
+            let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
+
             // let w = faer::mat::from_row_major_slice(weights, x.nrows(), 1);
             let w = faer::ColRef::from_slice(weights);
             let w = w.as_diagonal();
@@ -897,26 +835,13 @@ fn pl_recursive_lstsq_f32(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsRe
     match series_to_mat_for_lstsq_f32(inputs, has_bias, null_policy) {
         Ok((mat_slice, nrows, nfeats, mask)) => {
             // Solving Least Square
-            let y = MatRef::from_column_major_slice(
-                &mat_slice[..nrows], 
-                nrows, 
-                1
-            );
-        
-            let x = MatRef::from_column_major_slice(
-                &mat_slice[nrows..], 
-                nrows, 
-                nfeats
-            );
+            let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
+
+            let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
 
             let coeffs = faer_recursive_lstsq(x, y, n, kwargs.lambda as f32);
             let mut builder: ListPrimitiveChunkedBuilder<Float32Type> =
-                ListPrimitiveChunkedBuilder::new(
-                    "coeffs".into(),
-                    nrows,
-                    nfeats,
-                    DataType::Float32,
-                );
+                ListPrimitiveChunkedBuilder::new("coeffs".into(), nrows, nfeats, DataType::Float32);
             let mut pred_builder: PrimitiveChunkedBuilder<Float32Type> =
                 PrimitiveChunkedBuilder::new("pred".into(), nrows);
 
@@ -1006,16 +931,8 @@ fn pl_rolling_lstsq_f32(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResu
                 _ => false, // raise, ignore
             };
 
-            let y = MatRef::from_column_major_slice(
-                &mat_slice[..nrows], 
-                nrows, 
-                1
-            );
-            let x = MatRef::from_column_major_slice(
-                &mat_slice[nrows..], 
-                nrows, 
-                nfeats
-            );
+            let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
+            let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
             let coeffs = if should_skip {
                 faer_rolling_skipping_lstsq(x, y, n, kwargs.min_size, kwargs.lambda as f32)
             } else {
@@ -1023,12 +940,7 @@ fn pl_rolling_lstsq_f32(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResu
             };
 
             let mut builder: ListPrimitiveChunkedBuilder<Float32Type> =
-                ListPrimitiveChunkedBuilder::new(
-                    "coeffs".into(),
-                    nrows,
-                    nfeats,
-                    DataType::Float32,
-                );
+                ListPrimitiveChunkedBuilder::new("coeffs".into(), nrows, nfeats, DataType::Float32);
             let mut pred_builder: PrimitiveChunkedBuilder<Float32Type> =
                 PrimitiveChunkedBuilder::new("pred".into(), nrows);
 

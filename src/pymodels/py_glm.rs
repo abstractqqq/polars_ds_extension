@@ -1,22 +1,18 @@
 #![allow(non_snake_case)]
 /// Linear Regression Interop with Python
 use crate::linear::{
-        GeneralizedLinearModel
-        , LinearModel
-        , LinalgErrors
-        , glm::glm_solvers::{GLMFamily, GLM}, 
+    glm::glm_solvers::{GLMFamily, GLM},
+    GeneralizedLinearModel, LinalgErrors, LinearModel,
 };
 use faer_ext::IntoFaer;
 
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::prelude::*;
 
-
 #[pyclass(subclass)]
 pub struct PyGLM {
     glm: GLM<f64>,
 }
-
 
 #[pymethods]
 impl PyGLM {
@@ -30,11 +26,11 @@ impl PyGLM {
     pub fn new(has_bias: bool, family: &str, solver: &str) -> Self {
         let glm_family: GLMFamily = family.into();
         let glm = GLM::new(
-            solver, 
-            0f64, 
-            has_bias, 
-            glm_family.link_function(), 
-            glm_family.variance_function()
+            solver,
+            0f64,
+            has_bias,
+            glm_family.link_function(),
+            glm_family.variance_function(),
         );
         PyGLM { glm: glm }
     }
@@ -58,7 +54,7 @@ impl PyGLM {
         bias: f64,
     ) -> PyResult<()> {
         if coeffs.len().unwrap_or(0) <= 0 {
-            return Err(LinalgErrors::Other("Input coefficients array is empty.".into()).into())
+            return Err(LinalgErrors::Other("Input coefficients array is empty.".into()).into());
         }
         match coeffs.as_slice() {
             Ok(s) => Ok(self.glm.set_coeffs_and_bias(s, bias)),
@@ -66,7 +62,7 @@ impl PyGLM {
                 // Copy if not contiguous
                 let vec = coeffs.as_array().iter().copied().collect::<Vec<_>>();
                 Ok(self.glm.set_coeffs_and_bias(&vec, bias))
-            },
+            }
         }
     }
 

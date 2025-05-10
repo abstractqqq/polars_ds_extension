@@ -13,11 +13,11 @@ pub enum LinkFunction {
 impl From<&str> for LinkFunction {
     fn from(value: &str) -> Self {
         match value.to_lowercase().as_ref() {
-            "id" | "identity" => Self::Identity
-            , "log"  => Self::Log
-            , "logit" => Self::Logit
-            , "inv" | "inverse"  => Self::Inverse
-            , _ => Self::Identity
+            "id" | "identity" => Self::Identity,
+            "log" => Self::Log,
+            "logit" => Self::Logit,
+            "inv" | "inverse" => Self::Inverse,
+            _ => Self::Identity,
         }
     }
 }
@@ -32,7 +32,7 @@ impl LinkFunction {
                 // logit(p) = ln(p/(1-p))
                 let one = T::one();
                 (mu / (one - mu)).ln()
-            },
+            }
             LinkFunction::Inverse => mu.recip(),
         }
     }
@@ -47,7 +47,7 @@ impl LinkFunction {
                 let one = T::one();
                 let exp_eta = eta.exp();
                 exp_eta / (one + exp_eta)
-            },
+            }
             LinkFunction::Inverse => eta.recip(),
         }
     }
@@ -61,11 +61,10 @@ impl LinkFunction {
                 // d/dp logit(p) = 1/(p(1-p))
                 let one = T::one();
                 one / (mu * (one - mu))
-            },
+            }
             LinkFunction::Inverse => -mu.powi(2).recip(),
         }
     }
-
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -96,7 +95,7 @@ impl VarianceFunction {
             VarianceFunction::Binomial => {
                 let one = T::one();
                 mu * (one - mu)
-            },
+            }
             VarianceFunction::Gamma => mu.powi(2),
         }
     }

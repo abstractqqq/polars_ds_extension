@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
+pub mod glm;
 pub mod lr;
 pub mod online_lr;
-pub mod glm;
 
 use faer::{Mat, MatRef, Par};
 use faer_traits::RealField;
@@ -57,7 +57,10 @@ pub trait LinearModel<T: RealField + Float> {
     /// If the model is not fitted yet, empty array will be returned.
     fn coefficients(&self) -> MatRef<T> {
         if self.is_fit() {
-            let n = self.fitted_values().nrows().abs_diff(self.has_bias() as usize);
+            let n = self
+                .fitted_values()
+                .nrows()
+                .abs_diff(self.has_bias() as usize);
             self.fitted_values().get(0..n, ..)
         } else {
             self.fitted_values()
@@ -104,32 +107,26 @@ pub trait LinearModel<T: RealField + Float> {
         } else if !self.is_fit() {
             Err(LinalgErrors::MatNotLearnedYet)
         } else {
-            let mut pred = Mat::full(
-                X.nrows()
-                , 1
-                , {
-                    if self.has_bias() {
-                        self.bias()
-                    } else {
-                        T::zero()
-                    }
+            let mut pred = Mat::full(X.nrows(), 1, {
+                if self.has_bias() {
+                    self.bias()
+                } else {
+                    T::zero()
                 }
-            );
+            });
             // Result is 0 if no bias, result is [bias] (ncols x 1) if has bias.
             // result = result + 1.0 * (X * coeffs)
             faer::linalg::matmul::matmul(
-                pred.as_mut(), 
-                faer::Accum::Add, 
-                X, 
-                self.coefficients(), 
-                T::one(), 
+                pred.as_mut(),
+                faer::Accum::Add,
+                X,
+                self.coefficients(),
+                T::one(),
                 Par::rayon(0),
             );
             Ok(pred)
-
         }
     }
-
 }
 
 /// A trait for Generalized Linear Models

@@ -1,5 +1,5 @@
-pub mod link_functions;
 pub mod glm_solvers;
+pub mod link_functions;
 
 #[derive(Clone, Copy, Default)]
 pub enum GLMSolverMethods {
