@@ -1,7 +1,6 @@
 use std::str::FromStr;
 
 use cfavml::safe_trait_distance_ops::DistanceOps;
-use ndarray::Array2;
 use num::Float;
 use polars::{
     datatypes::{DataType, Field},
@@ -16,44 +15,27 @@ use pyo3_polars::export::polars_core::{
     POOL,
 };
 
+pub enum IndexOrder {
+    C,
+    Fortran
+}
+
 // -------------------------------------------------------------------------------
 // Common, Resuable Functions
 // -------------------------------------------------------------------------------
-#[inline(always)]
-pub fn to_f64_matrix_without_nulls(
-    inputs: &[Series],
-    order: IndexOrder,
-) -> PolarsResult<Array2<f64>> {
-    let df = DataFrame::from_iter(inputs.iter().map(|s| Column::Series(s.clone().into())));
-    let df = df.drop_nulls::<String>(None)?;
-    df.to_ndarray::<Float64Type>(order)
-}
 
-#[inline(always)]
-pub fn to_f64_matrix_fail_on_nulls(
-    inputs: &[Series],
-    order: IndexOrder,
-) -> PolarsResult<Array2<f64>> {
-    if inputs.iter().any(|s| s.has_nulls()) {
-        Err(PolarsError::ComputeError(
-            "Nulls are found in data and this method doesn't allow nulls.".into(),
-        ))
-    } else {
-        let df = DataFrame::new(inputs.iter().map(|s| s.clone().into_column()).collect())?;
-        df.to_ndarray::<Float64Type>(order)
-    }
-}
 
 #[inline(always)]
 pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
     DataFrame::new(inputs.iter().map(|s| s.clone().into_column()).collect())
 }
 
-/// Organizes the series data into a `matrix`, and return the underlying slice
-/// as a row-major slice. This code here is taken from polars dataframe.to_ndarray()
+/// Organizes the series data into a `vec`, which is either C(row major) or Fortran(column major).
+/// This code here is taken from polars dataframe.to_ndarray()
 #[inline(always)]
-pub fn series_to_row_major_slice<N>(
+pub fn series_to_slice<N>(
     series: &[Series],
+    ordering: IndexOrder
 ) -> PolarsResult<Vec<<N as PolarsNumericType>::Native>>
 where
     N: PolarsNumericType,
@@ -97,13 +79,31 @@ where
             let mut chunk_offset = 0;
             for arr in ca.downcast_iter() {
                 let vals = arr.values();
-                unsafe {
-                    let num_cols = m;
-                    let mut offset = (ptr as *mut N::Native).add(col_idx + chunk_offset * num_cols);
-                    for v in vals.iter() {
-                        *offset = *v;
-                        offset = offset.add(num_cols);
-                    }
+                // Depending on the desired order, we add items to the buffer.
+                // SAFETY:
+                // We get parallel access to the vector by offsetting index access accordingly.
+                // For C-order, we only operate on every num-col-th element, starting from the
+                // column index. For Fortran-order we only operate on n contiguous elements,
+                // offset by n * the column index.
+                match ordering {
+                    IndexOrder::C => unsafe {
+                        let num_cols = series.len();
+                        let mut offset =
+                            (ptr as *mut N::Native).add(col_idx + chunk_offset * num_cols);
+                        for v in vals.iter() {
+                            *offset = *v;
+                            offset = offset.add(num_cols);
+                        }
+                    },
+                    IndexOrder::Fortran => unsafe {
+                        let offset_ptr =
+                            (ptr as *mut N::Native).add(col_idx * height + chunk_offset);
+                        // SAFETY:
+                        // this is uninitialized memory, so we must never read from this data
+                        // copy_from_slice does not read
+                        let buf = std::slice::from_raw_parts_mut(offset_ptr, vals.len());
+                        buf.copy_from_slice(vals)
+                    },
                 }
                 chunk_offset += vals.len();
             }
@@ -119,6 +119,52 @@ where
     }
     Ok(membuf)
 }
+
+// &[Column] -> Slice
+pub fn columns_to_vec<N>(columns: Vec<Column>, ordering: IndexOrder) -> PolarsResult<Vec<<N as polars::prelude::PolarsNumericType>::Native>> 
+where
+    N: PolarsNumericType,
+{
+    let v = columns
+        .into_iter()
+        .map(|s| s.as_materialized_series().clone())
+        .collect::<Vec<_>>();
+
+    series_to_slice::<N>(&v, ordering)
+}
+
+#[inline(always)]
+pub fn to_f64_vec_without_nulls(
+    inputs: &[Series],
+    ordering: IndexOrder,
+) -> PolarsResult<Vec<f64>> {
+    let df = DataFrame::from_iter(inputs.iter().map(|s| Column::Series(s.clone().into())));
+    let df = df.drop_nulls::<String>(None)?;
+    
+    columns_to_vec::<Float64Type>(
+        df.take_columns()
+        , ordering
+    )
+}
+
+#[inline(always)]
+pub fn to_f64_vec_fail_on_nulls(
+    inputs: &[Series],
+    ordering: IndexOrder,
+) -> PolarsResult<Vec<f64>> {
+    if inputs.iter().any(|s| s.has_nulls()) {
+        Err(PolarsError::ComputeError(
+            "Nulls are found in data and this method doesn't allow nulls.".into(),
+        ))
+    } else {
+        let columns = inputs.iter().map(|s| s.clone().into_column()).collect::<Vec<_>>();
+        columns_to_vec::<Float64Type>(
+            columns
+            , ordering
+        )
+    }
+}
+
 
 // Shared splitting method
 pub fn split_offsets(len: usize, n: usize) -> Vec<(usize, usize)> {
@@ -166,13 +212,6 @@ pub fn first_field_output(fields: &[Field]) -> PolarsResult<Field> {
     Ok(fields[0].clone())
 }
 
-// pub fn list_u64_output(_: &[Field]) -> PolarsResult<Field> {
-//     Ok(Field::new(
-//         "nodes",
-//         DataType::List(Box::new(DataType::UInt64)),
-//     ))
-// }
-
 pub fn list_u32_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
         "nodes".into(),
@@ -180,24 +219,10 @@ pub fn list_u32_output(_: &[Field]) -> PolarsResult<Field> {
     ))
 }
 
-pub fn list_f64_output(_: &[Field]) -> PolarsResult<Field> {
-    Ok(Field::new(
-        "floats".into(),
-        DataType::List(Box::new(DataType::Float64)),
-    ))
-}
-
 pub fn complex_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new(
         "complex".into(),
         DataType::Array(Box::new(DataType::Float64), 2),
-    ))
-}
-
-pub fn list_str_output(_: &[Field]) -> PolarsResult<Field> {
-    Ok(Field::new(
-        "list_str".into(),
-        DataType::List(Box::new(DataType::String)),
     ))
 }
 
@@ -340,3 +365,4 @@ impl<T: Float + DistanceOps + 'static> DIST<T> {
         }
     }
 }
+

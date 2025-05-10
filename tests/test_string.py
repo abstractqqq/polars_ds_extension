@@ -82,25 +82,6 @@ def test_normalize_whitespace():
     "df, res",
     [
         (
-            pl.DataFrame({"a": ["thanks", "thank", "thankful"]}),
-            pl.DataFrame({"a": ["thank", "thank", "thank"]}),
-        ),
-        (
-            pl.DataFrame({"a": ["playful", "playing", "play", "played", "plays"]}),
-            pl.DataFrame({"a": ["play", "play", "play", "play", "play"]}),
-        ),
-    ],
-)
-def test_snowball(df, res):
-    assert_frame_equal(df.select(pds.str_snowball("a")), res)
-
-    assert_frame_equal(df.lazy().select(pds.str_snowball("a")).collect(), res)
-
-
-@pytest.mark.parametrize(
-    "df, res",
-    [
-        (
             pl.DataFrame(
                 {
                     "a": ["karolin", "karolin", "kathrin", "0000", "2173896"],

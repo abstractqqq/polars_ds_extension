@@ -5,7 +5,7 @@ use crate::{
         utils::{slice_to_empty_leaves, slice_to_leaves},
         KNNMethod, KNNRegressor, Leaf, SpatialQueries, KDT,
     },
-    utils::{list_u32_output, series_to_row_major_slice, split_offsets, DIST},
+    utils::{list_u32_output, series_to_slice, split_offsets, IndexOrder, DIST},
 };
 
 use num::Float;
@@ -105,10 +105,8 @@ fn pl_knn_avg(
     let null_mask = inputs[1].bool().unwrap();
     let nrows = null_mask.len();
 
-    // let data = series_to_ndarray(&inputs[2..], IndexOrder::C)?;
-
     let ncols = inputs[2..].len();
-    let data = series_to_row_major_slice::<Float64Type>(&inputs[2..])?;
+    let data = series_to_slice::<Float64Type>(&inputs[2..], IndexOrder::C)?;
     let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, &null_mask);
 
     let tree = match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
@@ -222,7 +220,7 @@ fn pl_dist_from_kth_nb(
     let k = kwargs.k;
     let can_parallel = kwargs.parallel && !context.parallel();
     let ncols = inputs.len();
-    let data = series_to_row_major_slice::<Float64Type>(inputs)?;
+    let data = series_to_slice::<Float64Type>(inputs, IndexOrder::C)?;
     match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
         Ok(d) => {
             let mut leaves: Vec<Leaf<f64, ()>> =
@@ -304,7 +302,7 @@ fn pl_knn_ptwise(
     };
 
     let ncols = inputs[inputs_offset..].len();
-    let data = series_to_row_major_slice::<Float64Type>(&inputs[inputs_offset..])?;
+    let data = series_to_slice::<Float64Type>(&inputs[inputs_offset..], IndexOrder::C)?;
 
     match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
         Ok(d) => {
@@ -470,7 +468,7 @@ fn pl_knn_ptwise_w_dist(
     };
 
     let ncols = inputs[inputs_offset..].len();
-    let data = series_to_row_major_slice::<Float64Type>(&inputs[inputs_offset..])?;
+    let data = series_to_slice::<Float64Type>(&inputs[inputs_offset..], IndexOrder::C)?;
     let (ca_nb, ca_dist) = match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
         Ok(d) => {
             let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, null_mask);
@@ -567,7 +565,7 @@ fn pl_query_radius_ptwise(
     let id = id.cont_slice()?;
 
     let ncols = inputs[1..].len();
-    let data = series_to_row_major_slice::<Float64Type>(&inputs[1..])?;
+    let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
     // Building output
     match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
         Ok(d) => {
@@ -669,7 +667,7 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
     let can_parallel = kwargs.parallel && !context.parallel();
 
     let ncols = inputs[1..].len();
-    let data = series_to_row_major_slice::<Float64Type>(&inputs[1..])?;
+    let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
     let nrows = data.len() / ncols;
 
     if radius.len() == 1 {

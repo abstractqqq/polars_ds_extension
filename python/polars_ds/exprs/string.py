@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 import polars as pl
 from typing import List, Literal, Dict
 
@@ -12,13 +13,11 @@ __all__ = [
     "filter_by_levenshtein",
     "filter_by_hamming",
     "str_hamming",
-    "is_stopword",
     "to_camel_case",
     "to_snake_case",
     "to_pascal_case",
     "to_constant_case",
     "str_nearest",
-    "str_snowball",
     "str_tokenize",
     "str_jaccard",
     "str_sorensen_dice",
@@ -145,17 +144,6 @@ def str_hamming(
         )
 
 
-def is_stopword(c: str | pl.Expr) -> pl.Expr:
-    """
-    Checks whether the string is a stopword in English or not.
-    """
-    return pl_plugin(
-        symbol="pl_is_stopword",
-        args=[str_to_expr(c)],
-        is_elementwise=True,
-    )
-
-
 def to_camel_case(c: str | pl.Expr) -> pl.Expr:
     """Turns itself into camel case. E.g. helloWorld"""
     return pl_plugin(
@@ -233,27 +221,7 @@ def str_nearest(
     )
 
 
-def str_snowball(c: str | pl.Expr, no_stopwords: bool = True) -> pl.Expr:
-    """
-    Applies the snowball stemmer for the column. The column is supposed to be a column of single words.
-    Numbers will be stemmed to the empty string.
-
-    Parameters
-    ----------
-    c
-        The string column
-    no_stopwords
-        If true, stopwords will be mapped to the empty string. If false, stopwords will remain. Removing
-        stopwords may impact performance.
-    """
-    return pl_plugin(
-        symbol="pl_snowball_stem",
-        args=[str_to_expr(c), pl.lit(no_stopwords, pl.Boolean)],
-        is_elementwise=True,
-    )
-
-
-def str_tokenize(c: str | pl.Expr, pattern: str = r"(?u)\b\w\w+\b", stem: bool = False) -> pl.Expr:
+def str_tokenize(c: str | pl.Expr, pattern: str = r"(?u)\b\w\w+\b") -> pl.Expr:
     """
     Tokenize the string according to the pattern. This will only extract the words
     satisfying the pattern.
@@ -264,14 +232,15 @@ def str_tokenize(c: str | pl.Expr, pattern: str = r"(?u)\b\w\w+\b", stem: bool =
         The string column
     pattern
         The word pattern to extract
-    stem
-        If true, then this will stem the words and keep only the unique ones. Stop words
-        will be removed. (Common words like `he`, `she`, etc., will be removed.)
+
     """
-    out = str_to_expr(c).str.extract_all(pattern)
-    if stem:
-        return out.list.eval(str_snowball(pl.element(), True).drop_nulls())
-    return out
+    warnings.warn(
+        "This function is deprecated. Please use `pl.col(..).str.extract_all(pattern)`, "
+        + "where pattern can be r'(?u)\b\w\w+\b'.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return str_to_expr(c).str.extract_all(pattern)
 
 
 def str_jaccard(
@@ -911,7 +880,6 @@ def normalize_string(c: str | pl.Expr, form: Literal["NFC", "NFKC", "NFD", "NFKD
     │ Ç   ┆ Ç   ┆ false    ┆ true                │
     └─────┴─────┴──────────┴─────────────────────┘
     """
-    import warnings
 
     warnings.warn(
         "This function is deprecated because Polars>=1.20 has a native str.normalize() method. "

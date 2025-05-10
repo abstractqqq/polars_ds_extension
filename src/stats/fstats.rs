@@ -1,9 +1,9 @@
 use super::simple_stats_output;
 use crate::stats_utils::beta::fisher_snedecor_sf;
+use crate::utils::{columns_to_vec, IndexOrder};
 /// Multiple F-statistics at once and F test
 use core::f64;
 use itertools::Itertools;
-use ndarray::Axis;
 use polars::frame::column::Column;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
@@ -74,17 +74,18 @@ fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
 
     let scale = df_in_class / df_btw_class;
 
-    let mut fstats = reference
-        .to_ndarray::<Float64Type>(IndexOrder::C)?
-        .remove_axis(Axis(0));
-    fstats.map_inplace(|v| *v = *v * scale);
-    let out_fstats = fstats.as_slice().unwrap(); // C order guarantees contiguous.
-    let out_p: Vec<f64> = out_fstats
+    let mut fstats = columns_to_vec::<Float64Type>(
+        reference.take_columns(), 
+        IndexOrder::C
+    )?;
+    fstats.iter_mut().for_each(|v| *v = *v * scale);
+
+    let out_p: Vec<f64> = fstats
         .iter()
         .map(|x| fisher_snedecor_sf(*x, df_btw_class, df_in_class).unwrap_or(f64::NAN))
         .collect();
 
-    let s1 = Column::new("statistic".into(), out_fstats);
+    let s1 = Column::new("statistic".into(), fstats);
     let s2 = Column::new("pvalue".into(), out_p);
 
     let ca = StructChunked::from_columns("f-test".into(), s1.len(), &[s1, s2])?;
