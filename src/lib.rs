@@ -1,7 +1,7 @@
 #![feature(float_gamma)]
 
 mod arkadia;
-mod linalg;
+mod linear;
 mod num_ext;
 mod pymodels;
 mod stats;

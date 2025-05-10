@@ -139,8 +139,7 @@ df_transformed.head()
 
 ### Nearest Neighbors Related Queries
 
-Get all neighbors within radius r, call them best friends, and count the number. Due to limitations, 
-this currently doesn't preserve the index, and is not fast when k or dimension of data is large.
+Get all neighbors within radius r, call them best friends, and count the number. Due to certain limitations, this currently doesn't preserve the index, and is not fast when k or dimension of data is large.
 
 ```python
 df.select(
@@ -229,24 +228,13 @@ To make full use of the Diagnosis module, do
 pip install "polars_ds[plot]"
 ```
 
-## How Fast is it?
-
-Feel free to take a look at our [benchmark notebook](./benchmarks/benchmarks.ipynb)!
-
-Generally speaking, the more expressions you want to evaluate simultaneously, the faster Polars + PDS will be than Pandas + (SciPy / Sklearn / NumPy). The more CPU cores you have on your machine, the bigger the time difference will be in favor of Polars + PDS. 
-
-Why does speed matter? 
-
-If your code already executes under 1s and you only use your code in non-production, ad-hoc environments, then maybe it doesn't. Even so, as your data grow, having a 5s run vs. a 1s run will make a lot of difference in your iterations for your project. Speed of execution becomes a bigger issues if you are building reports on demand, or if you need to pay extra for additional compute or when you have a production pipeline that has to deliver the data under a time constraint.  
-
 ## HELP WANTED!
 
 1. Documentation writing, Doc Review, and Benchmark preparation
 
 ## Road Map
 
-1. K-means, K-medoids clustering as expressions and also standalone modules.
-2. Other improvement items. See issues.
+1. No one knows what the future holds.
 
 # Disclaimer
 
@@ -254,7 +242,7 @@ If your code already executes under 1s and you only use your code in non-product
 
 This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. This concerns the plugin expressions like `pds.lin_reg`, etc.. By the same token, Polars large index version is not intentionally supported at this point. However, non-plugin Polars utilities provided by the function should work with the streaming engine, as they are native Polars code.
 
-## Polars LTS CPU Support / Build From Source
+## Build From Source / Polars LTS CPU Support
 
 The guide here is not specific to LTS CPU, and can be used generally.
 
@@ -288,11 +276,10 @@ You can then publish it to your private PYPI server, or just use it locally.
 
 # Credits
 
-1. Rust Snowball Stemmer is taken from Tsoding's Seroost project (MIT). See [here](https://github.com/tsoding/seroost)
-2. Some statistics functions are taken from Statrs (MIT) and internalized. See [here](https://github.com/statrs-dev/statrs/tree/master)
-3. Linear algebra routines are powered mostly by [faer](https://crates.io/crates/faer)
-4. String similarity metrics are soooo fast because of [RapidFuzz](https://github.com/maxbachmann/rapidfuzz-rs)
+1. Some statistics functions are taken from Statrs (MIT) and internalized. See [here](https://github.com/statrs-dev/statrs/tree/master)
+2. Linear algebra routines are powered mostly by [faer](https://crates.io/crates/faer)
+3. String similarity metrics are soooo fast because of [RapidFuzz](https://github.com/maxbachmann/rapidfuzz-rs)
 
 # Other related Projects
 
-1. Take a look at our friendly neighbor [functime](https://github.com/TracecatHQ/functime)
+1. For fast parsing of csv.gz files, which integrates well with the Polars project, see [GZeus](https://github.com/abstractqqq/gzeus).

@@ -1,12 +1,13 @@
 #![allow(non_snake_case)]
-use super::{
-    link_functions::{LinkFunction, VarianceFunction}, 
-    lr_solvers::faer_weighted_lstsq, 
-    GLMSolverMethods, 
-    LRSolverMethods, 
-    LinalgErrors, 
-    LinearRegression,
-    GeneralizedLinearModel, 
+use crate::linear::{
+    GeneralizedLinearModel
+    , LinearModel
+    , LinalgErrors
+    , glm::{
+        link_functions::{LinkFunction, VarianceFunction}
+        , GLMSolverMethods
+    }
+    , lr::{LRSolverMethods, lr_solvers::faer_weighted_lstsq}
 };
 use faer::{diag::DiagRef, mat::Mat, MatRef, Par};
 use faer_traits::RealField;
@@ -163,7 +164,7 @@ impl<T: RealField + Float> GLM<T> {
     }
 }
 
-impl<T: RealField + Float> LinearRegression<T> for GLM<T> {
+impl<T: RealField + Float> LinearModel<T> for GLM<T> {
     fn fitted_values(&self) -> MatRef<T> {
         self.fitted_values.as_ref()
     }

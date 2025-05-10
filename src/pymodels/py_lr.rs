@@ -1,16 +1,14 @@
 #![allow(non_snake_case)]
 /// Linear Regression Interop with Python
-use crate::linalg::{
-    lr_online_solvers::OnlineLR, lr_solvers::{ElasticNet, LR}, IntoFaer, IntoNdarray, LinalgErrors, LinearRegression
-    lr_online_solvers::OnlineLR,
-    lr_solvers::{ElasticNet, LR},
-    LinalgErrors, LinearRegression,
+use crate::linear::{
+    LinalgErrors, 
+    LinearModel,
+    online_lr::lr_online_solvers::OnlineLR, 
+    lr::lr_solvers::{ElasticNet, LR}, 
 };
+use faer_ext::{IntoFaer, IntoNdarray};
 
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
-use faer_ext::{IntoFaer, IntoNdarray};
-use numpy::{IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
-use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 
@@ -40,7 +38,6 @@ impl PyLR {
 
     pub fn fit(&mut self, X: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) -> PyResult<()> {
 
-        let arr = X.as_raw_array();
         let x = X.into_faer();
         let y = y.into_faer();
         match self.lr.fit(x, y) {
@@ -246,12 +243,11 @@ impl PyOnlineLR {
             return Err(LinalgErrors::NotContiguousArray.into())
         }
 
-        let inv_ = inv.as_array().into_faer();
+        let inv_ = inv.into_faer();
         match coeffs.as_slice() {
             Ok(s) => match self
                 .lr
                 .set_coeffs_bias_inverse(s, bias, inv_)
-                .set_coeffs_bias_inverse(s, bias, inv.into_faer())
             {
                 Ok(_) => Ok(()),
                 Err(_) => {

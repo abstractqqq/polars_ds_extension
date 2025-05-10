@@ -1,7 +1,6 @@
 /// A copy of linear_regression, but with f32.
-/// Unfortunately, it is not so easily to write generic functions. If I do so,
-/// there would be too many functions that have purpose that is not obvious by first sight.
-/// Polars Datatype is also not as easy to "generalize" as f32 and f64.
+/// Unfortunately, it is not so easily to write generic functions when interoperating with 
+/// Polars.
 /// Any issue with linear regression should be solved first in f64, then copied into here.
 /// Most dtype casting is implicitly handled by the series_to_mat_for_lstsq function,
 /// but there are some exceptions, mainly from functions with weights. In those cases,
@@ -13,12 +12,21 @@ use super::linear_regression::{
     StandardError,
 };
 use crate::utils::{columns_to_vec, IndexOrder};
-use crate::linalg::{
-    lr_online_solvers::{faer_recursive_lstsq, faer_rolling_lstsq, faer_rolling_skipping_lstsq},
-    lr_solvers::{
-        faer_coordinate_descent, faer_solve_lstsq, faer_solve_lstsq_rcond, faer_weighted_lstsq,
+use crate::linear::{
+    online_lr::lr_online_solvers::{
+        faer_recursive_lstsq, 
+        faer_rolling_lstsq, 
+        faer_rolling_skipping_lstsq
     },
-    LRMethods,
+    lr::{
+        LRMethods
+        , lr_solvers::{
+            faer_coordinate_descent, 
+            faer_solve_lstsq, 
+            faer_solve_lstsq_rcond, 
+            faer_weighted_lstsq,
+        },
+    }
 };
 use crate::utils::{to_frame, NullPolicy};
 /// Least Squares using Faer and ndarray.

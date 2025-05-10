@@ -4,7 +4,7 @@ pub mod py_glm;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use crate::linalg::LinalgErrors;
+use crate::linear::LinalgErrors;
 
 impl From<LinalgErrors> for PyErr {
     fn from(value: LinalgErrors) -> Self {

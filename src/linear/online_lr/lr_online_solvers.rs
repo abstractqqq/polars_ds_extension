@@ -1,5 +1,5 @@
 #![allow(non_snake_case)]
-use core::f64;
+use crate::linear::{LinearModel, LinalgErrors};
 use faer::{
     linalg::solvers::{DenseSolveCore, Solve},
     mat::Mat,
@@ -7,8 +7,6 @@ use faer::{
 };
 use faer_traits::{math_utils::is_nan, RealField};
 use num::Float;
-
-use super::{LinalgErrors, LinearRegression};
 
 #[inline]
 pub fn has_nan<T: RealField>(mat: MatRef<T>) -> bool {
@@ -95,7 +93,7 @@ impl<T: RealField + Float> OnlineLR<T> {
     }
 }
 
-impl<T: RealField + Float> LinearRegression<T> for OnlineLR<T> {
+impl<T: RealField + Float> LinearModel<T> for OnlineLR<T> {
     fn fitted_values(&self) -> MatRef<T> {
         self.fitted_values.as_ref()
     }

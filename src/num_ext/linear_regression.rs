@@ -1,9 +1,18 @@
-use crate::linalg::{
-    lr_online_solvers::{faer_recursive_lstsq, faer_rolling_lstsq, faer_rolling_skipping_lstsq},
-    lr_solvers::{
-        faer_coordinate_descent, faer_solve_lstsq, faer_solve_lstsq_rcond, faer_weighted_lstsq,
+use crate::linear::{
+    online_lr::lr_online_solvers::{
+        faer_recursive_lstsq, 
+        faer_rolling_lstsq, 
+        faer_rolling_skipping_lstsq
     },
-    LRMethods,
+    lr::{
+        LRMethods
+        , lr_solvers::{
+            faer_coordinate_descent, 
+            faer_solve_lstsq, 
+            faer_solve_lstsq_rcond, 
+            faer_weighted_lstsq,
+        },
+    }
 };
 use crate::utils::{columns_to_vec, to_frame, NullPolicy, IndexOrder};
 /// Least Squares using Faer and ndarray.

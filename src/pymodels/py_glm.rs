@@ -1,8 +1,12 @@
 #![allow(non_snake_case)]
 /// Linear Regression Interop with Python
-use crate::linalg::{
-    glm_solvers::{GLMFamily, GLM}, link_functions::LinkFunction, GeneralizedLinearModel, IntoFaer, LinalgErrors, LinearRegression
+use crate::linear::{
+        GeneralizedLinearModel
+        , LinearModel
+        , LinalgErrors
+        , glm::glm_solvers::{GLMFamily, GLM}, 
 };
+use faer_ext::IntoFaer;
 
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::prelude::*;

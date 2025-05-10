@@ -1,5 +1,9 @@
 #![allow(non_snake_case)]
-use super::{LRSolverMethods, LinalgErrors, LinearRegression};
+use crate::linear::{
+    LinearModel
+    , LinalgErrors
+};
+use super::LRSolverMethods;
 use faer::{linalg::solvers::Solve, mat::Mat, prelude::*, Side};
 use faer_traits::RealField;
 use num::Float;
@@ -47,7 +51,7 @@ impl<T: RealField + Float> LR<T> {
     }
 }
 
-impl<T: RealField + Float> LinearRegression<T> for LR<T> {
+impl<T: RealField + Float> LinearModel<T> for LR<T> {
     fn fitted_values(&self) -> MatRef<T> {
         self.fitted_values.as_ref()
     }
@@ -132,7 +136,7 @@ impl<T: RealField + Float> ElasticNet<T> {
     }
 }
 
-impl<T: RealField + Float> LinearRegression<T> for ElasticNet<T> {
+impl<T: RealField + Float> LinearModel<T> for ElasticNet<T> {
     fn fitted_values(&self) -> MatRef<T> {
         self.coefficients.as_ref()
     }
