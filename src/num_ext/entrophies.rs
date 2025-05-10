@@ -1,7 +1,7 @@
 use crate::arkadia::utils::slice_to_empty_leaves;
 use crate::arkadia::{kdt::KDT, SpatialQueries};
 use crate::num_ext::knn::KDTKwargs;
-use crate::utils::{series_to_row_major_slice, split_offsets, DIST};
+use crate::utils::{series_to_slice, split_offsets, DIST, IndexOrder};
 use core::f64;
 use polars::prelude::*;
 use polars_core::POOL;
@@ -30,7 +30,7 @@ fn pl_approximate_entropy(
     let r = radius.get(0).unwrap();
     let name = inputs[1].name();
     let ncols = inputs[1..].len();
-    let data = series_to_row_major_slice::<Float64Type>(&inputs[1..])?;
+    let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
     let nrows = data.len() / ncols;
 
     if (nrows < ncols) || (r <= 0.) || (!r.is_finite()) {
@@ -113,7 +113,7 @@ fn pl_sample_entropy(
     let r = radius.get(0).unwrap_or(-1f64); // see return below
     let name = inputs[1].name();
     let ncols = inputs[1..].len();
-    let data = series_to_row_major_slice::<Float64Type>(&inputs[1..])?;
+    let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
     let nrows = data.len() / ncols;
 
     if (nrows < ncols) || (r <= 0.) || (!r.is_finite()) {
@@ -222,7 +222,7 @@ fn pl_knn_entropy(
 
     let name = inputs[0].name();
     let ncols = inputs.len();
-    let data = series_to_row_major_slice::<Float64Type>(inputs)?;
+    let data = series_to_slice::<Float64Type>(inputs, IndexOrder::C)?;
     let nrows = data.len() / ncols;
 
     if nrows <= k {

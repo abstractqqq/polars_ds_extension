@@ -531,6 +531,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "faer-ext"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d06294a67ba2c7573369db56fcc3dc97e1ee27f6658eaf35f398b845081cc012"
+dependencies = [
+ "faer",
+ "ndarray",
+ "num-complex",
+ "numpy",
+ "pyo3",
+]
+
+[[package]]
 name = "faer-macros"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1592,7 +1605,6 @@ dependencies = [
  "hashbrown 0.15.2",
  "indexmap",
  "itoa",
- "ndarray",
  "num-traits",
  "once_cell",
  "polars-arrow",
@@ -1998,6 +2010,7 @@ dependencies = [
  "approx",
  "cfavml",
  "faer",
+ "faer-ext",
  "faer-traits",
  "hashbrown 0.15.2",
  "inflections",
@@ -3015,7 +3028,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

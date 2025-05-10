@@ -661,18 +661,6 @@ def query_p_pct_score(pred: str | pl.Expr, sensitive_cond: pl.Expr) -> pl.Expr:
     return pl.min_horizontal(ratio, 1 / ratio)
 
 
-# def _tie_averaged_dcg(y_true, y_score, discount_cumsum):
-#     _, inv, counts = np.unique(-y_score, return_inverse=True, return_counts=True)
-#     ranked = np.zeros(len(counts))
-#     np.add.at(ranked, inv, y_true)
-#     ranked /= counts
-#     groups = np.cumsum(counts) - 1
-#     discount_sums = np.empty(len(counts))
-#     discount_sums[0] = discount_cumsum[groups[0]]
-#     discount_sums[1:] = np.diff(discount_cumsum[groups])
-#     return (ranked * discount_sums).sum()
-
-
 def query_dcg_score(
     y_true: str | pl.Expr,
     y_score: str | pl.Expr,

@@ -4,8 +4,8 @@ pub mod lr_solvers;
 
 use faer::{Mat, MatRef};
 use faer_traits::RealField;
-use ndarray::{ArrayView, Ix2, ShapeBuilder};
 use num::Float;
+
 
 pub enum LinalgErrors {
     DimensionMismatch,
@@ -287,43 +287,55 @@ pub trait GeneralizedLinearModel<T: RealField + Float> {
     }
 }
 
-// Ndarray and Faer Interop. Copied from faer-ext.
-pub trait IntoFaer {
-    type Faer;
-    fn into_faer(self) -> Self::Faer;
-}
+// // Ndarray and Faer Interop. Copied from faer-ext.
+// pub trait IntoFaer {
+//     type Faer;
+//     fn into_faer(self) -> Self::Faer;
+// }
 
-pub trait IntoNdarray {
-    type Ndarray;
-    fn into_ndarray(self) -> Self::Ndarray;
-}
+// pub trait IntoNdarray {
+//     type Ndarray;
+//     fn into_ndarray(self) -> Self::Ndarray;
+// }
 
-impl<'a, T: RealField> IntoFaer for ArrayView<'a, T, Ix2> {
-    type Faer = MatRef<'a, T>;
+// impl<'py> IntoFaer for PyReadonlyArray2<'py, f64> {
+//     type Faer = MatRef<'py, f64>;
 
-    fn into_faer(self) -> Self::Faer {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let strides: [isize; 2] = self.strides().try_into().unwrap();
-        let ptr = self.as_ptr();
-        unsafe { MatRef::from_raw_parts(ptr, nrows, ncols, strides[0], strides[1]) }
-    }
-}
+//     fn into_faer(self) -> Self::Faer {
+//         let shape = self.shape();
+//         let nrows = shape[0];
+//         let ncols = shape[1];
 
-impl<'a, T: RealField> IntoNdarray for MatRef<'a, T> {
-    type Ndarray = ArrayView<'a, T, Ix2>;
+//         let strides: [isize; 2] = self.strides().try_into().unwrap();
 
-    fn into_ndarray(self) -> Self::Ndarray {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let row_stride: usize = self.row_stride().try_into().unwrap();
-        let col_stride: usize = self.col_stride().try_into().unwrap();
-        let ptr = self.as_ptr();
-        unsafe {
-            ArrayView::<'_, T, Ix2>::from_shape_ptr(
-                (nrows, ncols).strides((row_stride, col_stride)),
-                ptr,
-            )
-        }
-    }
-}
+//         let py_ptr = self.as_array_ptr();
+//         let ptr = py_ptr.cast::<f64>();
+//         unsafe { 
+//             MatRef::from_raw_parts(
+//                 ptr, 
+//                 nrows, 
+//                 ncols, 
+//                 strides[0], 
+//                 strides[1]
+//             ) 
+//         }
+//     }
+// }
+
+// impl<'a, T: RealField> IntoNdarray for MatRef<'a, T> {
+//     type Ndarray = ArrayView<'a, T, Ix2>;
+
+//     fn into_ndarray(self) -> Self::Ndarray {
+//         let nrows = self.nrows();
+//         let ncols = self.ncols();
+//         let row_stride: usize = self.row_stride().try_into().unwrap();
+//         let col_stride: usize = self.col_stride().try_into().unwrap();
+//         let ptr = self.as_ptr();
+//         unsafe {
+//             ArrayView::<'_, T, Ix2>::from_shape_ptr(
+//                 (nrows, ncols).strides((row_stride, col_stride)),
+//                 ptr,
+//             )
+//         }
+//     }
+// }

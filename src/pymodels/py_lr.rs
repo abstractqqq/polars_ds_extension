@@ -3,10 +3,10 @@
 use crate::linalg::{
     lr_online_solvers::OnlineLR,
     lr_solvers::{ElasticNet, LR},
-    IntoFaer, IntoNdarray, LinalgErrors, LinearRegression,
+    LinalgErrors, LinearRegression,
 };
-
-use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
+use faer_ext::{IntoFaer, IntoNdarray};
+use numpy::{IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -41,8 +41,10 @@ impl PyLR {
     }
 
     pub fn fit(&mut self, X: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) -> PyResult<()> {
-        let x = X.as_array().into_faer();
-        let y = y.as_array().into_faer();
+
+        let arr = X.as_raw_array();
+        let x = X.into_faer();
+        let y = y.into_faer();
         match self.lr.fit(x, y) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
@@ -65,7 +67,7 @@ impl PyLR {
         py: Python<'py>,
         X: PyReadonlyArray2<f64>,
     ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        let x = X.as_array().into_faer();
+        let x = X.into_faer();
         match self.lr.predict(x) {
             Ok(result) => {
                 // result should be n by 1, where n = x.nrows()
@@ -134,8 +136,8 @@ impl PyElasticNet {
     }
 
     pub fn fit(&mut self, X: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) -> PyResult<()> {
-        let x = X.as_array().into_faer();
-        let y = y.as_array().into_faer();
+        let x = X.into_faer();
+        let y = y.into_faer();
         match self.lr.fit(x, y) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
@@ -147,7 +149,7 @@ impl PyElasticNet {
         py: Python<'py>,
         X: PyReadonlyArray2<f64>,
     ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        let x = X.as_array().into_faer();
+        let x = X.into_faer();
         match self.lr.predict(x) {
             Ok(result) => {
                 // result should be n by 1, where n = x.nrows()
@@ -203,8 +205,8 @@ impl PyOnlineLR {
     }
 
     pub fn fit(&mut self, X: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) -> PyResult<()> {
-        let x = X.as_array().into_faer();
-        let y = y.as_array().into_faer();
+        let x = X.into_faer();
+        let y = y.into_faer();
         match self.lr.fit(x, y) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
@@ -212,8 +214,8 @@ impl PyOnlineLR {
     }
 
     pub fn update(&mut self, X: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>, c: f64) {
-        let x = X.as_array().into_faer();
-        let y = y.as_array().into_faer();
+        let x = X.into_faer();
+        let y = y.into_faer();
         self.lr.update(x, y, c);
     }
 
@@ -226,7 +228,7 @@ impl PyOnlineLR {
         match coeffs.as_slice() {
             Ok(s) => match self
                 .lr
-                .set_coeffs_bias_inverse(s, bias, inv.as_array().into_faer())
+                .set_coeffs_bias_inverse(s, bias, inv.into_faer())
             {
                 Ok(_) => Ok(()),
                 Err(e) => Err(e.into()),
@@ -240,7 +242,7 @@ impl PyOnlineLR {
         py: Python<'py>,
         X: PyReadonlyArray2<f64>,
     ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        let x = X.as_array().into_faer();
+        let x = X.into_faer();
         match self.lr.predict(x) {
             Ok(result) => {
                 // result should be n by 1, where n = x.nrows()

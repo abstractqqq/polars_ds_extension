@@ -1,17 +1,13 @@
-mod consts;
 mod fuzz;
 mod generic_str_distancer;
 mod hamming;
 mod inflections;
-mod is_stopword;
 mod jaro;
 mod lcs_seq;
 mod levenshtein;
 mod nearest_str;
 mod osa;
 mod overlap;
-mod snowball;
-mod snowball_stem;
 mod sorensen_dice;
 mod str_cleaning;
 mod str_jaccard;
