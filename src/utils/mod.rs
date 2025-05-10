@@ -36,7 +36,7 @@ pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
 pub fn series_to_slice<N>(
     series: &[Series],
     ordering: IndexOrder
-) -> PolarsResult<Vec<<N as PolarsNumericType>::Native>>
+) -> PolarsResult<Vec<<N>::Native>>
 where
     N: PolarsNumericType,
 {
@@ -121,7 +121,7 @@ where
 }
 
 // &[Column] -> Slice
-pub fn columns_to_vec<N>(columns: Vec<Column>, ordering: IndexOrder) -> PolarsResult<Vec<<N as polars::prelude::PolarsNumericType>::Native>> 
+pub fn columns_to_vec<N>(columns: Vec<Column>, ordering: IndexOrder) -> PolarsResult<Vec<<N>::Native>> 
 where
     N: PolarsNumericType,
 {

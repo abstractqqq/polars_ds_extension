@@ -89,7 +89,7 @@ fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
     let k = k.get(0).unwrap() as usize;
 
     let nrows = inputs[1].len();
-    let mat_slice = to_f64_vec_fail_on_nulls(inputs, IndexOrder::Fortran)?;
+    let mat_slice = to_f64_vec_fail_on_nulls(&inputs[1..], IndexOrder::Fortran)?;
     let mat = MatRef::from_column_major_slice(
         &mat_slice, 
         nrows, 

@@ -87,7 +87,8 @@ fn series_to_mat_for_lstsq_f32(
     has_bias: bool,
     null_policy: NullPolicy<f32>,
 ) -> PolarsResult<(Vec<f32>, usize, usize, BooleanChunked)> {
-    let n_features = inputs.len().abs_diff(1);
+    let ncols = inputs.len().abs_diff(1); 
+    let n_features = ncols + has_bias as usize;
 
     // minus 1 because target is also in inputs. Target is at position 0.
     let y_has_null = inputs[0].has_nulls();
@@ -606,6 +607,7 @@ fn pl_lin_reg_report_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult
                 nrows, 
                 nfeats
             );
+
             // Solving Least Square
             let xtx = x.transpose() * &x;
             let xtx_qr = xtx.col_piv_qr();
@@ -692,6 +694,7 @@ fn pl_lin_reg_report_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult
                 .zip(std_err.iter())
                 .map(|(b, se)| b + t_alpha * se)
                 .collect_vec();
+
 
             // Finalize
             let names_ca = name_builder.finish();
