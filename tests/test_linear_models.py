@@ -139,7 +139,7 @@ def _test_elastic_net(add_bias: bool = False):
 
     X = df.select("x1", "x2", "x3").to_numpy()
     y = df.select("y").to_numpy()
-    en = ElasticNet(l1_reg=l1_reg, l2_reg=l2_reg, has_bias=add_bias)
+    en = ElasticNet(l1_reg=l1_reg, l2_reg=l2_reg, add_bias=add_bias)
     elastic = lm.ElasticNet(alpha=alpha, l1_ratio=l1_ratio, fit_intercept=add_bias)
 
     en.fit(X, y)
@@ -164,7 +164,7 @@ def test_glm():
     from polars_ds.linear_models import GLM
 
     data = sm.datasets.scotland.load()
-    # has_bias = True
+    # add_bias = True
 
     data.exog = sm.add_constant(data.exog)
     df = data.exog
@@ -180,7 +180,7 @@ def test_glm():
     sm_bias = params[0]
     sm_coeffs = params[1:]
 
-    pds_glm = GLM(solver="irls", has_bias=True, family="gamma")
+    pds_glm = GLM(solver="irls", add_bias=True, family="gamma")
 
     pds_glm.fit(X2, y.reshape((-1, 1)))
 

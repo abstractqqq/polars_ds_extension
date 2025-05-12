@@ -106,7 +106,7 @@ class LR:
 
     def __init__(
         self,
-        has_bias: bool = False,
+        add_bias: bool = False,
         lambda_: float = 0.0,
         solver: LRSolverMethods = "qr",
         feature_names_in_: List[str] | None = None,
@@ -118,13 +118,13 @@ class LR:
             The regularization parameters for ridge. If this is positive, then this class will solve Ridge.
         solver
             Use one of 'svd', 'cholesky' and 'qr' method to solve the least square equation. Default is 'qr'.
-        has_bias
+        add_bias
             Whether to add a bias term. Also known as intercept in other packages.
         feature_names_in_
             Names for the incoming features, if available. If None, the names will be empty. They will be
             learned if .fit_df() is run later, or .set_input_features() is set later.
         """
-        self._lr = PyLR(solver, lambda_, has_bias)
+        self._lr = PyLR(solver, lambda_, add_bias)
         self.feature_names_in_: List[str] = (
             [] if feature_names_in_ is None else list(feature_names_in_)
         )
@@ -148,7 +148,7 @@ class LR:
         """
         coefficients = np.ascontiguousarray(coeffs, dtype=np.float64).flatten()
         lr = cls(
-            has_bias=(bias != 0.0),
+            add_bias=(bias != 0.0),
             lambda_=0.0,
             solver="Not Solved",
             feature_names_in_=feature_names_in_,
@@ -210,7 +210,7 @@ class LR:
             the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
             columns. If target has null, then the row will still be dropped.
         """
-        self._lr.fit(*_handle_nans_in_np(X, y.reshape((-1, 1)), null_policy))
+        self._lr.fit(*_handle_nans_in_np(X, y.astype(np.float64).reshape((-1, 1)), null_policy))
         return self
 
     def fit_df(
@@ -327,7 +327,7 @@ class ElasticNet:
         self,
         l1_reg: float,
         l2_reg: float,
-        has_bias: bool = False,
+        add_bias: bool = False,
         tol: float = 1e-5,
         max_iter: int = 2000,
         feature_names_in_: List[str] | None = None,
@@ -342,7 +342,7 @@ class ElasticNet:
             The l1 regularization parameters for the elastic net.
         l2_reg
             The l2 regularization parameters for the elastic net.
-        has_bias
+        add_bias
             Whether to add a bias term. Also known as intercept in other packages.
         tol
             When updates are smaller than tol, the algorithm will stop.
@@ -355,7 +355,7 @@ class ElasticNet:
         if l1_reg <= 0.0 and l2_reg <= 0.0:
             raise ValueError("Cannot have both l1_reg and l2_reg <= 0.")
 
-        self._en = PyElasticNet(l1_reg, l2_reg, has_bias, tol, max_iter)
+        self._en = PyElasticNet(l1_reg, l2_reg, add_bias, tol, max_iter)
         self.feature_names_in_: List[str] = (
             [] if feature_names_in_ is None else list(feature_names_in_)
         )
@@ -381,7 +381,7 @@ class ElasticNet:
         elastic_net = cls(
             float("nan"),
             float("nan"),
-            has_bias=(bias != 0.0),
+            add_bias=(bias != 0.0),
             tol=1e-5,
             max_iter=2000,
             feature_names_in_=feature_names_in_,
@@ -420,8 +420,8 @@ class ElasticNet:
         """
         return self._en.coeffs
 
-    def has_bias(self) -> bool:
-        return self._en.has_bias()
+    def add_bias(self) -> bool:
+        return self._en.add_bias()
 
     def bias(self) -> float:
         return self._en.bias
@@ -442,7 +442,7 @@ class ElasticNet:
             the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
             columns. If target has null, then the row will still be dropped.
         """
-        self._en.fit(*_handle_nans_in_np(X, y.reshape((-1, 1)), null_policy))
+        self._en.fit(*_handle_nans_in_np(X, y.astype(np.float64).reshape((-1, 1)), null_policy))
         return self
 
     def fit_df(
@@ -525,7 +525,7 @@ class OnlineLR:
     """
     Normal or Ridge Online Regression. This doesn't support dataframe inputs.
 
-    Because of implementation details, it is not recommended to set has_bias = True here
+    Because of implementation details, it is not recommended to set add_bias = True here
     if runtime speed is crucial.
 
     Null Behaviors:
@@ -536,15 +536,15 @@ class OnlineLR:
     def __init__(
         self,
         lambda_: float = 0.0,
-        has_bias: bool = False,
+        add_bias: bool = False,
     ):
         """
         lambda_
             The L2 regularization factor
-        has_bias
+        add_bias
             Whether this should fit the bias term
         """
-        self._lr = PyOnlineLR(lambda_, has_bias)
+        self._lr = PyOnlineLR(lambda_, add_bias)
 
     @classmethod
     def from_coeffs_bias_inverse(cls, coeffs: List[float], bias: float, inv: np.ndarray) -> Self:
@@ -562,7 +562,7 @@ class OnlineLR:
             2D NumPy matrix representing the inverse of XtX in a regression problem.
         """
         coefficients = np.ascontiguousarray(coeffs, dtype=np.float64).flatten()
-        lr = cls(has_bias=(bias > 0.0), lambda_=0.0)
+        lr = cls(add_bias=(bias > 0.0), lambda_=0.0)
         lr._lr.set_coeffs_bias_inverse(coefficients, bias, inv)
         return lr
 
@@ -613,7 +613,7 @@ class OnlineLR:
                 "Online regression currently must fit without null for the initial fit."
             )
 
-        self._lr.fit(X, y)
+        self._lr.fit(X, y.astype(np.float64).reshape((-1, 1)))
         return self
 
     def update(self, X: np.ndarray, y: np.ndarray | float, c: float = 1.0) -> Self:
@@ -662,11 +662,6 @@ GLMFamily: TypeAlias = Literal["gaussian", "normal", "poisson", "binomial", "log
 GLMSolver: TypeAlias = Literal["irls", "lbfgs"]
 LinkFunction: TypeAlias = Literal["id", "identity", "log", "logit", "inverse"]
 
-# Identity, // Normal
-# Log,      // Poisson
-# Logit,    // Binomial
-# Inverse,  // Gamma
-
 
 class GLM:
     """
@@ -692,9 +687,11 @@ class GLM:
 
     def __init__(
         self,
-        has_bias: bool = False,
+        add_bias: bool = False,
         solver: GLMSolver = "irls",
         family: GLMFamily = "normal",
+        max_iter: int = 100,
+        tol: float = 1e-8,
         feature_names_in_: List[str] | None = None,
     ):
         # lambda_: float = 0.0,
@@ -704,8 +701,12 @@ class GLM:
         family
             One of "gaussian", "normal", "poisson", "binomial", "logistic", "gamma". Note "gaussian" and
             "normal" represent the same family.
-        has_bias
+        add_bias
             Whether to add a bias term. Also known as intercept in other packages.
+        max_iter
+            Max number of iterations for the algorithm
+        tol
+            The tolerance for convergence
         feature_names_in_
             Names for the incoming features, if available. If None, the names will be empty. They will be
             learned if .fit_df() is run later, or .set_input_features() is set later.
@@ -713,13 +714,24 @@ class GLM:
         if solver not in ["irls"]:
             raise NotImplementedError
 
+        if max_iter < 1:
+            raise ValueError("`max_iter` must be > 1.")
+
         if family not in ["gaussian", "normal", "poisson", "binomial", "logistic", "gamma"]:
             raise NotImplementedError
 
-        self._glm = PyGLM(has_bias=has_bias, family=family, solver=solver)
+        self._glm = PyGLM(
+            add_bias=add_bias, family=family, solver=solver, max_iter=max_iter, tol=abs(tol)
+        )
         self.feature_names_in_: List[str] = (
             [] if feature_names_in_ is None else list(feature_names_in_)
         )
+
+    def __repr__(self) -> str:
+        """
+        Shows a textual representation of the GLM.
+        """
+        return self._glm.describe()
 
     # @classmethod
     # def from_values(
@@ -746,7 +758,7 @@ class GLM:
     #     """
     #     coefficients = np.ascontiguousarray(coeffs, dtype=np.float64).flatten()
     #     lr = cls(
-    #         has_bias=(bias != 0.0),
+    #         add_bias=(bias != 0.0),
     #         solver="irls",
     #         feature_names_in_=feature_names_in_,
     #     )
@@ -807,7 +819,7 @@ class GLM:
             the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
             columns. If target has null, then the row will still be dropped.
         """
-        self._glm.fit(*_handle_nans_in_np(X, y.reshape((-1, 1)), null_policy))
+        self._glm.fit(*_handle_nans_in_np(X, y.astype(np.float64).reshape((-1, 1)), null_policy))
         return self
 
     def fit_df(

@@ -42,10 +42,10 @@ pub trait LinearModel<T: RealField + Float> {
     /// Typically coefficients + the bias as a single matrix (n x 1) (single slice)
     fn fitted_values(&self) -> MatRef<T>;
 
-    fn has_bias(&self) -> bool;
+    fn add_bias(&self) -> bool;
 
     fn bias(&self) -> T {
-        if self.has_bias() {
+        if self.add_bias() {
             let n = self.fitted_values().nrows() - 1;
             *self.fitted_values().get(n, 0)
         } else {
@@ -60,7 +60,7 @@ pub trait LinearModel<T: RealField + Float> {
             let n = self
                 .fitted_values()
                 .nrows()
-                .abs_diff(self.has_bias() as usize);
+                .abs_diff(self.add_bias() as usize);
             self.fitted_values().get(0..n, ..)
         } else {
             self.fitted_values()
@@ -108,7 +108,7 @@ pub trait LinearModel<T: RealField + Float> {
             Err(LinalgErrors::MatNotLearnedYet)
         } else {
             let mut pred = Mat::full(X.nrows(), 1, {
-                if self.has_bias() {
+                if self.add_bias() {
                     self.bias()
                 } else {
                     T::zero()

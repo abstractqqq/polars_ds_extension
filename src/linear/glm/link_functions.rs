@@ -30,8 +30,8 @@ impl LinkFunction {
             LinkFunction::Log => mu.ln(),
             LinkFunction::Logit => {
                 // logit(p) = ln(p/(1-p))
-                let one = T::one();
-                (mu / (one - mu)).ln()
+                let mu_clamped = mu.clamp(T::epsilon(), T::one() - T::epsilon());
+                (mu_clamped / (T::one() - mu_clamped)).ln()
             }
             LinkFunction::Inverse => mu.recip(),
         }
@@ -44,9 +44,8 @@ impl LinkFunction {
             LinkFunction::Log => eta.exp(),
             LinkFunction::Logit => {
                 // inv_logit(x) = exp(x)/(1+exp(x))
-                let one = T::one();
-                let exp_eta = eta.exp();
-                exp_eta / (one + exp_eta)
+                let eta_exp = eta.exp();
+                eta_exp / (T::one() + eta_exp)
             }
             LinkFunction::Inverse => eta.recip(),
         }
@@ -59,8 +58,8 @@ impl LinkFunction {
             LinkFunction::Log => mu.recip(),
             LinkFunction::Logit => {
                 // d/dp logit(p) = 1/(p(1-p))
-                let one = T::one();
-                one / (mu * (one - mu))
+                let mu_clamped = mu.clamp(T::epsilon(), T::one() - T::epsilon());
+                (mu_clamped * (T::one() - mu_clamped)).recip()
             }
             LinkFunction::Inverse => -mu.powi(2).recip(),
         }
@@ -93,8 +92,8 @@ impl VarianceFunction {
             VarianceFunction::Gaussian => T::one(),
             VarianceFunction::Poisson => mu,
             VarianceFunction::Binomial => {
-                let one = T::one();
-                mu * (one - mu)
+                let mu_clamped = mu.clamp(T::epsilon(), T::one() - T::epsilon());
+                mu_clamped * (T::one() - mu_clamped)
             }
             VarianceFunction::Gamma => mu.powi(2),
         }

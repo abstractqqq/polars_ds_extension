@@ -24,11 +24,11 @@ impl PyLR {
     #[pyo3(signature=(
         solver = "qr",
         lambda_ = 0.,
-        has_bias = false,
+        add_bias = false,
     ))]
-    pub fn new(solver: &str, lambda_: f64, has_bias: bool) -> Self {
+    pub fn new(solver: &str, lambda_: f64, add_bias: bool) -> Self {
         PyLR {
-            lr: LR::new(solver, lambda_, has_bias),
+            lr: LR::new(solver, lambda_, add_bias),
         }
     }
 
@@ -110,13 +110,13 @@ impl PyElasticNet {
     #[pyo3(signature=(
         l1_reg,
         l2_reg,
-        has_bias = false,
+        add_bias = false,
         tol = 1e-5,
         max_iter = 2000,
     ))]
-    pub fn new(l1_reg: f64, l2_reg: f64, has_bias: bool, tol: f64, max_iter: usize) -> Self {
+    pub fn new(l1_reg: f64, l2_reg: f64, add_bias: bool, tol: f64, max_iter: usize) -> Self {
         PyElasticNet {
-            lr: ElasticNet::new(l1_reg, l2_reg, has_bias, tol, max_iter),
+            lr: ElasticNet::new(l1_reg, l2_reg, add_bias, tol, max_iter),
         }
     }
 
@@ -167,8 +167,8 @@ impl PyElasticNet {
         }
     }
 
-    pub fn has_bias(&self) -> bool {
-        self.lr.has_bias()
+    pub fn add_bias(&self) -> bool {
+        self.lr.add_bias()
     }
 
     #[getter]
@@ -199,10 +199,10 @@ pub struct PyOnlineLR {
 impl PyOnlineLR {
     #[new]
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature=(lambda_=0., has_bias=false))]
-    pub fn new(lambda_: f64, has_bias: bool) -> Self {
+    #[pyo3(signature=(lambda_=0., add_bias=false))]
+    pub fn new(lambda_: f64, add_bias: bool) -> Self {
         PyOnlineLR {
-            lr: OnlineLR::new(lambda_, has_bias),
+            lr: OnlineLR::new(lambda_, add_bias),
         }
     }
 

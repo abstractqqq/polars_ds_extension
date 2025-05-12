@@ -22,7 +22,6 @@ fn psi_with_bps_helper(s: &[f64], bp: &[f64]) -> Vec<u32> {
 
     // safe, data at this stage is gauranteed to be finite
     let s = unsafe { std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(s) };
-
     let bp = unsafe { std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(bp) };
 
     let mut c = vec![0u32; bp.len()];

@@ -1,12 +1,12 @@
 #![allow(non_snake_case)]
 /// Linear Regression Interop with Python
 use crate::linear::{
-    glm::glm_solvers::{GLMFamily, GLM},
+    glm::glm_solvers::{GLMFamily, GLMParams, GLM},
     GeneralizedLinearModel, LinalgErrors, LinearModel,
 };
 use faer_ext::IntoFaer;
 
-use numpy::{IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
+use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::prelude::*;
 
 #[pyclass(subclass)]
@@ -19,20 +19,27 @@ impl PyGLM {
     #[new]
     #[allow(clippy::too_many_arguments)]
     #[pyo3(signature=(
-        has_bias = false,
+        add_bias = false,
         family = "normal",
         solver = "irls",
+        max_iter = 100,
+        tol = 1e-8
     ))]
-    pub fn new(has_bias: bool, family: &str, solver: &str) -> Self {
+    pub fn new(add_bias: bool, family: &str, solver: &str, max_iter: usize, tol:f64) -> Self {
         let glm_family: GLMFamily = family.into();
         let glm = GLM::new(
             solver,
             0f64,
-            has_bias,
+            add_bias,
             glm_family.link_function(),
             glm_family.variance_function(),
+            GLMParams::new(max_iter, tol)        
         );
         PyGLM { glm: glm }
+    }
+
+    pub fn describe(&self) -> String {
+        self.glm.to_string()
     }
 
     pub fn is_fit(&self) -> bool {
@@ -40,8 +47,8 @@ impl PyGLM {
     }
 
     pub fn fit(&mut self, X: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) -> PyResult<()> {
-        let x = X.as_array().into_faer();
-        let y = y.as_array().into_faer();
+        let x = X.into_faer();
+        let y = y.into_faer();
         match self.glm.fit(x, y) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
@@ -71,7 +78,7 @@ impl PyGLM {
         py: Python<'py>,
         X: PyReadonlyArray2<f64>,
     ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        let x = X.as_array().into_faer();
+        let x = X.into_faer();
         match self.glm.predict(x) {
             Ok(result) => {
                 // result should be n by 1, where n = x.nrows()
@@ -88,7 +95,7 @@ impl PyGLM {
         X: PyReadonlyArray2<f64>,
         linear: bool,
     ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        let x = X.as_array().into_faer();
+        let x = X.into_faer();
         let prediction = if linear {
             self.glm.predict(x)
         } else {
