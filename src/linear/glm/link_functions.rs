@@ -23,48 +23,46 @@ impl From<&str> for LinkFunction {
 }
 
 impl LinkFunction {
-    /// g(μ)
-    pub fn link<T: RealField + Float>(&self, mu: T) -> T {
+    pub fn compute<T: RealField + Float>(&self, x: T) -> T {
         match self {
-            LinkFunction::Identity => mu,
-            LinkFunction::Log => mu.ln(),
+            LinkFunction::Identity => x,
+            LinkFunction::Log => x.ln(),
             LinkFunction::Logit => {
                 // logit(p) = ln(p/(1-p))
-                let mu_clamped = mu.clamp(T::epsilon(), T::one() - T::epsilon());
-                (mu_clamped / (T::one() - mu_clamped)).ln()
+                let x_clamped = x.clamp(T::epsilon(), T::one() - T::epsilon());
+                (x_clamped / (T::one() - x_clamped)).ln()
             }
-            LinkFunction::Inverse => mu.recip(),
+            LinkFunction::Inverse => x.recip(),
         }
     }
 
-    /// g^(-1)(η)
-    pub fn inv<T: RealField + Float>(&self, eta: T) -> T {
-        match self {
-            LinkFunction::Identity => eta,
-            LinkFunction::Log => eta.exp(),
-            LinkFunction::Logit => {
-                // inv_logit(x) = exp(x)/(1+exp(x))
-                let eta_exp = eta.exp();
-                eta_exp / (T::one() + eta_exp)
-            }
-            LinkFunction::Inverse => eta.recip(),
-        }
-    }
-
-    /// Computes g'(μ)
-    pub fn deriv<T: RealField + Float>(&self, mu: T) -> T {
+    pub fn deriv<T: RealField + Float>(&self, x: T) -> T {
         match self {
             LinkFunction::Identity => T::one(),
-            LinkFunction::Log => mu.recip(),
+            LinkFunction::Log => x.recip(),
             LinkFunction::Logit => {
                 // d/dp logit(p) = 1/(p(1-p))
-                let mu_clamped = mu.clamp(T::epsilon(), T::one() - T::epsilon());
-                (mu_clamped * (T::one() - mu_clamped)).recip()
+                let x_clamped = x.clamp(T::epsilon(), T::one() - T::epsilon());
+                (x_clamped * (T::one() - x_clamped)).recip()
             }
-            LinkFunction::Inverse => -mu.powi(2).recip(),
+            LinkFunction::Inverse => -x.powi(2).recip(),
+        }
+    }
+
+    pub fn inv<T: RealField + Float>(&self, x: T) -> T {
+        match self {
+            LinkFunction::Identity => x,
+            LinkFunction::Log => x.exp(),
+            LinkFunction::Logit => {
+                // inv_logit(x) = exp(x)/(1+exp(x))
+                let x_exp = x.exp();
+                x_exp / (T::one() + x_exp)
+            }
+            LinkFunction::Inverse => x.recip(),
         }
     }
 }
+
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum VarianceFunction {
@@ -86,16 +84,16 @@ impl From<LinkFunction> for VarianceFunction {
 }
 
 impl VarianceFunction {
-    /// Variance(μ)
-    pub fn variance<T: RealField + Float>(&self, mu: T) -> T {
+    pub fn compute<T: RealField + Float>(&self, x: T) -> T {
         match self {
             VarianceFunction::Gaussian => T::one(),
-            VarianceFunction::Poisson => mu,
+            VarianceFunction::Poisson => x,
             VarianceFunction::Binomial => {
-                let mu_clamped = mu.clamp(T::epsilon(), T::one() - T::epsilon());
-                mu_clamped * (T::one() - mu_clamped)
+                let x_clamped = x.clamp(T::epsilon(), T::one() - T::epsilon());
+                x_clamped * (T::one() - x_clamped)
             }
-            VarianceFunction::Gamma => mu.powi(2),
+            VarianceFunction::Gamma => x.powi(2),
         }
     }
 }
+

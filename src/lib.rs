@@ -2,6 +2,7 @@
 
 mod arkadia;
 mod linear;
+mod optimize;
 mod num_ext;
 mod pymodels;
 mod stats_ext;

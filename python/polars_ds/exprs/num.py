@@ -3,7 +3,7 @@
 from __future__ import annotations
 import math
 import polars as pl
-from typing import List, Iterable, TYPE_CHECKING
+from typing import List, Iterable, Any, TYPE_CHECKING
 
 # Internal dependencies
 from polars_ds.typing import (
@@ -410,18 +410,14 @@ def psi(
     return_report: bool = False,
 ) -> pl.Expr:
     """
-    Compute the Population Stability Index between x and the reference column (usually x's historical values).
-    The reference column will be divided into n_bins quantile bins which will be used as basis of comparison.
+    Compute the Population Stability Index between the `new` and the `baseline` column. The baseline
+    column's values will be used to create bins which will be used in PSI calculation.
 
     Note this assumes values in self and ref are continuous. This will also remove all infinite, null, NA.
     values.
 
-    Also note that it will try to create `n_bins` many unique breakpoints. If input data has < n_bins
-    unique breakpoints, the repeated breakpoints will be grouped together, and the computation will be done
-    with < `n_bins` many bins. This happens when a single value appears too many times in data. This also
-    differs from the reference implementation by treating breakpoints as right-closed intervals with -inf
-    and inf being the first and last values of the intervals. This is because we need to accommodate all data
-    in the case when actual data's min and the reference data's min are not the same, which is common in reality.
+    Also note that it will try to create `n_bins` many unique breakpoints. In some extreme cases, we might
+    not be able to create `n_bins`, e.g. when a single value appears too many times in data.
 
     Parameters
     ----------
@@ -484,20 +480,20 @@ def psi(
 
 
 def psi_discrete(
-    new: str | pl.Expr | Iterable[float],
-    baseline: str | pl.Expr | Iterable[float],
+    new: str | pl.Expr | Iterable[Any],
+    baseline: str | pl.Expr | Iterable[Any],
     return_report: bool = False,
 ) -> pl.Expr:
     """
-    Compute the Population Stability Index between self (actual) and the reference column. The baseline
-    column will be used as categories which are the basis of comparison.
+    Compute the Population Stability Index between the `new` and the `baseline` column. The baseline
+    column's values will be used as categories which are the basis of comparison.
 
-    Note this assumes values in new and ref baseline discrete columns (e.g. str categories). This will
-    treat each value as a distinct category and null will be treated as a category by itself. If a category
-    exists in new but not in baseline, the percentage will be imputed by 0.0001. If you do not wish to include
-    new distinct values in PSI calculation, you can still compute the PSI by generating the report and filtering.
+    Note this assumes values in the columns are discrete (e.g. str categories). This will
+    treat each value as a distinct category and null will be treated as a category by itself.
+    If a category exists in new but not in baseline, the percentage will be imputed by 0.0001.
 
     Also note that discrete columns must have the same type in order to be considered the same.
+    Typical data type should be string or int.
 
     Parameters
     ----------

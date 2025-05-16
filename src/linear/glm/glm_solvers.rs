@@ -1,13 +1,13 @@
 #![allow(non_snake_case)]
 use crate::linear::{
     glm::{
-        link_functions::{self, LinkFunction, VarianceFunction},
+        link_functions::{LinkFunction, VarianceFunction},
         GLMSolverMethods,
     },
     lr::{lr_solvers::faer_weighted_lstsq, LRSolverMethods},
     GeneralizedLinearModel, LinalgErrors, LinearModel,
 };
-use faer::{diag::DiagRef, mat::Mat, ColRef, MatRef, Par};
+use faer::{diag::DiagRef, mat::Mat, MatRef, Par};
 use faer_traits::RealField;
 use itertools::Itertools;
 use num::Float;
@@ -284,7 +284,7 @@ pub fn faer_irls<T: RealField + Float>(
     unsafe {
         // Initial linear prediction
         let mut eta = Mat::from_fn(mu.len(), 1, |i, _| 
-            link.link(mu[i])
+            link.compute(mu[i])
         );
 
         for _ in 0..params.max_iter {
@@ -293,7 +293,7 @@ pub fn faer_irls<T: RealField + Float>(
             for i in 0..n_samples {
                 let mu_i = mu[i];
                 d_mu[i] = link.deriv(mu_i);
-                weights[i] = (d_mu[i].powi(2) * variance.variance(mu_i))
+                weights[i] = (d_mu[i].powi(2) * variance.compute(mu_i))
                     .recip()
                     // .max(epsilon)
             }

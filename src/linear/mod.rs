@@ -2,6 +2,7 @@
 pub mod glm;
 pub mod lr;
 pub mod online_lr;
+pub mod utils;
 
 use faer::{Mat, MatRef, Par};
 use faer_traits::RealField;

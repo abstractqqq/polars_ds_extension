@@ -1,5 +1,4 @@
 use std::str::FromStr;
-
 use cfavml::safe_trait_distance_ops::DistanceOps;
 use num::Float;
 use polars::{
