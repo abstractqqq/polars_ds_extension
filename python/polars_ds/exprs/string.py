@@ -18,7 +18,6 @@ __all__ = [
     "to_pascal_case",
     "to_constant_case",
     "str_nearest",
-    "str_tokenize",
     "str_jaccard",
     "str_sorensen_dice",
     "str_tversky_sim",
@@ -187,7 +186,8 @@ def str_nearest(
     metric: Literal["lv", "hamming"] = "lv",
 ) -> pl.Expr:
     """
-    Finds the string in the column that is nearest to the given word in the given metric.
+    Finds the string in the column that is nearest to the given word in the given metric. This algorithm is 
+    very slow.
 
     Note: Nearest-k strings search functionality is temporarily dropped.
 
@@ -197,7 +197,7 @@ def str_nearest(
         The string column or its name
     word
         Any iterable collection of strings that can be turned into a polars Series, or an expression
-    threshold : int, >0
+    threshold : int
         Only considers strings to be near if they are within distance threshold. This is a positive integer
         because all the distances output integers.
     metric
@@ -219,28 +219,6 @@ def str_nearest(
         },
         returns_scalar=True,
     )
-
-
-def str_tokenize(c: str | pl.Expr, pattern: str = r"(?u)\b\w\w+\b") -> pl.Expr:
-    """
-    Tokenize the string according to the pattern. This will only extract the words
-    satisfying the pattern.
-
-    Parameters
-    ----------
-    c
-        The string column
-    pattern
-        The word pattern to extract
-
-    """
-    warnings.warn(
-        "This function is deprecated. Please use `pl.col(..).str.extract_all(pattern)`, "
-        + "where pattern can be r'(?u)\b\w\w+\b'.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return str_to_expr(c).str.extract_all(pattern)
 
 
 def str_jaccard(
