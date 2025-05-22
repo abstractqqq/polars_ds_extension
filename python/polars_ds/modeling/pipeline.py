@@ -6,10 +6,11 @@ import polars as pl
 import json
 import sys
 import polars.selectors as cs
+from copy import deepcopy
 from polars._typing import IntoExprColumn
 from functools import partial
 from dataclasses import dataclass
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -18,7 +19,7 @@ else:  # 3.10, 3.9, 3.8
 
 # Internal Depenedncies
 from . import transforms as t
-from ._structures import PLContext, PipelineStep, FitStep
+from ._step import PLContext, PipelineStep, FitStep
 from polars_ds.typing import (
     PolarsFrame,
     ExprTransform,
@@ -68,7 +69,6 @@ class Pipeline:
     """
 
     name: str
-    target: str | None
     feature_names_in_: List[str]
     feature_names_out_: List[str]
     transforms: List[PipelineStep]
@@ -92,6 +92,20 @@ class Pipeline:
 
         return text
 
+    def _get_init_plan(self, df: PolarsFrame) -> pl.LazyFrame:
+        """
+        Get an initial plan without any pipeline transforms.
+        """
+        if self.lowercase:
+            plan = df.lazy().select(pl.all().name.to_lowercase())
+        else:
+            if self.uppercase:
+                plan = df.lazy().select(pl.all().name.to_uppercase())
+            else:
+                plan = df.lazy()
+
+        return plan
+
     def _generate_lazy_plan(self, df: PolarsFrame) -> pl.LazyFrame:
         """
         Generates a lazy plan for the incoming df
@@ -102,17 +116,14 @@ class Pipeline:
             If none, create the plan for the df that the pipe is initialized with. Otherwise,
             create the plan for the incoming df.
         """
-        if self.lowercase:
-            plan = df.lazy().select(pl.all().name.to_lowercase())
-        else:
-            if self.uppercase:
-                plan = df.lazy().select(pl.all().name.to_uppercase())
-            else:
-                plan = df.lazy()
-
+        plan = self._get_init_plan(df)
         for step in self.transforms:
             plan = step.apply_df(plan)
         return plan
+    
+    def with_features_out(self, features: List[str], ensure_features_out:bool=True) -> Self:
+        self.feature_names_out_ = list(features)
+        self.ensure_features_out = ensure_features_out
 
     def to_dict(self) -> Dict:
         """
@@ -120,7 +131,6 @@ class Pipeline:
         """
         return {
             "name": str(self.name),
-            "target": self.target,
             "feature_names_in_": list(self.feature_names_in_),
             "feature_names_out_": list(self.feature_names_out_),
             "transforms": [step.to_json() for step in self.transforms],
@@ -160,7 +170,6 @@ class Pipeline:
         try:
             name = pipeline_dict["name"]
             transforms = pipeline_dict["transforms"]
-            target = pipeline_dict["target"]
             feature_names_in_ = pipeline_dict["feature_names_in_"]
             feature_names_out_ = pipeline_dict["feature_names_out_"]
             ensure_features_in = pipeline_dict["ensure_features_in"]
@@ -173,7 +182,6 @@ class Pipeline:
         transform_steps = [PipelineStep.from_json(step) for step in transforms]
         return Pipeline(
             name=name,
-            target=target,
             feature_names_in_=feature_names_in_,
             feature_names_out_=feature_names_out_,
             transforms=transform_steps,
@@ -183,12 +191,14 @@ class Pipeline:
             uppercase=uppercase,
         )
 
+    @staticmethod
     def from_json_str(json_str: str) -> Self:
         """
         Creates the Pipeline from the JSON string.
         """
         return Pipeline.from_dict(json.loads(json_str))
 
+    @staticmethod
     def from_json(path: str) -> Self:
         """
         Creates the Pipeline by loading a local JSON file at path
@@ -215,12 +225,35 @@ class Pipeline:
         self.ensure_features_out = ensure_out
         return self
 
+    def append_pipeline(self, other: Pipeline) -> Self:
+        """
+        Appends the `other` pipeline to this. 
+
+        This copies all data from the `other` pipeline, and will ignore the `lowercase`, `uppercase`, 
+        `ensure_features_in`, `ensure_features_out` settings in the `other` pipeline.
+
+        Note: Since there is no way to gaurantee the output features, this will set ensure_features_out
+        to False on the left pipeline. It is possible the `feature_names_out_` attribute will be wrong when
+        you modify the pipeline by appending. You may use `with_features_out` method to readjust the settings
+        after knowing the updated output feature list. 
+
+        Note: There is no way for this function to know whether the pipelines can be appended together
+        or not. The user needs to make sure the expressions can properly run in order.
+
+        Parameters
+        ----------
+        other
+            The other pipeline to append to this.
+        """
+        self.transforms.extend(deepcopy(step) for step in other.transforms)
+        self.ensure_features_out = False
+
     def transform(
-        self,
-        df: PolarsFrame,
-        return_lazy: bool = False,
-        separate: bool = False,
-    ) -> PolarsFrame | Tuple[PolarsFrame, PolarsFrame]:
+        self
+        , df: PolarsFrame
+        , return_lazy: bool = False
+        , set_features_out: bool = False
+    ) -> PolarsFrame:
         """
         Transforms the df using the learned expressions.
 
@@ -231,13 +264,16 @@ class Pipeline:
             the learned transformations on the incoming df.
         return_lazy
             If true, return the lazy plan for the transformations
-        separate
-            Separate the feature data (usually referred to as `X`), from the target data, (
-            usually referred to as `y`.) by returning two dataframes representing features and
-            the target.
+        set_features_out
+            If true, set `self.feature_names_out_` to the output features from this transform run.
         """
         if self.ensure_features_in:
-            columns = df.lazy().collect_schema().names()
+            if self.lowercase:
+                columns = [c.lower() for c in df.lazy().collect_schema().names()]
+            elif self.uppercase:
+                columns = [c.upper() for c in df.lazy().collect_schema().names()]
+            else:
+                columns = df.lazy().collect_schema().names()
             extras = [c for c in columns if c not in self.feature_names_in_]
             missing = [c for c in self.feature_names_in_ if c not in columns]
             if len(extras) > 0 or len(missing) > 0:
@@ -249,22 +285,11 @@ class Pipeline:
         if self.ensure_features_out:
             plan = plan.select(self.feature_names_out_)
 
+        if set_features_out:
+            self.feature_names_out_ = plan.collect_schema().names()
+
         # Add config here if streaming is needed
-        if separate:
-            if self.target is None:
-                raise ValueError(
-                    "If you want to separate the feature data from target data, please specify the target at blueprint initiation."
-                )
-            else:
-                if return_lazy:
-                    return (plan.select(pl.all().exclude(self.target)), plan.select(self.target))
-                else:
-                    return (
-                        plan.select(pl.all().exclude(self.target)).collect(),
-                        plan.select(self.target).collect(),
-                    )
-        else:
-            return plan if return_lazy else plan.collect()
+        return plan if return_lazy else plan.collect()
 
 
 class Blueprint:
@@ -381,11 +406,11 @@ class Blueprint:
         self._steps.append(PipelineStep(sql, PLContext.SQL))
         return self
 
-    def cast_bools(self, to: pl.DataType = pl.UInt8) -> Self:
+    def cast_bools(self, dtype: pl.DataType = pl.UInt8) -> Self:
         """
         Cast all boolean columns in the dataframe to the given type.
         """
-        self._steps.append(PipelineStep(cs.boolean().cast(to), PLContext.WITH_COLUMNS))
+        self._steps.append(PipelineStep(cs.boolean().cast(dtype), PLContext.WITH_COLUMNS))
         return self
 
     def impute(self, cols: IntoExprColumn, method: SimpleImputeMethod = "mean") -> Self:
@@ -939,7 +964,6 @@ class Blueprint:
 
         return Pipeline(
             name=self.name,
-            target=self.target,
             feature_names_in_=list(self.feature_names_in_),
             feature_names_out_=df_lazy.collect_schema().names(),
             transforms=transforms,
@@ -954,8 +978,8 @@ class Blueprint:
         return self.materialize()
 
     def transform(
-        self, df: PolarsFrame, separate: bool = False
-    ) -> pl.DataFrame | Tuple[pl.DataFrame, pl.DataFrame]:
+        self, df: PolarsFrame
+    ) -> pl.DataFrame:
         """
         Fits the blueprint with the dataframe that it is initialized with, and
         transforms the input dataframe.
@@ -964,8 +988,5 @@ class Blueprint:
         ----------
         df
             Any Polars dataframe
-        separate
-            If true, two dataframes will be returned, one representing the feature
-            data and the other the target data. If false, then only one dataframe is returned.
         """
-        return self.materialize().transform(df, separate=separate)
+        return self.materialize().transform(df)
