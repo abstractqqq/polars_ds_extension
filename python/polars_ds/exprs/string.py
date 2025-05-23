@@ -27,6 +27,8 @@ __all__ = [
     "str_leven",
     "str_osa",
     "str_lcs_seq",
+    "str_lcs_subseq",
+    "str_lcs_substr",
     "str_fuzz",
     "similar_to_vocab",
     "extract_numbers",
@@ -513,9 +515,32 @@ def str_leven(
             symbol="pl_levenshtein",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
         )
-
+    
+def str_lcs_substr(
+    c: str | pl.Expr,
+    other: str | pl.Expr,
+    parallel: bool = False,
+) -> pl.Expr:
+    return pl_plugin(
+        symbol="pl_lcs_substr",
+        args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
+    )  
 
 def str_lcs_seq(
+    c: str | pl.Expr,
+    other: str | pl.Expr,
+    parallel: bool = False,
+    return_sim: bool = True,   
+) -> pl.Expr:
+    warnings.warn(
+        "`str_lcs_seq` is deprecated and users should use `str_lcs_subseq`."
+        , DeprecationWarning
+        , stacklevel=2
+    )
+    return str_lcs_subseq(c, other, parallel, return_sim)
+
+
+def str_lcs_subseq(
     c: str | pl.Expr,
     other: str | pl.Expr,
     parallel: bool = False,
@@ -525,6 +550,8 @@ def str_lcs_seq(
     Computes the Longest Common Subsequence distance/similarity between this and the other str.
     The distance is calculated as max(len1, len2) - similarity, where the similarity is the
     the length of the longest common subsequence. Subsequences may not occupy consecutive positions.
+
+    The subsequence does not need to be consecutive.
 
     Parameters
     ----------

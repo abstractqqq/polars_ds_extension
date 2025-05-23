@@ -36,7 +36,7 @@ fn pl_lcs_seq(inputs: &[Series], context: CallerContext) -> PolarsResult<Series>
 }
 
 #[polars_expr(output_type=Float64)]
-fn pl_lcs_sim(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
+fn pl_lcs_seq_sim(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
     let ca1 = inputs[0].str()?;
     let ca2 = inputs[1].str()?;
     let parallel = inputs[2].bool()?;
