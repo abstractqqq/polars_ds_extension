@@ -1,20 +1,16 @@
 #![allow(non_snake_case)]
 /// Linear Regression Interop with Python
-use crate::linalg::{
-    lr_online_solvers::OnlineLR,
-    lr_solvers::{ElasticNet, LR},
-    LinalgErrors, LinearRegression,
+use crate::linear::{
+    lr::lr_solvers::{ElasticNet, LR},
+    online_lr::lr_online_solvers::OnlineLR,
+    LinalgErrors, LinearModel,
 };
 use faer_ext::{IntoFaer, IntoNdarray};
-use numpy::{IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
-use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
 
-impl From<LinalgErrors> for PyErr {
-    fn from(value: LinalgErrors) -> Self {
-        PyValueError::new_err(value.to_string())
-    }
-}
+use numpy::{
+    IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods,
+};
+use pyo3::prelude::*;
 
 #[pyclass(subclass)]
 pub struct PyLR {
@@ -28,11 +24,11 @@ impl PyLR {
     #[pyo3(signature=(
         solver = "qr",
         lambda_ = 0.,
-        has_bias = false,
+        add_bias = false,
     ))]
-    pub fn new(solver: &str, lambda_: f64, has_bias: bool) -> Self {
+    pub fn new(solver: &str, lambda_: f64, add_bias: bool) -> Self {
         PyLR {
-            lr: LR::new(solver, lambda_, has_bias),
+            lr: LR::new(solver, lambda_, add_bias),
         }
     }
 
@@ -41,8 +37,6 @@ impl PyLR {
     }
 
     pub fn fit(&mut self, X: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) -> PyResult<()> {
-
-        let arr = X.as_raw_array();
         let x = X.into_faer();
         let y = y.into_faer();
         match self.lr.fit(x, y) {
@@ -56,9 +50,16 @@ impl PyLR {
         coeffs: PyReadonlyArray1<f64>,
         bias: f64,
     ) -> PyResult<()> {
+        if coeffs.is_empty() {
+            return Err(LinalgErrors::Other("Input coefficients array is empty.".into()).into());
+        }
         match coeffs.as_slice() {
             Ok(s) => Ok(self.lr.set_coeffs_and_bias(s, bias)),
-            Err(e) => Err(e.into()),
+            Err(_) => {
+                // Copy if not contiguous
+                let vec = coeffs.as_array().iter().copied().collect::<Vec<_>>();
+                Ok(self.lr.set_coeffs_and_bias(&vec, bias))
+            }
         }
     }
 
@@ -72,8 +73,7 @@ impl PyLR {
             Ok(result) => {
                 // result should be n by 1, where n = x.nrows()
                 let res = result.col_as_slice(0);
-                let v = res.to_vec();
-                Ok(v.into_pyarray(py))
+                Ok(PyArray1::from_slice(py, res))
             }
             Err(e) => Err(e.into()),
         }
@@ -110,13 +110,13 @@ impl PyElasticNet {
     #[pyo3(signature=(
         l1_reg,
         l2_reg,
-        has_bias = false,
+        add_bias = false,
         tol = 1e-5,
         max_iter = 2000,
     ))]
-    pub fn new(l1_reg: f64, l2_reg: f64, has_bias: bool, tol: f64, max_iter: usize) -> Self {
+    pub fn new(l1_reg: f64, l2_reg: f64, add_bias: bool, tol: f64, max_iter: usize) -> Self {
         PyElasticNet {
-            lr: ElasticNet::new(l1_reg, l2_reg, has_bias, tol, max_iter),
+            lr: ElasticNet::new(l1_reg, l2_reg, add_bias, tol, max_iter),
         }
     }
 
@@ -125,9 +125,16 @@ impl PyElasticNet {
         coeffs: PyReadonlyArray1<f64>,
         bias: f64,
     ) -> PyResult<()> {
+        if coeffs.is_empty() {
+            return Err(LinalgErrors::Other("Input coefficients array is empty.".into()).into());
+        }
         match coeffs.as_slice() {
             Ok(s) => Ok(self.lr.set_coeffs_and_bias(s, bias)),
-            Err(e) => Err(e.into()),
+            Err(_) => {
+                // Copy if not contiguous
+                let vec = coeffs.as_array().iter().copied().collect::<Vec<_>>();
+                Ok(self.lr.set_coeffs_and_bias(&vec, bias))
+            }
         }
     }
 
@@ -154,15 +161,14 @@ impl PyElasticNet {
             Ok(result) => {
                 // result should be n by 1, where n = x.nrows()
                 let res = result.col_as_slice(0);
-                let v = res.to_vec();
-                Ok(v.into_pyarray(py))
+                Ok(PyArray1::from_slice(py, res))
             }
             Err(e) => Err(e.into()),
         }
     }
 
-    pub fn has_bias(&self) -> bool {
-        self.lr.has_bias()
+    pub fn add_bias(&self) -> bool {
+        self.lr.add_bias()
     }
 
     #[getter]
@@ -193,10 +199,10 @@ pub struct PyOnlineLR {
 impl PyOnlineLR {
     #[new]
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature=(lambda_=0., has_bias=false))]
-    pub fn new(lambda_: f64, has_bias: bool) -> Self {
+    #[pyo3(signature=(lambda_=0., add_bias=false))]
+    pub fn new(lambda_: f64, add_bias: bool) -> Self {
         PyOnlineLR {
-            lr: OnlineLR::new(lambda_, has_bias),
+            lr: OnlineLR::new(lambda_, add_bias),
         }
     }
 
@@ -225,13 +231,26 @@ impl PyOnlineLR {
         bias: f64,
         inv: PyReadonlyArray2<f64>,
     ) -> PyResult<()> {
+        if coeffs.is_empty() {
+            return Err(LinalgErrors::Other("Input coefficients array is empty.".into()).into());
+        }
+        if inv.is_empty() {
+            return Err(LinalgErrors::Other("Inverse matrix is empty.".into()).into());
+        }
+        if !inv.is_contiguous() {
+            return Err(LinalgErrors::NotContiguousArray.into());
+        }
+
+        let inv_ = inv.into_faer();
         match coeffs.as_slice() {
-            Ok(s) => match self
-                .lr
-                .set_coeffs_bias_inverse(s, bias, inv.into_faer())
-            {
+            Ok(s) => match self.lr.set_coeffs_bias_inverse(s, bias, inv_) {
                 Ok(_) => Ok(()),
-                Err(e) => Err(e.into()),
+                Err(_) => {
+                    let vec = coeffs.as_array().iter().copied().collect::<Vec<_>>();
+                    self.lr
+                        .set_coeffs_bias_inverse(&vec, bias, inv_)
+                        .map_err(|e| e.into())
+                }
             },
             Err(e) => Err(e.into()),
         }
@@ -247,8 +266,7 @@ impl PyOnlineLR {
             Ok(result) => {
                 // result should be n by 1, where n = x.nrows()
                 let res = result.col_as_slice(0);
-                let v = res.to_vec();
-                Ok(v.into_pyarray(py))
+                Ok(PyArray1::from_slice(py, res))
             }
             Err(e) => Err(e.into()),
         }

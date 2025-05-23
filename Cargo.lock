@@ -2006,7 +2006,6 @@ dependencies = [
 name = "polars_ds"
 version = "0.9.0"
 dependencies = [
- "ahash",
  "approx",
  "cfavml",
  "faer",

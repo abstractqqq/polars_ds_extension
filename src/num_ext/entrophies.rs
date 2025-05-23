@@ -1,7 +1,7 @@
 use crate::arkadia::utils::slice_to_empty_leaves;
 use crate::arkadia::{kdt::KDT, SpatialQueries};
 use crate::num_ext::knn::KDTKwargs;
-use crate::utils::{series_to_slice, split_offsets, DIST, IndexOrder};
+use crate::utils::{series_to_slice, split_offsets, IndexOrder, DIST};
 use core::f64;
 use polars::prelude::*;
 use polars_core::POOL;

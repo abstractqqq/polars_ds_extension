@@ -1,4 +1,4 @@
-use crate::utils::{IndexOrder, to_f64_vec_without_nulls, to_f64_vec_fail_on_nulls};
+use crate::utils::{to_f64_vec_fail_on_nulls, to_f64_vec_without_nulls, IndexOrder};
 use faer::{
     dyn_stack::{MemBuffer, MemStack},
     linalg::svd::ComputeSvdVectors,
@@ -38,14 +38,9 @@ pub fn principal_components_output(fields: &[Field]) -> PolarsResult<Field> {
 
 #[polars_expr(output_type_func=singular_values_output)]
 fn pl_singular_values(inputs: &[Series]) -> PolarsResult<Series> {
-
     let nrows = inputs[0].len();
     let mat_slice = to_f64_vec_without_nulls(inputs, IndexOrder::Fortran)?;
-    let mat = MatRef::from_column_major_slice(
-        &mat_slice, 
-        nrows, 
-        mat_slice.len() / nrows
-    );
+    let mat = MatRef::from_column_major_slice(&mat_slice, nrows, mat_slice.len() / nrows);
 
     let (m, n) = mat.shape();
     let compute = ComputeSvdVectors::Thin;
@@ -90,11 +85,7 @@ fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
 
     let nrows = inputs[1].len();
     let mat_slice = to_f64_vec_fail_on_nulls(&inputs[1..], IndexOrder::Fortran)?;
-    let mat = MatRef::from_column_major_slice(
-        &mat_slice, 
-        nrows, 
-        mat_slice.len() / nrows
-    );
+    let mat = MatRef::from_column_major_slice(&mat_slice, nrows, mat_slice.len() / nrows);
 
     let columns = if nrows < k {
         (0..k)
@@ -142,14 +133,9 @@ fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type_func=pca_output)]
 fn pl_pca(inputs: &[Series]) -> PolarsResult<Series> {
-    
     let nrows = inputs[0].len();
     let mat_slice = to_f64_vec_without_nulls(inputs, IndexOrder::Fortran)?;
-    let mat = MatRef::from_column_major_slice(
-        &mat_slice, 
-        nrows, 
-        mat_slice.len() / nrows
-    );
+    let mat = MatRef::from_column_major_slice(&mat_slice, nrows, mat_slice.len() / nrows);
 
     let (m, n) = mat.shape();
     let dim = Ord::min(mat.nrows(), mat.ncols());
