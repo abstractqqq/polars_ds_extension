@@ -6,7 +6,6 @@ use faer::{Mat, MatRef};
 use faer_traits::RealField;
 use num::Float;
 
-
 pub enum LinalgErrors {
     DimensionMismatch,
     NotContiguousArray,
@@ -310,14 +309,14 @@ pub trait GeneralizedLinearModel<T: RealField + Float> {
 
 //         let py_ptr = self.as_array_ptr();
 //         let ptr = py_ptr.cast::<f64>();
-//         unsafe { 
+//         unsafe {
 //             MatRef::from_raw_parts(
-//                 ptr, 
-//                 nrows, 
-//                 ncols, 
-//                 strides[0], 
+//                 ptr,
+//                 nrows,
+//                 ncols,
+//                 strides[0],
 //                 strides[1]
-//             ) 
+//             )
 //         }
 //     }
 // }

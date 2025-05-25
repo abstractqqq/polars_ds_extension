@@ -41,7 +41,6 @@ impl PyLR {
     }
 
     pub fn fit(&mut self, X: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) -> PyResult<()> {
-
         let arr = X.as_raw_array();
         let x = X.into_faer();
         let y = y.into_faer();
@@ -226,10 +225,7 @@ impl PyOnlineLR {
         inv: PyReadonlyArray2<f64>,
     ) -> PyResult<()> {
         match coeffs.as_slice() {
-            Ok(s) => match self
-                .lr
-                .set_coeffs_bias_inverse(s, bias, inv.into_faer())
-            {
+            Ok(s) => match self.lr.set_coeffs_bias_inverse(s, bias, inv.into_faer()) {
                 Ok(_) => Ok(()),
                 Err(e) => Err(e.into()),
             },

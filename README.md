@@ -288,10 +288,9 @@ You can then publish it to your private PYPI server, or just use it locally.
 
 # Credits
 
-1. Rust Snowball Stemmer is taken from Tsoding's Seroost project (MIT). See [here](https://github.com/tsoding/seroost)
-2. Some statistics functions are taken from Statrs (MIT) and internalized. See [here](https://github.com/statrs-dev/statrs/tree/master)
-3. Linear algebra routines are powered mostly by [faer](https://crates.io/crates/faer)
-4. String similarity metrics are soooo fast because of [RapidFuzz](https://github.com/maxbachmann/rapidfuzz-rs)
+1. Some statistics functions are taken from Statrs (MIT) and internalized. See [here](https://github.com/statrs-dev/statrs/tree/master)
+2. Linear algebra routines are powered mostly by [faer](https://crates.io/crates/faer)
+3. String similarity metrics are soooo fast because of [RapidFuzz](https://github.com/maxbachmann/rapidfuzz-rs)
 
 # Other related Projects
 
