@@ -132,14 +132,35 @@ def test_jaro(df, res):
         ),
     ],
 )
-def test_lcs_seq(df, res):
-    assert_frame_equal(df.select(pds.str_lcs_seq("a", pl.col("b"), return_sim=False)), res)
+def test_lcs_subseq(df, res):
+    assert_frame_equal(df.select(pds.str_lcs_subseq("a", pl.col("b"), return_sim=False)), res)
     assert_frame_equal(
-        df.select(pds.str_lcs_seq("a", pl.col("b"), return_sim=False, parallel=True)), res
+        df.select(pds.str_lcs_subseq("a", pl.col("b"), return_sim=False, parallel=True)), res
     )
     assert_frame_equal(
-        df.lazy().select(pds.str_lcs_seq("a", pl.col("b"), return_sim=False)).collect(), res
+        df.lazy().select(pds.str_lcs_subseq("a", pl.col("b"), return_sim=False)).collect(), res
     )
+
+@pytest.mark.parametrize(
+    "a, b, lcs",
+    [
+        (
+            ["ABCDEF", "abc", "common", "", "abcdefg", "你好世界", "🚀🛰️🌌"],
+            ["ZBCDG", "xyz", "common", "test", "xabcdey", "世界和平", "🛰️✨🌟"],
+            ["BCD", "", "common", "", "abcde", "世界", "🛰️"],
+        ),
+    ],
+)
+def test_lcs_substr(a, b, lcs):
+    df = pl.DataFrame({
+        "a": a,
+        "b": b,
+        "lcs": lcs
+    })
+
+    assert df.select(
+        (pds.str_lcs_substr("a", "b") == pl.col("lcs")).all()
+    ).item(0, 0)
 
 
 @pytest.mark.parametrize(

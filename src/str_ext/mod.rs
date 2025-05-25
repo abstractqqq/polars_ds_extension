@@ -4,6 +4,7 @@ mod hamming;
 mod inflections;
 mod jaro;
 mod lcs_seq;
+mod lcs_str;
 mod levenshtein;
 mod nearest_str;
 mod osa;
