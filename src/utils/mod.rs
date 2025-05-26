@@ -17,13 +17,12 @@ use pyo3_polars::export::polars_core::{
 
 pub enum IndexOrder {
     C,
-    Fortran
+    Fortran,
 }
 
 // -------------------------------------------------------------------------------
 // Common, Resuable Functions
 // -------------------------------------------------------------------------------
-
 
 #[inline(always)]
 pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
@@ -33,10 +32,7 @@ pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
 /// Organizes the series data into a `vec`, which is either C(row major) or Fortran(column major).
 /// This code here is taken from polars dataframe.to_ndarray()
 #[inline(always)]
-pub fn series_to_slice<N>(
-    series: &[Series],
-    ordering: IndexOrder
-) -> PolarsResult<Vec<<N>::Native>>
+pub fn series_to_slice<N>(series: &[Series], ordering: IndexOrder) -> PolarsResult<Vec<<N>::Native>>
 where
     N: PolarsNumericType,
 {
@@ -121,7 +117,10 @@ where
 }
 
 // &[Column] -> Slice
-pub fn columns_to_vec<N>(columns: Vec<Column>, ordering: IndexOrder) -> PolarsResult<Vec<<N>::Native>> 
+pub fn columns_to_vec<N>(
+    columns: Vec<Column>,
+    ordering: IndexOrder,
+) -> PolarsResult<Vec<<N>::Native>>
 where
     N: PolarsNumericType,
 {
@@ -134,37 +133,27 @@ where
 }
 
 #[inline(always)]
-pub fn to_f64_vec_without_nulls(
-    inputs: &[Series],
-    ordering: IndexOrder,
-) -> PolarsResult<Vec<f64>> {
+pub fn to_f64_vec_without_nulls(inputs: &[Series], ordering: IndexOrder) -> PolarsResult<Vec<f64>> {
     let df = DataFrame::from_iter(inputs.iter().map(|s| Column::Series(s.clone().into())));
     let df = df.drop_nulls::<String>(None)?;
-    
-    columns_to_vec::<Float64Type>(
-        df.take_columns()
-        , ordering
-    )
+
+    columns_to_vec::<Float64Type>(df.take_columns(), ordering)
 }
 
 #[inline(always)]
-pub fn to_f64_vec_fail_on_nulls(
-    inputs: &[Series],
-    ordering: IndexOrder,
-) -> PolarsResult<Vec<f64>> {
+pub fn to_f64_vec_fail_on_nulls(inputs: &[Series], ordering: IndexOrder) -> PolarsResult<Vec<f64>> {
     if inputs.iter().any(|s| s.has_nulls()) {
         Err(PolarsError::ComputeError(
             "Nulls are found in data and this method doesn't allow nulls.".into(),
         ))
     } else {
-        let columns = inputs.iter().map(|s| s.clone().into_column()).collect::<Vec<_>>();
-        columns_to_vec::<Float64Type>(
-            columns
-            , ordering
-        )
+        let columns = inputs
+            .iter()
+            .map(|s| s.clone().into_column())
+            .collect::<Vec<_>>();
+        columns_to_vec::<Float64Type>(columns, ordering)
     }
 }
-
 
 // Shared splitting method
 pub fn split_offsets(len: usize, n: usize) -> Vec<(usize, usize)> {
@@ -365,4 +354,3 @@ impl<T: Float + DistanceOps + 'static> DIST<T> {
         }
     }
 }
-

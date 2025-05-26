@@ -1,3 +1,4 @@
+use hashbrown::HashMap;
 use itertools::Itertools;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
@@ -59,7 +60,7 @@ fn normalize_string(inputs: &[Series], kwargs: NormalizeKwargs) -> PolarsResult<
 
 #[derive(serde::Deserialize)]
 struct MapWordsKwargs {
-    mapping: ahash::HashMap<String, String>,
+    mapping: HashMap<String, String>,
 }
 
 #[polars_expr(output_type=String)]

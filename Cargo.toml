@@ -16,8 +16,8 @@ pyo3 = {version = "0.23", features = ["abi3-py39", "extension-module"]}
 pyo3-polars = {version = "0.20", features = ["derive", "dtype-array", "dtype-struct"]}
 # Polars
 polars = {version = "0.46", features = ["performant", "lazy",
-"diff", "array_count", "abs", "cross_join", "rank", "log", 
-"cum_agg", "round_series", "nightly","dtype-array", "dtype-struct", "dtype-i128"], default-features = false}
+"diff", "array_count", "abs", "cross_join", "log", "rank", "round_series",
+"cum_agg", "nightly","dtype-array", "dtype-struct", "dtype-i128"], default-features = false}
 polars-arrow = "0.46.0"
 # Numerical / Linear Algebra
 rand = "0.8.5"
@@ -33,8 +33,7 @@ ndarray = {version="0.16"}
 cfavml = {version = "0.3.0", features=["nightly"]} # easy simd, wait till Pulp gets better then we can replace
 # Data Structures, Iteration Helpers
 itertools = "0.12.0"
-ahash = ">=0.8.5"
-hashbrown = {version = "0.15", features=["nightly"]}
+hashbrown = {version = "0.15"}
 # Serialization
 serde = {version = "*", features=["derive"]}
 # String related

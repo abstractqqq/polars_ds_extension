@@ -1,5 +1,5 @@
 use super::{generic_stats_output, simple_stats_output, Alternative};
-use crate::{stats, stats_utils::beta};
+use crate::stats_utils::beta;
 /// Student's t test and Welch's t test.
 use core::f64;
 use polars::prelude::*;
@@ -104,7 +104,7 @@ fn pl_ttest_2samp(inputs: &[Series]) -> PolarsResult<Series> {
 
     let alt = inputs[5].str()?;
     let alt = alt.get(0).unwrap();
-    let alt = stats::Alternative::from(alt);
+    let alt = Alternative::from(alt);
 
     let valid = mean1.is_finite() && mean2.is_finite() && var1.is_finite() && var2.is_finite();
     if !valid {
@@ -133,7 +133,7 @@ fn pl_welch_t(inputs: &[Series]) -> PolarsResult<Series> {
 
     let alt = inputs[6].str()?;
     let alt = alt.get(0).unwrap();
-    let alt = stats::Alternative::from(alt);
+    let alt = Alternative::from(alt);
 
     // No need to check for validity because input is sanitized.
 
@@ -156,7 +156,7 @@ fn pl_ttest_1samp(inputs: &[Series]) -> PolarsResult<Series> {
 
     let alt = inputs[4].str()?;
     let alt = alt.get(0).unwrap();
-    let alt = stats::Alternative::from(alt);
+    let alt = Alternative::from(alt);
 
     // No need to check for validity because input is sanitized.
 
