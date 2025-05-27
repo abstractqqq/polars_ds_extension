@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import polars as pl
 import polars_ds as pds
-from polars.testing import assert_frame_equal
+from polars.testing import assert_frame_equal, assert_series_equal
 
 
 def test_replace_non_ascii():
@@ -156,15 +156,14 @@ def test_lcs_substr(a, b, lcs):
         "a": a,
         "b": b,
         "lcs": lcs
-    })
+    }).with_columns(
+        pds_lcs1 = pds.str_lcs_substr("a", "b")
+        , pds_lcs2 = pds.str_lcs_substr("a", "b", parallel=True)
+    )
 
-    assert df.select(
-        (pds.str_lcs_substr("a", "b") == pl.col("lcs")).all()
-    ).item(0, 0)
+    assert_series_equal(df["lcs"], df["pds_lcs1"], check_names=False)
+    assert_series_equal(df["lcs"], df["pds_lcs2"], check_names=False)
 
-    assert df.select(
-        (pds.str_lcs_substr("a", "b", parallel=True) == pl.col("lcs")).all()
-    ).item(0, 0)
 
 @pytest.mark.parametrize(
     "a, b, lcs",
@@ -181,15 +180,13 @@ def test_lcs_subseq(a, b, lcs):
         "a": a,
         "b": b,
         "lcs": lcs
-    })
+    }).with_columns(
+        pds_lcs1 = pds.str_lcs_subseq("a", "b")
+        , pds_lcs2 = pds.str_lcs_subseq("a", "b", parallel=True)
+    )
 
-    assert df.select(
-        (pds.str_lcs_subseq("a", "b") == pl.col("lcs")).all()
-    ).item(0, 0)
-
-    assert df.select(
-        (pds.str_lcs_subseq("a", "b", parallel=True) == pl.col("lcs")).all()
-    ).item(0, 0)
+    assert_series_equal(df["lcs"], df["pds_lcs1"], check_names=False)
+    assert_series_equal(df["lcs"], df["pds_lcs2"], check_names=False)
 
 
 @pytest.mark.parametrize(
