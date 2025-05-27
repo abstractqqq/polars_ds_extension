@@ -12,13 +12,13 @@ from polars_ds._utils import pl_plugin, str_to_expr
 __all__ = [
     "filter_by_levenshtein",
     "filter_by_hamming",
-    "str_hamming",
     "to_camel_case",
     "to_snake_case",
     "to_pascal_case",
     "to_constant_case",
     "str_nearest",
     "str_jaccard",
+    "str_hamming",
     "str_sorensen_dice",
     "str_tversky_sim",
     "str_jw",
@@ -26,8 +26,9 @@ __all__ = [
     "str_d_leven",
     "str_leven",
     "str_osa",
-    "str_lcs_seq",
+    "str_lcs_seq", # deprecated
     "str_lcs_subseq",
+    "str_lcs_subseq_dist",
     "str_lcs_substr",
     "str_fuzz",
     "similar_to_vocab",
@@ -521,10 +522,52 @@ def str_lcs_substr(
     other: str | pl.Expr,
     parallel: bool = False,
 ) -> pl.Expr:
+    """
+    Extracts the longest common substring from the string between this and the other string.
+
+    Note: this is not the same as the longest common subsequence.
+
+    Parameters
+    ----------
+    c
+        The string column
+    other
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
+    parallel
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
+    """
     return pl_plugin(
         symbol="pl_lcs_substr",
         args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
-    )  
+    )
+
+def str_lcs_subseq(
+    c: str | pl.Expr,
+    other: str | pl.Expr,
+    parallel: bool = False,
+) -> pl.Expr:
+    """
+    Extracts the longest common subsequence from the string between this and the other string.
+
+    Note: this is not the same as the longest common substring.
+
+    Parameters
+    ----------
+    c
+        The string column
+    other
+        Either the name of the column or a Polars expression. If you want to compare a single
+        string with all of column c, use pl.lit(your_str)
+    parallel
+        Whether to run the comparisons in parallel. Note that this is only recommended when this query
+        is the only one in the context and we are not in any aggregation context.
+    """
+    return pl_plugin(
+        symbol="pl_lcs_subseq",
+        args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
+    )
 
 def str_lcs_seq(
     c: str | pl.Expr,
@@ -533,14 +576,14 @@ def str_lcs_seq(
     return_sim: bool = True,   
 ) -> pl.Expr:
     warnings.warn(
-        "`str_lcs_seq` is deprecated and users should use `str_lcs_subseq`."
+        "`str_lcs_seq` is deprecated and users should use `str_lcs_subseq_dist`."
         , DeprecationWarning
         , stacklevel=2
     )
-    return str_lcs_subseq(c, other, parallel, return_sim)
+    return str_lcs_subseq_dist(c, other, parallel, return_sim)
 
 
-def str_lcs_subseq(
+def str_lcs_subseq_dist(
     c: str | pl.Expr,
     other: str | pl.Expr,
     parallel: bool = False,
@@ -568,12 +611,12 @@ def str_lcs_subseq(
     """
     if return_sim:
         return pl_plugin(
-            symbol="pl_lcs_seq_sim",
+            symbol="pl_lcs_subseq_sim",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
         )
     else:
         return pl_plugin(
-            symbol="pl_lcs_seq",
+            symbol="pl_lcs_subseq_dist",
             args=[str_to_expr(c), str_to_expr(other), pl.lit(parallel, pl.Boolean)],
         )
 

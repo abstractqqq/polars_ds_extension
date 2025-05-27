@@ -1,8 +1,13 @@
 use polars::prelude::{arity::binary_elementwise_values, *};
-use pyo3_polars::{derive::{polars_expr, CallerContext}, export::polars_core::utils::rayon::iter::{ParallelBridge, ParallelIterator}};
+use pyo3_polars::{
+    derive::{polars_expr, CallerContext},
+    export::polars_core::{
+        utils::rayon::iter::{IntoParallelIterator, ParallelIterator}, POOL
+    },
+};
+use crate::utils::split_offsets;
 
-/// Finds the longest common substring between two input strings. This comes 
-/// from Gemini and is manually checked and tested.
+/// Finds the longest common substring between two input strings.
 ///
 /// This function uses a space-optimized dynamic programming approach to solve the
 /// longest common substring problem. It constructs a 2D matrix conceptually,
@@ -13,16 +18,8 @@ use pyo3_polars::{derive::{polars_expr, CallerContext}, export::polars_core::uti
 /// The space complexity is reduced from O(len1 * len2) to O(min(len1, len2)).
 /// The time complexity remains O(len1 * len2).
 ///
-/// # Arguments
-/// * `s1` - The first input string slice.
-/// * `s2` - The second input string slice.
-///
-/// # Returns
-/// A `String` containing the longest common substring. If no common
-/// substring exists (e.g., empty input strings or no matching characters),
-/// an empty string is returned.
-pub fn lcs_substr(s1: &str, s2: &str) -> String {
-
+/// See Wikipedia for more details
+pub fn lcs_substr_extract(s1: &str, s2: &str) -> String {
     // Convert string slices to character vectors for easier indexing.
     // This handles multi-byte UTF-8 characters correctly.
     let c1: Vec<char> = s1.chars().collect();
@@ -104,33 +101,31 @@ fn pl_lcs_substr(inputs: &[Series], context: CallerContext) -> PolarsResult<Seri
     if ca2.len() == 1 {
         let r = ca2.get(0).unwrap();
         if can_parallel {
-            let ca = ca1.par_iter().map(
-                |ss| ss.map(|s| lcs_substr(s, r))
-            ).collect::<StringChunked>();
+            let ca = ca1
+                .par_iter()
+                .map(|ss| ss.map(|s| lcs_substr_extract(s, r)))
+                .collect::<StringChunked>();
             Ok(ca.into_series())
         } else {
-            let ca = ca1.apply_values(|s| lcs_substr(s, r).into());
+            let ca = ca1.apply_values(|s| lcs_substr_extract(s, r).into());
             Ok(ca.into_series())
         }
     } else if ca1.len() == ca2.len() {
         if can_parallel {
-            let ca = ca1.into_iter()
-                .zip(ca2.into_iter())
-                .par_bridge()
-                .map(|(ss, rr)| {
-                    if let (Some(s), Some(r)) = (ss, rr) {
-                        Some(lcs_substr(s, r))
-                    } else {
-                        None
-                    }
-                }).collect::<StringChunked>();
+            let n_threads = POOL.current_num_threads();
+            let splits = split_offsets(ca1.len(), n_threads);
+            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let s1 = ca1.slice(offset as i64, len);
+                let s2 = ca2.slice(offset as i64, len);
+                let out: StringChunked = binary_elementwise_values(&s1, &s2, lcs_substr_extract);
+                out.downcast_iter().cloned().collect::<Vec<_>>()
+            });
+            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
+            let ca = StringChunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten());
             Ok(ca.into_series())
         } else {
-            let ca: StringChunked = binary_elementwise_values(
-                ca1, 
-                ca2, 
-                |s, r| lcs_substr(s, r)
-            );
+            let ca: StringChunked =
+                binary_elementwise_values(ca1, ca2, lcs_substr_extract);
             Ok(ca.into_series())
         }
     } else {

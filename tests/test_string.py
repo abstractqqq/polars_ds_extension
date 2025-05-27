@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import polars as pl
 import polars_ds as pds
-from polars.testing import assert_frame_equal
+from polars.testing import assert_frame_equal, assert_series_equal
 
 
 def test_replace_non_ascii():
@@ -132,13 +132,13 @@ def test_jaro(df, res):
         ),
     ],
 )
-def test_lcs_subseq(df, res):
-    assert_frame_equal(df.select(pds.str_lcs_subseq("a", pl.col("b"), return_sim=False)), res)
+def test_lcs_subseq_dist(df, res):
+    assert_frame_equal(df.select(pds.str_lcs_subseq_dist("a", pl.col("b"), return_sim=False)), res)
     assert_frame_equal(
-        df.select(pds.str_lcs_subseq("a", pl.col("b"), return_sim=False, parallel=True)), res
+        df.select(pds.str_lcs_subseq_dist("a", pl.col("b"), return_sim=False, parallel=True)), res
     )
     assert_frame_equal(
-        df.lazy().select(pds.str_lcs_subseq("a", pl.col("b"), return_sim=False)).collect(), res
+        df.lazy().select(pds.str_lcs_subseq_dist("a", pl.col("b"), return_sim=False)).collect(), res
     )
 
 @pytest.mark.parametrize(
@@ -156,11 +156,37 @@ def test_lcs_substr(a, b, lcs):
         "a": a,
         "b": b,
         "lcs": lcs
-    })
+    }).with_columns(
+        pds_lcs1 = pds.str_lcs_substr("a", "b")
+        , pds_lcs2 = pds.str_lcs_substr("a", "b", parallel=True)
+    )
 
-    assert df.select(
-        (pds.str_lcs_substr("a", "b") == pl.col("lcs")).all()
-    ).item(0, 0)
+    assert_series_equal(df["lcs"], df["pds_lcs1"], check_names=False)
+    assert_series_equal(df["lcs"], df["pds_lcs2"], check_names=False)
+
+
+@pytest.mark.parametrize(
+    "a, b, lcs",
+    [
+        (
+            ["AGGTAB", "abc", "你好世界和平", "🚀🛰️🌌"],
+            ["GXTXAYB", "xyz", "世界a和平", "🛰️✨🌟"],
+            ["GTAB", "", "世界和平", "🛰️"],
+        ),
+    ],
+)
+def test_lcs_subseq(a, b, lcs):
+    df = pl.DataFrame({
+        "a": a,
+        "b": b,
+        "lcs": lcs
+    }).with_columns(
+        pds_lcs1 = pds.str_lcs_subseq("a", "b")
+        , pds_lcs2 = pds.str_lcs_subseq("a", "b", parallel=True)
+    )
+
+    assert_series_equal(df["lcs"], df["pds_lcs1"], check_names=False)
+    assert_series_equal(df["lcs"], df["pds_lcs2"], check_names=False)
 
 
 @pytest.mark.parametrize(
