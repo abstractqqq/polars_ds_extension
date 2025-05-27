@@ -1,11 +1,16 @@
+use crate::utils::split_offsets;
+
 use super::generic_str_distancer::{
     generic_batched_distance, generic_batched_sim, generic_binary_distance, generic_binary_sim,
 };
 use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
-    export::polars_core::utils::rayon::iter::{ParallelBridge, ParallelIterator},
+    export::polars_core::{
+        utils::rayon::iter::{IntoParallelIterator, ParallelIterator}, POOL
+    },
 };
+
 use rapidfuzz::distance::lcs_seq;
 
 #[inline(always)]
@@ -96,22 +101,20 @@ fn pl_lcs_subseq(inputs: &[Series], context: CallerContext) -> PolarsResult<Seri
         }
     } else if ca1.len() == ca2.len() {
         if can_parallel {
-            let ca = ca1
-                .into_iter()
-                .zip(ca2.into_iter())
-                .par_bridge()
-                .map(|(ss, rr)| {
-                    if let (Some(s), Some(r)) = (ss, rr) {
-                        Some(lcs_subseq_extract(s, r))
-                    } else {
-                        None
-                    }
-                })
-                .collect::<StringChunked>();
+            let n_threads = POOL.current_num_threads();
+            let splits = split_offsets(ca1.len(), n_threads);
+            let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let s1 = ca1.slice(offset as i64, len);
+                let s2 = ca2.slice(offset as i64, len);
+                let out: StringChunked = binary_elementwise_values(&s1, &s2, lcs_subseq_extract);
+                out.downcast_iter().cloned().collect::<Vec<_>>()
+            });
+            let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
+            let ca = StringChunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten());
             Ok(ca.into_series())
         } else {
             let ca: StringChunked =
-                binary_elementwise_values(ca1, ca2, |s, r| lcs_subseq_extract(s, r));
+                binary_elementwise_values(ca1, ca2, lcs_subseq_extract);
             Ok(ca.into_series())
         }
     } else {
