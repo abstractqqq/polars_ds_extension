@@ -113,7 +113,7 @@ bp = (
     .append_expr( # generate some features
         pl.col("existing_emi").log1p().alias("existing_emi_log1p"),
         pl.col("loan_amount").log1p().alias("loan_amount_log1p"),
-        pl.col("loan_amount").clip(lower_bound = 0, upper_bound = 1000).alias("loan_amount_log1p_clipped"),
+        pl.col("loan_amount").clip(lower_bound = 0, upper_bound = 1000).alias("loan_amount_clipped"),
         pl.col("loan_amount").sqrt().alias("loan_amount_sqrt"),
         pl.col("loan_amount").shift(-1).alias("loan_amount_lag_1") # any kind of lag transform
     )
