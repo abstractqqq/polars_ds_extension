@@ -1,5 +1,4 @@
 #![allow(non_snake_case)]
-use core::f64;
 use faer::{
     linalg::solvers::{DenseSolveCore, Solve},
     mat::Mat,
@@ -8,7 +7,7 @@ use faer::{
 use faer_traits::{math_utils::is_nan, RealField};
 use num::Float;
 
-use super::{LinalgErrors, LinearRegression};
+use crate::linear::{lr::LinearModel, LinalgErrors};
 
 #[inline]
 pub fn has_nan<T: RealField>(mat: MatRef<T>) -> bool {
@@ -17,16 +16,16 @@ pub fn has_nan<T: RealField>(mat: MatRef<T>) -> bool {
 
 pub struct OnlineLR<T: RealField + Float> {
     pub lambda: T,
-    pub has_bias: bool,
+    pub add_bias: bool,
     pub coefficients: Mat<T>, // n_features x 1 matrix, or (n_features + ) x 1 if there is bias
     pub inv: Mat<T>,          // Current Inverse of X^t X
 }
 
 impl<T: RealField + Float> OnlineLR<T> {
-    pub fn new(lambda: T, has_bias: bool) -> Self {
+    pub fn new(lambda: T, add_bias: bool) -> Self {
         OnlineLR {
             lambda: lambda,
-            has_bias: has_bias,
+            add_bias: add_bias,
             coefficients: Mat::new(),
             inv: Mat::new(),
         }
@@ -41,8 +40,8 @@ impl<T: RealField + Float> OnlineLR<T> {
         if coeffs.len() != inv.ncols() {
             Err(LinalgErrors::DimensionMismatch)
         } else {
-            self.has_bias = bias.abs() > T::epsilon();
-            if self.has_bias {
+            self.add_bias = bias.abs() > T::epsilon();
+            if self.add_bias {
                 self.coefficients = Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
                     if i < coeffs.len() {
                         coeffs[i]
@@ -67,7 +66,7 @@ impl<T: RealField + Float> OnlineLR<T> {
     }
 
     pub fn update_unchecked(&mut self, new_x: MatRef<T>, new_y: MatRef<T>, c: T) {
-        if self.has_bias() {
+        if self.add_bias() {
             let ones = Mat::full(new_x.nrows(), 1, T::one());
             let new_new_x = faer::concat![[new_x, ones]];
             woodbury_step(
@@ -95,17 +94,17 @@ impl<T: RealField + Float> OnlineLR<T> {
     }
 }
 
-impl<T: RealField + Float> LinearRegression<T> for OnlineLR<T> {
+impl<T: RealField + Float> LinearModel<T> for OnlineLR<T> {
     fn fitted_values(&self) -> MatRef<T> {
         self.coefficients.as_ref()
     }
 
-    fn has_bias(&self) -> bool {
-        self.has_bias
+    fn add_bias(&self) -> bool {
+        self.add_bias
     }
 
     fn fit_unchecked(&mut self, X: MatRef<T>, y: MatRef<T>) {
-        if self.has_bias {
+        if self.add_bias {
             let ones = Mat::full(X.nrows(), 1, T::one());
             let new_x = faer::concat![[X, ones]];
             let (inv, all_coefficients) =
@@ -129,9 +128,9 @@ pub fn faer_qr_lstsq_with_inv<T: RealField + Copy>(
     x: MatRef<T>,
     y: MatRef<T>,
     lambda: T,
-    has_bias: bool,
+    add_bias: bool,
 ) -> (Mat<T>, Mat<T>) {
-    let n1 = x.ncols().abs_diff(has_bias as usize);
+    let n1 = x.ncols().abs_diff(add_bias as usize);
     let xt = x.transpose();
     let mut xtx = xt * x;
 

@@ -158,3 +158,35 @@ def _test_elastic_net(add_bias: bool = False):
 def test_elastic_net():
     _test_elastic_net(add_bias=False)
     _test_elastic_net(add_bias=True)
+
+
+def test_glm():
+    import statsmodels.api as sm
+    from polars_ds.linear_models import GLM
+
+    data = sm.datasets.scotland.load()
+    # add_bias = True
+
+    data.exog = sm.add_constant(data.exog)
+    df = data.exog
+    df["y"] = data.endog
+    # X1 contains constant term, X2 doesn't
+    X1 = df[[c for c in df.columns if c != "y"]].to_numpy()
+    X2 = df[[c for c in df.columns if c not in ("y", "const")]].to_numpy()
+    y = df["y"].to_numpy()
+
+    glm = sm.GLM(y, X1, family=sm.families.Gamma())
+    glm_results = glm.fit()
+    params = glm_results.params
+    sm_bias = params[0]
+    sm_coeffs = params[1:]
+
+    pds_glm = GLM(solver="irls", add_bias=True, family="gamma")
+
+    pds_glm.fit(X2, y.reshape((-1, 1)))
+
+    pds_bias = pds_glm.bias()
+    pds_coeffs = pds_glm.coeffs()
+
+    assert abs(sm_bias - pds_bias) < 1e-6
+    np.testing.assert_allclose(sm_coeffs, pds_coeffs, rtol=1e-5)

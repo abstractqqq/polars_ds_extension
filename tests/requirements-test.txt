@@ -2,7 +2,8 @@
 maturin[patchelf]>=1.7; sys_platform == "linux"
 maturin>=1.7; sys_platform != "linux"
 numpy
-scikit-learn<=1.5
+scikit-learn 
+# <=1.5
 scipy
 pyarrow
 pandas

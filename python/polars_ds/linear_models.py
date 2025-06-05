@@ -14,10 +14,10 @@ from __future__ import annotations
 
 import polars as pl
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, Literal
 from .typing import LRSolverMethods, NullPolicy, PolarsFrame
 
-from polars_ds._polars_ds import PyLR, PyElasticNet, PyOnlineLR
+from polars_ds._polars_ds import PyLR, PyGLM, PyElasticNet, PyOnlineLR
 
 import sys
 
@@ -639,3 +639,250 @@ class OnlineLR:
             Data to predict on, as a matrix
         """
         return self._lr.predict(X).reshape((-1, 1))
+
+
+# ------------------------------------------------------------------------------------
+
+GLMFamily: TypeAlias = Literal["gaussian", "normal", "poisson", "binomial", "logistic", "gamma"]
+GLMSolver: TypeAlias = Literal["irls", "lbfgs"]
+LinkFunction: TypeAlias = Literal["id", "identity", "log", "logit", "inverse"]
+
+
+class GLM:
+    """
+    Generalized Linear Models.
+
+    The GLM generalizes linear regression by allowing the linear model to be related to the response
+    variable via a link function and by allowing the magnitude of the variance of each measurement to be a
+    function of its predicted value.
+
+    Currently, the variance function will be determined by the link function.
+    If a family is given, then the canonical link function is used. Here is a mapping between currently
+    implemented families and their link functions:
+
+    gaussian / normal    ==>   id (x -> x)
+    poisson              ==>   log (x -> ln(x))
+    binomial / logistic  ==>   logit (x -> ln(x/(1-x)))
+    gamma                ==>   inverse (x -> 1/x)
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Generalized_linear_model
+    """
+
+    def __init__(
+        self,
+        add_bias: bool = False,
+        solver: GLMSolver = "irls",
+        family: GLMFamily = "normal",
+        max_iter: int = 100,
+        tol: float = 1e-8,
+        feature_names_in_: List[str] | None = None,
+    ):
+        # lambda_: float = 0.0,
+        """
+        Parameters
+        ----------
+        family
+            One of "gaussian", "normal", "poisson", "binomial", "logistic", "gamma". Note "gaussian" and
+            "normal" represent the same family.
+        add_bias
+            Whether to add a bias term. Also known as intercept in other packages.
+        max_iter
+            Max number of iterations for the algorithm
+        tol
+            The tolerance for convergence
+        feature_names_in_
+            Names for the incoming features, if available. If None, the names will be empty. They will be
+            learned if .fit_df() is run later, or .set_input_features() is set later.
+        """
+        if solver not in ["irls"]:
+            raise NotImplementedError
+
+        if max_iter < 1:
+            raise ValueError("`max_iter` must be > 1.")
+
+        if family not in ["gaussian", "normal", "poisson", "binomial", "logistic", "gamma"]:
+            raise NotImplementedError
+
+        self._glm = PyGLM(
+            add_bias=add_bias, family=family, solver=solver, max_iter=max_iter, tol=abs(tol)
+        )
+        self.feature_names_in_: List[str] = (
+            [] if feature_names_in_ is None else list(feature_names_in_)
+        )
+
+    def __repr__(self) -> str:
+        """
+        Shows a textual representation of the GLM.
+        """
+        return self._glm.describe()
+
+    # @classmethod
+    # def from_values(
+    #     cls,
+    #     coeffs: List[float],
+    #     link: LinkFunction,
+    #     bias: float = 0.0,
+    #     feature_names_in_: List[str] | None = None
+    # ) -> Self:
+    #     """
+    #     Constructs a LR class instance from coefficients and bias values.
+
+    #     Parameters
+    #     ----------
+    #     coeffs
+    #         Iterable of numbers representing the coefficients
+    #     link
+    #         One of ["id", "log", "logit", "inverse"].
+    #     bias
+    #         Value for the bias term
+    #     feature_names_in_
+    #         Names for the incoming features, if available. If None, the names will be empty. They will be
+    #         learned if .fit_df() is run later, or .set_input_features() is set later.
+    #     """
+    #     coefficients = np.ascontiguousarray(coeffs, dtype=np.float64).flatten()
+    #     lr = cls(
+    #         add_bias=(bias != 0.0),
+    #         solver="irls",
+    #         feature_names_in_=feature_names_in_,
+    #     )
+    #     lr._lr.set_coeffs_and_bias(coefficients, bias)
+    #     return lr
+
+    def is_fit(self) -> bool:
+        return self._glm.is_fit()
+
+    # def __repr__(self) -> str:
+    #     if self._lr.lambda_ > 0.0:
+    #         output = "Linear Regression (Ridge) Model\n"
+    #     else:
+    #         output = "Linear Regression Model\n"
+
+    #     if self._lr.is_fit():
+    #         output += f"Coefficients: {list(round(x, 5) for x in self._lr.coeffs)}\n"
+    #         output += f"Bias/Intercept: {self._lr.bias}\n"
+    #     else:
+    #         output += "Not fitted yet."
+    #     return output
+
+    def set_input_features(self, features: List[str]) -> Self:
+        """
+        Sets the names of input features.
+
+        Parameters
+        ----------
+        features
+            List of strings.
+        """
+        self.feature_names_in_.clear()
+        self.feature_names_in_ = list(features)
+        return self
+
+    def coeffs(self) -> np.ndarray:
+        """
+        Returns a copy of the coefficients.
+        """
+        return self._glm.coeffs
+
+    def bias(self) -> float:
+        return self._glm.bias
+
+    def fit(self, X: np.ndarray, y: np.ndarray, null_policy: NullPolicy = "ignore") -> Self:
+        """
+        Fit the GLM model on NumPy data.
+
+        Parameters
+        ----------
+        X
+            The feature Matrix. NumPy 2D matrix only.
+        y
+            The target data. NumPy array. Must be reshape-able to (-1, 1).
+        null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
+            One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
+            fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
+            the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
+            columns. If target has null, then the row will still be dropped.
+        """
+        self._glm.fit(*_handle_nans_in_np(X, y.astype(np.float64).reshape((-1, 1)), null_policy))
+        return self
+
+    def fit_df(
+        self,
+        df: PolarsFrame,
+        features: List[str],
+        target: str,
+        null_policy: NullPolicy = "skip",
+        show_report: bool = False,
+    ) -> Self:
+        """
+        Fit the GLM model on a dataframe. This will overwrite previously set feature names.
+        The null policy only handles null values in df, not NaN values. It is the user's responsibility to handle
+        NaN values if they exist in their pipeline.
+
+        Parameters
+        ----------
+        df
+            Either an eager or a lazy Polars dataframe.
+        features
+            List of strings of column names.
+        target
+            The target column's name.
+        null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
+            One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to mean
+            fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
+            the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
+            columns. If target has null, then the row will still be dropped.
+
+        """
+        df2 = (
+            _handle_nulls_in_df(df.lazy(), features, target, null_policy)
+            .select(*features, target)
+            .collect()
+        )
+        X = df2.select(features).to_numpy()
+        y = df2.select(target).to_numpy()
+        self.feature_names_in_.clear()
+        self.feature_names_in_ = list(features)
+        return self.fit(X, y)
+
+    def predict(self, X: np.ndarray, linear: bool = False) -> np.ndarray:
+        """
+        Returns the prediction of this linear model.
+
+        Parameters
+        ----------
+        X
+            Data to predict on, as a matrix
+        linear
+            If true, return the linear predictor eta instead of the expected value of
+            the response variable, E[Y|X].
+        """
+        return self._glm.predict(X, linear).reshape((-1, 1))
+
+    # def predict_df(self, df: PolarsFrame, name: str = "prediction") -> PolarsFrame:
+    #     """
+    #     Computes the prediction of the linear model and append it as a column in the dataframe. If input
+    #     is lazy, output will be lazy.
+
+    #     Parameters
+    #     ----------
+    #     df
+    #         Either an eager or a lazy Polars dataframe.
+    #     name
+    #         The name of the prediction column
+    #     """
+    #     if len(self.feature_names_in_) <= 0:
+    #         raise ValueError(
+    #             "The linear model is not fitted on a dataframe, or no feature names have been given."
+    #             "Not enough info to predict on a dataframe. Hint: try .fit_df() or .set_input_features()."
+    #         )
+
+    #     pred = pl.sum_horizontal(
+    #         beta * pl.col(c) for c, beta in zip(self.feature_names_in_, self._lr.coeffs)
+    #     )
+    #     bias = self._lr.bias
+    #     if bias != 0.0:
+    #         pred = pred + bias
+
+    #     return df.with_columns(pred.alias(name))

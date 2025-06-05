@@ -1,11 +1,12 @@
+use crate::utils::split_offsets;
 use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
     export::polars_core::{
-        utils::rayon::iter::{IntoParallelIterator, ParallelIterator}, POOL
+        utils::rayon::iter::{IntoParallelIterator, ParallelIterator},
+        POOL,
     },
 };
-use crate::utils::split_offsets;
 
 /// Finds the longest common substring between two input strings.
 ///
@@ -121,11 +122,11 @@ fn pl_lcs_substr(inputs: &[Series], context: CallerContext) -> PolarsResult<Seri
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-            let ca = StringChunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten());
+            let ca =
+                StringChunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten());
             Ok(ca.into_series())
         } else {
-            let ca: StringChunked =
-                binary_elementwise_values(ca1, ca2, lcs_substr_extract);
+            let ca: StringChunked = binary_elementwise_values(ca1, ca2, lcs_substr_extract);
             Ok(ca.into_series())
         }
     } else {
