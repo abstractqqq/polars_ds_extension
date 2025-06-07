@@ -201,21 +201,26 @@ shape: (3, 4)
 └───────────┴──────────────────────┴──────────────────────┴─────────────────────┘
 ```
 
-### Multiple Convolutions at once!
+### Compatible without Changing Paradigm
 
-```Python
-# Multiple Convolutions at once
-# Modes: `same`, `left` (left-aligned same), `right` (right-aligned same), `valid` or `full`
-# Method: `fft`, `direct`
-# Currently slower than SciPy but provides parallelism because of Polars
-df.select(
-    pds.convolve("f", [-1, 0, 0, 0, 1], mode = "full", method = "fft"), # column f with the kernel given here
-    pds.convolve("a", [-1, 0, 0, 0, 1], mode = "full", method = "direct"),
-    pds.convolve("b", [-1, 0, 0, 0, 1], mode = "full", method = "direct"),
-).head()
+Under some mild assumptions, (e.g. columns implement to_numpy()), PDS works with other dataframes. For example, with Pandas:
+
+```python
+from polars_ds.compat import compat as pds2
+
+df_pd["linear_regression_result"] = pds2.lin_reg(
+    df_pd["x1"], df_pd["x2"], df_pd["x3"],
+    target = df_pd["y"],
+    return_pred = True
+)
+df_pd
 ```
 
-And more!
+The magic sauce here is the compat module and the fact that most eager dataframes implement the array protocal. This 
+
+### Other
+
+Other common numerical functions such as: `pds.convolve`, `pds.query_r2`, `pds.principal_components`, etc. See our [docs]("https://polars-ds-extension.readthedocs.io/en/latest/") for more information.
 
 ## Getting Started
 
@@ -234,10 +239,6 @@ pip install "polars_ds[plot]"
 Feel free to take a look at our [benchmark notebook](./benchmarks/benchmarks.ipynb)!
 
 Generally speaking, the more expressions you want to evaluate simultaneously, the faster Polars + PDS will be than Pandas + (SciPy / Sklearn / NumPy). The more CPU cores you have on your machine, the bigger the time difference will be in favor of Polars + PDS. 
-
-Why does speed matter? 
-
-If your code already executes under 1s and you only use your code in non-production, ad-hoc environments, then maybe it doesn't. Even so, as your data grow, having a 5s run vs. a 1s run will make a lot of difference in your iterations for your project. Speed of execution becomes a bigger issues if you are building reports on demand, or if you need to pay extra for additional compute or when you have a production pipeline that has to deliver the data under a time constraint.  
 
 ## HELP WANTED!
 
