@@ -201,9 +201,9 @@ shape: (3, 4)
 └───────────┴──────────────────────┴──────────────────────┴─────────────────────┘
 ```
 
-### Compatible without Changing Paradigm
+### Compatibility
 
-Under some mild assumptions, (e.g. columns implement to_numpy()), PDS works with other dataframes. For example, with Pandas:
+Under some mild assumptions, (e.g. columns implement to_numpy()), PDS works with other eager dataframes. For example, with Pandas:
 
 ```python
 from polars_ds.compat import compat as pds2
@@ -216,7 +216,7 @@ df_pd["linear_regression_result"] = pds2.lin_reg(
 df_pd
 ```
 
-The magic sauce here is the compat module and the fact that most eager dataframes implement the array protocal. This 
+The magic here is the compat module and the fact that most eager dataframes implement the array protocal. 
 
 ### Other
 
@@ -242,7 +242,7 @@ Generally speaking, the more expressions you want to evaluate simultaneously, th
 
 ## HELP WANTED!
 
-1. Documentation writing, Doc Review, and Benchmark preparation
+1. Documentation writing, testing, documentation, benchmarking, etc.
 
 ## Road Map
 
@@ -253,7 +253,7 @@ Generally speaking, the more expressions you want to evaluate simultaneously, th
 
 **Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars (for most of its core) and will try to be as stable as possible for polars>=1. Exceptions will be made when Polars's update forces changes in the plugins.**
 
-This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. This concerns the plugin expressions like `pds.lin_reg`, etc.. By the same token, Polars large index version is not intentionally supported at this point. However, non-plugin Polars utilities provided by the function should work with the streaming engine, as they are native Polars code.
+This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. This concerns the plugin expressions like `pds.lin_reg`, etc. By the same token, Polars large index version is not intentionally supported at this point. However, non-plugin Polars utilities provided by the function should work with the streaming engine, as they are native Polars code.
 
 ## Polars LTS CPU Support / Build From Source
 

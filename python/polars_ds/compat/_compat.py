@@ -58,10 +58,12 @@ class _Compat():
             output = pl.select(
                 func(*new_args, **new_kwargs).alias("__output__")
             ).drop_in_place("__output__")
-            if self.return_numpy:
+
+            if self.return_numpy or isinstance(first_expr, np.ndarray):
                 return output.to_numpy()
             else:
                 return first_expr.__class__(output.to_list()).rename("")
+   
 
         return compat_wrapper
 
