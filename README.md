@@ -201,21 +201,26 @@ shape: (3, 4)
 └───────────┴──────────────────────┴──────────────────────┴─────────────────────┘
 ```
 
-### Multiple Convolutions at once!
+### Compatibility
 
-```Python
-# Multiple Convolutions at once
-# Modes: `same`, `left` (left-aligned same), `right` (right-aligned same), `valid` or `full`
-# Method: `fft`, `direct`
-# Currently slower than SciPy but provides parallelism because of Polars
-df.select(
-    pds.convolve("f", [-1, 0, 0, 0, 1], mode = "full", method = "fft"), # column f with the kernel given here
-    pds.convolve("a", [-1, 0, 0, 0, 1], mode = "full", method = "direct"),
-    pds.convolve("b", [-1, 0, 0, 0, 1], mode = "full", method = "direct"),
-).head()
+Under some mild assumptions, (e.g. columns implement to_numpy()), PDS works with other eager dataframes. For example, with Pandas:
+
+```python
+from polars_ds.compat import compat as pds2
+
+df_pd["linear_regression_result"] = pds2.lin_reg(
+    df_pd["x1"], df_pd["x2"], df_pd["x3"],
+    target = df_pd["y"],
+    return_pred = True
+)
+df_pd
 ```
 
-And more!
+The magic here is the compat module and the fact that most eager dataframes implement the array protocal. 
+
+### Other
+
+Other common numerical functions such as: `pds.convolve`, `pds.query_r2`, `pds.principal_components`, etc. See our [docs]("https://polars-ds-extension.readthedocs.io/en/latest/") for more information.
 
 ## Getting Started
 
@@ -235,13 +240,9 @@ Feel free to take a look at our [benchmark notebook](./benchmarks/benchmarks.ipy
 
 Generally speaking, the more expressions you want to evaluate simultaneously, the faster Polars + PDS will be than Pandas + (SciPy / Sklearn / NumPy). The more CPU cores you have on your machine, the bigger the time difference will be in favor of Polars + PDS. 
 
-Why does speed matter? 
-
-If your code already executes under 1s and you only use your code in non-production, ad-hoc environments, then maybe it doesn't. Even so, as your data grow, having a 5s run vs. a 1s run will make a lot of difference in your iterations for your project. Speed of execution becomes a bigger issues if you are building reports on demand, or if you need to pay extra for additional compute or when you have a production pipeline that has to deliver the data under a time constraint.  
-
 ## HELP WANTED!
 
-1. Documentation writing, Doc Review, and Benchmark preparation
+1. Documentation writing, testing, documentation, benchmarking, etc.
 
 ## Road Map
 
@@ -252,7 +253,7 @@ If your code already executes under 1s and you only use your code in non-product
 
 **Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars (for most of its core) and will try to be as stable as possible for polars>=1. Exceptions will be made when Polars's update forces changes in the plugins.**
 
-This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. This concerns the plugin expressions like `pds.lin_reg`, etc.. By the same token, Polars large index version is not intentionally supported at this point. However, non-plugin Polars utilities provided by the function should work with the streaming engine, as they are native Polars code.
+This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. This concerns the plugin expressions like `pds.lin_reg`, etc. By the same token, Polars large index version is not intentionally supported at this point. However, non-plugin Polars utilities provided by the function should work with the streaming engine, as they are native Polars code.
 
 ## Polars LTS CPU Support / Build From Source
 

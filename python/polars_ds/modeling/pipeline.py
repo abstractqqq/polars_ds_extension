@@ -551,7 +551,7 @@ class Blueprint:
         self._steps.append(FitStep(partial(t.center), cols, self.exclude))
         return self
 
-    def select(self, cols: IntoExprColumn) -> Self:
+    def select(self, *cols: pl.Expr) -> Self:
         """
         Selects the columns from the dataset.
 
@@ -560,7 +560,7 @@ class Blueprint:
         cols
             Any Polars expression that can be understood as columns.
         """
-        self._steps.append(PipelineStep(cols, PLContext.SELECT))
+        self._steps.append(PipelineStep(list(cols), PLContext.SELECT))
         return self
 
     # Not working after pl.Int128 is introduced
@@ -655,7 +655,7 @@ class Blueprint:
         cols
             Any Polars expression that can be understood as columns.
         """
-        self._steps.append(PipelineStep(pl.all().exclude(cols), PLContext.SELECT))
+        self._steps.append(PipelineStep(pl.exclude(cols), PLContext.SELECT))
         return self
 
     def rename(self, rename_dict: Dict[str, str]) -> Self:
@@ -868,6 +868,13 @@ class Blueprint:
                 self.exclude,
             )
         )
+        return self
+    
+    def with_columns(self, *exprs: pl.Expr) -> Self:
+        """
+        Run Polars with_columns for the expressions.
+        """
+        self._steps.append(PipelineStep(list(exprs), PLContext.WITH_COLUMNS))
         return self
 
     def append_expr(self, *exprs: ExprTransform, is_select: bool = False) -> Self:

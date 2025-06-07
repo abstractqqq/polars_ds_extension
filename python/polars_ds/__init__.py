@@ -7,7 +7,6 @@ __version__ = importlib.metadata.version("polars_ds")
 # Internal dependencies
 from polars_ds.exprs import *  # noqa F403
 
-
 def frame(size: int = 2_000, index_name: str = "row_num") -> pl.DataFrame:
     """
     Generates a frame with only an index (row number) column.

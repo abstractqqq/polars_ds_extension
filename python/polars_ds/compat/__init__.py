@@ -24,22 +24,10 @@ For example, in order to use PDS with Pandas dataframe, say df:pd.DataFrame, one
 >>> pds2.query_roc_auc(df_pd["actual"], df_pd["predicted"])
 >>> # For more advanced queries
 >>> pds2.lin_reg(
->>>     df["x1"], df["x2"], df["x3"]
->>>     target = df["y"],
+>>>     df_pd["x1"], df_pd["x2"], df_pd["x3"]
+>>>     target = df_pd["y"],
 >>>     return_pred = True
 >>> )
-
-Question: if output is still Polars, then the user must still use both Polars and Pandas.
-Why bother with compatibility?
-
-Here are some answers I consider to be true (or self-promotion :))
-
-1. PDS is a very light weight package that can reduce dependencies in your project.
-2. For projects with mixed dataframes, it is sometimes not a good idea to cast the 
-entire Pandas (or other) dataframe to Polars.
-3. Some PDS functions are faster than SciPy / Sklearn equivalents.
-4. For ad-hoc analysis that involves say something like linear regression, PDS is easier to 
-use than other package.
 """
 
 from ._compat import compat
