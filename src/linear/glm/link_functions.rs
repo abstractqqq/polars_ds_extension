@@ -20,13 +20,13 @@ impl LinkFunction {
                 // logit(p) = ln(p/(1-p))
                 let one = T::one();
                 (mu / (one - mu)).ln()
-            },
+            }
             LinkFunction::Inverse => mu.recip(),
         }
     }
 
     /// g^(-1)(η)
-    pub fn inv_link<T: RealField + Float>(&self, eta: T) -> T {
+    pub fn inv<T: RealField + Float>(&self, eta: T) -> T {
         match self {
             LinkFunction::Identity => eta,
             LinkFunction::Log => eta.exp(),
@@ -35,13 +35,13 @@ impl LinkFunction {
                 let one = T::one();
                 let exp_eta = eta.exp();
                 exp_eta / (one + exp_eta)
-            },
+            }
             LinkFunction::Inverse => eta.recip(),
         }
     }
 
     /// Computes g'(μ)
-    pub fn link_deriv<T: RealField + Float>(&self, mu: T) -> T {
+    pub fn deriv<T: RealField + Float>(&self, mu: T) -> T {
         match self {
             LinkFunction::Identity => T::one(),
             LinkFunction::Log => mu.recip(),
@@ -49,7 +49,7 @@ impl LinkFunction {
                 // d/dp logit(p) = 1/(p(1-p))
                 let one = T::one();
                 one / (mu * (one - mu))
-            },
+            }
             LinkFunction::Inverse => -mu.recip().powi(2),
         }
     }
@@ -72,7 +72,7 @@ impl VarianceFunction {
             VarianceFunction::Binomial => {
                 let one = T::one();
                 mu * (one - mu)
-            },
+            }
             VarianceFunction::Gamma => mu.powi(2),
         }
     }

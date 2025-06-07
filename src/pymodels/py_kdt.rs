@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 use crate::arkadia::{leaf::OwnedLeaf, OwnedKDT, SpatialQueries};
-use crate::linalg::LinalgErrors;
+use crate::linear::LinalgErrors;
 use crate::utils::DIST;
 use core::f64;
 use numpy::{

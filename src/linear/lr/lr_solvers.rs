@@ -1,5 +1,8 @@
 #![allow(non_snake_case)]
-use super::{LRSolverMethods, LinalgErrors, LinearRegression};
+use crate::linear::{
+    lr::{LRSolverMethods, LinearModel},
+    LinalgErrors,
+};
 use faer::{linalg::solvers::Solve, mat::Mat, prelude::*, Side};
 use faer_traits::RealField;
 use num::Float;
@@ -9,16 +12,16 @@ pub struct LR<T: RealField + Float> {
     pub solver: LRSolverMethods,
     pub lambda: T,
     pub coefficients: Mat<T>, // n_features x 1 matrix, doesn't contain bias
-    pub has_bias: bool,
+    pub add_bias: bool,
 }
 
 impl<T: RealField + Float> LR<T> {
-    pub fn new(solver: &str, lambda: T, has_bias: bool) -> Self {
+    pub fn new(solver: &str, lambda: T, add_bias: bool) -> Self {
         LR {
             solver: solver.into(),
             lambda: lambda,
             coefficients: Mat::new(),
-            has_bias: has_bias,
+            add_bias: add_bias,
         }
     }
 
@@ -27,13 +30,13 @@ impl<T: RealField + Float> LR<T> {
             solver: LRSolverMethods::default(),
             lambda: T::zero(),
             coefficients: faer::mat::Mat::from_fn(coeffs.len(), 1, |i, _| coeffs[i]),
-            has_bias: bias.abs() > T::epsilon(),
+            add_bias: bias.abs() > T::epsilon(),
         }
     }
 
     pub fn set_coeffs_and_bias(&mut self, coeffs: &[T], bias: T) {
-        self.has_bias = bias.abs() > T::epsilon();
-        if self.has_bias {
+        self.add_bias = bias.abs() > T::epsilon();
+        if self.add_bias {
             self.coefficients = Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
                 if i < coeffs.len() {
                     coeffs[i]
@@ -47,17 +50,17 @@ impl<T: RealField + Float> LR<T> {
     }
 }
 
-impl<T: RealField + Float> LinearRegression<T> for LR<T> {
+impl<T: RealField + Float> LinearModel<T> for LR<T> {
     fn fitted_values(&self) -> MatRef<T> {
         self.coefficients.as_ref()
     }
 
-    fn has_bias(&self) -> bool {
-        self.has_bias
+    fn add_bias(&self) -> bool {
+        self.add_bias
     }
 
     fn fit_unchecked(&mut self, X: MatRef<T>, y: MatRef<T>) {
-        self.coefficients = if self.has_bias {
+        self.coefficients = if self.add_bias {
             let ones = Mat::full(X.nrows(), 1, T::one());
             let new = faer::concat![[X, ones]];
             faer_solve_lstsq(new.as_ref(), y, self.lambda, true, self.solver)
@@ -71,26 +74,26 @@ pub struct ElasticNet<T: RealField + Float> {
     pub l1_reg: T,
     pub l2_reg: T,
     pub coefficients: Mat<T>, // n_features x 1 matrix, doesn't contain bias
-    pub has_bias: bool,
+    pub add_bias: bool,
     pub tol: T,
     pub max_iter: usize,
 }
 
 impl<T: RealField + Float> ElasticNet<T> {
-    pub fn new(l1_reg: T, l2_reg: T, has_bias: bool, tol: T, max_iter: usize) -> Self {
+    pub fn new(l1_reg: T, l2_reg: T, add_bias: bool, tol: T, max_iter: usize) -> Self {
         ElasticNet {
             l1_reg: l1_reg,
             l2_reg: l2_reg,
             coefficients: Mat::new(),
-            has_bias: has_bias,
+            add_bias: add_bias,
             tol: tol,
             max_iter: max_iter,
         }
     }
 
     pub fn from_values(coeffs: &[T], bias: T) -> Self {
-        let has_bias = bias.abs() > T::epsilon();
-        let coefficients = if has_bias {
+        let add_bias = bias.abs() > T::epsilon();
+        let coefficients = if add_bias {
             Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
                 if i < coeffs.len() {
                     coeffs[i]
@@ -106,15 +109,15 @@ impl<T: RealField + Float> ElasticNet<T> {
             l1_reg: T::nan(),
             l2_reg: T::nan(),
             coefficients: coefficients,
-            has_bias: has_bias,
+            add_bias: add_bias,
             tol: T::from(1e-5).unwrap(),
             max_iter: 2000,
         }
     }
 
     pub fn set_coeffs_and_bias(&mut self, coeffs: &[T], bias: T) {
-        self.has_bias = bias.abs() > T::epsilon();
-        self.coefficients = if self.has_bias {
+        self.add_bias = bias.abs() > T::epsilon();
+        self.coefficients = if self.add_bias {
             Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
                 if i < coeffs.len() {
                     coeffs[i]
@@ -132,17 +135,17 @@ impl<T: RealField + Float> ElasticNet<T> {
     }
 }
 
-impl<T: RealField + Float> LinearRegression<T> for ElasticNet<T> {
+impl<T: RealField + Float> LinearModel<T> for ElasticNet<T> {
     fn fitted_values(&self) -> MatRef<T> {
         self.coefficients.as_ref()
     }
 
-    fn has_bias(&self) -> bool {
-        self.has_bias
+    fn add_bias(&self) -> bool {
+        self.add_bias
     }
 
     fn fit_unchecked(&mut self, X: MatRef<T>, y: MatRef<T>) {
-        self.coefficients = if self.has_bias {
+        self.coefficients = if self.add_bias {
             let ones = Mat::full(X.nrows(), 1, T::one());
             let new_x = faer::concat![[X, ones]];
             faer_coordinate_descent(
@@ -150,7 +153,7 @@ impl<T: RealField + Float> LinearRegression<T> for ElasticNet<T> {
                 y,
                 self.l1_reg,
                 self.l2_reg,
-                self.has_bias,
+                self.add_bias,
                 self.tol,
                 self.max_iter,
             )
@@ -160,7 +163,7 @@ impl<T: RealField + Float> LinearRegression<T> for ElasticNet<T> {
                 y,
                 self.l1_reg,
                 self.l2_reg,
-                self.has_bias,
+                self.add_bias,
                 self.tol,
                 self.max_iter,
             )
@@ -189,10 +192,10 @@ pub fn faer_solve_lstsq_rcond<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
     lambda: T,
-    has_bias: bool,
+    add_bias: bool,
     rcond: T,
 ) -> (Mat<T>, Vec<T>) {
-    let n1 = x.ncols().abs_diff(has_bias as usize);
+    let n1 = x.ncols().abs_diff(add_bias as usize);
     let xt = x.transpose();
     let mut xtx = xt * x;
     // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
@@ -232,12 +235,12 @@ pub fn faer_solve_lstsq<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
     lambda: T,
-    has_bias: bool,
+    add_bias: bool,
     how: LRSolverMethods,
 ) -> Mat<T> {
     // Add ridge SVD with rconditional number later.
 
-    let n1 = x.ncols().abs_diff(has_bias as usize);
+    let n1 = x.ncols().abs_diff(add_bias as usize);
     let xt = x.transpose();
     let mut xtx = xt * x;
     // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
@@ -310,13 +313,13 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
     y: MatRef<T>,
     l1_reg: T,
     l2_reg: T,
-    has_bias: bool,
+    add_bias: bool,
     tol: T,
     max_iter: usize,
 ) -> Mat<T> {
     let m = T::from(x.nrows()).unwrap();
     let ncols = x.ncols();
-    let n1 = ncols.abs_diff(has_bias as usize);
+    let n1 = ncols.abs_diff(add_bias as usize);
 
     let lambda_l1 = m * l1_reg;
 
@@ -351,8 +354,8 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
             *unsafe { beta.get_mut_unchecked(j, 0) } = after;
             max_change = (after - before).abs().max(max_change);
         }
-        // if has_bias, n1 = last index = ncols - 1 = column of bias. If has_bias is False, n = ncols
-        if has_bias {
+        // if add_bias, n1 = last index = ncols - 1 = column of bias. If add_bias is False, n = ncols
+        if add_bias {
             // Safe. The index is valid and the value is initialized.
             let xx = unsafe { x.get_unchecked(.., 0..n1) };
             let bb = unsafe { beta.get_unchecked(0..n1, ..) };
