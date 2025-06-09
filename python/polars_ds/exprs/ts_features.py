@@ -8,7 +8,7 @@ from typing import Iterable, Literal
 
 # Internal dependencies
 from polars_ds.typing import Distance, NullPolicy
-from polars_ds._utils import pl_plugin, str_to_expr
+from polars_ds._utils import pl_plugin, to_expr
 
 __all__ = [
     "query_mid_range",
@@ -52,7 +52,7 @@ def query_mid_range(x: str | pl.Expr) -> pl.Expr:
     """
     A shorthand for (pl.col(x).max() - pl.col(x).min()) / 2.
     """
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     return (xx.max() - xx.min()) / 2
 
 
@@ -61,7 +61,7 @@ def query_symm_ratio(x: str | pl.Expr) -> pl.Expr:
     Returns the symmetric ratio: |mean - median| / (max - min). Note the closer to 0 this value is,
     the more symmetric the series is.
     """
-    y = str_to_expr(x)
+    y = to_expr(x)
     return (y.mean() - y.median()).abs() / (y.max() - y.min())
 
 
@@ -69,7 +69,7 @@ def query_abs_energy(x: str | pl.Expr) -> pl.Expr:
     """
     Absolute energy is defined as Sum(x_i^2).
     """
-    y = str_to_expr(x)
+    y = to_expr(x)
     return y.dot(y)
 
 
@@ -77,7 +77,7 @@ def query_mean_abs_change(x: str | pl.Expr) -> pl.Expr:
     """
     Returns the mean of all successive differences |X_i - X_i-1|
     """
-    return str_to_expr(x).diff(null_behavior="drop").abs().mean()
+    return to_expr(x).diff(null_behavior="drop").abs().mean()
 
 
 def query_mean_n_abs_max(x: str | pl.Expr, n_maxima: int) -> pl.Expr:
@@ -86,7 +86,7 @@ def query_mean_n_abs_max(x: str | pl.Expr, n_maxima: int) -> pl.Expr:
     """
     if n_maxima <= 0:
         raise ValueError("The number of maxima should be > 0.")
-    return str_to_expr(x).abs().top_k(n_maxima).mean()
+    return to_expr(x).abs().top_k(n_maxima).mean()
 
 
 def query_cv(x: str | pl.Expr, ddof: int = 1) -> pl.Expr:
@@ -100,7 +100,7 @@ def query_cv(x: str | pl.Expr, ddof: int = 1) -> pl.Expr:
     ddof
         The delta degree of frendom used in std computation
     """
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     return xx.std(ddof=ddof) / xx.mean()
 
 
@@ -108,14 +108,14 @@ def query_count_uniques(x: str | pl.Expr) -> pl.Expr:
     """
     Returns the count of unique values.
     """
-    return str_to_expr(x).is_unique().sum()
+    return to_expr(x).is_unique().sum()
 
 
 def query_range_count(x: str | pl.Expr, lower: float, upper: float) -> pl.Expr:
     """
     Returns the number of values inside [`lower`, `upper`].
     """
-    return str_to_expr(x).is_between(lower_bound=lower, upper_bound=upper).sum()
+    return to_expr(x).is_between(lower_bound=lower, upper_bound=upper).sum()
 
 
 def query_longest_streak(where: str | pl.Expr) -> pl.Expr:
@@ -223,7 +223,7 @@ def query_first_digit_cnt(var: str | pl.Expr) -> pl.Expr:
     """
     return pl_plugin(
         symbol="pl_benford_law",
-        args=[str_to_expr(var)],
+        args=[to_expr(var)],
         returns_scalar=True,
     )
 
@@ -275,7 +275,7 @@ def query_similar_count(
     if len(q) <= 1:
         raise ValueError("Length of the query should be > 1.")
 
-    t = str_to_expr(target)
+    t = to_expr(target)
     kwargs = {"threshold": threshold, "parallel": parallel}
     if metric == "sql2":
         result = pl_plugin(
@@ -322,7 +322,7 @@ def query_lempel_ziv(b: str | pl.Expr, as_ratio: bool = True) -> pl.Expr:
     as_ratio : bool
         If true, return complexity / length.
     """
-    x = str_to_expr(b)
+    x = to_expr(b)
     out = pl_plugin(
         symbol="pl_lempel_ziv_complexity",
         args=[x],
@@ -349,7 +349,7 @@ def query_c3_stats(x: str | pl.Expr, lag: int) -> pl.Expr:
     https://arxiv.org/pdf/chao-dyn/9909043
     """
     two_lags = 2 * lag
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     return ((xx.mul(xx.shift(lag)).mul(xx.shift(two_lags))).sum()).truediv(xx.len() - two_lags)
 
 
@@ -369,7 +369,7 @@ def query_cid_ce(x: str | pl.Expr, normalize: bool = False) -> pl.Expr:
     ---------
     https://www.cs.ucr.edu/~eamonn/Complexity-Invariant%20Distance%20Measure.pdf
     """
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     if normalize:
         y = (xx - xx.mean()) / xx.std()
     else:
@@ -384,7 +384,7 @@ def query_time_reversal_asymmetry_stats(x: str | pl.Expr, n_lags: int) -> pl.Exp
     Queries the Time Reversal Asymmetry Statistic, which is the average of
     (L^2(x) * L(x) - L(x) * x^2), where L is the lag operator.
     """
-    y = str_to_expr(x)
+    y = to_expr(x)
     one_lag = y.shift(-n_lags)
     two_lag = y.shift(-2 * n_lags)  # Nulls won't be in the mean calculation
     return (one_lag * (two_lag + y) * (two_lag - y)).mean()
@@ -405,7 +405,7 @@ def query_auto_corr(x: str | pl.Expr, lag: int, ddof: int = 0, normalize: bool =
     normalize
         Whether to normalize the value to [-1, 1] or not.
     """
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     if normalize:
         x_m = xx - xx.mean()
         var = xx.var(ddof=ddof)
@@ -452,7 +452,7 @@ def query_ar_coeffs(
 
     from . import lin_reg
 
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     return lin_reg(
         *[xx.shift(i).slice(offset=lag).alias(str(i)) for i in range(1, lag + 1)],
         target=xx.slice(offset=lag),
@@ -464,7 +464,7 @@ def query_ar_coeffs(
 # # Wrong
 # def query_psd(x: str | pl.Expr, window_size:int, overlap_size:int) -> pl.Expr:
 #
-#     xx = str_to_expr(x)
+#     xx = to_expr(x)
 #     kwargs = {
 #         "window_size": window_size,
 #         "overlap_size": overlap_size,
@@ -494,7 +494,7 @@ def query_entropy(x: str | pl.Expr, base: float = math.e, normalize: bool = True
     normalize
         Normalize if the probabilities don't sum to 1.
     """
-    return str_to_expr(x).unique_counts().entropy(base=base, normalize=normalize)
+    return to_expr(x).unique_counts().entropy(base=base, normalize=normalize)
 
 
 def query_cond_entropy(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
@@ -510,7 +510,7 @@ def query_cond_entropy(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
     """
     return pl_plugin(
         symbol="pl_conditional_entropy",
-        args=[str_to_expr(x), str_to_expr(y)],
+        args=[to_expr(x), to_expr(y)],
         returns_scalar=True,
         pass_name_to_apply=True,
     )
@@ -546,7 +546,7 @@ def query_sample_entropy(
     if m <= 1:
         raise ValueError("Input `m` must be > 1.")
 
-    t = str_to_expr(ts)
+    t = to_expr(ts)
     r = ratio * t.std(ddof=0)
     rows = t.len() - m + 1
 
@@ -606,7 +606,7 @@ def query_approx_entropy(
     if filtering_level <= 0 or m <= 1:
         raise ValueError("Filter level must be positive and m must be > 1.")
 
-    t = str_to_expr(ts)
+    t = to_expr(ts)
     if scale_by_std:
         r: pl.Expr = filtering_level * t.std()
     else:
@@ -666,7 +666,7 @@ def query_knn_entropy(
 
     return pl_plugin(
         symbol="pl_knn_entropy",
-        args=[str_to_expr(e).alias(str(i)) for i, e in enumerate(features)],
+        args=[to_expr(e).alias(str(i)) for i, e in enumerate(features)],
         kwargs={
             "k": k,
             "metric": dist,
@@ -687,7 +687,7 @@ def query_copula_entropy(*features: str | pl.Expr, k: int = 3, parallel: bool = 
     ---------
     Jian Ma and Zengqi Sun. Mutual information is copula entropy. Tsinghua Science & Technology, 2011, 16(1): 51-54.
     """
-    ranks = [x.rank() / x.len() for x in (str_to_expr(f) for f in features)]
+    ranks = [x.rank() / x.len() for x in (to_expr(f) for f in features)]
     return -query_knn_entropy(*ranks, k=k, dist="l2", parallel=parallel)
 
 
@@ -724,10 +724,10 @@ def query_transfer_entropy(
     if lag < 1:
         raise ValueError("Input `lag` must be >= 1.")
 
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     x1 = xx.slice(0, pl.len() - lag)
     x2 = xx.slice(lag, pl.len() - lag)  # (equivalent to slice(lag, None), but will break in v1.0)
-    s = str_to_expr(source).slice(0, pl.len() - lag)
+    s = to_expr(source).slice(0, pl.len() - lag)
     return query_cond_indep(x2, s, x1, k=k, parallel=parallel)
 
 
@@ -761,7 +761,7 @@ def query_permute_entropy(
     if tau < 1:
         raise ValueError("Input `tau` has to be >= 1.")
 
-    t = str_to_expr(ts)
+    t = to_expr(ts)
     if tau == 1:  # Fast track the most common use case
         return (
             pl.concat_list(t, *(t.shift(-i) for i in range(1, n_dims)))
