@@ -1,6 +1,6 @@
 import polars as pl
 import polars_ds as pds
-import polars_ds.modeling.transforms as t
+import polars_ds.pipeline.transforms as t
 import pytest
 from polars.testing import assert_frame_equal
 

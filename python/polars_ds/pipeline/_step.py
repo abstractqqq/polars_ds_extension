@@ -18,7 +18,8 @@ class PLContext(Enum):
     FILTER = "filter"
     # SortStep
     SORT = "sort"
-    # 
+    # GROUP_BY_AGG
+    GROUP_BY_AGG = "group_by_agg"
 
     def get_context_dict(self) -> Dict:
         return {"step_classif": StepClassif.from_context(self).value, "context": self.value}
@@ -26,6 +27,7 @@ class PLContext(Enum):
 class StepClassif(Enum):
     EXPR = "expr"
     SORT = "sort"
+    GROUP_BY_AGG = "group_by_agg"
 
     def __str__(self) -> str:
         return self.value
@@ -36,6 +38,8 @@ class StepClassif(Enum):
             return ExprStep.from_json(data)
         elif self == StepClassif.SORT:
             return SortStep.from_json(data)
+        elif self == StepClassif.GROUP_BY_AGG:
+            return GroupByAggStep.from_json(data)
 
     @staticmethod
     def from_context(ctx: PLContext) -> "StepClassif":
@@ -43,6 +47,8 @@ class StepClassif(Enum):
             return StepClassif.EXPR
         elif ctx == PLContext.SORT:
             return StepClassif.SORT
+        elif ctx == PLContext.GROUP_BY_AGG:
+            return StepClassif.GROUP_BY_AGG
         
 
 class PipelineStep(Protocol):
@@ -115,29 +121,48 @@ class SortStep(PipelineStep):
         }
         return json.dumps(d)
 
-
 @dataclass
-class FitStep:  
-    # This doesn't satisfy the 'PipelineStep' protocol
-    # This is turned into an ExprStep at the time of fit(materialization) in a blueprint.
+class GroupByAggStep(PipelineStep):
+    classif: ClassVar[StepClassif] = StepClassif.GROUP_BY_AGG
+    # ------------------------------------------------
+    by_cols: List[pl.Expr]
+    agg: List[pl.Expr]
+    context: PLContext = PLContext.GROUP_BY_AGG
 
-    func: FitTransformFunc
-    cols: IntoExprColumn | None
-    exclude: List[str]
+    @staticmethod
+    def from_json(data: str | bytes) -> "GroupByAggStep":
+        try:
+            data_dict = json.loads(data)
+            by_cols = [pl.Expr.deserialize(StringIO(e), format="json") for e in data_dict["by_cols"]]
+            agg = [pl.Expr.deserialize(StringIO(e), format="json") for e in data_dict["agg"]]
+            return GroupByAggStep(by_cols = by_cols, agg = agg)
+        except Exception as e:
+            raise ValueError(f"Input is not a valid `GroupByAggStep`. Must have `by_cols` and `agg` keys with valid values.\nOriginal error: {e}")
 
-    # Here we allow IntoExprColumn as input so that users can use selectors, or other polars expressions
-    # to specify input columns, which adds flexibility.
-    # We still need real column names so that the functions in transforms.py will work.
-    def fit(self, df: pl.DataFrame | pl.LazyFrame) -> ExprTransform:
-        if self.cols is None:
-            return self.func(df)
+    def __init__(self, 
+        by_cols: str | pl.Expr | Sequence[str] | Sequence[pl.Expr]
+        , agg: List[pl.Expr]
+    ):
+        
+        if isinstance(by_cols, (str, pl.Expr)):
+            self.by_cols = [to_expr(by_cols)]
+        elif isinstance(by_cols, list):
+            self.by_cols = [to_expr(e) for e in by_cols]
         else:
-            real_cols: List[str] = [
-                x
-                for x in df.lazy().select(self.cols).collect_schema().names()
-                if x not in self.exclude
-            ]
-            return self.func(df, real_cols)
+            raise ValueError("Input `by_cols` can only be scalar str/pl.Expr or a list of them.")
+        
+        self.agg = agg
+
+    def apply_df(self, df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
+        return df.group_by(self.by_cols).agg(self.agg)
+    
+    def to_json(self) -> str:
+        d = self.context.get_context_dict() | {
+            "by_cols": [e.meta.serialize(format="json") for e in self.by_cols],
+            "agg": [e.meta.serialize(format="json") for e in self.agg]
+        }
+        return json.dumps(d)
+
 
 @dataclass
 class ExprStep(PipelineStep):
@@ -212,3 +237,34 @@ class ExprStep(PipelineStep):
             return pl.SQLContext(df=df, eager=False).execute(self.exprs[0])
         elif self.context == PLContext.FILTER:
             return df.filter(self.exprs[0])
+        
+
+
+@dataclass
+class FitStep:  
+    # This doesn't satisfy the 'PipelineStep' protocol
+    # This is turned into an ExprStep at the time of fit(materialization) in a blueprint.
+
+    func: FitTransformFunc
+    cols: IntoExprColumn | None
+    exclude: List[str]
+
+    # Here we allow IntoExprColumn as input so that users can use selectors, or other polars expressions
+    # to specify input columns, which adds flexibility.
+    # We still need real column names so that the functions in transforms.py will work.
+    def fit(self, df: pl.DataFrame | pl.LazyFrame) -> ExprTransform:
+        if self.cols is None:
+            return self.func(df)
+        else:
+            real_cols: List[str] = [
+                x
+                for x in df.lazy().select(self.cols).collect_schema().names()
+                if x not in self.exclude
+            ]
+            return self.func(df, real_cols)
+
+
+# ---------------------------------------------------------------------------------------
+# Steps that don't need fitting, can be directly serialized. 
+# FitStep becomes ExprStep after fitting
+_SERIALIZABLE_STEPS = (ExprStep, SortStep, GroupByAggStep)

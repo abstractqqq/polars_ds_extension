@@ -19,7 +19,7 @@ else:  # 3.10, 3.9, 3.8
 
 # Internal Depenedncies
 from . import transforms as t
-from ._step import PLContext, ExprStep, SortStep, FitStep, PipelineStep, MakeStep
+from ._step import PLContext, ExprStep, SortStep, GroupByAggStep, FitStep, PipelineStep, MakeStep, _SERIALIZABLE_STEPS
 from polars_ds.typing import (
     PolarsFrame,
     ExprTransform,
@@ -190,29 +190,6 @@ class Pipeline:
         self.ensure_features_in = ensure_in
         self.ensure_features_out = ensure_out
         return self
-
-    def append_pipeline(self, other: Pipeline) -> Self:
-        """
-        Appends the `other` pipeline to this. 
-
-        This copies all data from the `other` pipeline, and will ignore the `lowercase`, `uppercase`, 
-        `ensure_features_in`, `ensure_features_out` settings in the `other` pipeline.
-
-        Note: Since there is no way to gaurantee the output features, this will set ensure_features_out
-        to False on the left pipeline. It is possible the `feature_names_out_` attribute will be wrong when
-        you modify the pipeline by appending. You may use `with_features_out` method to readjust the settings
-        after knowing the updated output feature list. 
-
-        Note: There is no way for this function to know whether the pipelines can be appended together
-        or not. The user needs to make sure the expressions can properly run in order.
-
-        Parameters
-        ----------
-        other
-            The other pipeline to append to this.
-        """
-        self.transforms.extend(deepcopy(step) for step in other.transforms)
-        self.ensure_features_out = False
 
     def transform(
         self
@@ -861,8 +838,34 @@ class Blueprint:
             self._steps.append(ExprStep(list(exprs), PLContext.WITH_COLUMNS))
         return self
     
-    def sort(self, cols: IntoExprColumn, descending: bool | List[bool]) -> Self:
-        self._steps.append(SortStep(by_cols=cols, descending=descending))
+    def sort(self, by: IntoExprColumn, descending: bool | List[bool]) -> Self:
+        """Sorts the dataframe by the columns.
+        
+        Parameters
+        ----------
+        by
+            The columns to sort by
+        descending
+            Whether the sort should be descending for the corresponding sort column
+        """
+        self._steps.append(SortStep(by_cols=by, descending=descending))
+        return self
+    
+    def group_by_agg(self, by: IntoExprColumn, agg: List[pl.Expr]) -> Self:
+        """
+        Performs a group by and agg on the data.
+
+        Parameters
+        ----------
+        by
+            The columns to group by
+        agg
+            The aggregation functions to run
+        """
+        if any(not isinstance(e, pl.Expr) for e in agg):
+            raise ValueError("All elements in `agg` must be pl.Expr.")
+
+        self._steps.append(GroupByAggStep(by_cols=by, agg = agg))
         return self
 
     # How to type this?
@@ -928,12 +931,12 @@ class Blueprint:
         # the collect should be and optimized.
         df_lazy: pl.LazyFrame = df.lazy()
         for step in self._steps:
-            if isinstance(step, FitStep):  # Need fitting
+            if isinstance(step, FitStep):  # Need fitting, which is done here
                 df_temp = df_lazy.collect()
                 exprs = step.fit(df_temp)
                 transforms.append(ExprStep(exprs, PLContext.WITH_COLUMNS))
                 df_lazy = df_temp.lazy().with_columns(exprs)
-            elif isinstance(step, (ExprStep, SortStep)):
+            elif isinstance(step, _SERIALIZABLE_STEPS):
                 transforms.append(step)
                 df_lazy = step.apply_df(df_lazy)
             else:
