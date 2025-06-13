@@ -1,4 +1,4 @@
-"""Tabular Machine Learning Pipelines with native Polars support."""
+"""Machine Learning / Time series Pipelines with native Polars support."""
 
 from __future__ import annotations
 
@@ -6,10 +6,9 @@ import polars as pl
 import json
 import sys
 import polars.selectors as cs
-from copy import deepcopy
 from polars._typing import IntoExprColumn
 from functools import partial
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Literal
 from dataclasses import dataclass
 
 if sys.version_info >= (3, 11):
@@ -19,7 +18,12 @@ else:  # 3.10, 3.9, 3.8
 
 # Internal Depenedncies
 from . import transforms as t
-from ._step import PLContext, ExprStep, SortStep, GroupByAggStep, FitStep, PipelineStep, MakeStep, _SERIALIZABLE_STEPS
+from ._step import (
+    PLContext, 
+    ExprStep, SortStep, SQLStep, GroupByAggStep, GroupByDynAggStep, FitStep, PipelineStep, 
+    MakeStep, 
+    _SERIALIZABLE_STEPS
+)
 from polars_ds.typing import (
     PolarsFrame,
     ExprTransform,
@@ -149,10 +153,10 @@ class Pipeline:
         """
         Recreates a pipeline from a dictionary created by the `to_json` call.
         """
-        pipeline_dict = json.loads(json_str)
+        pipeline_dict:Dict = json.loads(json_str)
         try:
             name: str = pipeline_dict["name"]
-            transforms: List[Dict] = pipeline_dict["transforms"]
+            transforms: List[str] = pipeline_dict["transforms"]
             feature_names_in_: List[str] = pipeline_dict["feature_names_in_"]
             feature_names_out_: List[str] = pipeline_dict["feature_names_out_"]
             ensure_features_in: bool = pipeline_dict["ensure_features_in"]
@@ -166,7 +170,7 @@ class Pipeline:
             name=name,
             feature_names_in_=feature_names_in_,
             feature_names_out_=feature_names_out_,
-            transforms=[MakeStep.make(step) for step in transforms],
+            transforms=[MakeStep.make(json.loads(step_str)) for step_str in transforms],
             ensure_features_in=ensure_features_in,
             ensure_features_out=ensure_features_out,
             lowercase=lowercase,
@@ -346,7 +350,7 @@ class Blueprint:
             The SQL to run on the dataframe. Note: this step doesn't immedinately check the validity of
             the SQL statement.
         """
-        self._steps.append(ExprStep(sql, PLContext.SQL))
+        self._steps.append(SQLStep(sql_str=sql))
         return self
 
     def cast_bools(self, dtype: pl.DataType = pl.UInt8) -> Self:
@@ -401,7 +405,7 @@ class Blueprint:
         """
         Maps NaN values in all columns to null.
         """
-        self._steps.append(ExprStep(cs.float().nan_to_null(), PLContext.WITH_COLUMNS))
+        self._steps.append(ExprStep(cs.float().fill_nan(None), PLContext.WITH_COLUMNS))
         return self
 
     def int_to_float(self, f32: bool = True) -> Self:
@@ -820,23 +824,6 @@ class Blueprint:
         self._steps.append(ExprStep(list(exprs), PLContext.WITH_COLUMNS))
         return self
 
-    def append_expr(self, *exprs: ExprTransform, is_select: bool = False) -> Self:
-        """
-        Appends the expressions to the pipeline.
-
-        Paramters
-        ---------
-        exprs
-            Either a single expression or a list of expressions.
-        is_select
-            If true, the expression will be executed in a .select(..) context. If false, they
-            will be executed in a .with_columns(..) context.
-        """
-        if is_select:
-            self._steps.append(ExprStep(list(exprs), PLContext.SELECT))
-        else:
-            self._steps.append(ExprStep(list(exprs), PLContext.WITH_COLUMNS))
-        return self
     
     def sort(self, by: IntoExprColumn, descending: bool | List[bool]) -> Self:
         """Sorts the dataframe by the columns.
@@ -848,7 +835,7 @@ class Blueprint:
         descending
             Whether the sort should be descending for the corresponding sort column
         """
-        self._steps.append(SortStep(by_cols=by, descending=descending))
+        self._steps.append(SortStep(by=by, descending=descending))
         return self
     
     def group_by_agg(self, by: IntoExprColumn, agg: List[pl.Expr]) -> Self:
@@ -865,7 +852,44 @@ class Blueprint:
         if any(not isinstance(e, pl.Expr) for e in agg):
             raise ValueError("All elements in `agg` must be pl.Expr.")
 
-        self._steps.append(GroupByAggStep(by_cols=by, agg = agg))
+        self._steps.append(GroupByAggStep(by=by, agg = agg))
+        return self
+    
+    def group_by_dynamic_agg(
+        self
+        , index_column: str
+        , agg: List[pl.Expr]
+        , every: str
+        , by: IntoExprColumn | None = None
+        , period: str | None = None
+        , offset: str | None = None 
+        , include_boundaries: bool = False
+        , closed: Literal['left', 'right', 'both', 'none'] = 'left'
+        , label: Literal['left', 'right', 'datapoint'] = 'left'
+        , start_by: Literal['window', 'datapoint', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] = 'window'
+    ) -> Self:
+        """
+        See polars group_by_dynamic documentation for an explanation on the input arguments.
+
+        https://docs.pola.rs/api/python/stable/reference/dataframe/api/polars.DataFrame.group_by_dynamic.html#polars.DataFrame.group_by_dynamic
+        """
+        if any(not isinstance(e, pl.Expr) for e in agg):
+            raise ValueError("All elements in `agg` must be pl.Expr.")
+        
+        self._steps.append(
+            GroupByDynAggStep(
+                index_column = index_column
+                , agg = agg
+                , every = every
+                , by = by
+                , period = period
+                , offset = offset
+                , include_boundaries = include_boundaries
+                , closed = closed
+                , label = label
+                , start_by = start_by
+            )
+        )
         return self
 
     # How to type this?
@@ -936,7 +960,7 @@ class Blueprint:
                 exprs = step.fit(df_temp)
                 transforms.append(ExprStep(exprs, PLContext.WITH_COLUMNS))
                 df_lazy = df_temp.lazy().with_columns(exprs)
-            elif isinstance(step, _SERIALIZABLE_STEPS):
+            elif isinstance(step, tuple(_SERIALIZABLE_STEPS)):
                 transforms.append(step)
                 df_lazy = step.apply_df(df_lazy)
             else:
