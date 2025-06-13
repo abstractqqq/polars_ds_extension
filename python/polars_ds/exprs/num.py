@@ -11,7 +11,7 @@ from polars_ds.typing import (
     ConvMode,
     ConvMethod,
 )
-from polars_ds._utils import pl_plugin, str_to_expr
+from polars_ds._utils import pl_plugin, to_expr
 
 if TYPE_CHECKING:
     from numpy import ndarray
@@ -75,9 +75,9 @@ def l_inf_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
     """
     if normalize:
         exprs = list(v)
-        return pl.max_horizontal(str_to_expr(x).abs() for x in exprs) / len(exprs)
+        return pl.max_horizontal(to_expr(x).abs() for x in exprs) / len(exprs)
     else:
-        return pl.max_horizontal(str_to_expr(x).abs() for x in v)
+        return pl.max_horizontal(to_expr(x).abs() for x in v)
 
 
 def l2_sq_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
@@ -93,9 +93,9 @@ def l2_sq_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
     """
     if normalize:
         exprs = list(v)
-        return pl.sum_horizontal(str_to_expr(x).pow(2) for x in exprs) / len(exprs)
+        return pl.sum_horizontal(to_expr(x).pow(2) for x in exprs) / len(exprs)
     else:
-        return pl.sum_horizontal(str_to_expr(x).pow(2) for x in v)
+        return pl.sum_horizontal(to_expr(x).pow(2) for x in v)
 
 
 def l1_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
@@ -111,9 +111,9 @@ def l1_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
     """
     if normalize:
         exprs = list(v)
-        return pl.sum_horizontal(str_to_expr(x).abs() for x in exprs) / len(exprs)
+        return pl.sum_horizontal(to_expr(x).abs() for x in exprs) / len(exprs)
     else:
-        return pl.sum_horizontal(str_to_expr(x).abs() for x in v)
+        return pl.sum_horizontal(to_expr(x).abs() for x in v)
 
 
 def is_increasing(x: str | pl.Expr, strict: bool = False) -> pl.Expr:
@@ -128,9 +128,9 @@ def is_increasing(x: str | pl.Expr, strict: bool = False) -> pl.Expr:
         Whether the check should be strict
     """
     if strict:
-        return (str_to_expr(x).diff() > 0.0).all()
+        return (to_expr(x).diff() > 0.0).all()
     else:
-        return (str_to_expr(x).diff() >= 0.0).all()
+        return (to_expr(x).diff() >= 0.0).all()
 
 
 def is_decreasing(x: str | pl.Expr, strict: bool = False) -> pl.Expr:
@@ -144,7 +144,7 @@ def is_decreasing(x: str | pl.Expr, strict: bool = False) -> pl.Expr:
     strict
         Whether the check should be strict
     """
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     if strict:
         return (xx.diff() < 0.0).all()
     else:
@@ -158,7 +158,7 @@ def center(x: str | pl.Expr) -> pl.Expr:
     This is only a short cut for a standard feature transform, and is not recommended
     to be used in settings where the means need to be persisted.
     """
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     return xx - xx.mean()
 
 
@@ -169,7 +169,7 @@ def z_normalize(x: str | pl.Expr) -> pl.Expr:
     This is only a short cut for a standard feature transform, and is not recommended
     to be used in settings where the means/stds need to be persisted.
     """
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     mean = xx.mean()
     std = xx.std()
     return (xx - mean) / std
@@ -185,7 +185,7 @@ def softmax(x: str | pl.Expr) -> pl.Expr:
     x
         Either a str represeting a column name or a Polars expression
     """
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     return xx.exp() / (xx.exp().sum())
 
 
@@ -203,11 +203,11 @@ def gcd(x: str | pl.Expr, y: int | str | pl.Expr) -> pl.Expr:
     if isinstance(y, int):
         yy = pl.lit(y, dtype=pl.Int32)
     else:
-        yy = str_to_expr(y).cast(pl.Int32)
+        yy = to_expr(y).cast(pl.Int32)
 
     return pl_plugin(
         symbol="pl_gcd",
-        args=[str_to_expr(x).cast(pl.Int32), yy],
+        args=[to_expr(x).cast(pl.Int32), yy],
         is_elementwise=True,
     )
 
@@ -226,11 +226,11 @@ def lcm(x: str | pl.Expr, y: int | str | pl.Expr) -> pl.Expr:
     if isinstance(y, int):
         yy = pl.lit(y, dtype=pl.Int32)
     else:
-        yy = str_to_expr(y).cast(pl.Int32)
+        yy = to_expr(y).cast(pl.Int32)
 
     return pl_plugin(
         symbol="pl_lcm",
-        args=[str_to_expr(x).cast(pl.Int32), yy],
+        args=[to_expr(x).cast(pl.Int32), yy],
         is_elementwise=True,
     )
 
@@ -255,10 +255,10 @@ def haversine(
     y_long
         Column representing longitude in y
     """
-    xlat = str_to_expr(x_lat)
-    xlong = str_to_expr(x_long)
-    ylat = pl.lit(y_lat) if isinstance(y_lat, float) else str_to_expr(y_lat)
-    ylong = pl.lit(y_long) if isinstance(y_long, float) else str_to_expr(y_long)
+    xlat = to_expr(x_lat)
+    xlong = to_expr(x_long)
+    ylat = pl.lit(y_lat) if isinstance(y_lat, float) else to_expr(y_lat)
+    ylong = pl.lit(y_long) if isinstance(y_long, float) else to_expr(y_long)
     return pl_plugin(
         symbol="pl_haversine",
         args=[xlat, xlong, ylat, ylong],
@@ -291,7 +291,7 @@ def singular_values(
     as_ratio
         If true, normalize output to between 0 and 1.
     """
-    feats = [str_to_expr(f) for f in features]
+    feats = [to_expr(f) for f in features]
     if center:
         actual_inputs = [f - f.mean() for f in feats]
     else:
@@ -321,7 +321,7 @@ def pca(
         Whether to center the data or not. If you want to standard normalize, set this to False,
         and do it for input features by hand.
     """
-    feats = [str_to_expr(f) for f in features]
+    feats = [to_expr(f) for f in features]
     if center:
         actual_inputs = [f - f.mean() for f in feats]
     else:
@@ -349,7 +349,7 @@ def principal_components(
         Whether to center the data or not. If you want to standard normalize, set this to False,
         and do it for input features by hand.
     """
-    feats = [str_to_expr(f) for f in features]
+    feats = [to_expr(f) for f in features]
     if k > len(feats) or k <= 0:
         raise ValueError("Input `k` should be between 1 and the number of features inclusive.")
 
@@ -377,7 +377,7 @@ def jaccard_row(first: str | pl.Expr, second: str | pl.Expr) -> pl.Expr:
     """
     return pl_plugin(
         symbol="pl_list_jaccard",
-        args=[str_to_expr(first), str_to_expr(second)],
+        args=[to_expr(first), to_expr(second)],
         is_elementwise=True,
     )
 
@@ -398,7 +398,7 @@ def jaccard_col(first: str | pl.Expr, second: str | pl.Expr, count_null: bool = 
     """
     return pl_plugin(
         symbol="pl_jaccard",
-        args=[str_to_expr(first), str_to_expr(second), pl.lit(count_null, dtype=pl.Boolean)],
+        args=[to_expr(first), to_expr(second), pl.lit(count_null, dtype=pl.Boolean)],
         returns_scalar=True,
     )
 
@@ -445,14 +445,14 @@ def psi(
         raise ValueError("Input `n_bins` must be >= 2.")
 
     if isinstance(new, (str, pl.Expr)):
-        new_ = str_to_expr(new)
+        new_ = to_expr(new)
         valid_new = new_.filter(new_.is_finite()).cast(pl.Float64)
     else:
         temp = pl.Series(values=new, dtype=pl.Float64)
         valid_new = pl.lit(temp.filter(temp.is_finite()))
 
     if isinstance(baseline, (str, pl.Expr)):
-        base = str_to_expr(baseline)
+        base = to_expr(baseline)
         valid_ref = base.filter(base.is_finite()).cast(pl.Float64)
     else:
         temp = pl.lit(pl.Series(values=baseline, dtype=pl.Float64))
@@ -514,7 +514,7 @@ def psi_discrete(
     https://www.listendata.com/2015/05/population-stability-index.html
     """
     if isinstance(new, (str, pl.Expr)):
-        new_ = str_to_expr(new)
+        new_ = to_expr(new)
         temp = new_.value_counts().struct.rename_fields(["", "count"])
         new_cnt = temp.struct.field("count")
         new_cat = temp.struct.field("")
@@ -525,7 +525,7 @@ def psi_discrete(
         new_cat = pl.lit(temp[temp.columns[0]])
 
     if isinstance(baseline, (str, pl.Expr)):
-        base = str_to_expr(baseline)
+        base = to_expr(baseline)
         temp = base.value_counts().struct.rename_fields(["", "count"])
         ref_cnt = temp.struct.field("count")
         ref_cat = temp.struct.field("")
@@ -569,14 +569,14 @@ def psi_w_breakpoints(
         as breakpoints.
     """
     if isinstance(baseline, (str, pl.Expr)):
-        x: pl.Expr = str_to_expr(baseline)
+        x: pl.Expr = to_expr(baseline)
         x = x.filter(x.is_finite())
     else:
         temp = pl.Series(values=baseline)
         x: pl.Expr = pl.lit(temp.filter(temp.is_finite()))
 
     if isinstance(new, (str, pl.Expr)):
-        y: pl.Expr = str_to_expr(new)
+        y: pl.Expr = to_expr(new)
         y = y.filter(y.is_finite())
     else:
         temp = pl.Series(values=new)
@@ -615,10 +615,10 @@ def woe(x: str | pl.Expr, target: str | pl.expr | Iterable[float], n_bins: int =
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
     if isinstance(target, (str, pl.Expr)):
-        t = str_to_expr(target)
+        t = to_expr(target)
     else:
         t = pl.Series(values=target)
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     valid = xx.filter(xx.is_finite())
     brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
     return pl_plugin(symbol="pl_woe_discrete", args=[brk, t], changes_length=True)
@@ -645,12 +645,12 @@ def woe_discrete(
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
     if isinstance(target, (str, pl.Expr)):
-        t = str_to_expr(target)
+        t = to_expr(target)
     else:
         t = pl.Series(values=target)
     return pl_plugin(
         symbol="pl_woe_discrete",
-        args=[str_to_expr(x).cast(pl.String), t],
+        args=[to_expr(x).cast(pl.String), t],
         changes_length=True,
     )
 
@@ -685,10 +685,10 @@ def info_value(
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
     if isinstance(target, (str, pl.Expr)):
-        t = str_to_expr(target)
+        t = to_expr(target)
     else:
         t = pl.Series(values=target)
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     valid = xx.filter(xx.is_finite())
     brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
     out = pl_plugin(symbol="pl_iv", args=[brk, t], changes_length=True)
@@ -718,10 +718,10 @@ def info_value_discrete(
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
     if isinstance(target, (str, pl.Expr)):
-        t = str_to_expr(target)
+        t = to_expr(target)
     else:
         t = pl.Series(values=target)
-    out = pl_plugin(symbol="pl_iv", args=[str_to_expr(x).cast(pl.String), t], changes_length=True)
+    out = pl_plugin(symbol="pl_iv", args=[to_expr(x).cast(pl.String), t], changes_length=True)
     return out.struct.field("iv").sum() if return_sum else out
 
 
@@ -739,11 +739,11 @@ def integrate_trapz(y: str | pl.Expr, x: float | pl.Expr) -> pl.Expr:
         distance between points. If it is an expression, it must be sorted, does not contain
         null, and have the same length as self.
     """
-    yy = str_to_expr(y).cast(pl.Float64).rechunk()
+    yy = to_expr(y).cast(pl.Float64).rechunk()
     if isinstance(x, float):
         xx = pl.lit(abs(x), pl.Float64)
     else:
-        xx = str_to_expr(x).cast(pl.Float64)
+        xx = to_expr(x).cast(pl.Float64)
 
     return pl_plugin(
         symbol="pl_trapz",
@@ -791,7 +791,7 @@ def convolve(
     https://brianmcfee.net/dstbook-site/content/ch03-convolution/Modes.html
     https://en.wikipedia.org/wiki/Convolution
     """
-    xx = str_to_expr(x).fill_null(fill_value).cast(pl.Float64).rechunk()  # One cont slice
+    xx = to_expr(x).fill_null(fill_value).cast(pl.Float64).rechunk()  # One cont slice
     f: pl.Expr | pl.Series
     if isinstance(kernel, pl.Expr):
         f = kernel.filter(kernel.is_finite()).rechunk()  # One cont slice
@@ -818,7 +818,7 @@ def list_amax(list_col: str | pl.Expr) -> pl.Expr:
     (2) Finding the max probability class of a multiclass classification output.
     (3) As a shortcut for expr.list.eval(pl.element().arg_max()).
     """
-    return str_to_expr(list_col).list.eval(pl.element().arg_max())
+    return to_expr(list_col).list.eval(pl.element().arg_max())
 
 
 def gamma(x: str | pl.Expr) -> pl.Expr:
@@ -827,7 +827,7 @@ def gamma(x: str | pl.Expr) -> pl.Expr:
     whereas SciPy's gamma function will return inf for all x <= 0.
     """
     return pl_plugin(
-        args=[str_to_expr(x)],
+        args=[to_expr(x)],
         symbol="pl_gamma",
         is_elementwise=True,
     )
@@ -838,7 +838,7 @@ def expit(x: str | pl.Expr) -> pl.Expr:
     Applies the Expit function to self. Expit(x) = 1 / (1 + e^(-x))
     """
     return pl_plugin(
-        args=[str_to_expr(x)],
+        args=[to_expr(x)],
         symbol="pl_expit",
         is_elementwise=True,
     )
@@ -850,7 +850,7 @@ def logit(x: str | pl.Expr) -> pl.Expr:
     Note that logit(0) = -inf, logit(1) = inf, and logit(p) for p < 0 or p > 1 yields nan.
     """
     return pl_plugin(
-        args=[str_to_expr(x)],
+        args=[to_expr(x)],
         symbol="pl_logit",
         is_elementwise=True,
     )
@@ -861,7 +861,7 @@ def exp2(x: str | pl.Expr) -> pl.Expr:
     Returns 2^x.
     """
     return pl_plugin(
-        args=[str_to_expr(x)],
+        args=[to_expr(x)],
         symbol="pl_exp2",
         is_elementwise=True,
     )
@@ -872,7 +872,7 @@ def fract(x: str | pl.Expr) -> pl.Expr:
     Returns the fractional part of the input values. E.g. fractional part of 1.1 is 0.1
     """
     return pl_plugin(
-        args=[str_to_expr(x)],
+        args=[to_expr(x)],
         symbol="pl_fract",
         is_elementwise=True,
     )
@@ -883,7 +883,7 @@ def trunc(x: str | pl.Expr) -> pl.Expr:
     Returns the integer part of the input values. E.g. integer part of 1.1 is 1.0
     """
     return pl_plugin(
-        args=[str_to_expr(x)],
+        args=[to_expr(x)],
         symbol="pl_trunc",
         is_elementwise=True,
     )
@@ -893,7 +893,7 @@ def sinc(x: str | pl.Expr) -> pl.Expr:
     """
     Computes the sinc function normalized by pi.
     """
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     y = math.pi * pl.when(xx == 0).then(1e-20).otherwise(xx)
     return y.sin() / y
 
@@ -910,7 +910,7 @@ def xlogy(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
         A numerical column
     """
     return pl_plugin(
-        args=[str_to_expr(x).cast(pl.Float64), str_to_expr(y).cast(pl.Float64)],
+        args=[to_expr(x).cast(pl.Float64), to_expr(y).cast(pl.Float64)],
         symbol="pl_xlogy",
         is_elementwise=True,
     )
@@ -925,7 +925,7 @@ def detrend(x: str | pl.Expr, method: DetrendMethod = "linear") -> pl.Expr:
     method
         Either `linear` or `mean`
     """
-    ts = str_to_expr(x)
+    ts = to_expr(x)
     if method == "linear":
         N = ts.count()
         x = pl.int_range(0, N, eager=False)
@@ -959,7 +959,7 @@ def rfft(series: str | pl.Expr, n: int | None = None, return_full: bool = False)
 
     full = pl.lit(return_full, pl.Boolean)
     nn = pl.lit(n, pl.UInt32)
-    x: pl.Expr = str_to_expr(series).cast(pl.Float64)
+    x: pl.Expr = to_expr(series).cast(pl.Float64)
     return pl_plugin(symbol="pl_rfft", args=[x, nn, full], changes_length=True)
 
 
@@ -990,12 +990,12 @@ def target_encode(
     https://contrib.scikit-learn.org/category_encoders/targetencoder.html
     """
     if isinstance(target, (str, pl.Expr)):
-        t = str_to_expr(target)
+        t = to_expr(target)
     else:
         t = pl.lit(pl.Series(values=target))
     return pl_plugin(
         symbol="pl_target_encode",
-        args=[str_to_expr(s), t, t.mean()],
+        args=[to_expr(s), t, t.mean()],
         kwargs={"min_samples_leaf": float(min_samples_leaf), "smoothing": smoothing},
         changes_length=True,
     )
@@ -1018,11 +1018,11 @@ def isotonic_regression(
         decreasing.
     """
 
-    yy = str_to_expr(y).cast(pl.Float64)
+    yy = to_expr(y).cast(pl.Float64)
     args = [yy]
     has_weights = weights is not None
     if has_weights:
-        args.append(str_to_expr(weights).cast(pl.Float64))
+        args.append(to_expr(weights).cast(pl.Float64))
 
     return pl_plugin(
         symbol="pl_isotonic_regression",
@@ -1043,7 +1043,7 @@ def next_up(x: str | pl.Expr) -> pl.Expr:
     """
     return pl_plugin(
         symbol="pl_next_up",
-        args=[str_to_expr(x)],
+        args=[to_expr(x)],
         is_elementwise=True,
     )
 
@@ -1057,7 +1057,7 @@ def next_down(x: str | pl.Expr) -> pl.Expr:
     """
     return pl_plugin(
         symbol="pl_next_down",
-        args=[str_to_expr(x)],
+        args=[to_expr(x)],
         is_elementwise=True,
     )
 
@@ -1068,7 +1068,7 @@ def digamma(x: str | pl.Expr) -> pl.Expr:
     """
     return pl_plugin(
         symbol="pl_diagamma",
-        args=[str_to_expr(x)],
+        args=[to_expr(x)],
         is_elementwise=True,
     )
 
@@ -1095,8 +1095,8 @@ def add_at(
         error if indices are not checked. If this is an expression, only the first element
         in the represented column will be used.
     """
-    ind = str_to_expr(indices).cast(pl.UInt32).rechunk()
-    val = str_to_expr(values).cast(pl.Float64).rechunk()
+    ind = to_expr(indices).cast(pl.UInt32).rechunk()
+    val = to_expr(values).cast(pl.Float64).rechunk()
     if isinstance(buffer_size, pl.Expr):
         size = buffer_size
     else:
@@ -1133,9 +1133,9 @@ def add_at(
 #     if n_neighbors <= 0:
 #         raise ValueError("Input `n_neighbors` must be > 0.")
 
-#     feat = str_to_expr(x).cast(pl.Float64)
+#     feat = to_expr(x).cast(pl.Float64)
 #     feat = feat / feat.std(ddof=0)
-#     t = str_to_expr(target)
+#     t = to_expr(target)
 
 #     scale_factor = pl.max_horizontal(pl.lit(1.0, dtype=pl.Float64), feat.abs().mean())
 

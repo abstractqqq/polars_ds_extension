@@ -1,4 +1,4 @@
-"""Tabular Machine Learning Pipelines with native Polars support."""
+"""Machine Learning / Time series Pipelines with native Polars support."""
 
 from __future__ import annotations
 
@@ -6,11 +6,10 @@ import polars as pl
 import json
 import sys
 import polars.selectors as cs
-from copy import deepcopy
 from polars._typing import IntoExprColumn
 from functools import partial
+from typing import List, Dict, Any, Literal
 from dataclasses import dataclass
-from typing import List, Dict, Any
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -19,7 +18,12 @@ else:  # 3.10, 3.9, 3.8
 
 # Internal Depenedncies
 from . import transforms as t
-from ._step import PLContext, PipelineStep, FitStep
+from ._step import (
+    PLContext, 
+    ExprStep, SortStep, SQLStep, GroupByAggStep, GroupByDynAggStep, FitStep, PipelineStep, 
+    MakeStep, 
+    _SERIALIZABLE_STEPS
+)
 from polars_ds.typing import (
     PolarsFrame,
     ExprTransform,
@@ -29,7 +33,7 @@ from polars_ds.typing import (
     EncoderDefaultStrategy,
 )
 
-__all__ = ["Pipeline", "Blueprint", "PLContext", "PipelineStep"]
+__all__ = ["Pipeline", "Blueprint", "PLContext", "ExprStep"]
 
 
 @dataclass
@@ -80,18 +84,6 @@ class Pipeline:
     def __str__(self) -> str:
         return self.transforms.__str__()
 
-    def __repr__(self) -> str:
-        text: str = "Naive Query Steps: \n\n"
-        for i, step in enumerate(self.transforms):
-            text += f"Step {i+1}:\n"
-            if isinstance(step, PipelineStep) and step.context == PLContext.SQL:
-                text += f"Run SQL: {step.exprs[0]}\n"
-            else:
-                text += ",\n".join(str(e) for e in step)
-            text += "\n\n"
-
-        return text
-
     def _get_init_plan(self, df: PolarsFrame) -> pl.LazyFrame:
         """
         Get an initial plan without any pipeline transforms.
@@ -125,21 +117,6 @@ class Pipeline:
         self.feature_names_out_ = list(features)
         self.ensure_features_out = ensure_features_out
 
-    def to_dict(self) -> Dict:
-        """
-        Converts self to a dict, with all expressions turned into JSON strings.
-        """
-        return {
-            "name": str(self.name),
-            "feature_names_in_": list(self.feature_names_in_),
-            "feature_names_out_": list(self.feature_names_out_),
-            "transforms": [step.to_json() for step in self.transforms],
-            "ensure_features_in": self.ensure_features_in,
-            "ensure_features_out": self.ensure_features_out,
-            "lowercase": self.lowercase,
-            "uppercase": self.uppercase,
-        }
-
     def to_json(self, path: str | None = None, **kwargs) -> str | None:
         """
         Turns self into a JSON string.
@@ -153,59 +130,52 @@ class Pipeline:
             Keyword arguments to Python's default json
         """
         # Maybe support other json package?
+        d = {
+            "name": str(self.name),
+            "feature_names_in_": list(self.feature_names_in_),
+            "feature_names_out_": list(self.feature_names_out_),
+            "transforms": [step.to_json() for step in self.transforms],
+            "ensure_features_in": self.ensure_features_in,
+            "ensure_features_out": self.ensure_features_out,
+            "lowercase": self.lowercase,
+            "uppercase": self.uppercase,
+        }
         if path is None:
-            return json.dumps(self.to_dict(), **kwargs)
+            return json.dumps(d, **kwargs)
         else:
             with open(path, "w") as f:
-                json.dump(self.to_dict(), f)
+                json.dump(d, f)
 
             return None
 
     @staticmethod
-    def from_dict(pipeline_dict: Dict[str, Any]) -> Pipeline:
+    def from_json(json_str: str | bytes) -> "Pipeline":
         """
-        Recreates a pipeline from a dictionary created by the `to_dict` call.
+        Recreates a pipeline from a dictionary created by the `to_json` call.
         """
-
+        pipeline_dict:Dict = json.loads(json_str)
         try:
-            name = pipeline_dict["name"]
-            transforms = pipeline_dict["transforms"]
-            feature_names_in_ = pipeline_dict["feature_names_in_"]
-            feature_names_out_ = pipeline_dict["feature_names_out_"]
-            ensure_features_in = pipeline_dict["ensure_features_in"]
-            ensure_features_out = pipeline_dict["ensure_features_out"]
-            lowercase = pipeline_dict.get("lowercase", False)
-            uppercase = pipeline_dict.get("uppercase", False)
+            name: str = pipeline_dict["name"]
+            transforms: List[str] = pipeline_dict["transforms"]
+            feature_names_in_: List[str] = pipeline_dict["feature_names_in_"]
+            feature_names_out_: List[str] = pipeline_dict["feature_names_out_"]
+            ensure_features_in: bool = pipeline_dict["ensure_features_in"]
+            ensure_features_out: bool = pipeline_dict["ensure_features_out"]
+            lowercase: bool = pipeline_dict.get("lowercase", False)
+            uppercase: bool = pipeline_dict.get("uppercase", False)
         except Exception as e:
             raise ValueError(f"Input dictionary is missing keywords. Original error: \n{e}")
 
-        transform_steps = [PipelineStep.from_json(step) for step in transforms]
         return Pipeline(
             name=name,
             feature_names_in_=feature_names_in_,
             feature_names_out_=feature_names_out_,
-            transforms=transform_steps,
+            transforms=[MakeStep.make(json.loads(step_str)) for step_str in transforms],
             ensure_features_in=ensure_features_in,
             ensure_features_out=ensure_features_out,
             lowercase=lowercase,
             uppercase=uppercase,
         )
-
-    @staticmethod
-    def from_json_str(json_str: str) -> Self:
-        """
-        Creates the Pipeline from the JSON string.
-        """
-        return Pipeline.from_dict(json.loads(json_str))
-
-    @staticmethod
-    def from_json(path: str) -> Self:
-        """
-        Creates the Pipeline by loading a local JSON file at path
-        """
-        with open(path, "r") as f:
-            pipe_dict = json.load(f)
-        return Pipeline.from_dict(pipe_dict)
 
     def ensure_features_io(self, ensure_in: bool = True, ensure_out: bool = True) -> Self:
         """
@@ -224,29 +194,6 @@ class Pipeline:
         self.ensure_features_in = ensure_in
         self.ensure_features_out = ensure_out
         return self
-
-    def append_pipeline(self, other: Pipeline) -> Self:
-        """
-        Appends the `other` pipeline to this. 
-
-        This copies all data from the `other` pipeline, and will ignore the `lowercase`, `uppercase`, 
-        `ensure_features_in`, `ensure_features_out` settings in the `other` pipeline.
-
-        Note: Since there is no way to gaurantee the output features, this will set ensure_features_out
-        to False on the left pipeline. It is possible the `feature_names_out_` attribute will be wrong when
-        you modify the pipeline by appending. You may use `with_features_out` method to readjust the settings
-        after knowing the updated output feature list. 
-
-        Note: There is no way for this function to know whether the pipelines can be appended together
-        or not. The user needs to make sure the expressions can properly run in order.
-
-        Parameters
-        ----------
-        other
-            The other pipeline to append to this.
-        """
-        self.transforms.extend(deepcopy(step) for step in other.transforms)
-        self.ensure_features_out = False
 
     def transform(
         self
@@ -346,7 +293,7 @@ class Blueprint:
         self.target = target
         self.feature_names_in_: list[str] = self._df.collect_schema().names()
 
-        self._steps: List[PipelineStep | FitStep] = []
+        self._steps: List[ExprStep | FitStep] = []
         self.exclude: List[str] = [] if target is None else [target]
         if exclude is not None:  # dedup in case user accidentally puts the same column name twice
             self.exclude = list(set(self.exclude + exclude))
@@ -358,9 +305,9 @@ class Blueprint:
         out: str = ""
         out += f"Blueprint name: {self.name}\n"
         if self.lowercase:
-            out += "Column names: Lowercase all incoming columns."
+            out += "Column names: Lowercase all incoming columns.\n"
         elif self.uppercase:
-            out += "Column names: Uppercase all incoming columns."
+            out += "Column names: Uppercase all incoming columns.\n"
 
         out += f"Blueprint current steps: {len(self._steps)}\n"
         out += f"Features Expected: {self.feature_names_in_}\n"
@@ -386,7 +333,7 @@ class Blueprint:
             Native polars boolean expression or SQL strings
         """
         self._steps.append(
-            PipelineStep(by if isinstance(by, pl.Expr) else pl.sql_expr(by), PLContext.FILTER)
+            ExprStep(by if isinstance(by, pl.Expr) else pl.sql_expr(by), PLContext.FILTER)
         )
         return self
 
@@ -403,20 +350,20 @@ class Blueprint:
             The SQL to run on the dataframe. Note: this step doesn't immedinately check the validity of
             the SQL statement.
         """
-        self._steps.append(PipelineStep(sql, PLContext.SQL))
+        self._steps.append(SQLStep(sql_str=sql))
         return self
 
     def cast_bools(self, dtype: pl.DataType = pl.UInt8) -> Self:
         """
         Cast all boolean columns in the dataframe to the given type.
         """
-        self._steps.append(PipelineStep(cs.boolean().cast(dtype), PLContext.WITH_COLUMNS))
+        self._steps.append(ExprStep(cs.boolean().cast(dtype), PLContext.WITH_COLUMNS))
         return self
 
     def impute(self, cols: IntoExprColumn, method: SimpleImputeMethod = "mean") -> Self:
         """
         Imputes null values in the given columns. Note: this doesn't fill NaN. If filling for NaN is needed,
-        please manually
+        please manually do that.
 
         Parameters
         ----------
@@ -458,7 +405,7 @@ class Blueprint:
         """
         Maps NaN values in all columns to null.
         """
-        self._steps.append(PipelineStep(cs.float().nan_to_null(), PLContext.WITH_COLUMNS))
+        self._steps.append(ExprStep(cs.float().fill_nan(None), PLContext.WITH_COLUMNS))
         return self
 
     def int_to_float(self, f32: bool = True) -> Self:
@@ -472,9 +419,9 @@ class Blueprint:
             casted to f64 columns.
         """
         if f32:
-            self._steps.append(PipelineStep(cs.integer().cast(pl.Float32), PLContext.WITH_COLUMNS))
+            self._steps.append(ExprStep(cs.integer().cast(pl.Float32), PLContext.WITH_COLUMNS))
         else:
-            self._steps.append(PipelineStep(cs.integer().cast(pl.Float64), PLContext.WITH_COLUMNS))
+            self._steps.append(ExprStep(cs.integer().cast(pl.Float64), PLContext.WITH_COLUMNS))
         return self
 
     def linear_impute(
@@ -560,7 +507,7 @@ class Blueprint:
         cols
             Any Polars expression that can be understood as columns.
         """
-        self._steps.append(PipelineStep(list(cols), PLContext.SELECT))
+        self._steps.append(ExprStep(list(cols), PLContext.SELECT))
         return self
 
     # Not working after pl.Int128 is introduced
@@ -607,7 +554,7 @@ class Blueprint:
             )
 
         self._steps.append(
-            PipelineStep(
+            ExprStep(
                 t.polynomial_features(cols, degree=degree, interaction_only=interaction_only),
                 PLContext.WITH_COLUMNS,
             )
@@ -655,7 +602,7 @@ class Blueprint:
         cols
             Any Polars expression that can be understood as columns.
         """
-        self._steps.append(PipelineStep(pl.exclude(cols), PLContext.SELECT))
+        self._steps.append(ExprStep(pl.exclude(cols), PLContext.SELECT))
         return self
 
     def rename(self, rename_dict: Dict[str, str]) -> Self:
@@ -669,7 +616,7 @@ class Blueprint:
         """
         old = list(rename_dict.keys())
         self._steps.append(
-            PipelineStep(
+            ExprStep(
                 [pl.col(k).alias(v) for k, v in rename_dict.items()], PLContext.WITH_COLUMNS
             )
         )
@@ -732,7 +679,7 @@ class Blueprint:
             Whether to drop the original column after the transform
         """
         self._steps.append(
-            PipelineStep(t.rank_hot_encode(col=col, ranking=ranking), PLContext.WITH_COLUMNS)
+            ExprStep(t.rank_hot_encode(col=col, ranking=ranking), PLContext.WITH_COLUMNS)
         )
         if drop_cols:
             return self.drop(cols=[col])
@@ -874,25 +821,75 @@ class Blueprint:
         """
         Run Polars with_columns for the expressions.
         """
-        self._steps.append(PipelineStep(list(exprs), PLContext.WITH_COLUMNS))
+        self._steps.append(ExprStep(list(exprs), PLContext.WITH_COLUMNS))
         return self
 
-    def append_expr(self, *exprs: ExprTransform, is_select: bool = False) -> Self:
+    
+    def sort(self, by: IntoExprColumn, descending: bool | List[bool]) -> Self:
+        """Sorts the dataframe by the columns.
+        
+        Parameters
+        ----------
+        by
+            The columns to sort by
+        descending
+            Whether the sort should be descending for the corresponding sort column
         """
-        Appends the expressions to the pipeline.
+        self._steps.append(SortStep(by=by, descending=descending))
+        return self
+    
+    def group_by_agg(self, by: IntoExprColumn, agg: List[pl.Expr]) -> Self:
+        """
+        Performs a group by and agg on the data.
 
-        Paramters
-        ---------
-        exprs
-            Either a single expression or a list of expressions.
-        is_select
-            If true, the expression will be executed in a .select(..) context. If false, they
-            will be executed in a .with_columns(..) context.
+        Parameters
+        ----------
+        by
+            The columns to group by
+        agg
+            The aggregation functions to run
         """
-        if is_select:
-            self._steps.append(PipelineStep(list(exprs), PLContext.SELECT))
-        else:
-            self._steps.append(PipelineStep(list(exprs), PLContext.WITH_COLUMNS))
+        if any(not isinstance(e, pl.Expr) for e in agg):
+            raise ValueError("All elements in `agg` must be pl.Expr.")
+
+        self._steps.append(GroupByAggStep(by=by, agg = agg))
+        return self
+    
+    def group_by_dynamic_agg(
+        self
+        , index_column: str
+        , agg: List[pl.Expr]
+        , every: str
+        , by: IntoExprColumn | None = None
+        , period: str | None = None
+        , offset: str | None = None 
+        , include_boundaries: bool = False
+        , closed: Literal['left', 'right', 'both', 'none'] = 'left'
+        , label: Literal['left', 'right', 'datapoint'] = 'left'
+        , start_by: Literal['window', 'datapoint', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] = 'window'
+    ) -> Self:
+        """
+        See polars group_by_dynamic documentation for an explanation on the input arguments.
+
+        https://docs.pola.rs/api/python/stable/reference/dataframe/api/polars.DataFrame.group_by_dynamic.html#polars.DataFrame.group_by_dynamic
+        """
+        if any(not isinstance(e, pl.Expr) for e in agg):
+            raise ValueError("All elements in `agg` must be pl.Expr.")
+        
+        self._steps.append(
+            GroupByDynAggStep(
+                index_column = index_column
+                , agg = agg
+                , every = every
+                , by = by
+                , period = period
+                , offset = offset
+                , include_boundaries = include_boundaries
+                , closed = closed
+                , label = label
+                , start_by = start_by
+            )
+        )
         return self
 
     # How to type this?
@@ -958,12 +955,12 @@ class Blueprint:
         # the collect should be and optimized.
         df_lazy: pl.LazyFrame = df.lazy()
         for step in self._steps:
-            if isinstance(step, FitStep):  # Need fitting
+            if isinstance(step, FitStep):  # Need fitting, which is done here
                 df_temp = df_lazy.collect()
                 exprs = step.fit(df_temp)
-                transforms.append(PipelineStep(exprs, PLContext.WITH_COLUMNS))
+                transforms.append(ExprStep(exprs, PLContext.WITH_COLUMNS))
                 df_lazy = df_temp.lazy().with_columns(exprs)
-            elif isinstance(step, PipelineStep):
+            elif isinstance(step, tuple(_SERIALIZABLE_STEPS)):
                 transforms.append(step)
                 df_lazy = step.apply_df(df_lazy)
             else:

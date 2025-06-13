@@ -7,7 +7,7 @@ import math
 
 # Internal dependencies
 from polars_ds.typing import Alternative, CorrMethod, Noise, QuantileMethod
-from polars_ds._utils import pl_plugin, str_to_expr
+from polars_ds._utils import pl_plugin, to_expr
 
 __all__ = [
     "ttest_ind",
@@ -87,7 +87,7 @@ def ttest_ind(
     ...     )
     ... )
     """
-    y1, y2 = str_to_expr(var1), str_to_expr(var2)
+    y1, y2 = to_expr(var1), to_expr(var2)
     if equal_var:
         m1 = y1.mean()
         m2 = y2.mean()
@@ -131,7 +131,7 @@ def ttest_1samp(
     alternative : {"two-sided", "less", "greater"}
         Alternative of the hypothesis test
     """
-    y = str_to_expr(var1)
+    y = to_expr(var1)
     s1 = y.filter(y.is_finite())
     sm = s1.mean()
     pm = pl.lit(pop_mean, dtype=pl.Float64)
@@ -174,7 +174,7 @@ def ttest_ind_from_stats(
         If true, perform standard student t 2 sample test. Otherwise, perform Welch's
         t test.
     """
-    y = str_to_expr(var1)
+    y = to_expr(var1)
     if equal_var:
         m1 = y.mean()
         m2 = pl.lit(mean, pl.Float64)
@@ -234,7 +234,7 @@ def ks_2samp(
     ---------
     https://en.wikipedia.org/wiki/Kolmogorov%E2%80%93Smirnov_test#Two-sample_Kolmogorov%E2%80%93Smirnov_test
     """
-    y1, y2 = str_to_expr(var1), str_to_expr(var2)
+    y1, y2 = to_expr(var1), to_expr(var2)
     if is_binary:
         z1 = y2.filter(y1 == 1)
         z2 = y2.filter(y1 == 0)
@@ -262,8 +262,8 @@ def f_test(*variables: str | pl.Expr, group: str | pl.Expr) -> pl.Expr:
     group
         The "target" column used to group the variables
     """
-    vars_ = [str_to_expr(group)]
-    vars_.extend(str_to_expr(x) for x in variables)
+    vars_ = [to_expr(group)]
+    vars_.extend(to_expr(x) for x in variables)
     if len(vars_) <= 1:
         raise ValueError("No input feature column to run F-test on.")
     elif len(vars_) == 2:
@@ -292,12 +292,12 @@ def chi2(var1: str | pl.Expr, var2: str | pl.Expr, return_full: bool = False) ->
     """
     if return_full:
         return pl_plugin(
-            symbol="pl_chi2_full", args=[str_to_expr(var1), str_to_expr(var2)], changes_length=True
+            symbol="pl_chi2_full", args=[to_expr(var1), to_expr(var2)], changes_length=True
         )
     else:
         return pl_plugin(
             symbol="pl_chi2",
-            args=[str_to_expr(var1), str_to_expr(var2)],
+            args=[to_expr(var1), to_expr(var2)],
             returns_scalar=True,
         )
 
@@ -327,8 +327,8 @@ def mann_whitney_u(
     ---------
     https://en.wikipedia.org/wiki/Mann%E2%80%93Whitney_U_test
     """
-    x = str_to_expr(var1)
-    y = str_to_expr(var2)
+    x = to_expr(var1)
+    y = to_expr(var2)
     xx = x.filter(x.is_finite())
     yy = y.filter(y.is_finite())
     n1 = xx.len().cast(pl.Float64)
@@ -371,7 +371,7 @@ def winsorize(
     if q_low <= 0.0 or q_low >= 1.0 or q_high <= 0.0 or q_high >= 1.0 or q_high <= q_low:
         raise ValueError("Lower and upper must be with in (0, 1) and upper should be > lower")
 
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     return xx.clip(
         xx.quantile(q_low, interpolation=method), xx.quantile(q_high, interpolation=method)
     )
@@ -409,7 +409,7 @@ def perturb(
 
     return pl_plugin(
         symbol="pl_perturb",
-        args=[str_to_expr(x), lo, hi, pl.lit(seed, dtype=pl.UInt64)],
+        args=[to_expr(x), lo, hi, pl.lit(seed, dtype=pl.UInt64)],
         is_elementwise=True,
     )
 
@@ -431,7 +431,7 @@ def jitter(x: str | pl.Expr, std: float | pl.Expr = 1.0, seed: int | None = None
         if std < 0:
             raise ValueError("Standard deviation must be positive.")
         elif std == 0:
-            return str_to_expr(x)
+            return to_expr(x)
 
         s = pl.lit(std, dtype=pl.Float64)
     else:
@@ -439,7 +439,7 @@ def jitter(x: str | pl.Expr, std: float | pl.Expr = 1.0, seed: int | None = None
 
     return pl_plugin(
         symbol="pl_jitter",
-        args=[str_to_expr(x), s, pl.lit(seed, dtype=pl.UInt64)],
+        args=[to_expr(x), s, pl.lit(seed, dtype=pl.UInt64)],
         is_elementwise=True,
     )
 
@@ -484,7 +484,7 @@ def normal_test(var: str | pl.Expr) -> pl.Expr:
     D'Agostino, R. and Pearson, E. S. (1973), "Tests for departure from
         normality", Biometrika, 60, 613-622
     """
-    y = str_to_expr(var)
+    y = to_expr(var)
     valid: pl.Expr = y.filter(y.is_finite())
     skew = valid.skew()
     # Pearson Kurtosis, see here: https://en.wikipedia.org/wiki/D%27Agostino%27s_K-squared_test
@@ -545,7 +545,7 @@ def random_null(x: str | pl.Expr, pct: float, seed: int | None = None) -> pl.Exp
     if pct <= 0.0 or pct >= 1.0:
         raise ValueError("Input `pct` must be > 0 and < 1")
 
-    return pl.when(random(0.0, 1.0, seed=seed) < pct).then(None).otherwise(str_to_expr(x))
+    return pl.when(random(0.0, 1.0, seed=seed) < pct).then(None).otherwise(to_expr(x))
 
 
 def random_int(
@@ -722,7 +722,7 @@ def hmean(var: str | pl.Expr) -> pl.Expr:
     var
         The variable
     """
-    x = str_to_expr(var)
+    x = to_expr(var)
     return x.count() / (1.0 / x).sum()
 
 
@@ -741,8 +741,8 @@ def weighted_hmean(
     is_normalized
         If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
     """
-    w = str_to_expr(weights)
-    x = str_to_expr(var)
+    w = to_expr(weights)
+    x = to_expr(var)
     dot = x.dot(pl.lit(1.0, dtype=pl.Float32) / x)
     if is_normalized:
         return 1.0 / dot
@@ -759,7 +759,7 @@ def gmean(var: str | pl.Expr) -> pl.Expr:
     var
         The variable
     """
-    return str_to_expr(var).ln().mean().exp()
+    return to_expr(var).ln().mean().exp()
 
 
 def weighted_gmean(
@@ -777,7 +777,7 @@ def weighted_gmean(
     is_normalized
         If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
     """
-    x, w = str_to_expr(var), str_to_expr(weights)
+    x, w = to_expr(var), to_expr(weights)
     if is_normalized:
         return (x.ln().dot(w)).exp()
     else:
@@ -802,7 +802,7 @@ def weighted_mean(
     is_normalized
         If true, the weights are assumed to sum to 1. If false, will divide by sum of the weights
     """
-    x, w = str_to_expr(var), str_to_expr(weights)
+    x, w = to_expr(var), to_expr(weights)
     out = x.dot(w)
     if is_normalized:
         return out
@@ -830,7 +830,7 @@ def weighted_var(var: str | pl.Expr, weights: str | pl.Expr, freq_weights: bool 
     ---------
     https://en.wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
     """
-    x, w = str_to_expr(var), str_to_expr(weights)
+    x, w = to_expr(var), to_expr(weights)
     wm = weighted_mean(x, w, False)
     summand = w.dot((x - wm).pow(2))
     if freq_weights:
@@ -858,7 +858,7 @@ def weighted_cov(x: str | pl.Expr, y: str | pl.Expr, weights: pl.Expr | float) -
     ---------
     https://en.wikipedia.org/wiki/Pearson_correlation_coefficient#Weighted_correlation_coefficient
     """
-    xx, yy, w = str_to_expr(x), str_to_expr(y), str_to_expr(weights)
+    xx, yy, w = to_expr(x), to_expr(y), to_expr(weights)
     wx, wy = weighted_mean(xx, w, False), weighted_mean(yy, w, False)
     return w.dot((xx - wx) * (yy - wy)) / w.sum()
 
@@ -883,8 +883,8 @@ def weighted_corr(x: str | pl.Expr, y: str | pl.Expr, weights: str | pl.Expr) ->
     ---------
     https://en.wikipedia.org/wiki/Pearson_correlation_coefficient#Weighted_correlation_coefficient
     """
-    xx, yy = str_to_expr(x), str_to_expr(y)
-    w = str_to_expr(weights)
+    xx, yy = to_expr(x), to_expr(y)
+    w = to_expr(weights)
     numerator = weighted_cov(xx, yy, w)
     sxx = w.dot((xx - weighted_mean(xx, w, False)).pow(2))
     syy = w.dot((xx - weighted_mean(yy, w, False)).pow(2))
@@ -902,7 +902,7 @@ def cosine_sim(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
     y
         The second variable
     """
-    xx, yy = str_to_expr(x), str_to_expr(y)
+    xx, yy = to_expr(x), to_expr(y)
     x2 = xx.dot(xx).sqrt()
     y2 = yy.dot(yy).sqrt()
     return xx.dot(yy) / (x2 * y2).sqrt()
@@ -928,8 +928,8 @@ def weighted_cosine_sim(x: str | pl.Expr, y: str | pl.Expr, weights: str | pl.Ex
     ---------
     https://en.wikipedia.org/wiki/Pearson_correlation_coefficient#Weighted_correlation_coefficient
     """
-    xx, yy = str_to_expr(x), str_to_expr(y)
-    w = str_to_expr(weights)
+    xx, yy = to_expr(x), to_expr(y)
+    w = to_expr(weights)
     wx2 = xx.pow(2).dot(w)
     wy2 = yy.pow(2).dot(w)
     return (w * xx).dot(yy) / (wx2 * wy2).sqrt()
@@ -950,7 +950,7 @@ def kendall_tau(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
     y
         The second variable
     """
-    xx, yy = str_to_expr(x).fill_nan(None), str_to_expr(y).fill_nan(None)
+    xx, yy = to_expr(x).fill_nan(None), to_expr(y).fill_nan(None)
     return pl_plugin(
         symbol="pl_kendall_tau",
         args=[xx.rank(method="min"), yy.rank(method="min")],
@@ -977,7 +977,7 @@ def bicor(x: str | pl.Expr, y: str | pl.Expr, c: float = 9.0) -> pl.Expr:
     ---------
     https://en.wikipedia.org/wiki/Biweight_midcorrelation
     """
-    a, b = str_to_expr(x), str_to_expr(y)
+    a, b = to_expr(x), to_expr(y)
     med_a = a.median()
     med_b = b.median()
 
@@ -1020,7 +1020,7 @@ def xi_corr(
     ---------
     https://arxiv.org/pdf/1909.10140.pdf
     """
-    xx, yy = str_to_expr(x), str_to_expr(y)
+    xx, yy = to_expr(x), to_expr(y)
     args = [
         xx.rank(method="random", seed=seed),
         yy.rank(method="max").cast(pl.Float64),

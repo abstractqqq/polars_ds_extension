@@ -39,7 +39,7 @@ def pl_plugin(
 
 
 # Auxiliary functions for type conversions
-def str_to_expr(e: str | pl.Expr | int | float) -> pl.Expr:
+def to_expr(e: str | pl.Expr | int | float) -> pl.Expr:
     """
     Turns a string into an expression
 

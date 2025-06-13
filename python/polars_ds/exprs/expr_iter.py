@@ -5,7 +5,7 @@ from __future__ import annotations
 import polars as pl
 
 # Internal dependencies
-from polars_ds._utils import pl_plugin, str_to_expr
+from polars_ds._utils import pl_plugin, to_expr
 
 __all__ = ["combinations", "product"]
 
@@ -77,7 +77,7 @@ def product(s1: str | pl.Expr, s2: str | pl.Expr) -> pl.Expr:
     """
     return pl_plugin(
         symbol="pl_product",
-        args=[str_to_expr(s1).drop_nulls(), str_to_expr(s2).drop_nulls()],
+        args=[to_expr(s1).drop_nulls(), to_expr(s2).drop_nulls()],
         changes_length=True,
     )
 
@@ -136,9 +136,9 @@ def combinations(source: str | pl.Expr, k: int, unique: bool = False) -> pl.Expr
     └──────────┴──────────────────────────┘
     """
     s = (
-        str_to_expr(source).unique().drop_nulls().sort()
+        to_expr(source).unique().drop_nulls().sort()
         if unique
-        else str_to_expr(source).drop_nulls()
+        else to_expr(source).drop_nulls()
     )
     return pl_plugin(
         symbol="pl_combinations",

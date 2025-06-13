@@ -8,7 +8,7 @@ from typing import Any, Iterable, List, Sequence, cast
 import warnings
 
 # Internal dependencies
-from polars_ds._utils import pl_plugin, str_to_expr
+from polars_ds._utils import pl_plugin, to_expr
 from polars_ds.typing import Distance
 
 __all__ = [
@@ -85,7 +85,7 @@ def query_dist_from_kth_nb(
     """
     return pl_plugin(
         symbol="pl_dist_from_kth_nb",
-        args=[str_to_expr(e) for e in features],
+        args=[to_expr(e) for e in features],
         kwargs={
             "k": k,
             "metric": str(dist).lower(),
@@ -162,20 +162,20 @@ def query_knn_ptwise(
     if dist in ("cosine", "h", "haversine"):
         raise ValueError(f"Distance {dist} doesn't work with current implementation.")
 
-    idx = str_to_expr(index).cast(pl.UInt32).rechunk()
+    idx = to_expr(index).cast(pl.UInt32).rechunk()
     cols = [idx]
-    feats: List[pl.Expr] = [str_to_expr(e) for e in features]
+    feats: List[pl.Expr] = [to_expr(e) for e in features]
 
     skip_data = data_mask is not None
     if skip_data:  # true means keep
-        keep_mask = pl.all_horizontal(str_to_expr(data_mask), *(f.is_not_null() for f in feats))
+        keep_mask = pl.all_horizontal(to_expr(data_mask), *(f.is_not_null() for f in feats))
     else:
         keep_mask = pl.all_horizontal(f.is_not_null() for f in feats)
 
     cols.append(keep_mask)
     skip_eval = eval_mask is not None
     if skip_eval:
-        cols.append(str_to_expr(eval_mask))
+        cols.append(to_expr(eval_mask))
 
     cols.extend(feats)
     kwargs = {
@@ -312,8 +312,8 @@ def query_knn_avg(
     if dist in ("cosine", "h", "haversine"):
         raise ValueError(f"Distance {dist} doesn't work with current implementation.")
 
-    idx = str_to_expr(target).cast(pl.Float64).rechunk()
-    feats = [str_to_expr(f) for f in features]
+    idx = to_expr(target).cast(pl.Float64).rechunk()
+    feats = [to_expr(f) for f in features]
     keep_data = ~pl.any_horizontal(f.is_null() for f in feats)
     cols = [idx, keep_data]
     cols.extend(feats)
@@ -355,7 +355,7 @@ def within_dist_from(
         Note `sql2` stands for squared l2.
     """
     # For a single point, it is faster to just do it in native polars
-    oth = [str_to_expr(x) for x in features]
+    oth = [to_expr(x) for x in features]
     if not warn_len_compare(pt, oth):
         raise ValueError("Dimension does not match.")
 
@@ -422,7 +422,7 @@ def is_knn_from(
         Note `sql2` stands for squared l2.
     """
     # For a single point, it is faster to just do it in native polars
-    oth = [str_to_expr(x) for x in features]
+    oth = [to_expr(x) for x in features]
     if not warn_len_compare(pt, oth):
         raise ValueError("Dimension does not match.")
 
@@ -514,10 +514,10 @@ def query_radius_ptwise(
     if dist in ("cosine", "h", "haversine"):
         raise ValueError(f"Distance {dist} doesn't work with current implementation.")
 
-    idx = str_to_expr(index).cast(pl.UInt32).rechunk()
+    idx = to_expr(index).cast(pl.UInt32).rechunk()
     metric = str(dist).lower()
     cols = [idx]
-    cols.extend(str_to_expr(x) for x in features)
+    cols.extend(to_expr(x) for x in features)
     return pl_plugin(
         symbol="pl_query_radius_ptwise",
         args=cols,
@@ -599,7 +599,7 @@ def query_nb_cnt(
 
     return pl_plugin(
         symbol="pl_nb_cnt",
-        args=[rad] + [str_to_expr(x) for x in features],
+        args=[rad] + [to_expr(x) for x in features],
         kwargs={
             "k": 0,
             "metric": dist,

@@ -6,7 +6,7 @@ import polars as pl
 import math
 
 # Internal dependencies
-from polars_ds._utils import pl_plugin, str_to_expr
+from polars_ds._utils import pl_plugin, to_expr
 from polars_ds.typing import MultiAUCStrategy
 from .num import add_at
 
@@ -52,7 +52,7 @@ def query_mad(x: str | pl.Expr, use_mean: bool = True) -> pl.Expr:
     use_mean
         If true, computes mean absolute deviation. If false, use median instead of mean.
     """
-    xx = str_to_expr(x)
+    xx = to_expr(x)
     if use_mean:
         return (xx - xx.mean()).abs().mean()
     else:
@@ -70,8 +70,8 @@ def query_r2(actual: str | pl.Expr, pred: str | pl.Expr) -> pl.Expr:
     pred
         A Polars expression representing predictions
     """
-    a = str_to_expr(actual)
-    p = str_to_expr(pred)
+    a = to_expr(actual)
+    p = to_expr(pred)
     diff = a - p
     ss_res = diff.dot(diff)
     diff2 = a - a.mean()
@@ -92,8 +92,8 @@ def query_adj_r2(actual: str | pl.Expr, pred: str | pl.Expr, p: int) -> pl.Expr:
     p
         The number of explanatory variables
     """
-    actual_expr = str_to_expr(actual)
-    pred_expr = str_to_expr(pred)
+    actual_expr = to_expr(actual)
+    pred_expr = to_expr(pred)
     diff = actual_expr - pred_expr
     ss_res = diff.dot(diff)
     diff2 = actual_expr - actual_expr.mean()
@@ -107,7 +107,7 @@ def query_log_cosh(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool =
     """
     Computes log cosh of the the prediction error, which is a smooth variation of MAE (L1 loss).
     """
-    a, p = str_to_expr(actual), str_to_expr(pred)
+    a, p = to_expr(actual), to_expr(pred)
     if normalize:
         return (p - a).cosh().log().sum() / a.count()
     return (p - a).cosh().log().sum()
@@ -124,7 +124,7 @@ def query_hubor_loss(actual: str | pl.Expr, pred: str | pl.Expr, delta: float) -
     pred
         An expression represeting the column with predicted probability.
     """
-    a, p = str_to_expr(actual), str_to_expr(pred)
+    a, p = to_expr(actual), to_expr(pred)
     temp = (a - p).abs()
     return (
         pl.when(temp <= delta).then(0.5 * temp.pow(2)).otherwise(delta * (temp - 0.5 * delta)).sum()
@@ -145,8 +145,8 @@ def query_l2(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = True)
     normalize
         Whether to divide by N.
     """
-    a = str_to_expr(actual)
-    p = str_to_expr(pred)
+    a = to_expr(actual)
+    p = to_expr(pred)
     diff = a - p
     if normalize:
         return diff.dot(diff) / a.count()
@@ -166,8 +166,8 @@ def query_l1(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = True)
     normalize
         Whether to divide by N. Nulls won't be counted in N.
     """
-    a = str_to_expr(actual)
-    p = str_to_expr(pred)
+    a = to_expr(actual)
+    p = to_expr(pred)
     if normalize:
         return (a - p).abs().sum() / a.count()
     return (a - p).abs().sum()
@@ -184,8 +184,8 @@ def query_l_inf(actual: str | pl.Expr, pred: str | pl.Expr) -> pl.Expr:
     pred
         A Polars expression representing predictions
     """
-    a = str_to_expr(actual)
-    p = str_to_expr(pred)
+    a = to_expr(actual)
+    p = to_expr(pred)
     return (a - p).abs().max()
 
 
@@ -202,8 +202,8 @@ def query_log_loss(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool =
     normalize
         Whether to divide by N.
     """
-    a = str_to_expr(actual).cast(pl.Float64)
-    p = str_to_expr(pred).cast(pl.Float64)
+    a = to_expr(actual).cast(pl.Float64)
+    p = to_expr(pred).cast(pl.Float64)
     first = pl_plugin(
         args=[a, p],
         symbol="pl_xlogy",
@@ -236,8 +236,8 @@ def query_mape(actual: str | pl.Expr, pred: str | pl.Expr, weighted: bool = Fals
     weighted
         If true, computes wMAPE in the wikipedia article
     """
-    a = str_to_expr(actual)
-    p = str_to_expr(pred)
+    a = to_expr(actual)
+    p = to_expr(pred)
     if weighted:
         return (a - p).abs().sum() / a.abs().sum()
     else:
@@ -259,8 +259,8 @@ def query_smape(actual: str | pl.Expr, pred: str | pl.Expr) -> pl.Expr:
     pred
         A Polars expression representing predictions
     """
-    a = str_to_expr(actual)
-    p = str_to_expr(pred)
+    a = to_expr(actual)
+    p = to_expr(pred)
     numerator = (a - p).abs()
     denominator = a.abs() + p.abs()
     return (numerator / denominator).sum() / a.count()
@@ -302,8 +302,8 @@ def query_mase(
     if freq < 1:
         raise ValueError("Input `freq` must be >= 1.")
 
-    a: pl.Expr = str_to_expr(actual)
-    p: pl.Expr = str_to_expr(pred)
+    a: pl.Expr = to_expr(actual)
+    p: pl.Expr = to_expr(pred)
 
     if isinstance(train, float):
         if use_mean:
@@ -314,7 +314,7 @@ def query_mase(
         return numerator / pl.lit(train)
 
     else:
-        train_expr = str_to_expr(train)
+        train_expr = to_expr(train)
         if use_mean:
             numerator = (a - p).abs().mean()
             denom = train_expr.diff(n=freq).abs().mean()
@@ -336,8 +336,8 @@ def query_msle(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = Tru
     normalize
         If true, divide the result by length of the series
     """
-    a = str_to_expr(actual)
-    p = str_to_expr(pred)
+    a = to_expr(actual)
+    p = to_expr(pred)
     diff = a.log1p() - p.log1p()
     out = diff.dot(diff)
     if normalize:
@@ -365,7 +365,7 @@ def query_roc_auc(
     """
     return pl_plugin(
         symbol="pl_roc_auc",
-        args=[str_to_expr(actual).cast(pl.UInt32), str_to_expr(pred)],
+        args=[to_expr(actual).cast(pl.UInt32), to_expr(pred)],
         returns_scalar=True,
     )
 
@@ -387,7 +387,7 @@ def query_tpr_fpr(
     """
     return pl_plugin(
         symbol="pl_tpr_fpr",
-        args=[str_to_expr(actual).cast(pl.UInt32), str_to_expr(pred)],
+        args=[to_expr(actual).cast(pl.UInt32), to_expr(pred)],
     )
 
 
@@ -468,8 +468,8 @@ def query_confusion_matrix(
     └─────┴─────┴─────┴─────┴───┴────────────┴─────┴─────┴─────┘
     """
     # Cast to bool first to check the label is in correct format. Then back to u32.
-    act = str_to_expr(actual).cast(pl.Boolean).cast(pl.UInt32)
-    p = str_to_expr(pred).gt(threshold).cast(pl.UInt32)
+    act = to_expr(actual).cast(pl.Boolean).cast(pl.UInt32)
+    p = to_expr(pred).gt(threshold).cast(pl.UInt32)
     res = pl_plugin(
         symbol="pl_binary_confusion_matrix",
         args=[(2 * act) + p],  # See Rust code for bincount trick
@@ -514,8 +514,8 @@ def query_binary_metrics(
     return pl_plugin(
         symbol="pl_combo_b",
         args=[
-            str_to_expr(actual).cast(pl.UInt32),
-            str_to_expr(pred),
+            to_expr(actual).cast(pl.UInt32),
+            to_expr(pred),
             pl.lit(threshold, dtype=pl.Float64),
         ],
         returns_scalar=True,
@@ -543,8 +543,8 @@ def query_multi_roc_auc(
     strategy
         Either `macro` or `weighted`, which are defined the same as in Scikit-learn.
     """
-    a = str_to_expr(actual)
-    p = str_to_expr(pred)
+    a = to_expr(actual)
+    p = to_expr(pred)
     if strategy == "macro":
         actuals = [a == i for i in range(n_classes)]
         preds = [p.list.get(i) for i in range(n_classes)]
@@ -579,8 +579,8 @@ def query_cat_cross_entropy(
         If true, actual has to be a dense vector (a single number for each row, starting from 0). If false, it has
         to be a column of lists/arrs with only one 1 and 0s otherwise.
     """
-    a = str_to_expr(actual)
-    p = str_to_expr(pred)
+    a = to_expr(actual)
+    p = to_expr(pred)
     if dense:
         y_prob = p.list.get(a)
     else:
@@ -608,8 +608,8 @@ def query_mcc(y_true: str | pl.Expr, y_pred: str | pl.Expr) -> pl.Expr:
     https://en.wikipedia.org/wiki/Phi_coefficient
     """
 
-    y = str_to_expr(y_true)
-    x = str_to_expr(y_pred)
+    y = to_expr(y_true)
+    x = to_expr(y_pred)
     combined = (2 * y + x).cast(pl.UInt32)
 
     return pl_plugin(
@@ -634,7 +634,7 @@ def query_fairness(pred: str | pl.Expr, sensitive_cond: pl.Expr) -> pl.Expr:
     sensitive_cond
         A boolean expression representing the sensitive condition
     """
-    p = str_to_expr(pred)
+    p = to_expr(pred)
     return (p.filter(sensitive_cond).mean() - p.filter(~sensitive_cond).mean()).abs()
 
 
@@ -652,7 +652,7 @@ def query_p_pct_score(pred: str | pl.Expr, sensitive_cond: pl.Expr) -> pl.Expr:
     sensitive_cond
         A boolean expression representing the sensitive condition
     """
-    p = str_to_expr(pred)
+    p = to_expr(pred)
     p_y1_z1 = p.filter(
         sensitive_cond
     ).mean()  # since p is 0s and 1s, this is equal to P(pred = 1 | sensitive_cond)
@@ -686,8 +686,8 @@ def query_dcg_score(
         the same score sequentially. Defaults to False.
     """
 
-    yt = str_to_expr(y_true)
-    ys = str_to_expr(y_score)
+    yt = to_expr(y_true)
+    ys = to_expr(y_score)
 
     range_ = pl.int_range(1, pl.len() + 1)
     discount = math.log(log_base) / range_.log1p()
@@ -794,7 +794,7 @@ def query_ndcg_score(
     # Lazy Polars should be able to figure out things like
     # `discount` and `yt.sort(descending=True)` are common in the calculation of gain
     # and normalized_gain, and so should be only computed once.
-    yt = str_to_expr(y_true)
+    yt = to_expr(y_true)
     range_ = pl.int_range(1, pl.len() + 1)
     discount = math.log(2.0) / range_.log1p()
     if k is not None:
