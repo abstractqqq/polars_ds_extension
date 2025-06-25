@@ -13,7 +13,7 @@ fn _xi_corr(inputs: &[Series]) -> PolarsResult<Series> {
         .sort(["x_rk"], Default::default())
         .select([(lit(1.0)
             - ((len().cast(DataType::Float64) / lit(2.0))
-                * col("r").diff(1, NullBehavior::Ignore).abs().sum())
+                * col("r").diff(lit(1), NullBehavior::Ignore).abs().sum())
                 / (col("l") * (len() - col("l"))).sum())
         .alias("statistic")])
         .collect()?
