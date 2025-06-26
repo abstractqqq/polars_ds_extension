@@ -8,7 +8,7 @@ use crate::linear::{
     online_lr::lr_online_solvers::OnlineLR,
     LinalgErrors,
 };
-use faer_ext::{IntoFaer, IntoNdarray};
+use crate::utils::interop::{IntoFaer, IntoNdarray};
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;

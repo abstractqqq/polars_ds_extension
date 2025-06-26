@@ -1,4 +1,5 @@
 #![feature(float_gamma)]
+#![feature(select_unpredictable)]
 
 mod arkadia;
 mod linear;

@@ -31,7 +31,7 @@ where
         "".into(),
         count_combinations(ca.len(), k),
         k,
-        T::get_dtype(),
+        T::get_static_dtype(),
     );
 
     for comb in ca.into_no_null_iter().combinations(k) {
@@ -46,8 +46,12 @@ fn get_product<T>(ca1: &ChunkedArray<T>, ca2: &ChunkedArray<T>) -> Series
 where
     T: PolarsNumericType,
 {
-    let mut builder: ListPrimitiveChunkedBuilder<T> =
-        ListPrimitiveChunkedBuilder::new("".into(), ca1.len() * ca2.len(), 2, T::get_dtype());
+    let mut builder: ListPrimitiveChunkedBuilder<T> = ListPrimitiveChunkedBuilder::new(
+        "".into(),
+        ca1.len() * ca2.len(),
+        2,
+        T::get_static_dtype(),
+    );
 
     for a in ca1.into_no_null_iter() {
         for b in ca2.into_no_null_iter() {

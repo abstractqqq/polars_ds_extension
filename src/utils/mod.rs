@@ -1,20 +1,22 @@
-use std::str::FromStr;
-
 use cfavml::safe_trait_distance_ops::DistanceOps;
 use num::Float;
 use polars::{
     datatypes::{DataType, Field},
     error::{polars_ensure, PolarsError, PolarsResult},
     frame::DataFrame,
-    lazy::dsl::FieldsMapper,
     prelude::*,
     series::Series,
 };
-use pyo3_polars::export::polars_core::{
-    utils::rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
-    POOL,
+use pyo3_polars::export::{
+    polars_core::{
+        utils::rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
+        POOL,
+    },
+    polars_plan::plans::FieldsMapper,
 };
+use std::str::FromStr;
 
+pub mod interop;
 pub enum IndexOrder {
     C,
     Fortran,
@@ -54,7 +56,7 @@ where
     // let columns = self.get_columns();
     POOL.install(|| {
         series.par_iter().enumerate().try_for_each(|(col_idx, s)| {
-            let s = s.cast(&N::get_dtype())?;
+            let s = s.cast(&N::get_static_dtype())?;
             let s = match s.dtype() {
                 DataType::Float32 => {
                     let ca = s.f32().unwrap();

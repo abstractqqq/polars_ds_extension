@@ -3,7 +3,7 @@ maturin[patchelf]>=1.7; sys_platform == "linux"
 maturin>=1.7; sys_platform != "linux"
 numpy
 scikit-learn<=1.5
-scipy
+scipy<=1.15.3 # 1.16 has a bug in the release, wait for scipy to fix it.
 pyarrow
 pandas
 pytest
@@ -18,4 +18,3 @@ vegafusion[embed]
 vl-convert-python>=1.6
 great-tables>=0.9
 statsmodels
-narwhals

@@ -362,45 +362,49 @@ def principal_components(
     return pl_plugin(symbol="pl_principal_components", args=actual_inputs, pass_name_to_apply=True)
 
 
-def jaccard_row(first: str | pl.Expr, second: str | pl.Expr) -> pl.Expr:
+def jaccard_row(a: str | pl.Expr, b: str | pl.Expr) -> pl.Expr:
     """
-    Computes jaccard similarity pairwise between this and the other column. The type of
+    Computes jaccard similarity pairwise between `a` and `b` column. The type of
     each column must be list and the lists must have the same inner type. The inner type
     must either be integer or string.
 
     Parameters
     ----------
-    first
+    a
         A list column with a hashable inner type
-    second
+    b
         A list column with a hashable inner type
     """
-    return pl_plugin(
-        symbol="pl_list_jaccard",
-        args=[to_expr(first), to_expr(second)],
-        is_elementwise=True,
-    )
+    aa = to_expr(a)
+    bb = to_expr(b)
+    intersection_len = aa.list.set_intersection(bb).list.len()
+    a_len = aa.list.len()
+    b_len = bb.list.len()
+    return intersection_len / (a_len + b_len - intersection_len)
 
 
-def jaccard_col(first: str | pl.Expr, second: str | pl.Expr, count_null: bool = False) -> pl.Expr:
+def jaccard_col(a: str | pl.Expr, b: str | pl.Expr, count_null: bool = False) -> pl.Expr:
     """
     Computes jaccard similarity column-wise. This will hash entire columns and compares the two
     hashsets. Note: only integer/str columns can be compared.
 
     Parameters
     ----------
-    first
+    a
         A column with a hashable type
-    second
+    b
         A column with a hashable type
     count_null
         Whether to count null as a distinct element.
     """
-    return pl_plugin(
-        symbol="pl_jaccard",
-        args=[to_expr(first), to_expr(second), pl.lit(count_null, dtype=pl.Boolean)],
-        returns_scalar=True,
-    )
+    aa = to_expr(a).unique()
+    bb = to_expr(b).unique()
+
+    if not count_null:
+        aa = aa.drop_nulls()
+        bb = bb.drop_nulls()
+
+    return jaccard_row(aa.implode(), bb.implode())
 
 
 def psi(

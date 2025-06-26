@@ -8,7 +8,7 @@ use crate::linear::{
     lr::LinearModel,
     LinalgErrors,
 };
-use faer_ext::IntoFaer;
+use crate::utils::interop::IntoFaer;
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::prelude::*;
 
