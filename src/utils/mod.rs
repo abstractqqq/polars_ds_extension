@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use cfavml::safe_trait_distance_ops::DistanceOps;
 use num::Float;
 use polars::{
@@ -8,10 +7,14 @@ use polars::{
     prelude::*,
     series::Series,
 };
-use pyo3_polars::export::{polars_core::{
-    utils::rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
-    POOL,
-}, polars_plan::plans::FieldsMapper};
+use pyo3_polars::export::{
+    polars_core::{
+        utils::rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
+        POOL,
+    },
+    polars_plan::plans::FieldsMapper,
+};
+use std::str::FromStr;
 
 pub mod interop;
 pub enum IndexOrder {

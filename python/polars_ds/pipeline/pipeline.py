@@ -10,6 +10,7 @@ from polars._typing import IntoExprColumn
 from functools import partial
 from typing import List, Dict, Any, Literal
 from dataclasses import dataclass
+from polars_ds._utils import to_expr
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -19,14 +20,19 @@ else:  # 3.10, 3.9, 3.8
 # Internal Depenedncies
 from . import transforms as t
 from ._step import (
-    PLContext, 
-    ExprStep, SortStep, SQLStep, GroupByAggStep, GroupByDynAggStep, FitStep, PipelineStep, 
-    MakeStep, 
-    _SERIALIZABLE_STEPS
+    PLContext,
+    ExprStep,
+    SortStep,
+    SQLStep,
+    GroupByAggStep,
+    GroupByDynAggStep,
+    FitStep,
+    PipelineStep,
+    MakeStep,
+    _SERIALIZABLE_STEPS,
 )
 from polars_ds.typing import (
     PolarsFrame,
-    ExprTransform,
     SimpleImputeMethod,
     SimpleScaleMethod,
     QuantileMethod,
@@ -112,8 +118,8 @@ class Pipeline:
         for step in self.transforms:
             plan = step.apply_df(plan)
         return plan
-    
-    def with_features_out(self, features: List[str], ensure_features_out:bool=True) -> Self:
+
+    def with_features_out(self, features: List[str], ensure_features_out: bool = True) -> Self:
         self.feature_names_out_ = list(features)
         self.ensure_features_out = ensure_features_out
 
@@ -153,7 +159,7 @@ class Pipeline:
         """
         Recreates a pipeline from a dictionary created by the `to_json` call.
         """
-        pipeline_dict:Dict = json.loads(json_str)
+        pipeline_dict: Dict = json.loads(json_str)
         try:
             name: str = pipeline_dict["name"]
             transforms: List[str] = pipeline_dict["transforms"]
@@ -196,10 +202,7 @@ class Pipeline:
         return self
 
     def transform(
-        self
-        , df: PolarsFrame
-        , return_lazy: bool = False
-        , set_features_out: bool = False
+        self, df: PolarsFrame, return_lazy: bool = False, set_features_out: bool = False
     ) -> PolarsFrame:
         """
         Transforms the df using the learned expressions.
@@ -245,6 +248,9 @@ class Blueprint:
     what a pipeline will be. No learning/fitting is done until self.materialize() is called.
 
     If the input df is lazy, the pipeline will collect at the time of fit.
+
+    Note: although polars selectors work for most transformations and in most cases, it is still
+    recommended that the user should use explicit expressions instead of selectors for most transformations.
     """
 
     def __init__(
@@ -510,29 +516,6 @@ class Blueprint:
         self._steps.append(ExprStep(list(cols), PLContext.SELECT))
         return self
 
-    # Not working after pl.Int128 is introduced
-
-    # def shrink_dtype(self, force_f32: bool = False) -> Self:
-    #     """
-    #     Shrinks the dtype by calling shrink_dtype on all numerical columns. This may reduce
-    #     the memory pressure during the process.
-
-    #     Parameters
-    #     ----------
-    #     force_f32
-    #         If true, force all float columns to be f32 type. You might want to consider using f32
-    #         only in the pipeline if you wish to save memory.
-    #     """
-    #     # The reason for this is that pl.Int128 cannot be pickled yet???
-    #     exprs = cs.by_dtype(
-    #         pl.Int32, pl.Int8, pl.UInt64, pl.UInt16, pl.UInt8, pl.Int64, pl.Int16, pl.UInt32
-    #     ).shrink_dtype()
-    #     self._steps.append(WithColumnsStep(exprs))
-    #     if force_f32:
-    #         self._steps.append(WithColumnsStep(cs.float().cast(pl.Float32)))
-
-    #     return self
-
     def polynomial_features(
         self, cols: List[str], degree: int, interaction_only: bool = True
     ) -> Self:
@@ -616,11 +599,10 @@ class Blueprint:
         """
         old = list(rename_dict.keys())
         self._steps.append(
-            ExprStep(
-                [pl.col(k).alias(v) for k, v in rename_dict.items()], PLContext.WITH_COLUMNS
-            )
+            ExprStep([pl.col(k).alias(v) for k, v in rename_dict.items()], PLContext.WITH_COLUMNS)
         )
-        return self.drop(old)
+
+        return self.drop([o for o in old if o not in set(rename_dict.values())])
 
     def one_hot_encode(
         self,
@@ -816,7 +798,7 @@ class Blueprint:
             )
         )
         return self
-    
+
     def with_columns(self, *exprs: pl.Expr) -> Self:
         """
         Run Polars with_columns for the expressions.
@@ -824,10 +806,9 @@ class Blueprint:
         self._steps.append(ExprStep(list(exprs), PLContext.WITH_COLUMNS))
         return self
 
-    
     def sort(self, by: IntoExprColumn, descending: bool | List[bool]) -> Self:
         """Sorts the dataframe by the columns.
-        
+
         Parameters
         ----------
         by
@@ -837,8 +818,24 @@ class Blueprint:
         """
         self._steps.append(SortStep(by=by, descending=descending))
         return self
-    
-    def group_by_agg(self, by: IntoExprColumn, agg: List[pl.Expr]) -> Self:
+
+    def explode(self, columns: str | pl.Expr | List[str] | List[pl.Expr]) -> Self:
+        """Transform that represents `df.explode(columns)`"""
+        if isinstance(columns, (str, pl.Expr)):
+            exprs = [to_expr(columns)]
+        elif isinstance(columns, list):
+            exprs = [to_expr(c) for c in columns]
+        else:
+            raise ValueError(
+                "Input `columns` must be a string, or a pl.Expr or a list of str or pl.Expr."
+            )
+
+        self._steps.append(ExprStep(exprs, PLContext.EXPLODE))
+        return self
+
+    def group_by_agg(
+        self, by: IntoExprColumn, agg: List[pl.Expr], maintain_order: bool = False
+    ) -> Self:
         """
         Performs a group by and agg on the data.
 
@@ -848,46 +845,54 @@ class Blueprint:
             The columns to group by
         agg
             The aggregation functions to run
+        maintain_order
+            Whether to maintain the group by order
         """
-        if any(not isinstance(e, pl.Expr) for e in agg):
-            raise ValueError("All elements in `agg` must be pl.Expr.")
-
-        self._steps.append(GroupByAggStep(by=by, agg = agg))
+        self._steps.append(
+            GroupByAggStep(by=by, agg=[to_expr(a) for a in agg], maintain_order=maintain_order)
+        )
         return self
-    
+
     def group_by_dynamic_agg(
-        self
-        , index_column: str
-        , agg: List[pl.Expr]
-        , every: str
-        , by: IntoExprColumn | None = None
-        , period: str | None = None
-        , offset: str | None = None 
-        , include_boundaries: bool = False
-        , closed: Literal['left', 'right', 'both', 'none'] = 'left'
-        , label: Literal['left', 'right', 'datapoint'] = 'left'
-        , start_by: Literal['window', 'datapoint', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] = 'window'
+        self,
+        index_column: str,
+        agg: List[pl.Expr],
+        every: str,
+        period: str | None = None,
+        offset: str | None = None,
+        include_boundaries: bool = False,
+        closed: Literal["left", "right", "both", "none"] = "left",
+        label: Literal["left", "right", "datapoint"] = "left",
+        group_by: IntoExprColumn | None = None,
+        start_by: Literal[
+            "window",
+            "datapoint",
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        ] = "window",
     ) -> Self:
         """
         See polars group_by_dynamic documentation for an explanation on the input arguments.
 
         https://docs.pola.rs/api/python/stable/reference/dataframe/api/polars.DataFrame.group_by_dynamic.html#polars.DataFrame.group_by_dynamic
         """
-        if any(not isinstance(e, pl.Expr) for e in agg):
-            raise ValueError("All elements in `agg` must be pl.Expr.")
-        
         self._steps.append(
             GroupByDynAggStep(
-                index_column = index_column
-                , agg = agg
-                , every = every
-                , by = by
-                , period = period
-                , offset = offset
-                , include_boundaries = include_boundaries
-                , closed = closed
-                , label = label
-                , start_by = start_by
+                index_column=index_column,
+                agg=[to_expr(a) for a in agg],
+                every=every,
+                group_by=group_by,
+                period=period,
+                offset=offset,
+                include_boundaries=include_boundaries,
+                closed=closed,
+                label=label,
+                start_by=start_by,
             )
         )
         return self
@@ -981,9 +986,7 @@ class Blueprint:
         """
         return self.materialize()
 
-    def transform(
-        self, df: PolarsFrame
-    ) -> pl.DataFrame:
+    def transform(self, df: PolarsFrame) -> pl.DataFrame:
         """
         Fits the blueprint with the dataframe that it is initialized with, and
         transforms the input dataframe.

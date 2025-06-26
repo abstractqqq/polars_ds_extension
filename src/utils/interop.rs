@@ -79,11 +79,10 @@ const _: () = {
     }
 };
 
-
 const _: () = {
     use faer::prelude::*;
-    use numpy::{PyReadonlyArray1, PyReadonlyArray2, PyArrayMethods};
     use numpy::Element;
+    use numpy::{PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
 
     impl<'a, T: Element + 'a> IntoFaer for PyReadonlyArray2<'a, T> {
         type Faer = MatRef<'a, T>;
@@ -111,5 +110,4 @@ const _: () = {
             unsafe { ColRef::from_raw_parts(ptr, nrows, strides[0]) }
         }
     }
-
 };

@@ -370,9 +370,9 @@ def jaccard_row(a: str | pl.Expr, b: str | pl.Expr) -> pl.Expr:
 
     Parameters
     ----------
-    first
+    a
         A list column with a hashable inner type
-    second
+    b
         A list column with a hashable inner type
     """
     aa = to_expr(a)
@@ -383,25 +383,28 @@ def jaccard_row(a: str | pl.Expr, b: str | pl.Expr) -> pl.Expr:
     return intersection_len / (a_len + b_len - intersection_len)
 
 
-def jaccard_col(first: str | pl.Expr, second: str | pl.Expr, count_null: bool = False) -> pl.Expr:
+def jaccard_col(a: str | pl.Expr, b: str | pl.Expr, count_null: bool = False) -> pl.Expr:
     """
     Computes jaccard similarity column-wise. This will hash entire columns and compares the two
     hashsets. Note: only integer/str columns can be compared.
 
     Parameters
     ----------
-    first
+    a
         A column with a hashable type
-    second
+    b
         A column with a hashable type
     count_null
         Whether to count null as a distinct element.
     """
-    return pl_plugin(
-        symbol="pl_jaccard",
-        args=[to_expr(first), to_expr(second), pl.lit(count_null, dtype=pl.Boolean)],
-        returns_scalar=True,
-    )
+    aa = to_expr(a).unique()
+    bb = to_expr(b).unique()
+
+    if not count_null:
+        aa = aa.drop_nulls()
+        bb = bb.drop_nulls()
+
+    return jaccard_row(aa.implode(), bb.implode())
 
 
 def psi(
