@@ -606,7 +606,7 @@ class Blueprint:
 
     def one_hot_encode(
         self,
-        cols: IntoExprColumn,
+        cols: IntoExprColumn | None = None,
         separator: str = "_",
         drop_first: bool = False,
         drop_cols: bool = True,
@@ -619,7 +619,7 @@ class Blueprint:
         Parameters
         ----------
         cols
-            Any Polars expression that can be understood as columns.
+            Any Polars expression that can be understood as columns. If None, all string/categorical columns will be encoded.
         separator
             E.g. if column name is `col` and `a` is an elemenet in it, then the one-hot encoded column will be called
             `col_a` where the separator `_` is used.
@@ -629,14 +629,18 @@ class Blueprint:
         drop_cols
             Whether to drop the original columns after the transform
         """
+        # First append new columns
         self._steps.append(
             FitStep(
                 partial(t.one_hot_encode, separator=separator, drop_first=drop_first),
-                cols,
+                cols if cols is not None else cs.string() | cs.categorical(),
                 self.exclude,
             )
         )
+        # Whether to drop the og str columns
         if drop_cols:
+            if cols is None:
+                return self.drop([pl.String, pl.Categorical])
             return self.drop(cols)
         return self
 
@@ -669,8 +673,7 @@ class Blueprint:
 
     def target_encode(
         self,
-        cols: IntoExprColumn,
-        /,
+        cols: IntoExprColumn | None = None,
         target: str | pl.Expr | None = None,
         min_samples_leaf: int = 20,
         smoothing: float = 10.0,
@@ -685,7 +688,7 @@ class Blueprint:
         ----------
         cols
             Any Polars expression that can be understood as columns. Columns of type != string/categorical
-            will not produce any expression.
+            will not produce any expression. If None, all string/categorical columns will be used.
         target
             The target column
         min_samples_leaf
@@ -709,7 +712,7 @@ class Blueprint:
                     smoothing=smoothing,
                     default=default,
                 ),
-                cols,
+                cols if cols is not None else cs.string() | cs.categorical(),
                 self.exclude,
             )
         )
@@ -717,8 +720,7 @@ class Blueprint:
 
     def woe_encode(
         self,
-        cols: IntoExprColumn,
-        /,
+        cols: IntoExprColumn | None = None,
         target: str | pl.Expr | None = None,
         default: EncoderDefaultStrategy | float | None = None,
     ) -> Self:
@@ -733,7 +735,7 @@ class Blueprint:
         ----------
         cols
             Any Polars expression that can be understood as columns. Columns of type != string/categorical
-            will not produce any expression.
+            will not produce any expression. If None, all string/categorical columns will be used.
         target
             The target column
         default
@@ -751,7 +753,7 @@ class Blueprint:
                     target=self._get_target(target),
                     default=default,
                 ),
-                cols,
+                cols if cols is not None else cs.string() | cs.categorical(),
                 self.exclude,
             )
         )
@@ -759,8 +761,7 @@ class Blueprint:
 
     def iv_encode(
         self,
-        cols: IntoExprColumn,
-        /,
+        cols: IntoExprColumn | None = None,
         target: str | pl.Expr | None = None,
         default: EncoderDefaultStrategy | float | None = None,
     ) -> Self:
@@ -775,7 +776,7 @@ class Blueprint:
         ----------
         cols
             Any Polars expression that can be understood as columns. Columns of type != string/categorical
-            will not produce any expression.
+            will not produce any expression. If None, all string/categorical columns will be used.
         target
             The target column
         default
@@ -793,7 +794,7 @@ class Blueprint:
                     target=self._get_target(target),
                     default=default,
                 ),
-                cols,
+                cols if cols is not None else cs.string() | cs.categorical(),
                 self.exclude,
             )
         )
