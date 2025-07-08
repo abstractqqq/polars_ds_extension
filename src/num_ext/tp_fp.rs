@@ -1,3 +1,5 @@
+use std::f64;
+
 /// All things true positive, false positive related.
 /// ROC AUC, Average Precision, precision, recall, etc. m
 use polars::prelude::*;
@@ -63,12 +65,12 @@ fn tp_fp_frame(
                 .alias("tp"),
         ])
         .select([
-            col("threshold"),
-            col("tp"),
-            (col("predicted_positive") - col("tp")).alias("fp"),
+            col("threshold").append(lit(f64::INFINITY), true),
+            col("tp").append(lit(0), true),
+            (col("predicted_positive") - col("tp")).append(lit(0), true).alias("fp"),
             (col("tp").cast(DataType::Float64) / col("predicted_positive").cast(DataType::Float64))
-                .alias("precision"),
-        ]);
+                .append(lit(0f64), true).alias("precision"),
+        ]); // pad the values with a inf threshold, 0 fp, 0 tp at the end
     // col("cnt"),
     // col("predicted_positive")
     // col("pos_cnt_at_threshold"),
@@ -100,8 +102,8 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
         return Ok(Series::from_iter([f64::NAN]));
     }
 
-    let mut binding = tp_fp_frame(predicted, actual, positive_count, true)?.collect()?;
-    let frame = binding.align_chunks();
+    let mut frame = tp_fp_frame(predicted, actual, positive_count, true)?.collect()?;
+    frame.rechunk_mut();
 
     let tpr = frame.drop_in_place("tpr").unwrap();
     let fpr = frame.drop_in_place("fpr").unwrap();
@@ -221,10 +223,10 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
         return Ok(Series::from_iter([f64::NAN]));
     }
 
-    let mut binding = tp_fp_frame(predicted, actual, positive_cnt, true)?
+    let mut frame = tp_fp_frame(predicted, actual, positive_cnt, true)?
         .select([col("tpr"), col("fpr")])
         .collect()?;
-    let frame = binding.align_chunks();
+    frame.rechunk_mut();
 
     let tpr = frame.drop_in_place("tpr").unwrap();
     let fpr = frame.drop_in_place("fpr").unwrap();

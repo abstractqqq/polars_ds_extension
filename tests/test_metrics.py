@@ -151,6 +151,26 @@ def test_roc_auc():
     assert result == 0.5
 
 
+def test_roc_auc_2():
+    from sklearn.metrics import roc_auc_score
+
+    # A test submitted by a user. PDS didn't have 0 padding for TPR and FPR before the user
+    # submitted the issue and this test is added to check that. This behavior is consistent
+    # with scipy's trapz calculation and therefore with sklearn's roc auc.
+    df = pl.from_dict(
+        {
+            "ytrue": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            "ypred": [1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1],
+        }
+    )
+
+    roc_auc_pds = df.select(pds.query_roc_auc("ytrue", "ypred")).item(0, 0)
+
+    roc_auc_sklearn = roc_auc_score(df["ytrue"].to_numpy(), df["ypred"].to_numpy())
+
+    assert np.isclose(roc_auc_pds, roc_auc_sklearn)
+
+
 def test_multiclass_roc_auc():
     from sklearn.metrics import roc_auc_score
 
