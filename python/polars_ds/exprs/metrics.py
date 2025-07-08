@@ -365,7 +365,7 @@ def query_roc_auc(
     """
     return pl_plugin(
         symbol="pl_roc_auc",
-        args=[to_expr(actual).cast(pl.UInt32), to_expr(pred)],
+        args=[to_expr(actual).cast(pl.UInt32), to_expr(pred).cast(pl.Float64)],
         returns_scalar=True,
     )
 
@@ -387,7 +387,7 @@ def query_tpr_fpr(
     """
     return pl_plugin(
         symbol="pl_tpr_fpr",
-        args=[to_expr(actual).cast(pl.UInt32), to_expr(pred)],
+        args=[to_expr(actual).cast(pl.UInt32), to_expr(pred).cast(pl.Float64)],
     )
 
 
