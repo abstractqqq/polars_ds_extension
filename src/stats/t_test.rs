@@ -1,4 +1,6 @@
-use super::{generic_stats_output, simple_stats_output, Alternative};
+use super::{
+    generic_optional_stats_output, generic_stats_output, simple_stats_output, Alternative,
+};
 use crate::{stats, stats_utils::beta};
 /// Student's t test and Welch's t test.
 use core::f64;
@@ -65,14 +67,22 @@ fn welch_t(
     n1: f64,
     n2: f64,
     alt: Alternative,
-) -> Result<(f64, f64), String> {
-    let num = m1 - m2;
-    let vn1 = v1 / n1;
-    let vn2 = v2 / n2;
-    let denom = (vn1 + vn2).sqrt();
-    if denom == 0. {
-        Err("T Test: Division by 0 encountered.".into())
+) -> Result<Option<(f64, f64)>, String> {
+    if m1.is_nan()
+        || m2.is_nan()
+        || v1.is_nan()
+        || v2.is_nan()
+        || v1 == 0.0
+        || v2 == 0.0
+        || n1 == 0.0
+        || n2 == 0.0
+    {
+        Ok(None)
     } else {
+        let num = m1 - m2;
+        let vn1 = v1 / n1;
+        let vn2 = v2 / n2;
+        let denom = (vn1 + vn2).sqrt();
         let t = num / denom;
         let df = (vn1 + vn2).powi(2) / (vn1.powi(2) / (n1 - 1.) + (vn2.powi(2) / (n2 - 1.)));
         let p = match alt {
@@ -85,7 +95,7 @@ fn welch_t(
             },
         };
         let p = p?;
-        Ok((t, p))
+        Ok(Some((t, p)))
     }
 }
 
@@ -119,13 +129,13 @@ fn pl_ttest_2samp(inputs: &[Series]) -> PolarsResult<Series> {
 #[polars_expr(output_type_func=simple_stats_output)]
 fn pl_welch_t(inputs: &[Series]) -> PolarsResult<Series> {
     let mean1 = inputs[0].f64()?;
-    let mean1 = mean1.get(0).unwrap();
+    let mean1 = mean1.get(0).unwrap_or(f64::NAN);
     let mean2 = inputs[1].f64()?;
-    let mean2 = mean2.get(0).unwrap();
+    let mean2 = mean2.get(0).unwrap_or(f64::NAN);
     let var1 = inputs[2].f64()?;
-    let var1 = var1.get(0).unwrap();
+    let var1 = var1.get(0).unwrap_or(f64::NAN);
     let var2 = inputs[3].f64()?;
-    let var2 = var2.get(0).unwrap();
+    let var2 = var2.get(0).unwrap_or(f64::NAN);
     let n1 = inputs[4].u64()?;
     let n1 = n1.get(0).unwrap() as f64;
     let n2 = inputs[5].u64()?;
@@ -135,12 +145,9 @@ fn pl_welch_t(inputs: &[Series]) -> PolarsResult<Series> {
     let alt = alt.get(0).unwrap();
     let alt = stats::Alternative::from(alt);
 
-    // No need to check for validity because input is sanitized.
-
-    let (t, p) = welch_t(mean1, mean2, var1, var2, n1, n2, alt)
+    let output = welch_t(mean1, mean2, var1, var2, n1, n2, alt)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
-
-    generic_stats_output(t, p)
+    generic_optional_stats_output(output)
 }
 
 #[polars_expr(output_type_func=simple_stats_output)]
