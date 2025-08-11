@@ -198,6 +198,7 @@ def split_by_ratio(
     split_ratio: float | List[float] | Dict[str, float],
     seed: int | None = None,
     split_col: str = "__split",
+    by: str | list[str] | None = None,
     default_split_1: str = "train",
     default_split_2: str = "test",
 ) -> PolarsFrame:
@@ -217,7 +218,8 @@ def split_by_ratio(
     Please avoid using floating point values with too many decimal places, which may cause
     the splits to be off by a 1 row.
 
-    This will return lazy frames if input is lazy, and eager frames if input is eager.
+    This will return lazy frames if input is lazy, and eager frames if input is eager. But if `by` is given,
+    then the dataframe will be collected and will only return eager dataframe in the end.
 
     Parameters
     ----------
@@ -225,13 +227,32 @@ def split_by_ratio(
         Either a lazy or eager Polars dataframe
     split_ratio
         Either a single float or a list of floats.
+    split_col
+        The column name of the split
     seed
         The random seed
+    by
+        Optional str of list of str. The column(s) to stratify by.
     default_split_1
         Name of the first split when split_ratio is a scalar
     default_split_2
         Name of the second split when split_ratio is a scalar
     """
+
+    if by is not None:
+        results = [
+            split_by_ratio(
+                frame
+                , split_ratio = split_ratio
+                , seed = seed
+                , by = None
+                , split_col = split_col
+                , default_split_1 = default_split_1
+                , default_split_2 = default_split_2
+            )
+            for frame in df.lazy().collect().partition_by(by)
+        ]
+        return pl.concat(results, how = "vertical")
 
     if isinstance(split_ratio, float):
         if split_ratio <= 0.0 or split_ratio >= 1:
