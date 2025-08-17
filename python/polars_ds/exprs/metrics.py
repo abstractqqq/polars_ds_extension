@@ -708,11 +708,21 @@ def query_dcg_score(
         ranked = add_at(inv, yt, n_unique) / counts
         groups = counts.cum_sum() - 1
 
-        discount_sums = (
-            discount_cumsum.gather(groups)
-            .diff()
-            .fill_null(discount_cumsum.get(groups.first()).first())
-        )  # The only possible null is at position 0
+        # PL VERSION
+        major, minor, patch = list(map(lambda v: int(v), pl.__version__.split(".")))
+        if (major, minor, patch) < (1, 32, 3):
+            discount_sums = (
+                discount_cumsum.gather(groups)
+                .diff()
+                .fill_null(discount_cumsum.get(groups.first()).first())
+            )  # The only possible null is at position 0
+
+        else: # in newer versions, get() returns a value which auto resolves to a scaler
+            discount_sums = (
+                discount_cumsum.gather(groups)
+                .diff()
+                .fill_null(discount_cumsum.get(groups.first()))
+            )  # The only possible null is at position 0
 
         return ranked.dot(discount_sums)
 
