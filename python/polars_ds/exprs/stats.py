@@ -63,6 +63,12 @@ def ttest_ind(
     In the case of Welch's t test, data will be sanitized (nulls, NaNs, Infs will be dropped
     before the test), and df will be counted based on the length of sanitized data.
 
+    If (NaN, NaN) is returned, then it is possible that one of the following numeric
+    problems occurred:
+    
+    1. There is no valid value in the inputs, or the mean is inf.
+    2. Input variable has length 0 after removing non-finite values.
+
     Parameters
     ----------
     var1
@@ -122,6 +128,12 @@ def ttest_1samp(
     Performs a standard 1 sample t test using reference column and expected mean. This function
     sanitizes the self column first. The df is the count of valid values.
 
+    If (NaN, NaN) is returned, then it is possible that one of the following numeric
+    problems occurred:
+    
+    1. There is no valid value in the inputs, or the mean is inf.
+    2. Input variable has length 0 after removing non-finite values.
+
     Parameters
     ----------
     var1
@@ -157,6 +169,12 @@ def ttest_ind_from_stats(
     Performs 2 sample student's t test or Welch's t test, using only scalar statistics from other.
     This is more suitable for t-tests between rolling data and some other fixed data, from which you
     can compute the mean, var, and count only once.
+
+    If (NaN, NaN) is returned, then it is possible that one of the following numeric
+    problems occurred:
+    
+    1. There is no valid value in the inputs, or the mean is inf.
+    2. Input variable has length 0 after removing non-finite values.
 
     Parameters
     ----------
