@@ -156,6 +156,7 @@ impl<T: RealField + Float> LinearModel<T> for ElasticNet<T> {
                 self.add_bias,
                 self.tol,
                 self.max_iter,
+                false
             )
         } else {
             faer_coordinate_descent(
@@ -166,6 +167,7 @@ impl<T: RealField + Float> LinearModel<T> for ElasticNet<T> {
                 self.add_bias,
                 self.tol,
                 self.max_iter,
+                false
             )
         };
     }
@@ -316,6 +318,7 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
     add_bias: bool,
     tol: T,
     max_iter: usize,
+    positive: bool,
 ) -> Mat<T> {
     let m = T::from(x.nrows()).unwrap();
     let ncols = x.ncols();
@@ -350,11 +353,16 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
             let main_update = *xty.get(j, 0) - *(xtx_j * &beta).get(0, 0);
 
             // update beta(j, 0).
-            let after = soft_threshold_l1(main_update, lambda_l1) / norms[j];
+            let after = if positive && main_update < T::zero() {
+                T::zero()
+            } else {
+                soft_threshold_l1(main_update, lambda_l1) / norms[j]
+            };
             *unsafe { beta.get_mut_unchecked(j, 0) } = after;
             max_change = (after - before).abs().max(max_change);
         }
         // if add_bias, n1 = last index = ncols - 1 = column of bias. If add_bias is False, n = ncols
+        // In positive case, there should be no positive constraint on the bias term
         if add_bias {
             // Safe. The index is valid and the value is initialized.
             let xx = unsafe { x.get_unchecked(.., 0..n1) };
@@ -362,6 +370,8 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
             let ss = (y - xx * bb).as_ref().sum() / m;
             *unsafe { beta.get_mut_unchecked(n1, 0) } = ss;
         }
+        // This stopping criterion is not perfect. There is something called a dual gap which
+        // is better.
         converge = max_change < tol;
         if converge {
             break;
@@ -375,4 +385,51 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
     }
 
     beta
+}
+
+
+/// Non-negative Lstsq. Returns the coefficients as a ncols x 1 faer matrix 
+pub fn faer_nn_lstsq<T: RealField + Float>(
+    x: MatRef<T>,
+    y: MatRef<T>,
+    add_bias: bool,
+    tol: T,
+    max_iter: usize,
+) -> Mat<T> {
+    // x: nrows x ncols
+    let xtx: Mat<T> = x.transpose() * x; 
+    let xty: Mat<T> = x.transpose() * y; 
+
+    let mut beta: Mat<T> = Mat::zeros(x.ncols(), 1);
+    let mut mu = Scale(T::one().neg()) * &xty;
+    // safe, all indices are in valid range
+    unsafe {
+        for _ in 0..max_iter {
+    
+            let hxf: Mat<T> = &xtx * &beta - &xty;
+            let criterion1 = hxf.col(0).iter().all(|c| *c >= -tol);
+            let mut criterion2 = true; 
+            for j in 0..beta.nrows() {
+                if *beta.get_unchecked(j, 0) > T::zero() {
+                    criterion2 &= *hxf.get_unchecked(j, 0) <= tol;
+                }
+            }
+            
+            if criterion1 && criterion2 {break};
+    
+            for k in 0..x.ncols() {
+                let beta_k = *beta.get(k, 0);
+                let mut x_diff = - beta_k;
+                let mut update = beta_k - *mu.get_unchecked(k, 0) / *xtx.get_unchecked(k, k);
+                if !add_bias || k < x.ncols() - 1 {
+                    update = update.max(T::zero());   
+                } // No need for max with 0 if this is the bias term
+                *beta.get_mut_unchecked(k, 0) = update;
+                x_diff = x_diff + update;
+                mu = mu + Scale(x_diff) * xtx.get(.., k).as_mat();
+            }
+        }
+    }
+    beta
+
 }

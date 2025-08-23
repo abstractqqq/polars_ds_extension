@@ -10,7 +10,7 @@ use super::linear_regression::{LstsqKwargs, MultiLstsqKwargs, SWWLstsqKwargs, St
 use crate::linear::{
     lr::{
         lr_solvers::{
-            faer_coordinate_descent, faer_solve_lstsq, faer_solve_lstsq_rcond, faer_weighted_lstsq,
+            faer_coordinate_descent, faer_solve_lstsq, faer_solve_lstsq_rcond, faer_weighted_lstsq, faer_nn_lstsq
         },
         LRMethods,
     },
@@ -264,12 +264,16 @@ fn pl_lstsq_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> 
                 }
                 faer_weighted_lstsq(x, y, weights, solver)
             } else {
-                match LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)) {
-                    LRMethods::Normal | LRMethods::L2 => {
+                match (LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)), kwargs.positive) {
+                    (LRMethods::Normal | LRMethods::L2, false) => 
                         faer_solve_lstsq(x, y, kwargs.l2_reg as f32, add_bias, solver)
-                    }
-
-                    LRMethods::L1 | LRMethods::ElasticNet => faer_coordinate_descent(
+                    ,
+                    (LRMethods::Normal, true) => faer_nn_lstsq(x, y, add_bias, kwargs.tol as f32, 200)
+                    ,
+                    (LRMethods::L2, true) => 
+                        faer_coordinate_descent(x, y, 0f32, kwargs.l2_reg as f32, add_bias, kwargs.tol as f32, 2000, true)
+                    ,
+                    (LRMethods::L1 | LRMethods::ElasticNet, true | false) => faer_coordinate_descent(
                         x,
                         y,
                         kwargs.l1_reg as f32,
@@ -277,6 +281,7 @@ fn pl_lstsq_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> 
                         add_bias,
                         kwargs.tol as f32,
                         2000,
+                        kwargs.positive
                     ),
                 }
             };
@@ -481,11 +486,16 @@ fn pl_lstsq_pred_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
                 }
                 faer_weighted_lstsq(x, y, weights, solver)
             } else {
-                match LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)) {
-                    LRMethods::Normal | LRMethods::L2 => {
+                match (LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)), kwargs.positive) {
+                    (LRMethods::Normal | LRMethods::L2, false) => 
                         faer_solve_lstsq(x, y, kwargs.l2_reg as f32, add_bias, solver)
-                    }
-                    LRMethods::L1 | LRMethods::ElasticNet => faer_coordinate_descent(
+                    ,
+                    (LRMethods::Normal, true) => faer_nn_lstsq(x, y, add_bias, kwargs.tol as f32, 2000)
+                    ,
+                    (LRMethods::L2, true) => 
+                        faer_coordinate_descent(x, y, 0f32, kwargs.l2_reg as f32, add_bias, kwargs.tol as f32, 2000, true)
+                    ,
+                    (LRMethods::L1 | LRMethods::ElasticNet, true | false) => faer_coordinate_descent(
                         x,
                         y,
                         kwargs.l1_reg as f32,
@@ -493,6 +503,7 @@ fn pl_lstsq_pred_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
                         add_bias,
                         kwargs.tol as f32,
                         2000,
+                        kwargs.positive
                     ),
                 }
             };
