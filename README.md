@@ -90,7 +90,7 @@ df.select(
 - [x] Lasso, Ridge, Elastic Net (pds.lin_reg)
 - [x] Rolling linear regression with skipping (pds.rolling_lin_reg)
 - [x] Recursive linear regression (pds.recursive_lin_reg)
-- [ ] Non-negative linear regression 
+- [x] Non-negative linear regression 
 - [x] Statsmodel-like linear regression table (pds.lin_reg_report)
 - [x] f32 support
 
