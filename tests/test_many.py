@@ -605,6 +605,81 @@ def test_lasso_regression():
         assert np.all(np.abs(res_sklearn - res_coef) < 1e-4)
         assert abs(res_bias - sklearn.intercept_) < 1e-4
 
+def test_positive_lin_reg():
+    # 
+    from sklearn.linear_model import LinearRegression, ElasticNet
+
+    df = (
+        pds.frame(size=5_000)
+        .select(
+            pds.random(0.0, 1.0).alias("x1"),
+            pds.random(0.0, 1.0).alias("x2"),
+            pds.random(0.0, 1.0).alias("x3"),
+        )
+        .with_columns(
+            y=pl.col("x1") * 0.5 + pl.col("x2") * 0.25 + pl.col("x3") * -0.15 + pds.random() * 0.0001
+        )
+    )
+
+    # Third coefficient should be 0 because this is non neg
+    for bias in [True, False]: 
+        pds_result = df.select(
+            pds.lin_reg(
+                *[f"x{i+1}" for i in range(3)]
+                , target = "y"
+                , positive = True
+                , add_bias = bias
+            )
+        ).item(0, 0)
+        pds_result = pds_result.to_numpy()
+
+        if not bias:
+            assert np.all(pds_result >= 0.0)
+        else:
+            # Bias term can be negative
+            assert np.all(pds_result[:-1] >= 0.0)
+
+        reg_nnls = LinearRegression(positive=True, fit_intercept=bias)
+        reg_nnls.fit(df.select("x1", "x2", "x3").to_numpy(), df["y"].to_numpy())
+
+        if not bias:
+            assert np.all(np.isclose(pds_result, reg_nnls.coef_, atol=1e-5))
+        else:
+            assert np.all(np.isclose(pds_result[:-1], reg_nnls.coef_, atol=1e-5))
+            assert np.isclose(float(pds_result[-1]), reg_nnls.intercept_, atol=1e-5)
+
+    for reg, bias in zip([0.01, 0.05, 0.1, 0.2], [False, True, False, True]):
+        l1_reg = reg
+        l2_reg = reg
+
+        pds_result = df.select(
+            pds.lin_reg(
+                "x1", "x2", "x3", 
+                target="y", 
+                l1_reg=l1_reg, 
+                l2_reg=l2_reg, 
+                add_bias=bias
+            ).alias("coeffs")
+        ).item(0, 0)
+
+        pds_result = pds_result.to_numpy()
+        if not bias:
+            assert np.all(pds_result >= 0.0)
+        else:
+            # Bias term can be negative
+            assert np.all(pds_result[:-1] >= 0.0)
+
+        alpha = l1_reg + l2_reg
+        l1_ratio = l1_reg / (l1_reg + l2_reg)
+
+        reg_nnls = ElasticNet(alpha=alpha, l1_ratio=l1_ratio, fit_intercept=bias)
+        reg_nnls.fit(df.select("x1", "x2", "x3").to_numpy(), df["y"].to_numpy())
+        if not bias: # allow for a higher error tolerance because of convergence differences
+            assert np.all(np.isclose(pds_result, reg_nnls.coef_, atol=1e-4))
+        else:
+            assert np.all(np.isclose(pds_result[:-1], reg_nnls.coef_, atol=1e-4))
+            assert np.isclose(float(pds_result[-1]), reg_nnls.intercept_, atol=1e-4)
+
 
 def test_elastic_net_regression():
     # These tests have bigger precision tolerance because of different stopping criterions
