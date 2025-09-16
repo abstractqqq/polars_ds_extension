@@ -87,12 +87,12 @@ df.select(
 ```
 
 - [x] Normal Linear Regression (pds.lin_reg)
-- [x] Lasso, Ridge, Elastic Net (pds.lin_reg)
+- [x] Lasso, Ridge, Elastic Net (pds.lin_reg, use l1_reg, l2_reg arguments)
 - [x] Rolling linear regression with skipping (pds.rolling_lin_reg)
 - [x] Recursive linear regression (pds.recursive_lin_reg)
-- [x] Non-negative linear regression 
+- [x] Non-negative linear regression (pds.lin_reg, set positive = True)
 - [x] Statsmodel-like linear regression table (pds.lin_reg_report)
-- [x] f32 support
+- [x] f32 support (pds.config.LIN_REG_EXPR_F64 = False)
 
 ### Tabular Machine Learning Data Transformation Pipeline
 
