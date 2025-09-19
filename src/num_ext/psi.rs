@@ -66,7 +66,7 @@ fn psi_frame(bp: &[f64], bp_name: &str, cnt1: &[u32], cnt2: &[u32]) -> PolarsRes
             col("baseline_pct"),
             col("actual_pct"),
             ((col("baseline_pct") - col("actual_pct"))
-                * ((col("baseline_pct") / col("actual_pct")).log(std::f64::consts::E)))
+                * ((col("baseline_pct") / col("actual_pct")).log(lit(std::f64::consts::E))))
             .alias("psi_bin"),
         ]))
 }
@@ -156,7 +156,7 @@ fn pl_psi_discrete_report(inputs: &[Series]) -> PolarsResult<Series> {
             col("baseline_pct"),
             col("actual_pct"),
             ((col("baseline_pct") - col("actual_pct"))
-                * ((col("baseline_pct") / col("actual_pct")).log(std::f64::consts::E)))
+                * ((col("baseline_pct") / col("actual_pct")).log(lit(std::f64::consts::E))))
             .alias("psi_bin"),
         ])
         .collect()?;

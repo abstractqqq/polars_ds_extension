@@ -17,7 +17,7 @@ fn pl_conditional_entropy(inputs: &[Series]) -> PolarsResult<Series> {
         ])
         .select([(lit(-1.0_f64)
             * ((col("p(x,y)") / col("p(y)"))
-                .log(std::f64::consts::E)
+                .log(lit(std::f64::consts::E))
                 .dot(col("p(x,y)"))))
         .alias("H(x|y)")])
         .collect()?;

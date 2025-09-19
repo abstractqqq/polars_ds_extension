@@ -181,12 +181,17 @@ fn series_to_mat_for_lstsq(
                 Ok((df, mask))
             }
             NullPolicy::FILL(x) => {
+
+                let filled = inputs[1..]
+                    .iter()
+                    .map(
+                        |s| 
+                        pl::col(s.name().clone()).cast(DataType::Float64).fill_null(lit(x))
+                    ).collect::<Vec<_>>();
+
                 df = df
                     .lazy()
-                    .with_columns([pl::col("*")
-                        .exclude([y_name.clone()])
-                        .cast(DataType::Float64)
-                        .fill_null(lit(x))])
+                    .with_columns(filled)
                     .collect()?;
 
                 if y_has_null {
@@ -199,12 +204,16 @@ fn series_to_mat_for_lstsq(
                 }
             }
             NullPolicy::FILL_WINDOW(x) => {
+                let filled = inputs[1..]
+                    .iter()
+                    .map(
+                        |s| 
+                        pl::col(s.name().clone()).cast(DataType::Float64).fill_null(lit(x))
+                    ).collect::<Vec<_>>();
+
                 df = df
                     .lazy()
-                    .with_columns([pl::col("*")
-                        .exclude([y_name.clone()])
-                        .cast(DataType::Float64)
-                        .fill_null(lit(x))])
+                    .with_columns(filled)
                     .collect()?;
 
                 if y_has_null {
@@ -262,16 +271,15 @@ fn series_to_mat_for_multi_lstsq(
                         "Filling null doesn't work for multi-target lstsq when there are nulls in any of the targets.".into(),
                     ))
                 } else {
-                    let y_names = inputs[..last_target_idx]
+                    let filled = inputs[last_target_idx..]
                         .iter()
-                        .map(|s| s.name().clone())
-                        .collect::<Vec<_>>();
+                        .map(
+                            |s| 
+                            pl::col(s.name().clone()).cast(DataType::Float64).fill_null(lit(x))
+                        ).collect::<Vec<_>>();
 
                     df.lazy()
-                        .with_columns([pl::col("*")
-                            .exclude(y_names)
-                            .cast(DataType::Float64)
-                            .fill_null(lit(x))])
+                        .with_columns(filled)
                         .collect()
                 }
             }
