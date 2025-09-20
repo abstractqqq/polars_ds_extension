@@ -43,7 +43,7 @@ fn get_woe_frame(discrete_col: &Series, target: &Series) -> PolarsResult<LazyFra
         ])
         .with_column(
             (col("good_pct") / col("bad_pct"))
-                .log(std::f64::consts::E)
+                .log(lit(std::f64::consts::E))
                 .alias("woe"),
         );
     Ok(out)
