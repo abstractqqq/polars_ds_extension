@@ -264,7 +264,7 @@ def ks_2samp(
 
     return pl_plugin(
         symbol="pl_ks_2samp",
-        args=[z1, z2, pl.lit(alpha, pl.Float64)],
+        args=[z1.cast(pl.Float64), z2.cast(pl.Float64), pl.lit(alpha, pl.Float64)],
         returns_scalar=True,
     )
 
