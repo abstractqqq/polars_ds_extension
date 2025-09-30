@@ -6,6 +6,7 @@ __version__ = importlib.metadata.version("polars_ds")
 
 # Internal dependencies
 from polars_ds.exprs import *  # noqa F403
+from polars_ds.expander import E  # noqa: F401
 
 def frame(size: int = 2_000, index_name: str = "row_num") -> pl.DataFrame:
     """

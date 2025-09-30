@@ -10,7 +10,8 @@ CANNOT_CALL = {
     "pl",
     "annotations",
     "__version__",
-    "warn_len_compare"
+    "warn_len_compare",
+    "E"
 }
 
 __all__ = ["compat"]
