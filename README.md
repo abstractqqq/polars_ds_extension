@@ -94,6 +94,30 @@ df.select(
 - [x] Statsmodel-like linear regression table (pds.lin_reg_report)
 - [x] f32 support (pds.config.LIN_REG_EXPR_F64 = False)
 
+### Making Polars More Convenient
+
+```python
+import polars_ds as pds
+df = pl.DataFrame({
+"group": ['A', 'A', 'B', 'B', 'A']
+, "a": [1, 2, 3, 4, 5]
+, "b": [4, 1, 99, 12, 33]
+})
+df.group_by("group").agg(
+    *pds.E(['a', 'b'], ["min", "max", "n_unique", "len"])
+)
+
+shape: (2, 8)
+┌───────┬───────┬───────┬───────┬───────┬────────────┬────────────┬─────────┐
+│ group ┆ a_min ┆ b_min ┆ a_max ┆ b_max ┆ a_n_unique ┆ b_n_unique ┆ __len__ │
+│ ---   ┆ ---   ┆ ---   ┆ ---   ┆ ---   ┆ ---        ┆ ---        ┆ ---     │
+│ str   ┆ i64   ┆ i64   ┆ i64   ┆ i64   ┆ u32        ┆ u32        ┆ u32     │
+╞═══════╪═══════╪═══════╪═══════╪═══════╪════════════╪════════════╪═════════╡
+│ A     ┆ 1     ┆ 1     ┆ 5     ┆ 33    ┆ 3          ┆ 3          ┆ 3       │
+│ B     ┆ 3     ┆ 12    ┆ 4     ┆ 99    ┆ 2          ┆ 2          ┆ 2       │
+└───────┴───────┴───────┴───────┴───────┴────────────┴────────────┴─────────┘
+```
+
 ### Tabular Machine Learning Data Transformation Pipeline
 
 See [SKLEARN_COMPATIBILITY](SKLEARN_COMPATIBILITY.md) for more details.
