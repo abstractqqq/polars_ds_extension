@@ -19,6 +19,9 @@ def E(
         this does not support expression inputs.
     mappings
         String names for any polars expression methods. E.g. ['max'] will map to `pl.col(..).max()`.
+        There are some special strings that would represent some more complicated composite expressions,
+        and here is a the list of such special mappings as of now:
+        'null_rate' -> pl.col('').null_count() / pl.len()
     separator
         The separator between the name of the mapping and the original column name.
     len_alias
@@ -62,17 +65,24 @@ def E(
     else:
         mappings_ = list(mappings)
 
-    bad = [m for m in mappings_ if not hasattr(in_expr, m)]
+    SPECIAL_MAPPINGS = {
+        'len': pl.len().alias(len_alias)
+        , 'count': pl.len().alias(len_alias)
+        , 'null_rate': (in_expr.null_count() / pl.len()).name.suffix(f"{separator}null_rate")
+    }
+
+    bad = [m for m in mappings_ if not (hasattr(in_expr, m) or m in SPECIAL_MAPPINGS)]
     if len(bad) > 0:
-        raise ValueError(f"Polars expressions does not have `{bad}` method(s).")
+        raise ValueError(
+            f"Polars expressions does not have `{bad}` method(s) and they do not belong "
+            "in the special mappings."
+        )
 
     return [
-        pl.len().alias(len_alias)
-        if m in ("len", "count")
-        else getattr(in_expr, m)().name.suffix(f"{separator}{m}")        
+        SPECIAL_MAPPINGS[m] if m in SPECIAL_MAPPINGS
+        else getattr(in_expr, m)().name.suffix(f"{separator}{m}")
         for m in mappings_
     ]
-
     
 
 
