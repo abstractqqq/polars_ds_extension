@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Callable
 import polars as pl
 
 def E(
@@ -7,6 +8,7 @@ def E(
     , *
     , separator: str = "_"
     , len_alias: str = "__len__"
+    , customizer: dict[str, Callable[[pl.Expr], pl.Expr]] | None = None
 ) -> list[pl.Expr]:
     """
     Automatically expands Polars expressions so that the syntax can be more concise
@@ -26,14 +28,17 @@ def E(
         The separator between the name of the mapping and the original column name.
     len_alias
         Column alias to `len`.
+    customizer
+        An additional mapping to add your own custom special mappings. The keys are the name
+        of additional mappings, the values are functions that maps pl.Expr to another pl.Expr. 
 
     Examples
     --------
     >>> import polars_ds as pds
     >>> df = pl.DataFrame({
-    >>> "group": ['A', 'A', 'B', 'B', 'A']
-    >>> , "a": [1, 2, 3, 4, 5]
-    >>> , "b": [4, 1, 99, 12, 33]
+    >>>     "group": ['A', 'A', 'B', 'B', 'A']
+    >>>     , "a": [1, 2, 3, 4, 5]
+    >>>     , "b": [4, 1, 99, 12, 33]
     >>> })
     >>> df.group_by("group").agg(
     >>>     *pds.E(['a', 'b'], ["min", "max", "n_unique", "len"])
@@ -47,6 +52,22 @@ def E(
     │ A     ┆ 1     ┆ 1     ┆ 5     ┆ 33    ┆ 3          ┆ 3          ┆ 3       │
     │ B     ┆ 3     ┆ 12    ┆ 4     ┆ 99    ┆ 2          ┆ 2          ┆ 2       │
     └───────┴───────┴───────┴───────┴───────┴────────────┴────────────┴─────────┘
+
+    >>> customizer = {
+    >>>     "quantile_90": lambda x: x.quantile(0.9).name.suffix("_q90")
+    >>> }
+    >>> df.group_by("group").agg(
+    >>>     *pds.E(['a', 'b'], ["min", "max", "null_rate", "quantile_90"], customizer=customizer)
+    >>> )
+    shape: (2, 9)
+    ┌───────┬───────┬───────┬───────┬───┬─────────────┬─────────────┬───────┬───────┐
+    │ group ┆ a_min ┆ b_min ┆ a_max ┆ … ┆ a_null_rate ┆ b_null_rate ┆ a_q90 ┆ b_q90 │
+    │ ---   ┆ ---   ┆ ---   ┆ ---   ┆   ┆ ---         ┆ ---         ┆ ---   ┆ ---   │
+    │ str   ┆ i64   ┆ i64   ┆ i64   ┆   ┆ f64         ┆ f64         ┆ f64   ┆ f64   │
+    ╞═══════╪═══════╪═══════╪═══════╪═══╪═════════════╪═════════════╪═══════╪═══════╡
+    │ A     ┆ 1     ┆ 1     ┆ 5     ┆ … ┆ 0.0         ┆ 0.0         ┆ 5.0   ┆ 33.0  │
+    │ B     ┆ 3     ┆ 12    ┆ 4     ┆ … ┆ 0.0         ┆ 0.0         ┆ 4.0   ┆ 99.0  │
+    └───────┴───────┴───────┴───────┴───┴─────────────┴─────────────┴───────┴───────┘
     """
 
     if isinstance(cols, str):
@@ -70,6 +91,10 @@ def E(
         , 'count': pl.len().alias(len_alias)
         , 'null_rate': (in_expr.null_count() / pl.len()).name.suffix(f"{separator}null_rate")
     }
+
+    if customizer is not None and isinstance(customizer, dict):
+        for k in customizer.keys():
+            SPECIAL_MAPPINGS[k] = customizer[k](in_expr)
 
     bad = [m for m in mappings_ if not (hasattr(in_expr, m) or m in SPECIAL_MAPPINGS)]
     if len(bad) > 0:
