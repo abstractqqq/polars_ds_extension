@@ -807,7 +807,7 @@ class Blueprint:
         self._steps.append(ExprStep(list(exprs), PLContext.WITH_COLUMNS))
         return self
 
-    def sort(self, by: IntoExprColumn, descending: bool | List[bool]) -> Self:
+    def sort(self, by: IntoExprColumn, descending: bool | List[bool], maintain_order: bool = True) -> Self:
         """Sorts the dataframe by the columns.
 
         Parameters
@@ -816,8 +816,10 @@ class Blueprint:
             The columns to sort by
         descending
             Whether the sort should be descending for the corresponding sort column
+        maintain_order
+            Whether the sort should maintain order or not
         """
-        self._steps.append(SortStep(by=by, descending=descending))
+        self._steps.append(SortStep(by=by, descending=descending, maintain_order=maintain_order))
         return self
 
     def explode(self, columns: str | pl.Expr | List[str] | List[pl.Expr]) -> Self:
