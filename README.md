@@ -161,6 +161,16 @@ df_transformed = pipe.transform(df)
 df_transformed.head()
 ```
 
+Since `Polars >=1.34` supports `collect_batches()`, you can also use this to perform batched machine learning 
+
+```python
+for df_batch in pipe.transform(df, return_lazy=True).collect_batches():
+    X_batch, y_batch = your_function_to_turn_df_batch_into_model_inputs(df_batch)
+    ml_model.update(X_batch, y_batch)
+```
+
+See [pipeline examples](./examples/pipeline.ipynb) for more details and caveats.
+
 ### Nearest Neighbors Related Queries
 
 Get all neighbors within radius r, call them best friends, and count the number. Due to limitations, 

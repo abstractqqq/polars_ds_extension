@@ -108,12 +108,13 @@ class SortStep:
     Container for a polars df.sort() transform.
     """
 
-    __slots__ = ("by", "descending", "context")
+    __slots__ = ("by", "descending", "context", "maintain_order")
 
     def __init__(
         self,
         by: str | pl.Expr | Sequence[str] | Sequence[pl.Expr],
         descending: bool | Sequence[bool],
+        maintain_order: bool = True
     ):
         if isinstance(by, (str, pl.Expr)):
             self.by: List[pl.Expr] = [to_expr(by)]
@@ -135,20 +136,23 @@ class SortStep:
             )
 
         self.context: PLContext = PLContext.SORT
+        self.maintain_order = maintain_order
 
     @staticmethod
     def from_partial_dict(d: Dict) -> "SortStep":
         by = [pl.Expr.deserialize(StringIO(e), format="json") for e in d["by"]]
         descending = [bool(e) for e in d["descending"]]
-        return SortStep(by=by, descending=descending)
+        maintain_order = bool(d['maintain_order'])
+        return SortStep(by=by, descending=descending, maintain_order=maintain_order)
 
     def apply_df(self, df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
-        return df.sort(by=self.by, descending=self.descending)
+        return df.sort(by=self.by, descending=self.descending, maintain_order=self.maintain_order)
 
     def to_json(self) -> str:
         d = self.context.get_context_dict() | {
             "by": [e.meta.serialize(format="json") for e in self.by],
             "descending": self.descending,
+            "maintain_order": self.maintain_order
         }
         return json.dumps(d)
 
