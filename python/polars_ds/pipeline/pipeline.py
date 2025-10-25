@@ -202,7 +202,11 @@ class Pipeline:
         return self
 
     def transform(
-        self, df: PolarsFrame, return_lazy: bool = False, set_features_out: bool = False
+        self, 
+        df: PolarsFrame, 
+        return_lazy: bool = False, 
+        set_features_out: bool = False,
+        **kwargs
     ) -> PolarsFrame:
         """
         Transforms the df using the learned expressions.
@@ -216,6 +220,8 @@ class Pipeline:
             If true, return the lazy plan for the transformations
         set_features_out
             If true, set `self.feature_names_out_` to the output features from this transform run.
+        **kwargs
+            When return_lazy is True, kwargs will be passed to polars.LazyFrame.collect()
         """
         if self.ensure_features_in:
             if self.lowercase:
@@ -239,7 +245,7 @@ class Pipeline:
             self.feature_names_out_ = plan.collect_schema().names()
 
         # Add config here if streaming is needed
-        return plan if return_lazy else plan.collect()
+        return plan if return_lazy else plan.collect(**kwargs)
 
 
 class Blueprint:
@@ -953,18 +959,20 @@ class Blueprint:
 
         return func(*step_repr.args, **step_repr.kwargs)
 
-    def materialize(self) -> Pipeline:
+    def materialize(self, **kwargs) -> Pipeline:
         """
         Materialize the blueprint, which means that it will fit and learn all the paramters needed.
+
+        All kwargs here will be passed to polars.LazyFrame.collect()
         """
         transforms: List[PipelineStep] = []
-        df: pl.DataFrame = self._df.collect()  # Add config here if streaming is needed
+        df: pl.DataFrame = self._df.collect(**kwargs)
         # Let this lazy plan go through the fit process. The frame will be collected temporarily but
         # the collect should be and optimized.
         df_lazy: pl.LazyFrame = df.lazy()
         for step in self._steps:
             if isinstance(step, FitStep):  # Need fitting, which is done here
-                df_temp = df_lazy.collect()
+                df_temp = df_lazy.collect(**kwargs)
                 exprs = step.fit(df_temp)
                 transforms.append(ExprStep(exprs, PLContext.WITH_COLUMNS))
                 df_lazy = df_temp.lazy().with_columns(exprs)
@@ -983,13 +991,13 @@ class Blueprint:
             uppercase=self.uppercase,
         )
 
-    def fit(self, X=None, y=None) -> Pipeline:
+    def fit(self, X=None, y=None, **kwargs) -> Pipeline:
         """
         Alias for self.materialize()
         """
-        return self.materialize()
+        return self.materialize(**kwargs)
 
-    def transform(self, df: PolarsFrame) -> pl.DataFrame:
+    def transform(self, df: PolarsFrame, **kwargs) -> pl.DataFrame:
         """
         Fits the blueprint with the dataframe that it is initialized with, and
         transforms the input dataframe.
@@ -998,5 +1006,7 @@ class Blueprint:
         ----------
         df
             Any Polars dataframe
+        **kwargs
+            Will be passed to Pipeline's `transform` method.
         """
-        return self.materialize().transform(df)
+        return self.materialize().transform(df, **kwargs)
