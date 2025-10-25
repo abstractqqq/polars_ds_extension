@@ -92,7 +92,7 @@ df.select(
 - [x] Recursive linear regression (pds.recursive_lin_reg)
 - [x] Non-negative linear regression (pds.lin_reg, set positive = True)
 - [x] Statsmodel-like linear regression table (pds.lin_reg_report)
-- [x] f32 support (pds.config.LIN_REG_EXPR_F64 = False)
+- [x] f32 support (pds.Config.LIN_REG_EXPR_F64 = False)
 
 ### Making Polars More Convenient
 

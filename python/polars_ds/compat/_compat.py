@@ -11,7 +11,8 @@ CANNOT_CALL = {
     "annotations",
     "__version__",
     "warn_len_compare",
-    "E"
+    "E",
+    "Config"
 }
 
 __all__ = ["compat"]

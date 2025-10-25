@@ -1,9 +1,3 @@
-# Configs used in transforms and pipelines
-# STREAM_IN_TRANSFORM: bool = False
-# Level of optimiztion and memory usage, etc.
-# Is there a better way to do this?
-
-
 LIN_REG_EXPR_F64 = True
 """
 If true, all linear regression expression will use f64 as the default data type
@@ -15,12 +9,14 @@ multiple reasons:
 1. If input data is already in f64, then using f32 will incur additional casts, slowing
 down the process.
 2. If input data is not big enough, there won't be any noticeable difference in runtime.
-
 """
 
+def _which_lin_reg(x: str) -> str:
+    return x if LIN_REG_EXPR_F64 else f"{x}_f32"
 
-def _lin_reg_expr_symbol(x: str) -> str:
-    if LIN_REG_EXPR_F64:
-        return x
-    else:
-        return x + "_f32"
+
+
+
+
+
+

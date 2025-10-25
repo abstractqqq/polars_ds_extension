@@ -8,7 +8,7 @@ from typing import List, Any, Literal
 # Internal dependencies
 from polars_ds.typing import LRSolverMethods, NullPolicy
 from polars_ds._utils import pl_plugin
-from polars_ds.config import _lin_reg_expr_symbol
+import polars_ds.config as cfg
 
 __all__ = [
     "lin_reg",
@@ -185,14 +185,14 @@ def lin_reg(
             cols.extend(lr_formula(z) for z in x)
             if return_pred:
                 return pl_plugin(
-                    symbol=_lin_reg_expr_symbol("pl_lstsq_multi_pred"),
+                    symbol=cfg._which_lin_reg("pl_lstsq_multi_pred"),
                     args=cols,
                     kwargs=multi_target_lr_kwargs,
                     pass_name_to_apply=True,
                 ).alias("lr_pred")
             else:
                 return pl_plugin(
-                    symbol=_lin_reg_expr_symbol("pl_lstsq_multi"),
+                    symbol=cfg._which_lin_reg("pl_lstsq_multi"),
                     args=cols,
                     kwargs=multi_target_lr_kwargs,
                     returns_scalar=True,
@@ -220,14 +220,14 @@ def lin_reg(
 
         if return_pred:
             return pl_plugin(
-                symbol=_lin_reg_expr_symbol("pl_lstsq_pred"),
+                symbol=cfg._which_lin_reg("pl_lstsq_pred"),
                 args=cols,
                 kwargs=lr_kwargs,
                 pass_name_to_apply=True,
             ).alias("lr_pred")
         else:
             return pl_plugin(
-                symbol=_lin_reg_expr_symbol("pl_lstsq"),
+                symbol=cfg._which_lin_reg("pl_lstsq"),
                 args=cols,
                 kwargs=lr_kwargs,
                 returns_scalar=True,
@@ -281,7 +281,7 @@ def lin_reg_w_rcond(
         "tol": abs(rcond),
     }
     return pl_plugin(
-        symbol=_lin_reg_expr_symbol("pl_lstsq_w_rcond"),
+        symbol=cfg._which_lin_reg("pl_lstsq_w_rcond"),
         args=cols,
         kwargs=lr_kwargs,
         pass_name_to_apply=True,
@@ -345,7 +345,7 @@ def recursive_lin_reg(
         "min_size": 0,  # Not used for recursive
     }
     return pl_plugin(
-        symbol=_lin_reg_expr_symbol("pl_recursive_lstsq"),
+        symbol=cfg._which_lin_reg("pl_recursive_lstsq"),
         args=cols,
         kwargs=kwargs,
         pass_name_to_apply=True,
@@ -418,7 +418,7 @@ def rolling_lin_reg(
         "min_size": min_size,
     }
     return pl_plugin(
-        symbol=_lin_reg_expr_symbol("pl_rolling_lstsq"),
+        symbol=cfg._which_lin_reg("pl_rolling_lstsq"),
         args=cols,
         kwargs=kwargs,
         pass_name_to_apply=True,
@@ -477,13 +477,13 @@ def lin_reg_report(
     if weights is None:
         cols = [t.var(), t]
         cols.extend(lr_formula(z) for z in x)
-        symbol = _lin_reg_expr_symbol("pl_lin_reg_report")
+        symbol = cfg._which_lin_reg("pl_lin_reg_report")
 
     else:
         w = lr_formula(weights)
         cols = [w.cast(pl.Float64).rechunk(), t.var(), t]
         cols.extend(lr_formula(z) for z in x)
-        symbol = _lin_reg_expr_symbol("pl_wls_report")
+        symbol = cfg._which_lin_reg("pl_wls_report")
 
     return pl_plugin(
         symbol=symbol,
