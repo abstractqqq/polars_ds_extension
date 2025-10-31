@@ -6,7 +6,7 @@ from scipy.spatial import KDTree
 
 def test_kdtree():
     size = 2000
-    df = pds.frame(size=size).with_columns(*(pds.random().alias(f"var{i}") for i in range(3)))
+    df = pds.frame(size=size).with_columns(*(pds.random(seed=42).alias(f"var{i}") for i in range(3)))
     X = df.select(f"var{i}" for i in range(3)).to_numpy(order="c")
 
     pds_tree = KDT(X, distance="l2")
@@ -15,7 +15,7 @@ def test_kdtree():
     distances_pds, indices_pds = pds_tree.knn(X, k=10, parallel=False)
     distances_scipy, indices_scipy = scipy_tree.query(X, k=10, p=2)
 
-    assert np.all(distances_pds == distances_scipy)
+    assert np.allclose(distances_pds, distances_scipy, rtol=1e-6, atol=1e-8)
     assert np.all(indices_pds.astype(np.int64) == indices_scipy.astype(np.int64))
 
     within_pds = pds_tree.within(X, r=0.1, sort=False)

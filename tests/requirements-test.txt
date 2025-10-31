@@ -1,12 +1,17 @@
 # requirements for testing
+setuptools
 maturin[patchelf]>=1.7; sys_platform == "linux"
 maturin>=1.7; sys_platform != "linux"
+jupyter
+ipython
+ipykernel
+nbconvert
+pytest
 numpy
 scikit-learn<=1.5
 scipy<=1.15.3 # 1.16 has a bug in the release, wait for scipy to fix it.
 pyarrow
 pandas
-pytest
 pytest-benchmark
 xicor
 category_encoders

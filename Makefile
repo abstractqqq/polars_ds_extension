@@ -9,7 +9,8 @@ else
 endif
 
 .venv:
-	python3 -m venv $(VENV)
+	rustup update
+	mise exec python@3.12.10 -- python -m venv --clear $(VENV)
 	$(MAKE) requirements
 	
 requirements: .venv

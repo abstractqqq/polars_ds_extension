@@ -36,7 +36,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ['3.9', '3.12', '3.13']
+        python-version: ['3.10', '3.12', '3.13']
         # include:
         #   - os: windows-latest
         #     python-version: '3.13'
@@ -65,7 +65,6 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install jupyter ipython ipykernel nbconvert pytest
           pip install -r tests/requirements-test.txt
 
       - name: Test Notebooks

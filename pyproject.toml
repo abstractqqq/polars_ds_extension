@@ -3,9 +3,10 @@ requires = ["maturin>=1.7.4"]
 build-backend = "maturin"
 
 [project]
-name = "polars_ds"
-requires-python = ">=3.9"
+name = "polars-ds-lts-cpu"
+requires-python = ">=3.10"
 version = "0.10.2"
+readme = "README_PYPI.md"
 
 license = { file = "LICENSE.txt" }
 classifiers = [
@@ -17,11 +18,15 @@ classifiers = [
 ]
 authors = [{ name = "Tianren Qin", email = "tq9695@gmail.com" }]
 dependencies = [
-    "polars >= 1.4.0, != 1.25, != 1.26, !=1.32.1, !=1.32.2",
-    'typing-extensions; python_version <= "3.11"',
+    "polars-lts-cpu>=1.33.0",
+    "typing-extensions>=4.15.0,<5.0.0",
 ]
 
 keywords = ["polars-extension", "scientific-computing", "data-science"]
+
+[project.urls]
+"Homepage" = "https://github.com/milaboratory/polars_ds_extension-lts-cpu"
+"Bug Tracker" = "https://github.com/milaboratory/platforma/issues"
 
 [project.optional-dependencies]
 plot = ["great-tables>=0.9", "graphviz>=0.20", "altair >= 5.4.0", "vegafusion[embed]"]

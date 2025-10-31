@@ -2,7 +2,7 @@ from __future__ import annotations
 import importlib.metadata
 import polars as pl
 
-__version__ = importlib.metadata.version("polars_ds")
+__version__ = importlib.metadata.version("polars-ds-lts-cpu")
 
 # Internal dependencies
 from polars_ds.exprs import *  # noqa F403
