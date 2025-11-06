@@ -45,6 +45,7 @@ fn tp_fp_frame(
 
     // Start computing
     let n = predicted.len() as u32;
+
     let df = df!(
         "threshold" => predicted,
         "actual" => actual
@@ -67,13 +68,16 @@ fn tp_fp_frame(
         .select([
             col("threshold").append(lit(f64::INFINITY), true),
             col("tp").append(lit(0), true),
-            (col("predicted_positive") - col("tp")).append(lit(0), true).alias("fp"),
+            (col("predicted_positive") - col("tp"))
+                .append(lit(0), true)
+                .alias("fp"),
             (col("tp").cast(DataType::Float64) / col("predicted_positive").cast(DataType::Float64))
-                .append(lit(0f64), true).alias("precision"),
+                .append(lit(0f64), true)
+                .alias("precision"),
         ]); // pad the values with a inf threshold, 0 fp, 0 tp at the end
-    // col("cnt"),
-    // col("predicted_positive")
-    // col("pos_cnt_at_threshold"),
+            // col("cnt"),
+            // col("predicted_positive")
+            // col("pos_cnt_at_threshold"),
     if as_ratio {
         Ok(temp.select([
             col("threshold"),
@@ -93,7 +97,7 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     // actual, when passed in, is always u32 (done in Python extension side)
     let actual = &inputs[0];
     let predicted = &inputs[1];
-    // Threshold for precision and recall
+    // Threshold for precision and recalltp_fp_frame
     let threshold = inputs[2].f64()?;
     let threshold = threshold.get(0).unwrap_or(0.5);
 
@@ -226,6 +230,7 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
     let mut frame = tp_fp_frame(predicted, actual, positive_cnt, true)?
         .select([col("tpr"), col("fpr")])
         .collect()?;
+    
     frame.rechunk_mut();
 
     let tpr = frame.drop_in_place("tpr").unwrap();

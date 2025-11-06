@@ -242,17 +242,17 @@ def split_by_ratio(
     if by is not None:
         results = [
             split_by_ratio(
-                frame
-                , split_ratio = split_ratio
-                , seed = seed
-                , by = None
-                , split_col = split_col
-                , default_split_1 = default_split_1
-                , default_split_2 = default_split_2
+                frame,
+                split_ratio=split_ratio,
+                seed=seed,
+                by=None,
+                split_col=split_col,
+                default_split_1=default_split_1,
+                default_split_2=default_split_2,
             )
             for frame in df.lazy().collect().partition_by(by)
         ]
-        return pl.concat(results, how = "vertical")
+        return pl.concat(results, how="vertical")
 
     if isinstance(split_ratio, float):
         if split_ratio <= 0.0 or split_ratio >= 1:

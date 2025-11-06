@@ -97,6 +97,7 @@ def simple_lin_reg(
         else:
             return beta.implode().alias("coeffs")
 
+
 def lin_reg(
     *x: str | pl.Expr,
     target: str | pl.Expr | List[str | pl.Expr],
@@ -108,7 +109,7 @@ def lin_reg(
     tol: float = 1e-5,
     solver: LRSolverMethods = "qr",
     null_policy: NullPolicy = "skip",
-    positive: bool = False
+    positive: bool = False,
 ) -> pl.Expr:
     """
     Computes linear regression solution to the equation Ax = y where y is the target (or multiple targets).
@@ -208,7 +209,7 @@ def lin_reg(
             "solver": solver,
             "tol": tol,
             "weighted": weighted,
-            "positive": positive
+            "positive": positive,
         }
 
         if weighted:
@@ -351,6 +352,7 @@ def recursive_lin_reg(
         pass_name_to_apply=True,
     )
 
+
 def rolling_lin_reg(
     *x: str | pl.Expr,
     target: str | pl.Expr,
@@ -492,4 +494,3 @@ def lin_reg_report(
         changes_length=True,
         pass_name_to_apply=True,
     )
-

@@ -636,9 +636,9 @@ dependencies = [
 
 [[package]]
 name = "faer"
-version = "0.22.6"
+version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49fce40ad65c366fbc6cd70a99d09d1008f075280bf2455e558e163c82913a9f"
+checksum = "3cb922206162d9405f9fc059052b3f997bdc92745da7bfd620645f5092df20d1"
 dependencies = [
  "bytemuck",
  "dyn-stack",
@@ -655,13 +655,14 @@ dependencies = [
  "pulp",
  "rayon",
  "reborrow",
+ "spindle",
 ]
 
 [[package]]
 name = "faer-macros"
-version = "0.21.0"
+version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d0a255d1442b5825c61812a7eafda9034ec53d969c98555251085e148428e6a"
+checksum = "2cc4b8cd876795d3b19ddfd59b03faa303c0b8adb9af6e188e81fc647c485bb9"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -670,9 +671,9 @@ dependencies = [
 
 [[package]]
 name = "faer-traits"
-version = "0.22.1"
+version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54febfcbb90edaab562d85447a94d500f1601f11db0b30d27da87ed6542c8f91"
+checksum = "24b69235b5f54416286c485fb047f2f499fc935a4eee2caadf4757f3c94c7b62"
 dependencies = [
  "bytemuck",
  "dyn-stack",
@@ -1067,6 +1068,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "hashbrown"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5419bdc4f6a9207fbeba6d11b604d481addf78ecd10c11ad51e76c2f6482748d"
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1329,13 +1336,14 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.11.1"
+version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "206a8042aec68fa4a62e8d3f7aa4ceb508177d9324faf261e1959e495b7a1921"
+checksum = "6717a8d2a5a929a1a2eb43a12812498ed141a0bcfb7e8f7844fbdbe4303bba9f"
 dependencies = [
  "equivalent",
- "hashbrown",
+ "hashbrown 0.16.0",
  "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -1938,7 +1946,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3daf8e3d4b712abe1d690838f6e29fb76b76ea19589c4afa39ec30e12f62af71"
 dependencies = [
  "array-init-cursor",
- "hashbrown",
+ "hashbrown 0.15.5",
 ]
 
 [[package]]
@@ -1976,7 +1984,7 @@ dependencies = [
  "ethnum",
  "getrandom 0.2.16",
  "getrandom 0.3.3",
- "hashbrown",
+ "hashbrown 0.15.5",
  "lz4",
  "num-traits",
  "polars-arrow-format",
@@ -2012,7 +2020,7 @@ dependencies = [
  "chrono",
  "either",
  "fast-float2",
- "hashbrown",
+ "hashbrown 0.15.5",
  "itoa",
  "num-traits",
  "polars-arrow",
@@ -2038,7 +2046,7 @@ dependencies = [
  "bytemuck",
  "chrono",
  "either",
- "hashbrown",
+ "hashbrown 0.15.5",
  "indexmap",
  "itoa",
  "num-traits",
@@ -2068,7 +2076,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89c43d0ea57168be4546c4d8064479ed8b29a9c79c31a0c7c367ee734b9b7158"
 dependencies = [
  "boxcar",
- "hashbrown",
+ "hashbrown 0.15.5",
  "polars-arrow",
  "polars-error",
  "polars-utils",
@@ -2098,7 +2106,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "343931b818cf136349135ba11dbc18c27683b52c3477b1ba8ca606cf5ab1965c"
 dependencies = [
  "bitflags",
- "hashbrown",
+ "hashbrown 0.15.5",
  "num-traits",
  "polars-arrow",
  "polars-compute",
@@ -2137,7 +2145,7 @@ dependencies = [
  "fs4",
  "futures",
  "glob",
- "hashbrown",
+ "hashbrown 0.15.5",
  "home",
  "itoa",
  "memchr",
@@ -2220,7 +2228,7 @@ dependencies = [
  "argminmax",
  "bytemuck",
  "either",
- "hashbrown",
+ "hashbrown 0.15.5",
  "indexmap",
  "libm",
  "memchr",
@@ -2251,7 +2259,7 @@ dependencies = [
  "bytemuck",
  "ethnum",
  "futures",
- "hashbrown",
+ "hashbrown 0.15.5",
  "num-traits",
  "polars-arrow",
  "polars-compute",
@@ -2283,7 +2291,7 @@ dependencies = [
  "bytemuck",
  "bytes",
  "either",
- "hashbrown",
+ "hashbrown 0.15.5",
  "memmap2",
  "num-traits",
  "percent-encoding",
@@ -2408,7 +2416,7 @@ dependencies = [
  "either",
  "flate2",
  "foldhash",
- "hashbrown",
+ "hashbrown 0.15.5",
  "indexmap",
  "libc",
  "memmap2",
@@ -2438,7 +2446,7 @@ dependencies = [
  "cfavml",
  "faer",
  "faer-traits",
- "hashbrown",
+ "hashbrown 0.15.5",
  "inflections",
  "itertools 0.12.1",
  "ndarray",
@@ -2500,9 +2508,9 @@ dependencies = [
 
 [[package]]
 name = "private-gemm-x86"
-version = "0.1.14"
+version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f1f5b73509fbd76f1c3b6930c2d8761fb51bf958c49d19e663ce372b1e27fcb"
+checksum = "0b8138b380908e85071bdd6b2841a38b0858ef09848b754a15219d0b9ca90928"
 dependencies = [
  "crossbeam",
  "defer",
@@ -2511,6 +2519,7 @@ dependencies = [
  "raw-cpuid",
  "rayon",
  "spindle",
+ "sysctl",
 ]
 
 [[package]]
@@ -3344,9 +3353,9 @@ dependencies = [
 
 [[package]]
 name = "spindle"
-version = "0.2.3"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db4b98218e7f245a72888875d6843432db630d19032f5eeed9e214bd897339e7"
+checksum = "f794dedb367e82477aa6bbf83ea9bbce9bc074b3caacaa82fc4ba398ec9b701d"
 dependencies = [
  "atomic-wait",
  "crossbeam",

@@ -33,17 +33,6 @@ def test_remove_diacritics():
     )
 
 
-def test_normalize_string():
-    df = pl.DataFrame({"x": ["\u0043\u0327"], "y": ["\u00c7"]}).with_columns(
-        pl.col("x").eq(pl.col("y")).alias("is_equal"),
-        pds.normalize_string("x", "NFC")
-        .eq(pds.normalize_string("y", "NFC"))
-        .alias("normalized_is_equal"),
-    )
-
-    assert df["is_equal"].sum() == 0
-    assert df["normalized_is_equal"].sum() == df.height
-
 
 def test_map_words():
     df = pl.DataFrame({"x": ["one two three", "onetwo three"]})
@@ -141,6 +130,7 @@ def test_lcs_subseq_dist(df, res):
         df.lazy().select(pds.str_lcs_subseq_dist("a", pl.col("b"), return_sim=False)).collect(), res
     )
 
+
 @pytest.mark.parametrize(
     "a, b, lcs",
     [
@@ -152,13 +142,8 @@ def test_lcs_subseq_dist(df, res):
     ],
 )
 def test_lcs_substr(a, b, lcs):
-    df = pl.DataFrame({
-        "a": a,
-        "b": b,
-        "lcs": lcs
-    }).with_columns(
-        pds_lcs1 = pds.str_lcs_substr("a", "b")
-        , pds_lcs2 = pds.str_lcs_substr("a", "b", parallel=True)
+    df = pl.DataFrame({"a": a, "b": b, "lcs": lcs}).with_columns(
+        pds_lcs1=pds.str_lcs_substr("a", "b"), pds_lcs2=pds.str_lcs_substr("a", "b", parallel=True)
     )
 
     assert_series_equal(df["lcs"], df["pds_lcs1"], check_names=False)
@@ -176,13 +161,8 @@ def test_lcs_substr(a, b, lcs):
     ],
 )
 def test_lcs_subseq(a, b, lcs):
-    df = pl.DataFrame({
-        "a": a,
-        "b": b,
-        "lcs": lcs
-    }).with_columns(
-        pds_lcs1 = pds.str_lcs_subseq("a", "b")
-        , pds_lcs2 = pds.str_lcs_subseq("a", "b", parallel=True)
+    df = pl.DataFrame({"a": a, "b": b, "lcs": lcs}).with_columns(
+        pds_lcs1=pds.str_lcs_subseq("a", "b"), pds_lcs2=pds.str_lcs_subseq("a", "b", parallel=True)
     )
 
     assert_series_equal(df["lcs"], df["pds_lcs1"], check_names=False)

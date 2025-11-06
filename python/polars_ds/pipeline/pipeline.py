@@ -202,11 +202,7 @@ class Pipeline:
         return self
 
     def transform(
-        self, 
-        df: PolarsFrame, 
-        return_lazy: bool = False, 
-        set_features_out: bool = False,
-        **kwargs
+        self, df: PolarsFrame, return_lazy: bool = False, set_features_out: bool = False, **kwargs
     ) -> PolarsFrame:
         """
         Transforms the df using the learned expressions.
@@ -813,7 +809,9 @@ class Blueprint:
         self._steps.append(ExprStep(list(exprs), PLContext.WITH_COLUMNS))
         return self
 
-    def sort(self, by: IntoExprColumn, descending: bool | List[bool], maintain_order: bool = True) -> Self:
+    def sort(
+        self, by: IntoExprColumn, descending: bool | List[bool], maintain_order: bool = True
+    ) -> Self:
         """Sorts the dataframe by the columns.
 
         Parameters
