@@ -2125,3 +2125,47 @@ def test_combinations():
 def test_product(df, ans):
     result = df.select(pds.product("a", "b").alias("product"))
     assert_frame_equal(result, ans)
+
+
+def test_weighted_corr():
+
+    import numpy as np
+
+    def weighted_mean(x, w):
+        """Calculates the weighted mean of an array."""
+        return np.sum(x * w) / np.sum(w)
+    
+    def weighted_covariance(x, y, w):
+        """Calculates the weighted covariance between two arrays."""
+        mean_x = weighted_mean(x, w)
+        mean_y = weighted_mean(y, w)
+        return np.sum(w * (x - mean_x) * (y - mean_y)) / np.sum(w)
+
+    def weighted_correlation(x, y, w):
+        """Calculates the weighted Pearson correlation coefficient."""
+        cov_xy = weighted_covariance(x, y, w)
+        cov_xx = weighted_covariance(x, x, w)
+        cov_yy = weighted_covariance(y, y, w)
+        
+        # Handle cases where variance is zero to avoid division by zero
+        if cov_xx == 0 or cov_yy == 0:
+            return 0.0  # Or handle as appropriate for your application
+        
+        return cov_xy / np.sqrt(cov_xx * cov_yy)
+
+    df = pds.frame().select(
+        pds.random().alias("a1"),
+        pds.random().alias("a2"),
+        pds.random().alias("w") 
+    )
+
+    a1 = df["a1"].to_numpy()
+    a2 = df["a2"].to_numpy()
+    w = df["w"].to_numpy()
+
+    np_result = weighted_correlation(a1, a2, w)
+    pds_result = df.select(
+        pds.weighted_corr("a1", "a2", "w")
+    ).item(0, 0)
+
+    np.isclose(np_result, pds_result, atol=1e-8)

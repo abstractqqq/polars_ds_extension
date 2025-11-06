@@ -903,10 +903,10 @@ def weighted_corr(x: str | pl.Expr, y: str | pl.Expr, weights: str | pl.Expr) ->
     """
     xx, yy = to_expr(x), to_expr(y)
     w = to_expr(weights)
-    numerator = weighted_cov(xx, yy, w)
+    numerator = w.dot((xx - weighted_mean(xx, w, False)) * (yy - weighted_mean(yy, w, False)))
     sxx = w.dot((xx - weighted_mean(xx, w, False)).pow(2))
-    syy = w.dot((xx - weighted_mean(yy, w, False)).pow(2))
-    return numerator * w.sum() / (sxx * syy).sqrt()
+    syy = w.dot((yy - weighted_mean(yy, w, False)).pow(2))
+    return numerator / (sxx * syy).sqrt()
 
 
 def cosine_sim(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
