@@ -1,16 +1,13 @@
 /// Student's t test and Welch's t test.
-use super::{
-    generic_stats_output, simple_stats_output, Alternative,
-};
+use super::{generic_stats_output, simple_stats_output, Alternative};
 use crate::{stats, stats_utils::beta};
 use core::f64;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
-
 // Under these conditions, the output of a welch_t test will be bad.
 // However, if any of the following is true, we would get NaN in the calculation below,
-// So no need to branch. ALso, returning NaN should tell the user that there are numeric 
+// So no need to branch. ALso, returning NaN should tell the user that there are numeric
 // issues encountered in the process.
 // if m1.is_nan()
 //     || m1.is_infinite()
@@ -24,7 +21,6 @@ use pyo3_polars::derive::polars_expr;
 //     || v2 <= 0.0
 //     || n1 == 0.0
 //     || n2 == 0.0
-
 
 #[inline]
 fn ttest_ind(m1: f64, m2: f64, v1: f64, v2: f64, n: f64, alt: Alternative) -> (f64, f64) {
@@ -45,16 +41,8 @@ fn ttest_ind(m1: f64, m2: f64, v1: f64, v2: f64, n: f64, alt: Alternative) -> (f
     (t, p)
 }
 
-
 #[inline]
-fn ttest_1samp(
-    mean: f64,
-    pop_mean: f64,
-    var: f64,
-    n: f64,
-    alt: Alternative,
-) -> (f64, f64) {
-
+fn ttest_1samp(mean: f64, pop_mean: f64, var: f64, n: f64, alt: Alternative) -> (f64, f64) {
     let num = mean - pop_mean;
     let denom = (var / n).sqrt();
     let t = num / denom;
@@ -71,16 +59,7 @@ fn ttest_1samp(
 }
 
 #[inline]
-fn welch_t(
-    m1: f64,
-    m2: f64,
-    v1: f64,
-    v2: f64,
-    n1: f64,
-    n2: f64,
-    alt: Alternative,
-) -> (f64, f64) {
-
+fn welch_t(m1: f64, m2: f64, v1: f64, v2: f64, n1: f64, n2: f64, alt: Alternative) -> (f64, f64) {
     let num = m1 - m2;
     let vn1 = v1 / n1;
     let vn2 = v2 / n2;
@@ -98,7 +77,6 @@ fn welch_t(
     };
 
     (t, p)
-
 }
 
 #[polars_expr(output_type_func=simple_stats_output)]
@@ -122,7 +100,6 @@ fn pl_ttest_2samp(inputs: &[Series]) -> PolarsResult<Series> {
 
     let (t, p) = ttest_ind(mean1, mean2, var1, var2, n, alt);
     generic_stats_output(t, p)
-
 }
 
 #[polars_expr(output_type_func=simple_stats_output)]

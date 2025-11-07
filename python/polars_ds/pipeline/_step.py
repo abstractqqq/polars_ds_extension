@@ -114,7 +114,7 @@ class SortStep:
         self,
         by: str | pl.Expr | Sequence[str] | Sequence[pl.Expr],
         descending: bool | Sequence[bool],
-        maintain_order: bool = True
+        maintain_order: bool = True,
     ):
         if isinstance(by, (str, pl.Expr)):
             self.by: List[pl.Expr] = [to_expr(by)]
@@ -142,7 +142,7 @@ class SortStep:
     def from_partial_dict(d: Dict) -> "SortStep":
         by = [pl.Expr.deserialize(StringIO(e), format="json") for e in d["by"]]
         descending = [bool(e) for e in d["descending"]]
-        maintain_order = bool(d['maintain_order'])
+        maintain_order = bool(d["maintain_order"])
         return SortStep(by=by, descending=descending, maintain_order=maintain_order)
 
     def apply_df(self, df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
@@ -152,7 +152,7 @@ class SortStep:
         d = self.context.get_context_dict() | {
             "by": [e.meta.serialize(format="json") for e in self.by],
             "descending": self.descending,
-            "maintain_order": self.maintain_order
+            "maintain_order": self.maintain_order,
         }
         return json.dumps(d)
 

@@ -3,6 +3,7 @@ use pyo3_polars::derive::polars_expr;
 
 #[polars_expr(output_type=Float64)]
 fn pl_conditional_entropy(inputs: &[Series]) -> PolarsResult<Series> {
+    
     let df = df!("x" => inputs[0].clone(), "y" => inputs[1].clone())?;
     let mut out = df
         .lazy()
@@ -15,7 +16,7 @@ fn pl_conditional_entropy(inputs: &[Series]) -> PolarsResult<Series> {
             (col("cnt").cast(DataType::Float64) / col("cnt").sum().cast(DataType::Float64))
                 .alias("p(x,y)"),
         ])
-        .select([(lit(-1.0_f64)
+        .select([(lit(-1.0f64)
             * ((col("p(x,y)") / col("p(y)"))
                 .log(lit(std::f64::consts::E))
                 .dot(col("p(x,y)"))))

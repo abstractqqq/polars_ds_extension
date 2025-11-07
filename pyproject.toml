@@ -17,7 +17,7 @@ classifiers = [
 ]
 authors = [{ name = "Tianren Qin", email = "tq9695@gmail.com" }]
 dependencies = [
-    "polars >= 1.4.0, != 1.25, != 1.26, !=1.32.1, !=1.32.2",
+    "polars >= 1.4.0, != 1.25, != 1.26, !=1.32.1, !=1.32.2, !=1.35.0",
     'typing-extensions; python_version <= "3.11"',
 ]
 

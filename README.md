@@ -297,14 +297,19 @@ The best advice for LTS CPU is that you should compile the package yourself. Fir
 ```
 RUSTFLAGS=-C target-feature=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b
 ```
+
 If you simply want to compile from source, you may set target cpu to native, which autodetects CPU features.
 ```
 RUSTFLAGS=-C target-cpu=native
 ```
+
 If you are compiling for LTS CPU, then in pyproject.toml, update the polars dependency to polars-lts-cpu:
 ```
 polars >= 1.4.0 # polars-lts-cpu >= 1.4.0
 ```
+
+Note: `polars-lts-cpu` version may lag behind `polars`.
+
 Lastly, run 
 ```
 maturin develop --release
@@ -314,12 +319,14 @@ If you want to test the build locally, you may run
 # pip install -r requirements-test.txt
 pytest tests/test_*
 ```
-If you see this error in pytest, it means setuptools is not installed and you may ignore it. It is just a legacy python builtin package.
-```
-tests/test_many.py::test_xi_corr - ModuleNotFoundError: No module named 'pkg_resources'
-```
+
+When you run tests locally, make sure you install packages in `tests/requirements-test.txt`, as some tests are testing against other well-known packages.
 
 You can then publish it to your private PYPI server, or just use it locally.
+
+# How about polars['rt64'] for extremely big data?
+
+A lot of internal queries rely on pl.col('..').len(), which is of type u32 by default but will become u64 with 'rt64', and a lot of functions in Rust are currently expecting the corresponding ChunkedArrays to be u32. So you will have many simple changes before following the guide above.
 
 # Credits
 

@@ -11,12 +11,6 @@ down the process.
 2. If input data is not big enough, there won't be any noticeable difference in runtime.
 """
 
+
 def _which_lin_reg(x: str) -> str:
     return x if LIN_REG_EXPR_F64 else f"{x}_f32"
-
-
-
-
-
-
-

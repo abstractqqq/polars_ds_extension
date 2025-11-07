@@ -156,7 +156,7 @@ impl<T: RealField + Float> LinearModel<T> for ElasticNet<T> {
                 self.add_bias,
                 self.tol,
                 self.max_iter,
-                false
+                false,
             )
         } else {
             faer_coordinate_descent(
@@ -167,7 +167,7 @@ impl<T: RealField + Float> LinearModel<T> for ElasticNet<T> {
                 self.add_bias,
                 self.tol,
                 self.max_iter,
-                false
+                false,
             )
         };
     }
@@ -387,8 +387,7 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
     beta
 }
 
-
-/// Non-negative Lstsq. Returns the coefficients as a ncols x 1 faer matrix 
+/// Non-negative Lstsq. Returns the coefficients as a ncols x 1 faer matrix
 pub fn faer_nn_lstsq<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
@@ -397,32 +396,33 @@ pub fn faer_nn_lstsq<T: RealField + Float>(
     max_iter: usize,
 ) -> Mat<T> {
     // x: nrows x ncols
-    let xtx: Mat<T> = x.transpose() * x; 
-    let xty: Mat<T> = x.transpose() * y; 
+    let xtx: Mat<T> = x.transpose() * x;
+    let xty: Mat<T> = x.transpose() * y;
 
     let mut beta: Mat<T> = Mat::zeros(x.ncols(), 1);
     let mut mu = Scale(T::one().neg()) * &xty;
     // safe, all indices are in valid range
     unsafe {
         for _ in 0..max_iter {
-    
             let hxf: Mat<T> = &xtx * &beta - &xty;
             let criterion1 = hxf.col(0).iter().all(|c| *c >= -tol);
-            let mut criterion2 = true; 
+            let mut criterion2 = true;
             for j in 0..beta.nrows() {
                 if *beta.get_unchecked(j, 0) > T::zero() {
                     criterion2 &= *hxf.get_unchecked(j, 0) <= tol;
                 }
             }
-            
-            if criterion1 && criterion2 {break};
-    
+
+            if criterion1 && criterion2 {
+                break;
+            };
+
             for k in 0..x.ncols() {
                 let beta_k = *beta.get(k, 0);
-                let mut x_diff = - beta_k;
+                let mut x_diff = -beta_k;
                 let mut update = beta_k - *mu.get_unchecked(k, 0) / *xtx.get_unchecked(k, k);
                 if !add_bias || k < x.ncols() - 1 {
-                    update = update.max(T::zero());   
+                    update = update.max(T::zero());
                 } // No need for max with 0 if this is the bias term
                 *beta.get_mut_unchecked(k, 0) = update;
                 x_diff = x_diff + update;
@@ -431,5 +431,4 @@ pub fn faer_nn_lstsq<T: RealField + Float>(
         }
     }
     beta
-
 }

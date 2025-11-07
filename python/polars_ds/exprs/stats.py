@@ -65,7 +65,7 @@ def ttest_ind(
 
     If (NaN, NaN) is returned, then it is possible that one of the following numeric
     problems occurred:
-    
+
     1. There is no valid value in the inputs, or the mean is inf.
     2. Input variable has length 0 after removing non-finite values.
 
@@ -130,7 +130,7 @@ def ttest_1samp(
 
     If (NaN, NaN) is returned, then it is possible that one of the following numeric
     problems occurred:
-    
+
     1. There is no valid value in the inputs, or the mean is inf.
     2. Input variable has length 0 after removing non-finite values.
 
@@ -172,7 +172,7 @@ def ttest_ind_from_stats(
 
     If (NaN, NaN) is returned, then it is possible that one of the following numeric
     problems occurred:
-    
+
     1. There is no valid value in the inputs, or the mean is inf.
     2. Input variable has length 0 after removing non-finite values.
 

@@ -26,7 +26,6 @@ __all__ = [
     "str_d_leven",
     "str_leven",
     "str_osa",
-    "str_lcs_seq", # deprecated
     "str_lcs_subseq",
     "str_lcs_subseq_dist",
     "str_lcs_substr",
@@ -189,7 +188,7 @@ def str_nearest(
     metric: Literal["lv", "hamming"] = "lv",
 ) -> pl.Expr:
     """
-    Finds the string in the column that is nearest to the given word in the given metric. This algorithm is 
+    Finds the string in the column that is nearest to the given word in the given metric. This algorithm is
     very slow.
 
     Note: Nearest-k strings search functionality is temporarily dropped.
@@ -516,7 +515,8 @@ def str_leven(
             symbol="pl_levenshtein",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
         )
-    
+
+
 def str_lcs_substr(
     c: str | pl.Expr,
     other: str | pl.Expr,
@@ -543,6 +543,7 @@ def str_lcs_substr(
         args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
     )
 
+
 def str_lcs_subseq(
     c: str | pl.Expr,
     other: str | pl.Expr,
@@ -568,19 +569,6 @@ def str_lcs_subseq(
         symbol="pl_lcs_subseq",
         args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
     )
-
-def str_lcs_seq(
-    c: str | pl.Expr,
-    other: str | pl.Expr,
-    parallel: bool = False,
-    return_sim: bool = True,   
-) -> pl.Expr:
-    warnings.warn(
-        "`str_lcs_seq` is deprecated and users should use `str_lcs_subseq_dist`."
-        , DeprecationWarning
-        , stacklevel=2
-    )
-    return str_lcs_subseq_dist(c, other, parallel, return_sim)
 
 
 def str_lcs_subseq_dist(
@@ -893,62 +881,13 @@ def remove_diacritics(c: str | pl.Expr) -> pl.Expr:
 
 
 def normalize_string(c: str | pl.Expr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) -> pl.Expr:
-    """
-    Normalize Unicode string using one of 'NFC', 'NFKC', 'NFD', or 'NFKD'
-    normalization.
-
-    See https://en.wikipedia.org/wiki/Unicode_equivalence for more information.
-
-    Parameters
-    ----------
-    c : str | pl.Expr
-        The string column
-    form: Literal["NFC", "NFKC", "NFD", "NFKD"]
-        The Unicode normalization form to use
-
-    Returns
-    -------
-    pl.Expr
-
-    Examples
-    --------
-    >>> df = pl.DataFrame({"x": ["\u0043\u0327"], "y": ["\u00c7"]})
-    >>> df.with_columns(
-    >>>     pl.col("x").eq(pl.col("y")).alias("is_equal"),
-    >>>     pds.normalize_string("x", "NFC")
-    >>>     .eq(pds.normalize_string("y", "NFC"))
-    >>>     .alias("normalized_is_equal"),
-    >>> )
-    shape: (1, 4)
-    ┌─────┬─────┬──────────┬─────────────────────┐
-    │ x   ┆ y   ┆ is_equal ┆ normalized_is_equal │
-    │ --- ┆ --- ┆ ---      ┆ ---                 │
-    │ str ┆ str ┆ bool     ┆ bool                │
-    ╞═════╪═════╪══════════╪═════════════════════╡
-    │ Ç   ┆ Ç   ┆ false    ┆ true                │
-    └─────┴─────┴──────────┴─────────────────────┘
-    """
-
     warnings.warn(
         "This function is deprecated because Polars>=1.20 has a native str.normalize() method. "
         + "This will be removed in a future version.",
         DeprecationWarning,
         stacklevel=2,
     )
-
-    if form not in ("NFC", "NFKC", "NFD", "NFKD"):
-        raise ValueError(
-            f"{form} is not a valid Unicode normalization form.",
-            " Please specify one of `NFC, NFKC, NFD, NFKD`",
-        )
-
-    return pl_plugin(
-        symbol="normalize_string",
-        args=[to_expr(c)],
-        kwargs={"form": form},
-        is_elementwise=True,
-    )
-
+    return to_expr(c).str.normalize(form=form)
 
 def map_words(c: str | pl.Expr, mapping: Dict[str, str]) -> pl.Expr:
     """
