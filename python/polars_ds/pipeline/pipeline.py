@@ -202,11 +202,7 @@ class Pipeline:
         return self
 
     def transform(
-        self, 
-        df: PolarsFrame, 
-        return_lazy: bool = False, 
-        set_features_out: bool = False,
-        **kwargs
+        self, df: PolarsFrame, return_lazy: bool = False, set_features_out: bool = False, **kwargs
     ) -> PolarsFrame:
         """
         Transforms the df using the learned expressions.
@@ -656,7 +652,7 @@ class Blueprint:
         self,
         cols: IntoExprColumn | None = None,
         unknown_value: float | None = None,
-        null_value: float | None = None
+        null_value: float | None = None,
     ) -> Self:
         """
         Find the unique values in the string/categorical columns and one-hot encode them. This will NOT
@@ -685,17 +681,16 @@ class Blueprint:
         )
         return self
 
-
     def rank_hot_encode(
-        self, 
-        col: str | pl.Expr, 
-        ranking: List[str], 
+        self,
+        col: str | pl.Expr,
+        ranking: List[str],
         default_rank: int | None = None,
-        drop_cols: bool = True
+        drop_cols: bool = True,
     ) -> Self:
         """
         Given a ranking, e.g. ["bad", "neutral", "good"], where "bad", "neutral" and "good" are values coming
-        from the column `col`, this will return two new columns, the first is ">=neutral", which 
+        from the column `col`, this will return two new columns, the first is ">=neutral", which
         will be 1 for all values in ("neutral", "good") and 0 otherwise, and the second new column is ">=good", which
         will be 1 for all values in ("good") and 0 otherwise.
 
@@ -711,7 +706,10 @@ class Blueprint:
             Default rank for all null/unseen values
         """
         self._steps.append(
-            ExprStep(t.rank_hot_encode(col=col, ranking=ranking, default_rank=default_rank), PLContext.WITH_COLUMNS)
+            ExprStep(
+                t.rank_hot_encode(col=col, ranking=ranking, default_rank=default_rank),
+                PLContext.WITH_COLUMNS,
+            )
         )
         if drop_cols:
             return self.drop(cols=[col])
@@ -853,7 +851,9 @@ class Blueprint:
         self._steps.append(ExprStep(list(exprs), PLContext.WITH_COLUMNS))
         return self
 
-    def sort(self, by: IntoExprColumn, descending: bool | List[bool], maintain_order: bool = True) -> Self:
+    def sort(
+        self, by: IntoExprColumn, descending: bool | List[bool], maintain_order: bool = True
+    ) -> Self:
         """Sorts the dataframe by the columns.
 
         Parameters

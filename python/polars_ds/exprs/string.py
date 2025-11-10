@@ -26,7 +26,7 @@ __all__ = [
     "str_d_leven",
     "str_leven",
     "str_osa",
-    "str_lcs_seq", # deprecated
+    "str_lcs_seq",  # deprecated
     "str_lcs_subseq",
     "str_lcs_subseq_dist",
     "str_lcs_substr",
@@ -189,7 +189,7 @@ def str_nearest(
     metric: Literal["lv", "hamming"] = "lv",
 ) -> pl.Expr:
     """
-    Finds the string in the column that is nearest to the given word in the given metric. This algorithm is 
+    Finds the string in the column that is nearest to the given word in the given metric. This algorithm is
     very slow.
 
     Note: Nearest-k strings search functionality is temporarily dropped.
@@ -516,7 +516,8 @@ def str_leven(
             symbol="pl_levenshtein",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
         )
-    
+
+
 def str_lcs_substr(
     c: str | pl.Expr,
     other: str | pl.Expr,
@@ -542,6 +543,7 @@ def str_lcs_substr(
         symbol="pl_lcs_substr",
         args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
     )
+
 
 def str_lcs_subseq(
     c: str | pl.Expr,
@@ -569,16 +571,17 @@ def str_lcs_subseq(
         args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
     )
 
+
 def str_lcs_seq(
     c: str | pl.Expr,
     other: str | pl.Expr,
     parallel: bool = False,
-    return_sim: bool = True,   
+    return_sim: bool = True,
 ) -> pl.Expr:
     warnings.warn(
-        "`str_lcs_seq` is deprecated and users should use `str_lcs_subseq_dist`."
-        , DeprecationWarning
-        , stacklevel=2
+        "`str_lcs_seq` is deprecated and users should use `str_lcs_subseq_dist`.",
+        DeprecationWarning,
+        stacklevel=2,
     )
     return str_lcs_subseq_dist(c, other, parallel, return_sim)
 

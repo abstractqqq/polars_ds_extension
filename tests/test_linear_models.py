@@ -77,7 +77,6 @@ def test_lr(solver):
 
 
 def test_online_lr():
-
     size = 5000
     df = (
         pds.frame(size=size)

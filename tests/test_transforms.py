@@ -4,23 +4,16 @@ import polars_ds.pipeline.transforms as t
 import pytest
 from polars.testing import assert_frame_equal
 
-def test_ordinal_encoding():
 
+def test_ordinal_encoding():
     from polars_ds.pipeline import Blueprint
 
-    df_fit = pl.DataFrame({
-        "gender": ["M", "F", "F", None]
-        ,  "data": [1, 2, 3, 4]
-    })
+    df_fit = pl.DataFrame({"gender": ["M", "F", "F", None], "data": [1, 2, 3, 4]})
 
-    df_non_fit = pl.DataFrame({
-        "gender": ["M", "X", "G", "F", None]
-        ,  "data": [1, 2, 3, 4, 5]
-    })
+    df_non_fit = pl.DataFrame({"gender": ["M", "X", "G", "F", None], "data": [1, 2, 3, 4, 5]})
 
-    bp1 = (
-        Blueprint(df_fit, name = "example",  lowercase=True) 
-        .ordinal_encode(cols=["gender"], null_value = -1, unknown_value=-2)
+    bp1 = Blueprint(df_fit, name="example", lowercase=True).ordinal_encode(
+        cols=["gender"], null_value=-1, unknown_value=-2
     )
 
     pipe1 = bp1.materialize()
@@ -30,14 +23,12 @@ def test_ordinal_encoding():
     result1_non_fit = pipe1.transform(df_non_fit)["gender"].to_list()
     assert result1_non_fit == [1.0, -2.0, -2.0, 0.0, -1.0]
 
-    bp2 = (
-        Blueprint(df_fit, name = "example",  lowercase=True) 
-        .ordinal_encode(cols=["gender"])
-    )
+    bp2 = Blueprint(df_fit, name="example", lowercase=True).ordinal_encode(cols=["gender"])
     # by default, nulls remain null
     pipe2 = bp2.materialize()
     result2 = pipe2.transform(df_fit)["gender"].to_list()
     assert result2 == [1.0, 0.0, 0.0, None]
+
 
 def test_linear_impute():
     df = pl.DataFrame(

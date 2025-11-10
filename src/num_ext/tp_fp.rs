@@ -67,13 +67,16 @@ fn tp_fp_frame(
         .select([
             col("threshold").append(lit(f64::INFINITY), true),
             col("tp").append(lit(0), true),
-            (col("predicted_positive") - col("tp")).append(lit(0), true).alias("fp"),
+            (col("predicted_positive") - col("tp"))
+                .append(lit(0), true)
+                .alias("fp"),
             (col("tp").cast(DataType::Float64) / col("predicted_positive").cast(DataType::Float64))
-                .append(lit(0f64), true).alias("precision"),
+                .append(lit(0f64), true)
+                .alias("precision"),
         ]); // pad the values with a inf threshold, 0 fp, 0 tp at the end
-    // col("cnt"),
-    // col("predicted_positive")
-    // col("pos_cnt_at_threshold"),
+            // col("cnt"),
+            // col("predicted_positive")
+            // col("pos_cnt_at_threshold"),
     if as_ratio {
         Ok(temp.select([
             col("threshold"),
