@@ -4,6 +4,40 @@ import polars_ds.pipeline.transforms as t
 import pytest
 from polars.testing import assert_frame_equal
 
+def test_ordinal_encoding():
+
+    from polars_ds.pipeline import Blueprint
+
+    df_fit = pl.DataFrame({
+        "gender": ["M", "F", "F", None]
+        ,  "data": [1, 2, 3, 4]
+    })
+
+    df_non_fit = pl.DataFrame({
+        "gender": ["M", "X", "G", "F", None]
+        ,  "data": [1, 2, 3, 4, 5]
+    })
+
+    bp1 = (
+        Blueprint(df_fit, name = "example",  lowercase=True) 
+        .ordinal_encode(cols=["gender"], null_value = -1, unknown_value=-2)
+    )
+
+    pipe1 = bp1.materialize()
+    result1_fit = pipe1.transform(df_fit)["gender"].to_list()
+    # M = 1, F = 0, null = -1, unknown = -2
+    assert result1_fit == [1.0, 0.0, 0.0, -1.0]
+    result1_non_fit = pipe1.transform(df_non_fit)["gender"].to_list()
+    assert result1_non_fit == [1.0, -2.0, -2.0, 0.0, -1.0]
+
+    bp2 = (
+        Blueprint(df_fit, name = "example",  lowercase=True) 
+        .ordinal_encode(cols=["gender"])
+    )
+    # by default, nulls remain null
+    pipe2 = bp2.materialize()
+    result2 = pipe2.transform(df_fit)["gender"].to_list()
+    assert result2 == [1.0, 0.0, 0.0, None]
 
 def test_linear_impute():
     df = pl.DataFrame(
@@ -308,7 +342,6 @@ def test_rank_hot_encode(df, ranking):
                 >= i
             )
             .cast(pl.Int8)
-            .fill_null(-1)
             .alias(f"col>={ranking[i]}")
             # fill_null with -1. If we get null, that means the value is not in ranking or is null.
         )

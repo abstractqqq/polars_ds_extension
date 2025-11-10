@@ -622,6 +622,8 @@ class Blueprint:
         consider nulls as one of the unique values. Append pl.col(c).is_null().cast(pl.UInt8)
         expression to the pipeline if you want null indicators.
 
+        If `cols` is None, this will pick all string and categorical columns.
+
         Parameters
         ----------
         cols
@@ -650,16 +652,52 @@ class Blueprint:
             return self.drop(cols)
         return self
 
+    def ordinal_encode(
+        self,
+        cols: IntoExprColumn | None = None,
+        unknown_value: float | None = None,
+        null_value: float | None = None
+    ) -> Self:
+        """
+        Find the unique values in the string/categorical columns and one-hot encode them. This will NOT
+        consider nulls as one of the unique values. Append pl.col(c).is_null().cast(pl.UInt8)
+        expression to the pipeline if you want null indicators.
+
+        If `cols` is None, this will pick all string and categorical columns.
+
+        Parameters
+        ----------
+        df
+            Either a lazy or an eager dataframe
+        cols
+            A list of strings representing column names.
+        unknown_value
+            What to assign to values not seen in the initial dataset used to fit. None means null.
+        null_value
+            What to assign to values that are null in dataset.
+        """
+        self._steps.append(
+            FitStep(
+                partial(t.ordinal_encode, unknown_value=unknown_value, null_value=null_value),
+                cols if cols is not None else cs.string() | cs.categorical(),
+                self.exclude,
+            )
+        )
+        return self
+
+
     def rank_hot_encode(
-        self, col: str | pl.Expr, ranking: List[str], drop_cols: bool = True
+        self, 
+        col: str | pl.Expr, 
+        ranking: List[str], 
+        default_rank: int | None = None,
+        drop_cols: bool = True
     ) -> Self:
         """
         Given a ranking, e.g. ["bad", "neutral", "good"], where "bad", "neutral" and "good" are values coming
-        from the column `col`, this will create 2 additional columns, where a row of [0, 0] will represent
-        "bad", and a row of [1, 0] will represent "neutral", and a row of [1,1] will represent "good". The meaning
-        of each rows is that the value is at least this rank. This currently only works on string columns.
-
-        Values not in the provided ranking will have -1 in all the new columns.
+        from the column `col`, this will return two new columns, the first is ">=neutral", which 
+        will be 1 for all values in ("neutral", "good") and 0 otherwise, and the second new column is ">=good", which
+        will be 1 for all values in ("good") and 0 otherwise.
 
         Parameters
         ----------
@@ -667,11 +705,13 @@ class Blueprint:
             The name of a single column
         ranking
             A list of string representing the ranking of the values
-        drop_cols
-            Whether to drop the original column after the transform
+        unknown_value
+            What to assign to values not present in training dataset. None means null. Must be int.
+        default_rank
+            Default rank for all null/unseen values
         """
         self._steps.append(
-            ExprStep(t.rank_hot_encode(col=col, ranking=ranking), PLContext.WITH_COLUMNS)
+            ExprStep(t.rank_hot_encode(col=col, ranking=ranking, default_rank=default_rank), PLContext.WITH_COLUMNS)
         )
         if drop_cols:
             return self.drop(cols=[col])
