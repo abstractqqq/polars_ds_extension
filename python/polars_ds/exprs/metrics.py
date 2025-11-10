@@ -717,11 +717,9 @@ def query_dcg_score(
                 .fill_null(discount_cumsum.get(groups.first()).first())
             )  # The only possible null is at position 0
 
-        else: # in newer versions, get() returns a value which auto resolves to a scaler
+        else:  # in newer versions, get() returns a value which auto resolves to a scaler
             discount_sums = (
-                discount_cumsum.gather(groups)
-                .diff()
-                .fill_null(discount_cumsum.get(groups.first()))
+                discount_cumsum.gather(groups).diff().fill_null(discount_cumsum.get(groups.first()))
             )  # The only possible null is at position 0
 
         return ranked.dot(discount_sums)

@@ -10,7 +10,8 @@ use super::linear_regression::{LstsqKwargs, MultiLstsqKwargs, SWWLstsqKwargs, St
 use crate::linear::{
     lr::{
         lr_solvers::{
-            faer_coordinate_descent, faer_solve_lstsq, faer_solve_lstsq_rcond, faer_weighted_lstsq, faer_nn_lstsq
+            faer_coordinate_descent, faer_nn_lstsq, faer_solve_lstsq, faer_solve_lstsq_rcond,
+            faer_weighted_lstsq,
         },
         LRMethods,
     },
@@ -125,15 +126,14 @@ fn series_to_mat_for_lstsq_f32(
             NullPolicy::FILL(x) => {
                 let filled = inputs[1..]
                     .iter()
-                    .map(
-                        |s| 
-                        pl::col(s.name().clone()).cast(DataType::Float32).fill_null(lit(x))
-                    ).collect::<Vec<_>>();
+                    .map(|s| {
+                        pl::col(s.name().clone())
+                            .cast(DataType::Float32)
+                            .fill_null(lit(x))
+                    })
+                    .collect::<Vec<_>>();
 
-                df = df
-                    .lazy()
-                    .with_columns(filled)
-                    .collect()?;
+                df = df.lazy().with_columns(filled).collect()?;
 
                 if y_has_null {
                     df = df.filter(&init_mask).unwrap();
@@ -147,15 +147,14 @@ fn series_to_mat_for_lstsq_f32(
             NullPolicy::FILL_WINDOW(x) => {
                 let filled = inputs[1..]
                     .iter()
-                    .map(
-                        |s| 
-                        pl::col(s.name().clone()).cast(DataType::Float32).fill_null(lit(x))
-                    ).collect::<Vec<_>>();
-                
-                df = df
-                    .lazy()
-                    .with_columns(filled)
-                    .collect()?;
+                    .map(|s| {
+                        pl::col(s.name().clone())
+                            .cast(DataType::Float32)
+                            .fill_null(lit(x))
+                    })
+                    .collect::<Vec<_>>();
+
+                df = df.lazy().with_columns(filled).collect()?;
 
                 if y_has_null {
                     // Unlike fill, this doesn't drop y's nulls
@@ -211,14 +210,14 @@ fn series_to_mat_for_multi_lstsq_f32(
                 } else {
                     let filled = inputs[last_target_idx..]
                         .iter()
-                        .map(
-                            |s| 
-                            pl::col(s.name().clone()).cast(DataType::Float32).fill_null(lit(x))
-                        ).collect::<Vec<_>>();
+                        .map(|s| {
+                            pl::col(s.name().clone())
+                                .cast(DataType::Float32)
+                                .fill_null(lit(x))
+                        })
+                        .collect::<Vec<_>>();
 
-                    df.lazy()
-                        .with_columns(filled)
-                        .collect()
+                    df.lazy().with_columns(filled).collect()
                 }
             }
             _ => Err(PolarsError::ComputeError(
@@ -271,25 +270,38 @@ fn pl_lstsq_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> 
                 }
                 faer_weighted_lstsq(x, y, weights, solver)
             } else {
-                match (LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)), kwargs.positive) {
-                    (LRMethods::Normal | LRMethods::L2, false) => 
+                match (
+                    LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)),
+                    kwargs.positive,
+                ) {
+                    (LRMethods::Normal | LRMethods::L2, false) => {
                         faer_solve_lstsq(x, y, kwargs.l2_reg as f32, add_bias, solver)
-                    ,
-                    (LRMethods::Normal, true) => faer_nn_lstsq(x, y, add_bias, kwargs.tol as f32, 200)
-                    ,
-                    (LRMethods::L2, true) => 
-                        faer_coordinate_descent(x, y, 0f32, kwargs.l2_reg as f32, add_bias, kwargs.tol as f32, 2000, true)
-                    ,
-                    (LRMethods::L1 | LRMethods::ElasticNet, true | false) => faer_coordinate_descent(
+                    }
+                    (LRMethods::Normal, true) => {
+                        faer_nn_lstsq(x, y, add_bias, kwargs.tol as f32, 200)
+                    }
+                    (LRMethods::L2, true) => faer_coordinate_descent(
                         x,
                         y,
-                        kwargs.l1_reg as f32,
+                        0f32,
                         kwargs.l2_reg as f32,
                         add_bias,
                         kwargs.tol as f32,
                         2000,
-                        kwargs.positive
+                        true,
                     ),
+                    (LRMethods::L1 | LRMethods::ElasticNet, true | false) => {
+                        faer_coordinate_descent(
+                            x,
+                            y,
+                            kwargs.l1_reg as f32,
+                            kwargs.l2_reg as f32,
+                            add_bias,
+                            kwargs.tol as f32,
+                            2000,
+                            kwargs.positive,
+                        )
+                    }
                 }
             };
             let mut builder: ListPrimitiveChunkedBuilder<Float32Type> =
@@ -493,25 +505,38 @@ fn pl_lstsq_pred_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
                 }
                 faer_weighted_lstsq(x, y, weights, solver)
             } else {
-                match (LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)), kwargs.positive) {
-                    (LRMethods::Normal | LRMethods::L2, false) => 
+                match (
+                    LRMethods::from((kwargs.l1_reg, kwargs.l2_reg)),
+                    kwargs.positive,
+                ) {
+                    (LRMethods::Normal | LRMethods::L2, false) => {
                         faer_solve_lstsq(x, y, kwargs.l2_reg as f32, add_bias, solver)
-                    ,
-                    (LRMethods::Normal, true) => faer_nn_lstsq(x, y, add_bias, kwargs.tol as f32, 2000)
-                    ,
-                    (LRMethods::L2, true) => 
-                        faer_coordinate_descent(x, y, 0f32, kwargs.l2_reg as f32, add_bias, kwargs.tol as f32, 2000, true)
-                    ,
-                    (LRMethods::L1 | LRMethods::ElasticNet, true | false) => faer_coordinate_descent(
+                    }
+                    (LRMethods::Normal, true) => {
+                        faer_nn_lstsq(x, y, add_bias, kwargs.tol as f32, 2000)
+                    }
+                    (LRMethods::L2, true) => faer_coordinate_descent(
                         x,
                         y,
-                        kwargs.l1_reg as f32,
+                        0f32,
                         kwargs.l2_reg as f32,
                         add_bias,
                         kwargs.tol as f32,
                         2000,
-                        kwargs.positive
+                        true,
                     ),
+                    (LRMethods::L1 | LRMethods::ElasticNet, true | false) => {
+                        faer_coordinate_descent(
+                            x,
+                            y,
+                            kwargs.l1_reg as f32,
+                            kwargs.l2_reg as f32,
+                            add_bias,
+                            kwargs.tol as f32,
+                            2000,
+                            kwargs.positive,
+                        )
+                    }
                 }
             };
 

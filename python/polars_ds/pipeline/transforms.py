@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import polars as pl
 import polars.selectors as cs
-from typing import List, Dict
+from typing import List, Dict, Literal
 
 # Internal dependencies
 from polars_ds.typing import (
@@ -357,15 +357,78 @@ def one_hot_encode(
     return exprs
 
 
+def ordinal_encode(
+    df: PolarsFrame,
+    cols: List[str],
+    unknown_value: float | None = None,
+    null_value: float | None = None,
+) -> ExprTransform:
+    """
+    Converts numeric / string columns into integer encodings starting from 0 to n-1, where
+    n is the number of distinct values in the column.
+
+    Note: if assigning an integer based on sorting does not make sense for
+    your use case, then please directly use `pl.col().replace_strict(mapping)`
+
+    Parameters
+    ----------
+    df
+        Either a lazy or an eager dataframe
+    cols
+        A list of strings representing column names.
+    unknown_value
+        What to assign to values not present in training dataset. None means null.
+        Must be a number.
+    null_value
+        What to assign to values that are null. Must be a number.
+    """
+    temp = (
+        df.lazy()
+        .select(cols)
+        .select(
+            (cs.string() | cs.categorical() | cs.numeric() | cs.boolean())
+            .unique()
+            .drop_nulls()
+            .sort()
+            .implode()
+        )
+    )
+    exprs: list[pl.Expr] = []
+    for t in temp.collect().get_columns():
+        # u is a sorted series
+        u: pl.Series = t[0]  # old
+        new = pl.int_range(0, len(u), eager=True).cast(pl.Float64)
+        c = (
+            pl.when(pl.col(t.name).is_null())
+            .then(pl.lit(null_value, dtype=pl.Float64))
+            .otherwise(
+                pl.col(t.name).replace_strict(
+                    old=u,
+                    new=new,
+                    default=pl.lit(unknown_value, dtype=pl.Float64),
+                    return_dtype=pl.Float64,
+                )
+            )
+            .alias(t.name)
+        )
+
+        exprs.append(c)
+
+    return exprs
+
+
 def rank_hot_encode(
     col: str,
     ranking: List[str],
+    default_rank: int | None = None,
 ) -> ExprTransform:
     """
     Given a ranking, e.g. ["bad", "neutral", "good"], where "bad", "neutral" and "good" are values coming
-    from the column `col`, this will create 2 additional columns, where a row of [0, 0] will represent
-    "bad", and a row of [1, 0] will represent "neutral", and a row of [1,1] will represent "good". The meaning
-    of each rows is that the value is at least this rank. This currently only works on string columns.
+    from the column `col`, this will return two new columns, the first is ">=neutral", which
+    will be 1 for all values in ("neutral", "good") and 0 otherwise, and the second new column is ">=good", which
+    will be 1 for all values in ("good") and 0 otherwise.
+
+    This currently only works on string columns.
 
     Values not in the provided ranking will have -1 in all the new columns.
 
@@ -375,18 +438,21 @@ def rank_hot_encode(
         The name of a single column
     ranking
         A list of string representing the ranking of the values
+    default_rank
+        Default rank for all null/unseen values
     """
 
     n_ranks = len(ranking)
     if n_ranks <= 1:
         raise ValueError("Rank hot encoding does not work with single value ranking.")
 
-    number_rank = list(range(n_ranks))
+    number_rank = pl.int_range(0, n_ranks, eager=True, dtype=pl.Int32)
     ranked_expr = pl.col(col).replace_strict(
-        old=ranking, new=number_rank, default=None, return_dtype=pl.Int32
+        old=ranking, new=number_rank, default=default_rank, return_dtype=pl.Int32
     )
+
     return [
-        (ranked_expr >= i).cast(pl.Int8).fill_null(-1).alias(f"{col}>={c}")
+        (ranked_expr >= i).cast(pl.Int8).alias(f"{col}>={c}")
         for i, c in zip(range(1, n_ranks), ranking[1:])
     ]
 

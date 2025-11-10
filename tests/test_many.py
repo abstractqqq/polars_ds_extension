@@ -605,8 +605,9 @@ def test_lasso_regression():
         assert np.all(np.abs(res_sklearn - res_coef) < 1e-4)
         assert abs(res_bias - sklearn.intercept_) < 1e-4
 
+
 def test_positive_lin_reg():
-    # 
+    #
     from sklearn.linear_model import LinearRegression, ElasticNet
 
     df = (
@@ -617,19 +618,17 @@ def test_positive_lin_reg():
             pds.random(0.0, 1.0).alias("x3"),
         )
         .with_columns(
-            y=pl.col("x1") * 0.5 + pl.col("x2") * 0.25 + pl.col("x3") * -0.15 + pds.random() * 0.0001
+            y=pl.col("x1") * 0.5
+            + pl.col("x2") * 0.25
+            + pl.col("x3") * -0.15
+            + pds.random() * 0.0001
         )
     )
 
     # Third coefficient should be 0 because this is non neg
-    for bias in [True, False]: 
+    for bias in [True, False]:
         pds_result = df.select(
-            pds.lin_reg(
-                *[f"x{i+1}" for i in range(3)]
-                , target = "y"
-                , positive = True
-                , add_bias = bias
-            )
+            pds.lin_reg(*[f"x{i + 1}" for i in range(3)], target="y", positive=True, add_bias=bias)
         ).item(0, 0)
         pds_result = pds_result.to_numpy()
 
@@ -654,11 +653,7 @@ def test_positive_lin_reg():
 
         pds_result = df.select(
             pds.lin_reg(
-                "x1", "x2", "x3", 
-                target="y", 
-                l1_reg=l1_reg, 
-                l2_reg=l2_reg, 
-                add_bias=bias
+                "x1", "x2", "x3", target="y", l1_reg=l1_reg, l2_reg=l2_reg, add_bias=bias
             ).alias("coeffs")
         ).item(0, 0)
 
@@ -674,7 +669,7 @@ def test_positive_lin_reg():
 
         reg_nnls = ElasticNet(alpha=alpha, l1_ratio=l1_ratio, fit_intercept=bias)
         reg_nnls.fit(df.select("x1", "x2", "x3").to_numpy(), df["y"].to_numpy())
-        if not bias: # allow for a higher error tolerance because of convergence differences
+        if not bias:  # allow for a higher error tolerance because of convergence differences
             assert np.all(np.isclose(pds_result, reg_nnls.coef_, atol=1e-4))
         else:
             assert np.all(np.isclose(pds_result[:-1], reg_nnls.coef_, atol=1e-4))
@@ -2128,13 +2123,12 @@ def test_product(df, ans):
 
 
 def test_weighted_corr():
-
     import numpy as np
 
     def weighted_mean(x, w):
         """Calculates the weighted mean of an array."""
         return np.sum(x * w) / np.sum(w)
-    
+
     def weighted_covariance(x, y, w):
         """Calculates the weighted covariance between two arrays."""
         mean_x = weighted_mean(x, w)
@@ -2146,17 +2140,15 @@ def test_weighted_corr():
         cov_xy = weighted_covariance(x, y, w)
         cov_xx = weighted_covariance(x, x, w)
         cov_yy = weighted_covariance(y, y, w)
-        
+
         # Handle cases where variance is zero to avoid division by zero
         if cov_xx == 0 or cov_yy == 0:
             return 0.0  # Or handle as appropriate for your application
-        
+
         return cov_xy / np.sqrt(cov_xx * cov_yy)
 
     df = pds.frame().select(
-        pds.random().alias("a1"),
-        pds.random().alias("a2"),
-        pds.random().alias("w") 
+        pds.random().alias("a1"), pds.random().alias("a2"), pds.random().alias("w")
     )
 
     a1 = df["a1"].to_numpy()
@@ -2164,8 +2156,6 @@ def test_weighted_corr():
     w = df["w"].to_numpy()
 
     np_result = weighted_correlation(a1, a2, w)
-    pds_result = df.select(
-        pds.weighted_corr("a1", "a2", "w")
-    ).item(0, 0)
+    pds_result = df.select(pds.weighted_corr("a1", "a2", "w")).item(0, 0)
 
     np.isclose(np_result, pds_result, atol=1e-8)

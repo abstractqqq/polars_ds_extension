@@ -141,6 +141,7 @@ def test_lcs_subseq_dist(df, res):
         df.lazy().select(pds.str_lcs_subseq_dist("a", pl.col("b"), return_sim=False)).collect(), res
     )
 
+
 @pytest.mark.parametrize(
     "a, b, lcs",
     [
@@ -152,13 +153,8 @@ def test_lcs_subseq_dist(df, res):
     ],
 )
 def test_lcs_substr(a, b, lcs):
-    df = pl.DataFrame({
-        "a": a,
-        "b": b,
-        "lcs": lcs
-    }).with_columns(
-        pds_lcs1 = pds.str_lcs_substr("a", "b")
-        , pds_lcs2 = pds.str_lcs_substr("a", "b", parallel=True)
+    df = pl.DataFrame({"a": a, "b": b, "lcs": lcs}).with_columns(
+        pds_lcs1=pds.str_lcs_substr("a", "b"), pds_lcs2=pds.str_lcs_substr("a", "b", parallel=True)
     )
 
     assert_series_equal(df["lcs"], df["pds_lcs1"], check_names=False)
@@ -176,13 +172,8 @@ def test_lcs_substr(a, b, lcs):
     ],
 )
 def test_lcs_subseq(a, b, lcs):
-    df = pl.DataFrame({
-        "a": a,
-        "b": b,
-        "lcs": lcs
-    }).with_columns(
-        pds_lcs1 = pds.str_lcs_subseq("a", "b")
-        , pds_lcs2 = pds.str_lcs_subseq("a", "b", parallel=True)
+    df = pl.DataFrame({"a": a, "b": b, "lcs": lcs}).with_columns(
+        pds_lcs1=pds.str_lcs_subseq("a", "b"), pds_lcs2=pds.str_lcs_subseq("a", "b", parallel=True)
     )
 
     assert_series_equal(df["lcs"], df["pds_lcs1"], check_names=False)
