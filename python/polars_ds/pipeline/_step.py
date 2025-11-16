@@ -366,12 +366,10 @@ class ExprStep:
         self.context: PLContext = context if isinstance(context, PLContext) else PLContext(context)
         if isinstance(exprs, pl.Expr):
             self.exprs = [exprs]
+        elif isinstance(exprs, str):
+            self.exprs = [pl.col(exprs)]
         elif isinstance(exprs, list):
-            self.exprs = list(exprs)
-            if any(not isinstance(e, pl.Expr) for e in self.exprs):
-                raise ValueError(
-                    "When input is a list, all elements in the list must be polars expressions."
-                )
+            self.exprs = [to_expr(e) for e in exprs]
         else:
             raise ValueError(
                 "A pipeline step must be either an expression or a list of expressions."
@@ -423,12 +421,19 @@ class FitStep:
     # This doesn't satisfy the 'PipelineStep' protocol
     # This is turned into an ExprStep at the time of fit(materialization) in a blueprint.
 
-    __slots__ = ("func", "cols", "exclude")
+    __slots__ = ("func", "cols", "exclude", "context")
 
-    def __init__(self, func: FitTransformFunc, cols: IntoExprColumn | None, exclude: List[str]):
+    def __init__(
+            self, 
+            func: FitTransformFunc, 
+            cols: IntoExprColumn | None, 
+            exclude: List[str],
+            context: PLContext = PLContext.WITH_COLUMNS
+        ):
         self.func: FitTransformFunc = func
         self.cols: IntoExprColumn | None = cols
         self.exclude: List[str] = exclude
+        self.context = context
 
     # Here we allow IntoExprColumn as input so that users can use selectors, or other polars expressions
     # to specify input columns, which adds flexibility.

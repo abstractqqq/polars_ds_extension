@@ -506,7 +506,7 @@ class Blueprint:
         self._steps.append(FitStep(partial(t.center), cols, self.exclude))
         return self
 
-    def select(self, *cols: pl.Expr) -> Self:
+    def select(self, *cols: IntoExprColumn) -> Self:
         """
         Selects the columns from the dataset.
 
@@ -516,6 +516,23 @@ class Blueprint:
             Any Polars expression that can be understood as columns.
         """
         self._steps.append(ExprStep(list(cols), PLContext.SELECT))
+        return self
+    
+    def select_by_std(self, min_: float, max_: float) -> Self:
+        """
+        Fits and keeps columns that have standard deviation between `min_` and `max_`.
+        Non-numeric columns will always be selected. Only numeric columns with std outside
+        the `min_` `max_` bounds will be removed. This will never exclude the target if target
+        is set.
+
+        Parameters
+        ----------
+        min_
+            Min standard deviation to select, inclusive.
+        max_ 
+            Max standard deviation to select, exclusive
+        """
+        self._steps.append(FitStep(partial(t.select_by_std, min_=min_, max_=max_), pl.col("*"), self.exclude, PLContext.SELECT))
         return self
 
     def polynomial_features(
@@ -995,7 +1012,7 @@ class Blueprint:
         step_repr: StepRepr = StepRepr.from_dict(dictionary)
         func = getattr(self, step_repr.name, None)  # Default is None
         if func is None or step_repr.name.startswith("_"):
-            raise ValueError("Unknown / invalid method name.")
+            raise ValueError("Unknown or invalid method name.")
 
         return func(*step_repr.args, **step_repr.kwargs)
 
@@ -1012,10 +1029,11 @@ class Blueprint:
         df_lazy: pl.LazyFrame = df.lazy()
         for step in self._steps:
             if isinstance(step, FitStep):  # Need fitting, which is done here
-                df_temp = df_lazy.collect(**kwargs)
+                df_temp: pl.DataFrame = df_lazy.collect(**kwargs)
                 exprs = step.fit(df_temp)
-                transforms.append(ExprStep(exprs, PLContext.WITH_COLUMNS))
-                df_lazy = df_temp.lazy().with_columns(exprs)
+                step = ExprStep(exprs, step.context)
+                transforms.append(step)
+                df_lazy = step.apply_df(df_temp.lazy())
             elif isinstance(step, tuple(_SERIALIZABLE_STEPS)):
                 transforms.append(step)
                 df_lazy = step.apply_df(df_lazy)
