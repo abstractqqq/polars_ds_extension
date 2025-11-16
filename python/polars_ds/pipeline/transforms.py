@@ -653,6 +653,34 @@ def iv_encode(
         for c in temp.get_columns()
     ]
 
+def select_by_std(
+    df: PolarsFrame,
+    cols: List[str],
+    /,
+    min_: float,
+    max_: float,
+) -> ExprTransform:
+    """
+    Fits and selects from `cols` columns that have standard deviation between `min_` and `max_`.
+    Non-numeric columns in `cols` will always be selected.
+
+    Parameters
+    ----------
+    df
+        Either a lazy or an eager dataframe
+    cols
+        A list of strings representing column names.
+    min_
+        Min standard deviation to select, inclusive.
+    max_ 
+        Max standard deviation to select, exclusive
+    """
+    numeric = df.lazy().select(
+        cs.by_name(cols) & cs.numeric()
+    ).collect_schema().names()
+    std_vals = df.lazy().select(pl.col(numeric).std()).collect().row(0)
+    # Do an exclusion instead
+    return pl.exclude([c for c, v in zip(numeric, std_vals) if (v < min_ or v > max_)])
 
 def polynomial_features(
     cols: List[str],
