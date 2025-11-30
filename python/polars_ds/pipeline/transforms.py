@@ -167,7 +167,7 @@ def center(df: PolarsFrame, cols: List[str]) -> ExprTransform:
         A list of strings representing column names
     """
     means = df.lazy().select(pl.col(cols).mean()).collect().row(0)
-    return [pl.col(c) - m for c, m in zip(cols, means)]
+    return [pl.col(c) - m for c, m in zip(cols, means) if m != 0.0]
 
 
 def scale(
@@ -177,6 +177,9 @@ def scale(
 ) -> ExprTransform:
     """
     Scales values in the given columns. This transform will collect if input is lazy.
+
+    Note: if method = 'min_max' and min = max, or method = 'standard' and std = 0.0, or method = 'abs_max' and |min| = |max| = 0.0, 
+    then the column(s) will not be transformed.
 
     Parameters
     ----------
@@ -198,7 +201,8 @@ def scale(
             .row(0)
         )
         n = len(cols)
-        return [(pl.col(c) - temp[i]) / temp[i + n] for i, c in enumerate(cols)]
+        # do nothing if std = 0.0
+        return [(pl.col(c) - temp[i]) / temp[i + n] for i, c in enumerate(cols) if temp[i + n] != 0.0]
     elif method == "min_max":
         temp = (
             df.lazy()
@@ -211,7 +215,8 @@ def scale(
         )
         n = len(cols)
         # If input is constant, this will return all NaNs.
-        return [(pl.col(c) - temp[i]) / (temp[n + i] - temp[i]) for i, c in enumerate(cols)]
+        # If min = max we don't do anything to the column
+        return [(pl.col(c) - temp[i]) / (temp[n + i] - temp[i]) for i, c in enumerate(cols) if temp[n + i] != temp[i]]
     elif method == "abs_max":
         temp = (
             df.lazy()
@@ -219,7 +224,7 @@ def scale(
             .collect()
             .row(0)
         )
-        return [pl.col(c) / m for c, m in zip(cols, temp)]
+        return [pl.col(c) / m for c, m in zip(cols, temp) if m != 0.0]
     else:
         raise ValueError(f"Unknown input method: {method}")
 
