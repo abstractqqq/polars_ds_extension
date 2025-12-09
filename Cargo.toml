@@ -1,6 +1,6 @@
 [package]
 name = "polars_ds"
-version = "0.10.3"
+version = "0.10.4"
 edition = "2021"
 
 [lib]
@@ -11,14 +11,13 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # PyO3
-numpy = "0.25" # matrix interop
-pyo3 = {version = "0.25", features = ["abi3-py39", "extension-module"]}
-pyo3-polars = {version = "0.24", features = ["derive", "lazy"]} 
+numpy = "0.26" # matrix interop
+pyo3 = {version = "0.26", features = ["abi3-py39", "extension-module"]}
+pyo3-polars = {version = "0.25", features = ["derive", "lazy"]} 
 # Polars
-polars = {version = "0.51", features = ["lazy",
+polars = {version = "0.52", features = ["lazy",
 "diff", "array_count", "abs", "cross_join", "rank", "log",
 "cum_agg", "round_series", "chunked_ids", "dtype-i128", "performant"], default-features = false}
-# polars-mem-engine = {version = "0.51", features = ["python"]}
 # Numerical / Linear Algebra
 rand = "0.8.5"
 rand_distr = "0.4.3"
@@ -26,8 +25,8 @@ realfft = "3.3.0"
 num = "0.4.1"
 ordered-float = "4.2.0"
 approx = "*"
-faer = {version = "0.22", default-features = false, features = ["nightly", "rayon", "sparse-linalg"]}
-faer-traits = {version = "0.22"}
+faer = {version = "0.23", default-features = false, features = ["nightly", "rayon", "sparse-linalg"]}
+faer-traits = {version = "0.23"}
 ndarray = {version="0.16"}
 cfavml = {version = "0.3.0", features=["nightly"]} # easy simd
 # Data Structures, Iteration Helpers
