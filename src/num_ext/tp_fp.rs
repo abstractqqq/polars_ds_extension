@@ -139,7 +139,7 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
             .zip(y.iter().skip(1))
             .zip(precision)
             .fold(0., |acc, ((y, y_next), p)| (y_next - y).mul_add(*p, acc));
-    let ap: Series = Series::from_vec("average_precision".into(), vec![ap]);
+    let ap: Series = Series::from_vec("avg_precision".into(), vec![ap]);
 
     // Precision & Recall & F
     let recall = y[index];
