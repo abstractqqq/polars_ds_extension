@@ -30,6 +30,7 @@ fn pl_approximate_entropy(
     let r = radius.get(0).unwrap();
     let name = inputs[1].name();
     let ncols = inputs[1..].len();
+
     let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
     let nrows = data.len() / ncols;
 
@@ -113,6 +114,7 @@ fn pl_sample_entropy(
     let r = radius.get(0).unwrap_or(-1f64); // see return below
     let name = inputs[1].name();
     let ncols = inputs[1..].len();
+
     let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
     let nrows = data.len() / ncols;
 
@@ -222,6 +224,7 @@ fn pl_knn_entropy(
 
     let name = inputs[0].name();
     let ncols = inputs.len();
+
     let data = series_to_slice::<Float64Type>(inputs, IndexOrder::C)?;
     let nrows = data.len() / ncols;
 

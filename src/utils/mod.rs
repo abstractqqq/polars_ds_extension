@@ -41,6 +41,12 @@ where
     if series.is_empty() {
         return Err(PolarsError::NoData("Data is empty".into()));
     }
+    if series.iter().any(|s| !s.dtype().is_numeric()) {
+        return Err(PolarsError::ComputeError(
+            "All input columns need to be numeric.".into(),
+        ));
+    }
+     
     // Safe because series is not empty
     let height: usize = series[0].len();
     for s in &series[1..] {
