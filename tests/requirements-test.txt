@@ -18,3 +18,4 @@ vegafusion[embed]
 vl-convert-python>=1.6
 great-tables>=0.9
 statsmodels
+scikit-survival

@@ -1,4 +1,5 @@
 use cfavml::safe_trait_distance_ops::DistanceOps;
+use itertools::Itertools;
 use num::Float;
 use polars::{
     datatypes::{DataType, Field},
@@ -42,22 +43,17 @@ where
         return Err(PolarsError::NoData("Data is empty".into()));
     }
     if series.iter().any(|s| !s.dtype().is_numeric()) {
-        return Err(PolarsError::NoData("All columns need to be numeric.".into()));
+        return Err(PolarsError::ComputeError("All columns need to be numeric.".into()));
     }
-
+    if !series.iter().map(|s| s.len()).all_equal() {
+        return Err(PolarsError::ShapeMismatch("Seires don't have the same length.".into()));
+    }
     // Safe because series is not empty
     let height: usize = series[0].len();
-    for s in &series[1..] {
-        if s.len() != height {
-            return Err(PolarsError::ShapeMismatch(
-                "Seires don't have the same length.".into(),
-            ));
-        }
-    }
     let m = series.len();
     let mut membuf = Vec::with_capacity(height * m);
     let ptr = membuf.as_ptr() as usize;
-    // let columns = self.get_columns();
+
     POOL.install(|| {
         series.par_iter().enumerate().try_for_each(|(col_idx, s)| {
             let s = s.cast(&N::get_static_dtype())?;
