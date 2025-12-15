@@ -7,6 +7,7 @@ mod normal_test;
 mod sample;
 mod t_test;
 mod xi_corr;
+mod kaplan_meier;
 
 use polars::prelude::*;
 
