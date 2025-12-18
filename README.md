@@ -283,13 +283,13 @@ Generally speaking, the more expressions you want to evaluate simultaneously, th
 1. K-means, K-medoids clustering as expressions and also standalone modules.
 2. Other improvement items. See issues.
 
-# Disclaimer
+# Minimum Polars Support + Streaming Compatibility
 
-**Currently in Beta. Feel free to submit feature requests in the issues section of the repo. This library will only depend on python Polars (for most of its core) and will try to be as stable as possible for polars>=1. Exceptions will be made when Polars's update forces changes in the plugins.**
+**This library will only depend on python Polars (for most of its core) and will try to be as stable as possible for polars>=1.4.0. Exceptions will be made when Polars's update forces changes in the plugins. However, Polars updates quickly and older versions may not be tested. Currently, it is actively tested for Polars>=1.33.**
 
-This package is not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. This concerns the plugin expressions like `pds.lin_reg`, etc. By the same token, Polars large index version is not intentionally supported at this point. However, non-plugin Polars utilities provided by the function should work with the streaming engine, as they are native Polars code.
+This package is also not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. This concerns plugin expressions like `pds.lin_reg`, etc, which won't work with streaming. By the same token, Polars large index version is not supported at this point, and I welcome any 3rd packaging. However, I will try to support some expressions with the streaming engine, as they may be important.
 
-## Polars LTS CPU Support / Build From Source
+## Build From Source
 
 The guide here is not specific to LTS CPU, and can be used generally.
 
@@ -326,7 +326,3 @@ You can then publish it to your private PYPI server, or just use it locally.
 1. Some statistics functions are taken from Statrs (MIT) and internalized. See [here](https://github.com/statrs-dev/statrs/tree/master)
 2. Linear algebra routines are powered mostly by [faer](https://crates.io/crates/faer)
 3. String similarity metrics are soooo fast because of [RapidFuzz](https://github.com/maxbachmann/rapidfuzz-rs)
-
-# Other related Projects
-
-1. Take a look at our friendly neighbor [functime](https://github.com/TracecatHQ/functime)
