@@ -428,7 +428,7 @@ def perturb(
     return pl_plugin(
         symbol="pl_perturb",
         args=[to_expr(x), lo, hi, pl.lit(seed, dtype=pl.UInt64)],
-        is_elementwise=True,
+        is_elementwise=True
     )
 
 
@@ -458,7 +458,7 @@ def jitter(x: str | pl.Expr, std: float | pl.Expr = 1.0, seed: int | None = None
     return pl_plugin(
         symbol="pl_jitter",
         args=[to_expr(x), s, pl.lit(seed, dtype=pl.UInt64)],
-        is_elementwise=True,
+        is_elementwise=True
     )
 
 
@@ -540,7 +540,6 @@ def random(
     return pl_plugin(
         symbol="pl_random",
         args=[len_, lo, up, pl.lit(seed, pl.UInt64)],
-        is_elementwise=True,
     )
 
 
@@ -600,7 +599,6 @@ def random_int(
             hi,
             pl.lit(seed, pl.UInt64),
         ],
-        is_elementwise=True,
     )
 
 
@@ -637,7 +635,6 @@ def random_str(
             pl.lit(ma, pl.UInt32),
             pl.lit(seed, pl.UInt64),
         ],
-        is_elementwise=True,
     )
 
 
@@ -669,7 +666,6 @@ def random_binomial(
             pl.lit(p, pl.Float64),
             pl.lit(seed, pl.UInt64),
         ],
-        is_elementwise=True,
     )
 
 
@@ -695,7 +691,6 @@ def random_exp(
             pl.lit(lambda_, pl.Float64),
             pl.lit(seed, pl.UInt64),
         ],
-        is_elementwise=True,
     )
 
 
@@ -727,7 +722,6 @@ def random_normal(
             pl.lit(std, pl.Float64) if isinstance(std, float) else std,
             pl.lit(seed, pl.UInt64),
         ],
-        is_elementwise=True,
     )
 
 
