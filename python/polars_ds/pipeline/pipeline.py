@@ -8,7 +8,7 @@ import sys
 import polars.selectors as cs
 from polars._typing import IntoExprColumn
 from functools import partial
-from typing import List, Dict, Any, Literal
+from typing import List, Dict, Any, Literal, Tuple
 from dataclasses import dataclass
 from polars_ds._utils import to_expr
 
@@ -1016,11 +1016,16 @@ class Blueprint:
 
         return func(*step_repr.args, **step_repr.kwargs)
 
-    def materialize(self, **kwargs) -> Pipeline:
+    def materialize(self, return_df: bool = False, **kwargs) -> Pipeline | Tuple[pl.LazyFrame, Pipeline]:
         """
         Materialize the blueprint, which means that it will fit and learn all the paramters needed.
 
-        All kwargs here will be passed to polars.LazyFrame.collect()
+        Parameters
+        ----------
+        return_df
+            If true, return the entire query plan, a lazy df, together with the Pipeline object
+        **kwargs
+            All kwargs here will be passed to polars.LazyFrame.collect()
         """
         transforms: List[PipelineStep] = []
         df: pl.DataFrame = self._df.collect(**kwargs)
@@ -1040,7 +1045,7 @@ class Blueprint:
             else:
                 raise ValueError(f"Not a valid step: {step.__class__}")
 
-        return Pipeline(
+        pipe = Pipeline(
             name=self.name,
             feature_names_in_=list(self.feature_names_in_),
             feature_names_out_=df_lazy.collect_schema().names(),
@@ -1048,6 +1053,11 @@ class Blueprint:
             lowercase=self.lowercase,
             uppercase=self.uppercase,
         )
+
+        if return_df:
+            return df_lazy, pipe
+        else:
+            return pipe
 
     def fit(self, X=None, y=None, **kwargs) -> Pipeline:
         """
