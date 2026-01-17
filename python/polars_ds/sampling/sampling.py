@@ -38,11 +38,11 @@ def _sampler_expr(value: float | int, seed: int | None = None) -> pl.Expr:
         if value <= 0:
             raise ValueError("'value' must be greater than zero.")
     elif isinstance(value, float):
-        if value >= 1.0 or value <= 0.0:
-            raise ValueError("'value' must be in the range (0, 1)")
+        if not 0 < value < 1:
+            raise ValueError("'value' must be in the range (0, 1).")
 
     if seed is not None and not isinstance(seed, int):
-        raise TypeError("'seed' must be an integer or None.")
+        raise TypeError("'seed' is neither an integer or None.")
 
     # Engine
     if isinstance(value, int):
@@ -344,7 +344,7 @@ def downsample(
         raise TypeError("'df' is neither a polars.DataFrame or a polars.LazyFrame")
 
     if seed is not None and not isinstance(seed, int):
-        raise TypeError("'seed' must be an integer or None.")
+        raise TypeError("'seed' is neither an integer or None.")
 
     if not isinstance(return_df, bool):
         raise TypeError("'return_df' is not a boolean.")
@@ -363,7 +363,7 @@ def downsample(
             raise TypeError("The second element of each condition must be a float or an integer.")
 
         if isinstance(value, float) and not (0 <= value <= 1):
-            raise ValueError("If the second element is a float, it must be between 0 and 1 (inclusive).")
+            raise ValueError("If the second element is a float, must be in the range [0, 1].")
 
     # Engine
     all_filters = ((_sampler_expr(r, seed).over(c) | (~c)) for c, r in conditions)
@@ -434,7 +434,7 @@ def random_cols(
                 raise ValueError("All values provided in 'keep' must be strings.")
 
     if seed is not None and not isinstance(seed, int):
-        raise TypeError("'seed' must be an integer or None.")
+        raise TypeError("'seed' is neither an integer or None.")
 
     # Engine
     if seed is not None:
@@ -461,102 +461,226 @@ def random_cols(
 def split_by_ratio(
     df: PolarsFrame,
     split_ratio: float | List[float] | Dict[str, float],
-    seed: int | None = None,
     split_col: str = "__split",
     by: str | list[str] | None = None,
     default_split_1: str = "train",
     default_split_2: str = "test",
+    seed: int | None = None,
+    return_df: bool = False
 ) -> PolarsFrame:
     """
-    Creates a random `split` column in the dataframe.
+    split_by_ratio
+    ===========
+    Randomly splits a Polars DataFrame or LazyFrame into subsets based on specified ratios.
 
-    If split_ratio is a single number, it is treated as the ratio for the default_split_1 set, which by
-    default has the name 'train', and (1-ratio) is always the ratio for the default_split_2 set, which by
-    default has the name 'test'.
-
-    If split_ratio is a list of floats, then they must sum to 1 and the return will be the corresponding ratios
-    and the split column values will be "split_i".
-
-    If the split_ratio is a dict, then the dict values will be the ratios and the dict keys will be the value
-    in the split column.
-
-    Please avoid using floating point values with too many decimal places, which may cause
-    the splits to be off by a 1 row.
-
-    This will return lazy frames if input is lazy, and eager frames if input is eager. But if `by` is given,
-    then the dataframe will be collected and will only return eager dataframe in the end.
+    The function adds a new column (`split_col`) to the DataFrame/LazyFrame, assigning each row to a subset
+    according to the provided `split_ratio`. The splitting can be stratified by one or more columns
+    if the `by` parameter is specified.
 
     Parameters
     ----------
-    df
-        Either a lazy or eager Polars dataframe
-    split_ratio
-        Either a single float or a list of floats.
-    split_col
-        The column name of the split
-    seed
-        The random seed
-    by
-        Optional str of list of str. The column(s) to stratify by.
-    default_split_1
-        Name of the first split when split_ratio is a scalar
-    default_split_2
-        Name of the second split when split_ratio is a scalar
-    """
+    df : PolarsFrame
+        It may be either a polars.DataFrame or a polars.LazyFrame.
 
-    if by is not None:
-        results = [
-            split_by_ratio(
-                frame,
-                split_ratio=split_ratio,
-                seed=seed,
-                by=None,
-                split_col=split_col,
-                default_split_1=default_split_1,
-                default_split_2=default_split_2,
-            )
-            for frame in df.lazy().collect().partition_by(by)
-        ]
-        return pl.concat(results, how="vertical")
+    split_ratio : float | List[float] | Dict[str, float]
+       - **Float**: The ratio for the first subset (default: "train"), with the remainder assigned
+        to the second subset (default: "test").
+        - **List of floats**: Each float represents the ratio for a subset, and the list must sum to 1.
+        Subsets are named "split_0", "split_1", etc.
+        - **Dictionary**: Keys are subset names, and values are their respective ratios. The values must
+        sum to 1.
 
-    if isinstance(split_ratio, float):
-        if split_ratio <= 0.0 or split_ratio >= 1:
-            raise ValueError("Split ratio must be > 0 and < 1.")
+    split_col : str, optional, default="__split"
+        Name of the column to store the split assignments.
 
-        return (
-            df.with_row_index(name="__id")
-            .with_columns(
-                pl.when(pl.col("__id").shuffle(seed=seed) < (pl.len() * split_ratio).cast(pl.Int64))
-                .then(pl.lit(default_split_1, dtype=pl.String))
-                .otherwise(pl.lit(default_split_2, dtype=pl.String))
-                .alias(split_col)
-            )
-            .select(pl.all().exclude("__id"))
+    by : str | list[str], optional, default=None
+        Column(s) to stratify by. If specified, the DataFrame is collected and split within each stratum.
+
+    default_split_1 : str, optional, default="train"
+        Name of the first subset when `split_ratio` is a float.
+
+    default_split_2 : str, optional, default="test"
+        Name of the second subset when `split_ratio` is a float.
+
+    seed : int, optional, default=None
+        The seed value for the random number generator. The same seed will produce the same output each time.
+
+    return_df : bool, default=False
+        Determines whether the output should always be a polars.DataFrame or not.
+
+    Returns
+    ----------
+    PolarsFrame
+        Returns either a polars.DataFrame or a polars.LazyFrame depending on the `df` provided.
+
+    Note(s)
+    ----------
+    - Avoid using floating-point values with too many decimal places, as this may cause the
+    splits to be off by one row due to rounding errors.
+
+    Example
+    -------
+    >>> import polars as pl
+    >>> import polars_ds.sampling as pds_samp
+    >>> import numpy as np
+    >>> np.random.seed(42)
+    >>> lf = pl.LazyFrame(
+            data = {
+                "id": range(1, 1001)
+                ,"value": np.random.rand(1000) * 100
+                ,"category": np.random.choice(["A", "B", "C"], size = 1000)
+            }
         )
+    >>> print(pds_samp.split_by_ratio(
+    >>>     df = lf,
+    >>>     split_ratio = 0.75,
+    >>>     seed = 101
+    >>> ).group_by(["__split", "category"]).len().sort(["__split", "category"]).collect())
+    shape: (6, 3)
+    ┌─────────┬──────────┬─────┐
+    │ __split ┆ category ┆ len │
+    │ ---     ┆ ---      ┆ --- │
+    │ str     ┆ str      ┆ u32 │
+    ╞═════════╪══════════╪═════╡
+    │ test    ┆ A        ┆ 98  │
+    │ test    ┆ B        ┆ 63  │
+    │ test    ┆ C        ┆ 89  │
+    │ train   ┆ A        ┆ 243 │
+    │ train   ┆ B        ┆ 280 │
+    │ train   ┆ C        ┆ 227 │
+    └─────────┴──────────┴─────┘
 
+    >>> print(pds_samp.split_by_ratio(
+    >>>     df = lf,
+    >>>     split_ratio = 0.75,
+    >>>     split_col = "sample",
+    >>>     by = "category",
+    >>>     seed = 101
+    >>> ).group_by(["sample", "category"]).len().sort(["sample", "category"]).collect())
+    shape: (6, 3)
+    ┌────────┬──────────┬─────┐
+    │ sample ┆ category ┆ len │
+    │ ---    ┆ ---      ┆ --- │
+    │ str    ┆ str      ┆ u32 │
+    ╞════════╪══════════╪═════╡
+    │ test   ┆ A        ┆ 86  │
+    │ test   ┆ B        ┆ 86  │
+    │ test   ┆ C        ┆ 79  │
+    │ train  ┆ A        ┆ 255 │
+    │ train  ┆ B        ┆ 257 │
+    │ train  ┆ C        ┆ 237 │
+    └────────┴──────────┴─────┘
+    """
+    # Input(s)
+    if not isinstance(df, (pl.DataFrame, pl.LazyFrame)):
+        raise TypeError("'df' is neither a polars.DataFrame or a polars.LazyFrame")
+
+    if not isinstance(split_ratio, (float, list, dict)):
+        raise TypeError("'split_ratio' is neither a float, list or dictionary.")
+    if isinstance(split_ratio, float):
+        if not 0 < split_ratio < 1:
+            raise ValueError("All values provided in 'split_ratio' must be in the range (0, 1).")
+    if isinstance(split_ratio, list):
+        for element in split_ratio:
+            if not isinstance(element, float):
+                raise ValueError("All values provided in 'split_ratio' must be floats.")
+            else:
+                if not 0 < element < 1:
+                    raise ValueError("All values provided in 'split_ratio' must be in the range (0, 1).")
+        if sum(split_ratio) != 1.0:
+            raise ValueError("The sum of the values in 'split_ratio' must equal 1.")
+    if isinstance(split_ratio, dict):
+        for key, value in zip(split_ratio.keys(), split_ratio.values()):
+            if not isinstance(key, str):
+                raise ValueError("All key values provided in 'split_ratio' must be strings.")
+            if not isinstance(value, float):
+                raise ValueError("All values provided in 'split_ratio' must be floats.")
+            else:
+                if not 0 < value < 1:
+                    raise ValueError("All values provided in 'split_ratio' must be in the range (0, 1).")
+        if sum(split_ratio.values()) != 1.0:
+            raise ValueError("The sum of the values in 'split_ratio' must equal 1.")
+
+    if not isinstance(split_col, str):
+        raise TypeError("'split_col' is not a string.")
+
+    if by is not None and not isinstance(by, (str, list)):
+        raise TypeError("'by' is not a string, list or None.")
+    if isinstance(by, list):
+        for element in by:
+            if not isinstance(element, str):
+                raise ValueError("All values provided in 'by' must be strings.")
+
+    if not isinstance(default_split_1, str):
+        raise TypeError("'default_split_1' is not a string.")
+
+    if not isinstance(default_split_2, str):
+        raise TypeError("'default_split_2' is not a string.")
+
+    if seed is not None and not isinstance(seed, int):
+        raise TypeError("'seed' is neither an integer or None.")
+
+    if not isinstance(return_df, bool):
+        raise TypeError("'return_df' is not a boolean.")
+
+    # Engine
+    ## Stratified Sampling
+    if by is not None:
+        results = []
+        for cat in df.select(pl.col(by).unique()).collect().to_series().to_list():
+            frame = df.filter(
+                pl.col(by) == cat
+            )
+            results.append(
+                split_by_ratio(
+                    frame,
+                    split_ratio = split_ratio,
+                    seed = seed,
+                    by = None,
+                    split_col = split_col,
+                    default_split_1 = default_split_1,
+                    default_split_2 = default_split_2
+                )
+            )
+            split_sample = pl.concat(results, how = "vertical")
+
+    ## Simple Sampling
     else:
-        if len(split_ratio) == 1:
-            raise ValueError("If split_ratio is not a scalar, it must have length > 1.")
+        if isinstance(split_ratio, float):
+            split_sample = (
+                df.with_row_index(name="__id")
+                .with_columns(
+                    pl.when(pl.col("__id").shuffle(seed = seed) < (pl.len() * split_ratio).cast(pl.Int64))
+                    .then(pl.lit(default_split_1, dtype = pl.String))
+                    .otherwise(pl.lit(default_split_2, dtype = pl.String))
+                    .alias(split_col)
+                )
+                .select(pl.all().exclude("__id"))
+            )
+
         else:
             if isinstance(split_ratio, dict):
                 ratios: pl.Series = pl.Series(split_ratio.values())
                 split_names = [str(k) for k in split_ratio.keys()]
-            else:  # should work with other iterables like tuple
+            else:
                 ratios: pl.Series = pl.Series(split_ratio)
                 split_names = [f"split_{i}" for i in range(len(split_ratio))]
-
-            if ratios.sum() != 1:
-                raise ValueError("Sum of the ratios is not 1.")
 
             pct = ratios.cum_sum()
             expr = pl.when(pl.lit(False)).then(None)
             for p, k in zip(pct, split_names):
-                expr = expr.when(pl.col("__pct") < p).then(pl.lit(k, dtype=pl.String))
+                expr = expr.when(pl.col("__pct") < p).then(pl.lit(k, dtype = pl.String))
+            
+            split_sample = (
+                    df.with_row_index(name="__id")
+                    .with_columns(pl.col("__id").shuffle(seed = seed).alias("__tt"))
+                    .sort("__tt")
+                    .with_columns((pl.col("__tt") / pl.len()).alias("__pct"))
+                    .select(expr.alias(split_col), pl.all().exclude(["__id", "__pct", "__tt"]))
+                )
 
-            return (
-                df.with_row_index(name="__id")
-                .with_columns(pl.col("__id").shuffle(seed=seed).alias("__tt"))
-                .sort("__tt")
-                .with_columns((pl.col("__tt") / pl.len()).alias("__pct"))
-                .select(expr.alias(split_col), pl.all().exclude(["__id", "__pct", "__tt"]))
-            )
+    # Output(s)
+    if isinstance(df, pl.LazyFrame) and return_df:
+        split_sample = split_sample.collect()
+    return split_sample
+    
