@@ -88,7 +88,7 @@ def sample(df: PolarsFrame, value: float | int, seed: int | None = None, return_
     Example
     ----------
     >>> import polars as pl
-    >>> import polars_ds.sampling as pds_sa
+    >>> import polars_ds.sampling as pds_samp
     >>> import numpy as np
     >>> np.random.seed(42)
     >>> lf = pl.LazyFrame(
@@ -98,23 +98,28 @@ def sample(df: PolarsFrame, value: float | int, seed: int | None = None, return_
                 ,"category": np.random.choice(["A", "B", "C"], size = 1000)
             }
         )
-    >>> pds_sa.sample(lf, 100, 101, True).head(3)
-    shape: (3, 3)
-    id	value	category
-    i64	f64	str
-    7	5.808361	"C"
-    33	6.505159	"C"
-    42	49.517691	"B"
-
-    >>> pds_sa.sample(lf, 0.5, 101, True).head(3)
+    >>> print(pds_sa.sample(lf, 100, 101, True).head(3))
     shape: (3, 3)
     ┌─────┬───────────┬──────────┐
-    │ id  ┆	value	  ┆ category │
+    │ id  ┆ value     ┆ category │
     │ --- ┆ ---       ┆ ---      │
-    │ i64 ┆	f64	      ┆ str      │
-    │ 3   ┆	73.199394 ┆	"C"      │
-    │ 4   ┆	59.865848 ┆	"C"      │
-    │ 5   ┆	15.601864 ┆	"A"      │
+    │ i64 ┆ f64       ┆ str      │
+    ╞═════╪═══════════╪══════════╡
+    │ 7   ┆ 5.808361  ┆ C        │
+    │ 33  ┆ 6.505159  ┆ C        │
+    │ 42  ┆ 49.517691 ┆ B        │
+    └─────┴───────────┴──────────┘
+
+    >>> print(pds_samp.sample(lf, 0.5, 101, True).head(3))
+    shape: (3, 3)
+    ┌─────┬───────────┬──────────┐
+    │ id  ┆ value     ┆ category │
+    │ --- ┆ ---       ┆ ---      │
+    │ i64 ┆ f64       ┆ str      │
+    ╞═════╪═══════════╪══════════╡
+    │ 3   ┆ 73.199394 ┆ C        │
+    │ 4   ┆ 59.865848 ┆ C        │
+    │ 5   ┆ 15.601864 ┆ A        │
     └─────┴───────────┴──────────┘
     """
     # Input(s)
@@ -181,7 +186,7 @@ def volume_neutral(
     Example
     ----------
     >>> import polars as pl
-    >>> import polars_ds.sampling as pds_sa
+    >>> import polars_ds.sampling as pds_samp
     >>> import numpy as np
     >>> np.random.seed(42)
     >>> lf = pl.LazyFrame(
@@ -191,18 +196,19 @@ def volume_neutral(
                 ,"category": np.random.choice(["A", "B", "C"], size = 1000)
             }
         )
-    >>> pds_sa.volume_neutral(lf, pl.col("category"), None, 2, 101, True)
+    >>> print(pds_samp.volume_neutral(lf, pl.col("category"), None, 2, 101, True))
     shape: (6, 3)
     ┌─────┬───────────┬──────────┐
-    │ id  ┆	value	  ┆ category │
+    │ id  ┆ value     ┆ category │
     │ --- ┆ ---       ┆ ---      │
-    │ i64 ┆	f64	      ┆ str      │
-    │ 817 ┆	59.127544 ┆	"A"      │
-    │ 825 ┆	53.73956  ┆	"B"      │
-    │ 874 ┆	40.873417 ┆	"C"      │
-    │ 909 ┆	25.942343 ┆	"A"      │
-    │ 923 ┆	89.455223 ┆	"B"      │
-    │ 990 ┆	81.910232 ┆	"C"      │
+    │ i64 ┆ f64       ┆ str      │
+    ╞═════╪═══════════╪══════════╡
+    │ 817 ┆ 59.127544 ┆ A        │
+    │ 825 ┆ 53.73956  ┆ B        │
+    │ 874 ┆ 40.873417 ┆ C        │
+    │ 909 ┆ 25.942343 ┆ A        │
+    │ 923 ┆ 89.455223 ┆ B        │
+    │ 990 ┆ 81.910232 ┆ C        │
     └─────┴───────────┴──────────┘
     """
     # Input(s)
@@ -256,24 +262,29 @@ def volume_neutral(
 
 def downsample(
     df: PolarsFrame,
-    *conditions: Tuple[pl.Expr, float | int],
+    conditions: List[Tuple[pl.Expr, float | int]] | Tuple[pl.Expr, float | int],
     seed: int | None = None,
     return_df: bool = False
 ) -> PolarsFrame:
     """
     downsample
     ===========
-    Downsamples data on the subsets where condition is true.
+    Downsamples subsets of a Polars DataFrame or LazyFrame based on specified conditions.
+
+    This function applies downsampling to rows where each boolean condition is true.
+    For each condition, you can specify either a fixed number of rows to keep (int)
+    or a fraction of rows to keep (float). The downsampling is performed using a
+    random sampling strategy, which can be made reproducible using a seed.
 
     Parameters
     ----------
     df : PolarsFrame
         It may be either a polars.DataFrame or a polars.LazyFrame.
 
-    conditions : 
-        Tuple[pl.Expr, float|int] or a sequence of such tuples as positional arguments.
-        The first entry in the tuple should be a boolean expression and the second entry means we sample
-        either n or x% on the part where the boolean is true.
+    conditions : List[Tuple[pl.Expr, float | int]] | Tuple[pl.Expr, float | int]
+        One or more tuples, each containing:
+        - A boolean Polars expression (`polars.Expr`) defining the subset of rows to downsample.
+        - A float (fraction of rows to keep, e.g., 0.5 for 50%) or an integer (fixed number of rows to keep).
 
     seed : int, optional, default=None
         The seed value for the random number generator. The same seed will produce the same output each time.
@@ -288,49 +299,80 @@ def downsample(
 
     Example
     -------
-    >>> import polars_ds.sample as sa
-    >>> df.group_by("y").len().sort("y")
-    shape: (4, 2)
-    ┌─────┬───────┐
-    │ y   ┆ len   │
-    │ --- ┆ ---   │
-    │ i32 ┆ u32   │
-    ╞═════╪═══════╡
-    │ 0   ┆ 24875 │
-    │ 1   ┆ 25172 │
-    │ 2   ┆ 25018 │
-    │ 3   ┆ 24935 │
-    └─────┴───────┘
-    >>> downsampled = sa.down_sample(
-    >>>     df,
-    >>>     [(pl.col("y") == 1, 0.5), (pl.col("y") == 2, 0.5)]
-    >>> )
-    >>> downsampled.group_by("y").len().sort("y")
-    shape: (4, 2)
-    ┌─────┬───────┐
-    │ y   ┆ len   │
-    │ --- ┆ ---   │
-    │ i32 ┆ u32   │
-    ╞═════╪═══════╡
-    │ 0   ┆ 24875 │
-    │ 1   ┆ 12586 │
-    │ 2   ┆ 12509 │
-    │ 3   ┆ 24935 │
-    └─────┴───────┘
-    >>> # And this is equivalent to
-    >>> downsampled = sa.down_sample(
-    >>>     df,
-    >>>     [(pl.col("y").is_between(1, 2, closed="both"), 0.5)]
-    >>> )
+    >>> import polars as pl
+    >>> import polars_ds.sampling as pds_samp
+    >>> import numpy as np
+    >>> np.random.seed(42)
+    >>> lf = pl.LazyFrame(
+            data = {
+                "id": range(1, 1001)
+                ,"value": np.random.rand(1000) * 100
+                ,"category": np.random.choice(["A", "B", "C"], size = 1000)
+            }
+        )
+    >>> print(lf.group_by("category").len().sort("category").collect())
+    shape: (3, 2)
+    ┌──────────┬─────┐
+    │ category ┆ len │
+    │ ---      ┆ --- │
+    │ str      ┆ u32 │
+    ╞══════════╪═════╡
+    │ A        ┆ 341 │
+    │ B        ┆ 343 │
+    │ C        ┆ 316 │
+    └──────────┴─────┘
+    >>> print(pds_samp.downsample(
+    >>>     lf,
+    >>>     [
+    >>>         (pl.col("category") == "A", 0.25),
+    >>>         (pl.col("category") == "B", 10)
+    >>>     ]
+    >>> ).group_by("category").len().sort("category").collect())
+    shape: (3, 2)
+    ┌──────────┬─────┐
+    │ category ┆ len │
+    │ ---      ┆ --- │
+    │ str      ┆ u32 │
+    ╞══════════╪═════╡
+    │ A        ┆ 85  │
+    │ B        ┆ 10  │
+    │ C        ┆ 316 │
+    └──────────┴─────┘
     """
     # Input(s)
+    if not isinstance(df, (pl.DataFrame, pl.LazyFrame)):
+        raise TypeError("'df' is neither a polars.DataFrame or a polars.LazyFrame")
+
+    if seed is not None and not isinstance(seed, int):
+        raise TypeError("'seed' must be an integer or None.")
+
+    if not isinstance(return_df, bool):
+        raise TypeError("'return_df' is not a boolean.")
+    
+    if isinstance(conditions, tuple):
+        conditions = [conditions]
+    for condition in conditions:
+        if not isinstance(condition, tuple) or len(condition) != 2:
+            raise ValueError("Each condition must be a tuple of length 2.")
+
+        expr, value = condition
+        if not isinstance(expr, pl.Expr):
+            raise TypeError("The first element of each condition must be a polars expression (pl.Expr).")
+
+        if not isinstance(value, (float, int)):
+            raise TypeError("The second element of each condition must be a float or an integer.")
+
+        if isinstance(value, float) and not (0 <= value <= 1):
+            raise ValueError("If the second element is a float, it must be between 0 and 1 (inclusive).")
 
     # Engine
+    all_filters = ((_sampler_expr(r, seed).over(c) | (~c)) for c, r in conditions)
+    downsample = df.filter(pl.lit(True).and_(*all_filters))
 
     # Output(s)
-
-    all_filters = ((_sampler_expr(r, seed).over(c) | (~c)) for c, r in conditions)
-    return df.lazy().filter(pl.lit(True).and_(*all_filters)).collect()
+    if isinstance(df, pl.LazyFrame) and return_df:
+        downsample = downsample.collect()
+    return downsample
 
 
 def random_cols(
@@ -340,20 +382,64 @@ def random_cols(
     seed: int | None = None,
 ) -> List[str]:
     """
-    Selects random columns from the given pool of columns. Returns the selected columns in a list.
-    Note, it is impossible for this to randomly select both ["x", "y"] and ["y", "x"].
+    random_cols
+    ===========
+    Randomly select columns from the provided list of column names.
 
     Parameters
     ----------
-    all_columns
-        All column names
-    k
-        Select k random columns from all columns outside of `keep`.
-    keep
-        Columns to always keep
-    seed
-        A random seed
+    all_columns : List[str]
+        List with the name of the columns from which to drawn randomly.
+
+    k : int
+        Number of columns to select randomly outside of the list provided in `keep`.
+
+    keep : List[str], optional, default=None
+        List of values to always include in the list of randomly drawn columns.
+
+    seed : int, optional, default=None
+        The seed value for the random number generator. The same seed will produce the same output each time.
+
+    Returns
+    ----------
+    List[str]
+        Returns a list with the name of the columns that were randomly drawn.
+
+    Note(s)
+    ----------
+    - It is impossible to randomly select both ["x", "y"] and ["y", "x"].
+
+    Example
+    -------
+    >>> import polars as pl
+    >>> import polars_ds.sampling as pds_samp
+    >>> pds_samp.random_cols(["a", "b", "c", "d", "e", "f"], 2, seed = 101)
+    ['c', 'd']
     """
+    # Input(s)
+    if not isinstance(all_columns, list):
+        raise TypeError("'all_columns' must be a list.")
+    for element in all_columns:
+        if not isinstance(element, str):
+            raise ValueError("All values provided in 'all_columns' must be strings.")
+
+    if not isinstance(k, int) or k <= 0:
+        raise TypeError("'k' must be an integer greater than 0.")
+
+    if keep is not None and not isinstance(keep, list):
+        raise TypeError("'keep' must be a list or None.")
+    if keep is not None:
+        for element in keep:
+            if not isinstance(element, str):
+                raise ValueError("All values provided in 'keep' must be strings.")
+
+    if seed is not None and not isinstance(seed, int):
+        raise TypeError("'seed' must be an integer or None.")
+
+    # Engine
+    if seed is not None:
+        random.seed(seed)
+
     if keep is None:
         out = []
         to_sample = combinations(all_columns, k)
@@ -367,8 +453,10 @@ def random_cols(
 
     n = random.randrange(0, math.comb(pool_size, k))
     rand_cols = next(islice(to_sample, n, None), None)
-    return out + list(rand_cols)
+    random_cols = out + list(rand_cols)
 
+    # Output(s)
+    return random_cols
 
 def split_by_ratio(
     df: PolarsFrame,
