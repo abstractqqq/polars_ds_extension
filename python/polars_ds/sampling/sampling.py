@@ -160,6 +160,7 @@ def sample(
         sample = sample.collect()
     return sample
 
+
 def volume_neutral(
     df: PolarsFrame,
     by: pl.Expr,
@@ -428,6 +429,7 @@ def downsample(
         downsample = downsample.collect()
     return downsample
 
+
 def random_cols(
     all_columns: List[str],
     k: int,
@@ -510,6 +512,7 @@ def random_cols(
 
     # Output(s)
     return random_cols
+
 
 def split_by_ratio(
     df: PolarsFrame,
