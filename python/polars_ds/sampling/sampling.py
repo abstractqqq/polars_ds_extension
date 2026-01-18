@@ -466,7 +466,7 @@ def random_cols(
     -------
     >>> import polars as pl
     >>> import polars_ds.sampling as sampling
-    >>> sampling.random_cols(["a", "b", "c", "d", "e", "f"], 2, seed = 101)
+    >>> print(sampling.random_cols(["a", "b", "c", "d", "e", "f"], 2, seed = 101))
     ['c', 'd']
     """
     # Input(s)
