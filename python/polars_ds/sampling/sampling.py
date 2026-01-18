@@ -60,7 +60,14 @@ def _sampler_expr(value: float | int, seed: int | None = None) -> pl.Expr:
     # Output(s)
     return sample_expr
 
-def sample(df: PolarsFrame, value: float | int, seed: int | None = None, return_df: bool = False) -> PolarsFrame:
+
+def sample(
+    df: PolarsFrame,
+    value: float | int,
+    replace: bool = False,
+    seed: int | None = None,
+    return_df: bool = False
+) -> PolarsFrame:
     r"""
     sample
     ===========
@@ -74,6 +81,9 @@ def sample(df: PolarsFrame, value: float | int, seed: int | None = None, return_
     value : int or float
         If an integer is provided, `value` observations are selected from `df`. Otherwise, a proportion of `value` over the `df` is selected.
     
+    replace : bool, optional, default=False
+        Whether to sample with replacement or not.
+
     seed : int, optional, default=None
         The seed value for the random number generator. The same seed will produce the same output each time.
 
@@ -98,7 +108,7 @@ def sample(df: PolarsFrame, value: float | int, seed: int | None = None, return_
                 ,"category": np.random.choice(["A", "B", "C"], size = 1000)
             }
         )
-    >>> print(pds_sa.sample(lf, 100, 101, True).head(3))
+    >>> print(pds_sa.sample(lf, 100, seed = 101, return_df = True).head(3))
     shape: (3, 3)
     ┌─────┬───────────┬──────────┐
     │ id  ┆ value     ┆ category │
@@ -110,7 +120,7 @@ def sample(df: PolarsFrame, value: float | int, seed: int | None = None, return_
     │ 42  ┆ 49.517691 ┆ B        │
     └─────┴───────────┴──────────┘
 
-    >>> print(pds_samp.sample(lf, 0.5, 101, True).head(3))
+    >>> print(pds_samp.sample(lf, 0.5, seed = 101, return_df = True).head(3))
     shape: (3, 3)
     ┌─────┬───────────┬──────────┐
     │ id  ┆ value     ┆ category │
@@ -121,16 +131,67 @@ def sample(df: PolarsFrame, value: float | int, seed: int | None = None, return_
     │ 4   ┆ 59.865848 ┆ C        │
     │ 5   ┆ 15.601864 ┆ A        │
     └─────┴───────────┴──────────┘
+
+    >>> print(pds_samp.sample(lf, 0.1, True, 101, True).head(3))
+    shape: (3, 3)
+    ┌─────┬───────────┬──────────┐
+    │ id  ┆ value     ┆ category │
+    │ --- ┆ ---       ┆ ---      │
+    │ i64 ┆ f64       ┆ str      │
+    ╞═════╪═══════════╪══════════╡
+    │ 718 ┆ 96.502691 ┆ C        │
+    │ 390 ┆ 80.683474 ┆ A        │
+    │ 554 ┆ 56.093797 ┆ B        │
+    └─────┴───────────┴──────────┘
     """
     # Input(s)
     if not isinstance(df, (pl.DataFrame, pl.LazyFrame)):
         raise TypeError("'df' is neither a polars.DataFrame or a polars.LazyFrame")
 
+    if not isinstance(value, (int, float)):
+        raise TypeError("'value' is neither an integer or a float.")
+    elif isinstance(value, int):
+        if value <= 0:
+            raise ValueError("'value' must be greater than zero.")
+    elif isinstance(value, float):
+        if not 0 < value < 1:
+            raise ValueError("'value' must be in the range (0, 1).")
+
+    if not isinstance(replace, bool):
+        raise TypeError("'replace' is not a boolean.")
+
+    if seed is not None and not isinstance(seed, int):
+        raise TypeError("'seed' is neither an integer or None.")
+
     if not isinstance(return_df, bool):
         raise TypeError("'return_df' is not a boolean.")
 
     # Engine
-    sample = df.filter(_sampler_expr(value, seed))
+    ## Sampling with Replacement
+    if replace:
+
+        ## Arguments for the sample functions
+        if isinstance(value, int):
+            n = value
+            fraction = None
+        else:
+            n = None
+            fraction = value
+
+        ## Sample function
+        sample = df.select(
+            pl.all().sample(
+                n = n,
+                fraction = fraction,
+                with_replacement = True,
+                shuffle = True,
+                seed = seed
+            )
+        )
+
+    ## Simple Sampling
+    else:
+        sample = df.filter(_sampler_expr(value, seed))
 
     # Output(s)
     if isinstance(df, pl.LazyFrame) and return_df:
@@ -628,12 +689,12 @@ def split_by_ratio(
     if by is not None:
         results = []
         for cat in df.select(pl.col(by).unique()).collect().to_series().to_list():
-            frame = df.filter(
+            subset = df.filter(
                 pl.col(by) == cat
             )
             results.append(
                 split_by_ratio(
-                    frame,
+                    subset,
                     split_ratio = split_ratio,
                     seed = seed,
                     by = None,
