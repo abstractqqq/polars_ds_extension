@@ -12,55 +12,6 @@ from polars_ds.typing import PolarsFrame
 __all__ = ["sample", "volume_neutral", "downsample", "random_cols", "split_by_ratio"]
 
 
-def _sampler_expr(value: float | int, seed: int | None = None) -> pl.Expr:
-    r"""
-    _sampler_expr
-    ===========
-    Construct a Polars expression that selects a random sample of rows.
-
-    Parameters
-    ----------    
-    value : int or float
-        If an integer is provided, `value` rows are selected.  Otherwise, a proportion of `value` over the `df` is selected.
-    
-    seed : int, optional, default=None
-        The seed value for the random number generator. The same seed will produce the same output each time.
-    
-    Returns
-    ----------
-    polars.Expr
-        Returns a boolean Polars expression indicating which rows are selected.
-    """
-    # Input(s)
-    if not isinstance(value, (int, float)):
-        raise TypeError("'value' is neither an integer or a float.")
-    elif isinstance(value, int):
-        if value <= 0:
-            raise ValueError("'value' must be greater than zero.")
-    elif isinstance(value, float):
-        if not 0 < value < 1:
-            raise ValueError("'value' must be in the range (0, 1).")
-
-    if seed is not None and not isinstance(seed, int):
-        raise TypeError("'seed' is neither an integer or None.")
-
-    # Engine
-    if isinstance(value, int):
-        sample_expr = (
-            pl.int_range(0, pl.len(), dtype=pl.UInt32)
-            .shuffle(seed) < pl.lit(value, dtype = pl.UInt32)
-        )
-    else:
-        sample_expr = (
-            pl.int_range(0, pl.len(), dtype=pl.UInt32)
-            .shuffle(seed) < (pl.len() * value)
-            .cast(pl.UInt32)
-        )
-
-    # Output(s)
-    return sample_expr
-
-
 def sample(
     df: PolarsFrame,
     value: float | int,
@@ -98,17 +49,17 @@ def sample(
     Example
     ----------
     >>> import polars as pl
-    >>> import polars_ds.sampling as pds_samp
+    >>> import polars_ds.sampling as sampling
     >>> import numpy as np
     >>> np.random.seed(42)
     >>> lf = pl.LazyFrame(
-            data = {
-                "id": range(1, 1001)
-                ,"value": np.random.rand(1000) * 100
-                ,"category": np.random.choice(["A", "B", "C"], size = 1000)
-            }
-        )
-    >>> print(pds_sa.sample(lf, 100, seed = 101, return_df = True))
+    >>>     data = {
+    >>>         "id": range(1, 1001)
+    >>>         ,"value": np.random.rand(1000) * 100
+    >>>         ,"category": np.random.choice(["A", "B", "C"], size = 1000)
+    >>>     }
+    >>> )
+    >>> print(sampling.sample(lf, 100, seed = 101, return_df = True))
     shape: (100, 3)
     ┌─────┬───────────┬──────────┐
     │ id  ┆ value     ┆ category │
@@ -128,7 +79,7 @@ def sample(
     │ 404 ┆ 82.645747 ┆ B        │
     └─────┴───────────┴──────────┘
 
-    >>> print(pds_samp.sample(lf, 0.5, seed = 101, return_df = True))
+    >>> print(sampling.sample(lf, 0.5, seed = 101, return_df = True))
     shape: (500, 3)
     ┌─────┬───────────┬──────────┐
     │ id  ┆ value     ┆ category │
@@ -148,7 +99,7 @@ def sample(
     │ 416 ┆ 44.844552 ┆ C        │
     └─────┴───────────┴──────────┘
 
-    >>> print(pds_samp.sample(lf, 0.1, True, 101, True))
+    >>> print(sampling.sample(lf, 0.1, True, 101, True))
     shape: (100, 3)
     ┌─────┬───────────┬──────────┐
     │ id  ┆ value     ┆ category │
@@ -191,7 +142,8 @@ def sample(
         raise TypeError("'return_df' is not a boolean.")
 
     # Engine
-    n = value if isinstance(value, int) else None
+    df_size = df.select(pl.len())[0, 0] if isinstance(df, pl.DataFrame) else df.select(pl.len()).collect()[0, 0]
+    n = min(value, df_size) if isinstance(value, int) else None
     fraction = value if isinstance(value, float) else None
     sample = df.select(
         pl.all().sample(
@@ -256,17 +208,17 @@ def volume_neutral(
     Example
     ----------
     >>> import polars as pl
-    >>> import polars_ds.sampling as pds_samp
+    >>> import polars_ds.sampling as sampling
     >>> import numpy as np
     >>> np.random.seed(42)
     >>> lf = pl.LazyFrame(
-            data = {
-                "id": range(1, 1001)
-                ,"value": np.random.rand(1000) * 100
-                ,"category": np.random.choice(["A", "B", "C"], size = 1000)
-            }
-        )
-    >>> print(pds_samp.volume_neutral(lf, pl.col("category"), None, 2, 101, True))
+    >>>     data = {
+    >>>         "id": range(1, 1001)
+    >>>         ,"value": np.random.rand(1000) * 100
+    >>>         ,"category": np.random.choice(["A", "B", "C"], size = 1000)
+    >>>     }
+    >>> )
+    >>> print(sampling.volume_neutral(lf, pl.col("category"), None, 2, 101, True))
     shape: (6, 3)
     ┌─────┬───────────┬──────────┐
     │ id  ┆ value     ┆ category │
@@ -370,16 +322,16 @@ def downsample(
     Example
     -------
     >>> import polars as pl
-    >>> import polars_ds.sampling as pds_samp
+    >>> import polars_ds.sampling as sampling
     >>> import numpy as np
     >>> np.random.seed(42)
     >>> lf = pl.LazyFrame(
-            data = {
-                "id": range(1, 1001)
-                ,"value": np.random.rand(1000) * 100
-                ,"category": np.random.choice(["A", "B", "C"], size = 1000)
-            }
-        )
+    >>>     data = {
+    >>>         "id": range(1, 1001)
+    >>>         ,"value": np.random.rand(1000) * 100
+    >>>         ,"category": np.random.choice(["A", "B", "C"], size = 1000)
+    >>>     }
+    >>> )
     >>> print(lf.group_by("category").len().sort("category").collect())
     shape: (3, 2)
     ┌──────────┬─────┐
@@ -391,13 +343,14 @@ def downsample(
     │ B        ┆ 343 │
     │ C        ┆ 316 │
     └──────────┴─────┘
-    >>> print(pds_samp.downsample(
+    >>> print(sampling.downsample(
     >>>     lf,
     >>>     [
     >>>         (pl.col("category") == "A", 0.25),
     >>>         (pl.col("category") == "B", 10)
-    >>>     ]
-    >>> ).group_by("category").len().sort("category").collect())
+    >>>     ],
+    >>>     return_df = True
+    >>> ).group_by("category").len().sort("category"))
     shape: (3, 2)
     ┌──────────┬─────┐
     │ category ┆ len │
@@ -436,14 +389,44 @@ def downsample(
             raise ValueError("If the second element is a float, must be in the range [0, 1].")
 
     # Engine
-    all_filters = ((_sampler_expr(r, seed).over(c) | (~c)) for c, r in conditions)
-    downsample = df.filter(pl.lit(True).and_(*all_filters))
+    ## Create samples for each pl.Expr
+    results = []
+    for expr, value in conditions:
+        df_size = df.select(pl.len())[0, 0] if isinstance(df, pl.DataFrame) else df.select(pl.len()).collect()[0, 0]
+        n = min(value, df_size) if isinstance(value, int) else None
+        fraction = value if isinstance(value, float) else None
+        sample = (
+            df.filter(
+                expr
+            )
+            .select(
+                pl.all().sample(
+                    n = n,
+                    fraction = fraction,
+                    with_replacement = False,
+                    shuffle = True,
+                    seed = seed
+                )
+            )
+        )
+        results.append(sample)
+
+    ## Add sample where no pl.Expr is met
+    exprs = [expr for expr, _ in conditions]
+    combined_expr = exprs[0]
+    if len(exprs) > 1:
+        for expr in exprs[1:]:
+            combined_expr = combined_expr | expr
+    sample = df.filter(~combined_expr)
+    results.append(sample)
+
+    ## Merge samples
+    downsample = pl.concat(results, how = "vertical")
 
     # Output(s)
     if isinstance(df, pl.LazyFrame) and return_df:
         downsample = downsample.collect()
     return downsample
-
 
 def random_cols(
     all_columns: List[str],
@@ -482,8 +465,8 @@ def random_cols(
     Example
     -------
     >>> import polars as pl
-    >>> import polars_ds.sampling as pds_samp
-    >>> pds_samp.random_cols(["a", "b", "c", "d", "e", "f"], 2, seed = 101)
+    >>> import polars_ds.sampling as sampling
+    >>> sampling.random_cols(["a", "b", "c", "d", "e", "f"], 2, seed = 101)
     ['c', 'd']
     """
     # Input(s)
@@ -591,17 +574,17 @@ def split_by_ratio(
     Example
     -------
     >>> import polars as pl
-    >>> import polars_ds.sampling as pds_samp
+    >>> import polars_ds.sampling as sampling
     >>> import numpy as np
     >>> np.random.seed(42)
     >>> lf = pl.LazyFrame(
-            data = {
-                "id": range(1, 1001)
-                ,"value": np.random.rand(1000) * 100
-                ,"category": np.random.choice(["A", "B", "C"], size = 1000)
-            }
-        )
-    >>> print(pds_samp.split_by_ratio(
+    >>>     data = {
+    >>>         "id": range(1, 1001)
+    >>>         ,"value": np.random.rand(1000) * 100
+    >>>         ,"category": np.random.choice(["A", "B", "C"], size = 1000)
+    >>>     }
+    >>> )
+    >>> print(sampling.split_by_ratio(
     >>>     df = lf,
     >>>     split_ratio = 0.75,
     >>>     seed = 101
@@ -620,7 +603,7 @@ def split_by_ratio(
     │ train   ┆ C        ┆ 227 │
     └─────────┴──────────┴─────┘
 
-    >>> print(pds_samp.split_by_ratio(
+    >>> print(sampling.split_by_ratio(
     >>>     df = lf,
     >>>     split_ratio = 0.75,
     >>>     split_col = "sample",
