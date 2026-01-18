@@ -587,8 +587,9 @@ def split_by_ratio(
     >>> print(sampling.split_by_ratio(
     >>>     df = lf,
     >>>     split_ratio = 0.75,
-    >>>     seed = 101
-    >>> ).group_by(["__split", "category"]).len().sort(["__split", "category"]).collect())
+    >>>     seed = 101,
+    >>>     return_df = True
+    >>> ).group_by(["__split", "category"]).len().sort(["__split", "category"]))
     shape: (6, 3)
     ┌─────────┬──────────┬─────┐
     │ __split ┆ category ┆ len │
@@ -608,8 +609,9 @@ def split_by_ratio(
     >>>     split_ratio = 0.75,
     >>>     split_col = "sample",
     >>>     by = "category",
-    >>>     seed = 101
-    >>> ).group_by(["sample", "category"]).len().sort(["sample", "category"]).collect())
+    >>>     seed = 101,
+    >>>     return_df = True
+    >>> ).group_by(["sample", "category"]).len().sort(["sample", "category"]))
     shape: (6, 3)
     ┌────────┬──────────┬─────┐
     │ sample ┆ category ┆ len │
@@ -680,7 +682,8 @@ def split_by_ratio(
     ## Stratified Sampling
     if by is not None:
         results = []
-        for cat in df.select(pl.col(by).unique()).collect().to_series().to_list():
+        cats = df.select(pl.col(by).unique()) if isinstance(df, pl.DataFrame) else df.select(pl.col(by).unique()).collect()
+        for cat in cats.to_series().to_list():
             subset = df.filter(
                 pl.col(by) == cat
             )
@@ -736,4 +739,4 @@ def split_by_ratio(
     if isinstance(df, pl.LazyFrame) and return_df:
         split_sample = split_sample.collect()
     return split_sample
-    
+
