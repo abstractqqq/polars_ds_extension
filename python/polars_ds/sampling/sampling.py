@@ -108,32 +108,48 @@ def sample(
                 ,"category": np.random.choice(["A", "B", "C"], size = 1000)
             }
         )
-    >>> print(pds_sa.sample(lf, 100, seed = 101, return_df = True).head(3))
-    shape: (3, 3)
+    >>> print(pds_sa.sample(lf, 100, seed = 101, return_df = True))
+    shape: (100, 3)
     ┌─────┬───────────┬──────────┐
     │ id  ┆ value     ┆ category │
     │ --- ┆ ---       ┆ ---      │
     │ i64 ┆ f64       ┆ str      │
     ╞═════╪═══════════╪══════════╡
-    │ 7   ┆ 5.808361  ┆ C        │
-    │ 33  ┆ 6.505159  ┆ C        │
-    │ 42  ┆ 49.517691 ┆ B        │
+    │ 718 ┆ 96.502691 ┆ C        │
+    │ 391 ┆ 99.050514 ┆ C        │
+    │ 555 ┆ 87.66536  ┆ B        │
+    │ 778 ┆ 72.225257 ┆ A        │
+    │ 888 ┆ 23.818278 ┆ C        │
+    │ …   ┆ …         ┆ …        │
+    │ 233 ┆ 57.690388 ┆ A        │
+    │ 196 ┆ 34.920957 ┆ A        │
+    │ 850 ┆ 59.538502 ┆ C        │
+    │ 235 ┆ 19.524299 ┆ A        │
+    │ 404 ┆ 82.645747 ┆ B        │
     └─────┴───────────┴──────────┘
 
-    >>> print(pds_samp.sample(lf, 0.5, seed = 101, return_df = True).head(3))
-    shape: (3, 3)
+    >>> print(pds_samp.sample(lf, 0.5, seed = 101, return_df = True))
+    shape: (500, 3)
     ┌─────┬───────────┬──────────┐
     │ id  ┆ value     ┆ category │
     │ --- ┆ ---       ┆ ---      │
     │ i64 ┆ f64       ┆ str      │
     ╞═════╪═══════════╪══════════╡
-    │ 3   ┆ 73.199394 ┆ C        │
-    │ 4   ┆ 59.865848 ┆ C        │
-    │ 5   ┆ 15.601864 ┆ A        │
+    │ 718 ┆ 96.502691 ┆ C        │
+    │ 391 ┆ 99.050514 ┆ C        │
+    │ 555 ┆ 87.66536  ┆ B        │
+    │ 778 ┆ 72.225257 ┆ A        │
+    │ 888 ┆ 23.818278 ┆ C        │
+    │ …   ┆ …         ┆ …        │
+    │ 320 ┆ 25.02429  ┆ B        │
+    │ 812 ┆ 83.889809 ┆ C        │
+    │ 982 ┆ 77.09122  ┆ A        │
+    │ 412 ┆ 95.006197 ┆ B        │
+    │ 416 ┆ 44.844552 ┆ C        │
     └─────┴───────────┴──────────┘
 
-    >>> print(pds_samp.sample(lf, 0.1, True, 101, True).head(3))
-    shape: (3, 3)
+    >>> print(pds_samp.sample(lf, 0.1, True, 101, True))
+    shape: (100, 3)
     ┌─────┬───────────┬──────────┐
     │ id  ┆ value     ┆ category │
     │ --- ┆ ---       ┆ ---      │
@@ -142,6 +158,14 @@ def sample(
     │ 718 ┆ 96.502691 ┆ C        │
     │ 390 ┆ 80.683474 ┆ A        │
     │ 554 ┆ 56.093797 ┆ B        │
+    │ 777 ┆ 22.92514  ┆ C        │
+    │ 887 ┆ 65.274611 ┆ C        │
+    │ …   ┆ …         ┆ …        │
+    │ 152 ┆ 23.956189 ┆ A        │
+    │ 110 ┆ 7.697991  ┆ B        │
+    │ 834 ┆ 17.638699 ┆ C        │
+    │ 152 ┆ 23.956189 ┆ A        │
+    │ 339 ┆ 47.417383 ┆ C        │
     └─────┴───────────┴──────────┘
     """
     # Input(s)
@@ -167,37 +191,22 @@ def sample(
         raise TypeError("'return_df' is not a boolean.")
 
     # Engine
-    ## Sampling with Replacement
-    if replace:
-
-        ## Arguments for the sample functions
-        if isinstance(value, int):
-            n = value
-            fraction = None
-        else:
-            n = None
-            fraction = value
-
-        ## Sample function
-        sample = df.select(
-            pl.all().sample(
-                n = n,
-                fraction = fraction,
-                with_replacement = True,
-                shuffle = True,
-                seed = seed
-            )
+    n = value if isinstance(value, int) else None
+    fraction = value if isinstance(value, float) else None
+    sample = df.select(
+        pl.all().sample(
+            n = n,
+            fraction = fraction,
+            with_replacement = replace,
+            shuffle = True,
+            seed = seed
         )
-
-    ## Simple Sampling
-    else:
-        sample = df.filter(_sampler_expr(value, seed))
+    )
 
     # Output(s)
     if isinstance(df, pl.LazyFrame) and return_df:
         sample = sample.collect()
     return sample
-
 
 def volume_neutral(
     df: PolarsFrame,
