@@ -49,7 +49,7 @@ def sample(
     Example
     ----------
     >>> import polars as pl
-    >>> import polars_ds.sampling as sampling
+    >>> import polars_ds.sample_and_split as sampling
     >>> import numpy as np
     >>> np.random.seed(42)
     >>> lf = pl.LazyFrame(
@@ -119,28 +119,6 @@ def sample(
     │ 339 ┆ 47.417383 ┆ C        │
     └─────┴───────────┴──────────┘
     """
-    # Input(s)
-    if not isinstance(df, (pl.DataFrame, pl.LazyFrame)):
-        raise TypeError("'df' is neither a polars.DataFrame or a polars.LazyFrame")
-
-    if not isinstance(value, (int, float)):
-        raise TypeError("'value' is neither an integer or a float.")
-    elif isinstance(value, int):
-        if value <= 0:
-            raise ValueError("'value' must be greater than zero.")
-    elif isinstance(value, float):
-        if not 0 < value < 1:
-            raise ValueError("'value' must be in the range (0, 1).")
-
-    if not isinstance(replace, bool):
-        raise TypeError("'replace' is not a boolean.")
-
-    if seed is not None and not isinstance(seed, int):
-        raise TypeError("'seed' is neither an integer or None.")
-
-    if not isinstance(return_df, bool):
-        raise TypeError("'return_df' is not a boolean.")
-
     # Engine
     df_size = df.select(pl.len())[0, 0] if isinstance(df, pl.DataFrame) else df.select(pl.len()).collect()[0, 0]
     n = min(value, df_size) if isinstance(value, int) else None
@@ -209,7 +187,7 @@ def volume_neutral(
     Example
     ----------
     >>> import polars as pl
-    >>> import polars_ds.sampling as sampling
+    >>> import polars_ds.sample_and_split as sampling
     >>> import numpy as np
     >>> np.random.seed(42)
     >>> lf = pl.LazyFrame(
@@ -234,30 +212,6 @@ def volume_neutral(
     │ 990 ┆ 81.910232 ┆ C        │
     └─────┴───────────┴──────────┘
     """
-    # Input(s)
-    if not isinstance(df, (pl.DataFrame, pl.LazyFrame)):
-        raise TypeError("'df' is neither a polars.DataFrame or a polars.LazyFrame")
-
-    if not isinstance(by, pl.Expr):
-        raise TypeError("'by' is not a polars.Expression")
-
-    if control is not None and not isinstance(control, (pl.Expr, list)):
-        raise TypeError("'control' is not a polars.Expression, list, or None.")
-
-    if isinstance(control, list):
-        ctrl = [True if isinstance(c, pl.Expr) else False for c in control]
-        if sum(ctrl) < len(control):
-            raise TypeError("'control' contais elements that are not a polars.Expression.")
-
-    if target_volume is not None and not isinstance(target_volume, int):
-        raise TypeError("'target_volume' must be an integer or None.")
-
-    if seed is not None and not isinstance(seed, int):
-        raise TypeError("'seed' must be an integer or None.")
-
-    if not isinstance(return_df, bool):
-        raise TypeError("'return_df' is not a boolean.")
-
     # Engine
     if target_volume is not None:
         target = pl.min_horizontal(by.value_counts().struct.field("count").min(), target_volume)
@@ -323,7 +277,7 @@ def downsample(
     Example
     -------
     >>> import polars as pl
-    >>> import polars_ds.sampling as sampling
+    >>> import polars_ds.sample_and_split as sampling
     >>> import numpy as np
     >>> np.random.seed(42)
     >>> lf = pl.LazyFrame(
@@ -363,32 +317,6 @@ def downsample(
     │ C        ┆ 316 │
     └──────────┴─────┘
     """
-    # Input(s)
-    if not isinstance(df, (pl.DataFrame, pl.LazyFrame)):
-        raise TypeError("'df' is neither a polars.DataFrame or a polars.LazyFrame")
-
-    if seed is not None and not isinstance(seed, int):
-        raise TypeError("'seed' is neither an integer or None.")
-
-    if not isinstance(return_df, bool):
-        raise TypeError("'return_df' is not a boolean.")
-    
-    if isinstance(conditions, tuple):
-        conditions = [conditions]
-    for condition in conditions:
-        if not isinstance(condition, tuple) or len(condition) != 2:
-            raise ValueError("Each condition must be a tuple of length 2.")
-
-        expr, value = condition
-        if not isinstance(expr, pl.Expr):
-            raise TypeError("The first element of each condition must be a polars expression (pl.Expr).")
-
-        if not isinstance(value, (float, int)):
-            raise TypeError("The second element of each condition must be a float or an integer.")
-
-        if isinstance(value, float) and not (0 <= value <= 1):
-            raise ValueError("If the second element is a float, must be in the range [0, 1].")
-
     # Engine
     ## Create samples for each pl.Expr
     results = []
@@ -467,30 +395,10 @@ def random_cols(
     Example
     -------
     >>> import polars as pl
-    >>> import polars_ds.sampling as sampling
+    >>> import polars_ds.sample_and_split as sampling
     >>> print(sampling.random_cols(["a", "b", "c", "d", "e", "f"], 2, seed = 101))
     ['c', 'd']
     """
-    # Input(s)
-    if not isinstance(all_columns, list):
-        raise TypeError("'all_columns' must be a list.")
-    for element in all_columns:
-        if not isinstance(element, str):
-            raise ValueError("All values provided in 'all_columns' must be strings.")
-
-    if not isinstance(k, int) or k <= 0:
-        raise TypeError("'k' must be an integer greater than 0.")
-
-    if keep is not None and not isinstance(keep, list):
-        raise TypeError("'keep' must be a list or None.")
-    if keep is not None:
-        for element in keep:
-            if not isinstance(element, str):
-                raise ValueError("All values provided in 'keep' must be strings.")
-
-    if seed is not None and not isinstance(seed, int):
-        raise TypeError("'seed' is neither an integer or None.")
-
     # Engine
     if seed is not None:
         random.seed(seed)
@@ -577,7 +485,7 @@ def split_by_ratio(
     Example
     -------
     >>> import polars as pl
-    >>> import polars_ds.sampling as sampling
+    >>> import polars_ds.sample_and_split as sampling
     >>> import numpy as np
     >>> np.random.seed(42)
     >>> lf = pl.LazyFrame(
@@ -629,58 +537,6 @@ def split_by_ratio(
     │ train  ┆ C        ┆ 237 │
     └────────┴──────────┴─────┘
     """
-    # Input(s)
-    if not isinstance(df, (pl.DataFrame, pl.LazyFrame)):
-        raise TypeError("'df' is neither a polars.DataFrame or a polars.LazyFrame")
-
-    if not isinstance(split_ratio, (float, list, dict)):
-        raise TypeError("'split_ratio' is neither a float, list or dictionary.")
-    if isinstance(split_ratio, float):
-        if not 0 < split_ratio < 1:
-            raise ValueError("All values provided in 'split_ratio' must be in the range (0, 1).")
-    if isinstance(split_ratio, list):
-        for element in split_ratio:
-            if not isinstance(element, float):
-                raise ValueError("All values provided in 'split_ratio' must be floats.")
-            else:
-                if not 0 < element < 1:
-                    raise ValueError("All values provided in 'split_ratio' must be in the range (0, 1).")
-        if sum(split_ratio) != 1.0:
-            raise ValueError("The sum of the values in 'split_ratio' must equal 1.")
-    if isinstance(split_ratio, dict):
-        for key, value in zip(split_ratio.keys(), split_ratio.values()):
-            if not isinstance(key, str):
-                raise ValueError("All key values provided in 'split_ratio' must be strings.")
-            if not isinstance(value, float):
-                raise ValueError("All values provided in 'split_ratio' must be floats.")
-            else:
-                if not 0 < value < 1:
-                    raise ValueError("All values provided in 'split_ratio' must be in the range (0, 1).")
-        if sum(split_ratio.values()) != 1.0:
-            raise ValueError("The sum of the values in 'split_ratio' must equal 1.")
-
-    if not isinstance(split_col, str):
-        raise TypeError("'split_col' is not a string.")
-
-    if by is not None and not isinstance(by, (str, list)):
-        raise TypeError("'by' is not a string, list or None.")
-    if isinstance(by, list):
-        for element in by:
-            if not isinstance(element, str):
-                raise ValueError("All values provided in 'by' must be strings.")
-
-    if not isinstance(default_split_1, str):
-        raise TypeError("'default_split_1' is not a string.")
-
-    if not isinstance(default_split_2, str):
-        raise TypeError("'default_split_2' is not a string.")
-
-    if seed is not None and not isinstance(seed, int):
-        raise TypeError("'seed' is neither an integer or None.")
-
-    if not isinstance(return_df, bool):
-        raise TypeError("'return_df' is not a boolean.")
-
     # Engine
     ## Stratified Sampling
     if by is not None:
