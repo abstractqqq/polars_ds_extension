@@ -326,3 +326,7 @@ You can then publish it to your private PYPI server, or just use it locally.
 1. Some statistics functions are taken from Statrs (MIT) and internalized. See [here](https://github.com/statrs-dev/statrs/tree/master)
 2. Linear algebra routines are powered mostly by [faer](https://crates.io/crates/faer)
 3. String similarity metrics are soooo fast because of [RapidFuzz](https://github.com/maxbachmann/rapidfuzz-rs)
+
+# Other Projects
+
+1. [Caching for Polars](https://github.com/abstractqqq/pocache)
