@@ -3,7 +3,8 @@ maturin[patchelf]>=1.7; sys_platform == "linux"
 maturin>=1.7; sys_platform != "linux"
 numpy
 scikit-learn<=1.5
-scipy==1.17
+scipy==1.17; python_version>="3.10"
+scipy==1.15; python_version=="3.9"
 pyarrow
 pandas
 pytest
