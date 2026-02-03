@@ -204,7 +204,9 @@ shape: (5, 3)
 └─────┴───────────────────┴────────────────────┘
 ```
 
-### Various String Edit distances
+### Distances
+
+Various string distances:
 
 ```Python
 df.select( # Column "word", compared to string in pl.lit(). It also supports column vs column comparison
@@ -213,6 +215,34 @@ df.select( # Column "word", compared to string in pl.lit(). It also supports col
     pds.str_jw("word", pl.lit("apples")).alias("Jaro-Winkler"),
 )
 ```
+
+Array, list distances:
+
+```python
+df = pl.DataFrame({
+    "x": [[1,2,3], [4,5,6]]
+    , "y": [[0.5, 0.2, 0.3], [4.0, 5.0, 6.1]]
+})
+
+df.select(
+    x = pl.col('x').cast(pl.Array(inner=pl.Float64, shape=3))
+    , y = pl.col('y').cast(pl.Array(inner=pl.Float64, shape=3))
+).select(
+    pds.arr_sql2_dist('x', 'y')
+)
+
+shape: (2, 1)
+┌───────┐
+│ x     │
+│ ---   │
+│ f64   │
+╞═══════╡
+│ 10.78 │
+│ 0.01  │
+└───────┘
+```
+
+Replace arr_sql2_dist with list_sql2_dist. Note: sql2 stands for squared l2 distance, which is the same as squared euclidean distance.
 
 ### In-dataframe statistical tests
 

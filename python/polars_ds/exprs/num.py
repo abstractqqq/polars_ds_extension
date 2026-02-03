@@ -58,6 +58,12 @@ __all__ = [
     "l_inf_horizontal",
     "l1_horizontal",
     "l2_sq_horizontal",
+    "arr_dot",
+    "arr_l1_dist",
+    "arr_sql2_dist",
+    "list_dot",
+    "list_l1_dist",
+    "list_sql2_dist",
     # "mutual_info_disc",
 ]
 
@@ -114,6 +120,92 @@ def l1_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
         return pl.sum_horizontal(to_expr(x).abs() for x in exprs) / len(exprs)
     else:
         return pl.sum_horizontal(to_expr(x).abs() for x in v)
+
+def arr_dot(arr1: str | pl.Expr, arr2: str | pl.Expr) -> pl.Expr:
+    """
+    Calculates the dot product for two array columns.
+
+    Parameters
+    ----------
+    arr1
+        The first array column
+    arr2
+        The second array column
+    """
+    x, y = to_expr(arr1), to_expr(arr2)
+    return (x * y).arr.sum()
+
+def arr_l1_dist(arr1: str | pl.Expr, arr2: str | pl.Expr) -> pl.Expr:
+    """
+    Calculates the L1 distance for two array columns.
+
+    Parameters
+    ----------
+    arr1
+        The first array column
+    arr2
+        The second array column
+    """
+    x, y = to_expr(arr1), to_expr(arr2)
+    return (x - y).arr.eval(pl.element().abs()).arr.sum()
+
+
+def arr_sql2_dist(arr1: str | pl.Expr, arr2: str | pl.Expr) -> pl.Expr:
+    """
+    Calculates the squared L2 distance for two array columns.
+
+    Parameters
+    ----------
+    arr1
+        The first array column
+    arr2
+        The second array column
+    """
+    x, y = to_expr(arr1), to_expr(arr2)
+    return (x - y).arr.eval(pl.element().pow(2)).arr.sum()
+
+def list_dot(list1: str | pl.Expr, list2: str | pl.Expr) -> pl.Expr:
+    """
+    Calculates the dot product for two list columns.
+
+    Parameters
+    ----------
+    list1
+        The first array column
+    list2
+        The second array column
+    """
+    x, y = to_expr(list1), to_expr(list2)
+    return (x * y).list.sum()
+
+def list_l1_dist(list1: str | pl.Expr, list2: str | pl.Expr) -> pl.Expr:
+    """
+    Calculates the L1 distance for two list columns.
+
+    Parameters
+    ----------
+    list1
+        The first array column
+    list2
+        The second array column
+    """
+    x, y = to_expr(list1), to_expr(list2)
+    return (x - y).list.eval(pl.element().abs()).list.sum()
+
+
+def list_sql2_dist(list1: str | pl.Expr, list2: str | pl.Expr) -> pl.Expr:
+    """
+    Calculates the squared L2 distance for two list columns.
+
+    Parameters
+    ----------
+    list1
+        The first array column
+    list2
+        The second array column
+    """
+    x, y = to_expr(list1), to_expr(list2)
+    return (x - y).list.eval(pl.element().pow(2)).list.sum()
 
 
 def is_increasing(x: str | pl.Expr, strict: bool = False) -> pl.Expr:

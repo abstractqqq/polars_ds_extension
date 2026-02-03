@@ -3,7 +3,7 @@ maturin[patchelf]>=1.7; sys_platform == "linux"
 maturin>=1.7; sys_platform != "linux"
 numpy
 scikit-learn<=1.5
-scipy<=1.15.3 # 1.16 has a bug in the release, wait for scipy to fix it.
+scipy==1.17
 pyarrow
 pandas
 pytest
