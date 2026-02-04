@@ -4,7 +4,7 @@ use crate::linear::{
         link_functions::{LinkFunction, VarianceFunction},
         GLMSolverMethods, GeneralizedLinearModel,
     },
-    lr::{lr_solvers::faer_weighted_lstsq, LRSolverMethods, LinearModel},
+    lr::{lr_solvers::faer_weighted_lr, LRSolverMethods, LinearModel},
     LinalgErrors,
 };
 use faer::{diag::DiagRef, mat::Mat, MatRef, Par};
@@ -304,7 +304,7 @@ pub fn faer_irls<T: RealField + Float>(
             eta += diag_d_mu * (y - mu_mat); // This is now Z
 
             // Solve weighted least squares
-            let beta_new = faer_weighted_lstsq(
+            let beta_new = faer_weighted_lr(
                 X,
                 eta.as_ref(), // Eta is now Z, the working response
                 &weights,

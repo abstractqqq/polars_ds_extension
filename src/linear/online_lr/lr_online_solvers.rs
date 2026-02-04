@@ -108,13 +108,13 @@ impl<T: RealField + Float> LinearModel<T> for OnlineLR<T> {
             let ones = Mat::full(X.nrows(), 1, T::one());
             let new_x = faer::concat![[X, ones]];
             let (inv, all_coefficients) =
-                faer_qr_lstsq_with_inv(new_x.as_ref(), y, self.lambda, true);
+                faer_qr_lr_with_inv(new_x.as_ref(), y, self.lambda, true);
 
             self.inv = inv;
             self.coefficients = all_coefficients;
         } else {
             (self.inv, self.coefficients) =
-                faer_qr_lstsq_with_inv(X.as_ref(), y, self.lambda, false);
+                faer_qr_lr_with_inv(X.as_ref(), y, self.lambda, false);
         }
     }
 }
@@ -124,7 +124,7 @@ impl<T: RealField + Float> LinearModel<T> for OnlineLR<T> {
 /// Column Pivot QR is chosen to deal with rank deficient cases. It is also slightly
 /// faster compared to other methods.
 #[inline(always)]
-pub fn faer_qr_lstsq_with_inv<T: RealField + Copy>(
+pub fn faer_qr_lr_with_inv<T: RealField + Copy>(
     x: MatRef<T>,
     y: MatRef<T>,
     lambda: T,
@@ -152,7 +152,7 @@ pub fn faer_qr_lstsq_with_inv<T: RealField + Copy>(
 /// Given all data, we start running a lstsq starting at position n and compute new coefficients
 /// recurisively.
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
-pub fn faer_recursive_lstsq<T: RealField + Float>(
+pub fn faer_recursive_lr<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
     n: usize,
@@ -184,7 +184,7 @@ pub fn faer_recursive_lstsq<T: RealField + Float>(
 /// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
 /// This supports Normal or Ridge regression
-pub fn faer_rolling_lstsq<T: RealField + Float>(
+pub fn faer_rolling_lr<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
     n: usize,
@@ -222,7 +222,7 @@ pub fn faer_rolling_lstsq<T: RealField + Float>(
 /// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
 /// If # of non-null rows in the window is < m, a Matrix with size (0, 0) will be returned.
 /// This supports Normal or Ridge regression
-pub fn faer_rolling_skipping_lstsq<T: RealField + Float>(
+pub fn faer_rolling_skipping_lr<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
     n: usize,
