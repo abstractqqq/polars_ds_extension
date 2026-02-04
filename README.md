@@ -54,7 +54,7 @@ shape: (2, 3)
 
 ```python
 import polars_ds as pds
-from polars_ds.modeling.transforms import polynomial_features
+from polars_ds.pipeline.transforms import polynomial_features
 # If you want the underlying computation to be done in f32, set pds.config.LIN_REG_EXPR_F64 = False
 df.select(
     pds.lin_reg_report(

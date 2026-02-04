@@ -186,14 +186,14 @@ def lin_reg(
             cols.extend(lr_formula(z) for z in x)
             if return_pred:
                 return pl_plugin(
-                    symbol=cfg._which_lin_reg("pl_lstsq_multi_pred"),
+                    symbol=cfg._which_lin_reg("pl_lr_multi_pred"),
                     args=cols,
                     kwargs=multi_target_lr_kwargs,
                     pass_name_to_apply=True,
                 ).alias("lr_pred")
             else:
                 return pl_plugin(
-                    symbol=cfg._which_lin_reg("pl_lstsq_multi"),
+                    symbol=cfg._which_lin_reg("pl_lr_multi"),
                     args=cols,
                     kwargs=multi_target_lr_kwargs,
                     returns_scalar=True,
@@ -221,14 +221,14 @@ def lin_reg(
 
         if return_pred:
             return pl_plugin(
-                symbol=cfg._which_lin_reg("pl_lstsq_pred"),
+                symbol=cfg._which_lin_reg("pl_lr_pred"),
                 args=cols,
                 kwargs=lr_kwargs,
                 pass_name_to_apply=True,
             ).alias("lr_pred")
         else:
             return pl_plugin(
-                symbol=cfg._which_lin_reg("pl_lstsq"),
+                symbol=cfg._which_lin_reg("pl_lr"),
                 args=cols,
                 kwargs=lr_kwargs,
                 returns_scalar=True,
@@ -282,7 +282,7 @@ def lin_reg_w_rcond(
         "tol": abs(rcond),
     }
     return pl_plugin(
-        symbol=cfg._which_lin_reg("pl_lstsq_w_rcond"),
+        symbol=cfg._which_lin_reg("pl_lr_w_rcond"),
         args=cols,
         kwargs=lr_kwargs,
         pass_name_to_apply=True,
@@ -346,7 +346,7 @@ def recursive_lin_reg(
         "min_size": 0,  # Not used for recursive
     }
     return pl_plugin(
-        symbol=cfg._which_lin_reg("pl_recursive_lstsq"),
+        symbol=cfg._which_lin_reg("pl_recursive_lr"),
         args=cols,
         kwargs=kwargs,
         pass_name_to_apply=True,
@@ -420,7 +420,7 @@ def rolling_lin_reg(
         "min_size": min_size,
     }
     return pl_plugin(
-        symbol=cfg._which_lin_reg("pl_rolling_lstsq"),
+        symbol=cfg._which_lin_reg("pl_rolling_lr"),
         args=cols,
         kwargs=kwargs,
         pass_name_to_apply=True,

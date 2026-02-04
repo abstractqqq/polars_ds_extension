@@ -63,9 +63,9 @@ impl<T: RealField + Float> LinearModel<T> for LR<T> {
         self.coefficients = if self.add_bias {
             let ones = Mat::full(X.nrows(), 1, T::one());
             let new = faer::concat![[X, ones]];
-            faer_solve_lstsq(new.as_ref(), y, self.lambda, true, self.solver)
+            faer_solve_lr(new.as_ref(), y, self.lambda, true, self.solver)
         } else {
-            faer_solve_lstsq(X, y, self.lambda, false, self.solver)
+            faer_solve_lr(X, y, self.lambda, false, self.solver)
         };
     }
 }
@@ -190,7 +190,7 @@ impl<T: RealField + Float> LinearModel<T> for ElasticNet<T> {
 /// Least square that sets all singular values below threshold to 0.
 /// Returns the coefficients and the singular values
 #[inline(always)]
-pub fn faer_solve_lstsq_rcond<T: RealField + Float>(
+pub fn faer_solve_lr_rcond<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
     lambda: T,
@@ -233,7 +233,7 @@ pub fn faer_solve_lstsq_rcond<T: RealField + Float>(
 /// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
 /// If lambda is 0, then this is the regular lstsq
 #[inline(always)]
-pub fn faer_solve_lstsq<T: RealField + Float>(
+pub fn faer_solve_lr<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
     lambda: T,
@@ -270,7 +270,7 @@ pub fn faer_solve_lstsq<T: RealField + Float>(
 
 /// Solves the weighted least square with weights given by the user
 #[inline(always)]
-pub fn faer_weighted_lstsq<T: RealField>(
+pub fn faer_weighted_lr<T: RealField>(
     x: MatRef<T>,
     y: MatRef<T>,
     w: &[T],
@@ -388,7 +388,7 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
 }
 
 /// Non-negative Lstsq. Returns the coefficients as a ncols x 1 faer matrix
-pub fn faer_nn_lstsq<T: RealField + Float>(
+pub fn faer_nn_lr<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
     add_bias: bool,
