@@ -17,8 +17,13 @@ fn rng_from_seed(seed: Option<u64>) -> StdRng {
 
 #[polars_expr(output_type=Int32)]
 fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
-    let n = inputs[0].u32()?;
-    let n = n.get(0).unwrap() as usize;
+    let len_ref = &inputs[0];
+    let n = if len_ref.len() == 1 {
+        let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
+        len.get(0).unwrap() as usize
+    } else {
+        inputs[0].len()
+    };
     let low = inputs[1].i32()?;
     let mut low = low.get(0).unwrap();
     let high = inputs[2].i32()?;
@@ -38,8 +43,13 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=UInt64)]
 fn pl_rand_binomial(inputs: &[Series]) -> PolarsResult<Series> {
-    let len = inputs[0].u32()?;
-    let len = len.get(0).unwrap() as usize;
+    let len_ref = &inputs[0];
+    let len = if len_ref.len() == 1 {
+        let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
+        len.get(0).unwrap() as usize
+    } else {
+        inputs[0].len()
+    };
     let n = inputs[1].u32()?;
     let n = n.get(0).unwrap();
     let p = inputs[2].f64()?;
@@ -54,8 +64,13 @@ fn pl_rand_binomial(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=Float64)]
 fn pl_rand_exp(inputs: &[Series]) -> PolarsResult<Series> {
-    let len = inputs[0].u32()?;
-    let len = len.get(0).unwrap() as usize;
+    let len_ref = &inputs[0];
+    let len = if len_ref.len() == 1 {
+        let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
+        len.get(0).unwrap() as usize
+    } else {
+        inputs[0].len()
+    };
     let lambda = inputs[1].f64()?;
     let lambda = lambda.get(0).unwrap();
 
@@ -75,8 +90,14 @@ fn pl_rand_exp(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=Float64)]
 fn pl_random(inputs: &[Series]) -> PolarsResult<Series> {
-    let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
-    let len = len.get(0).unwrap() as usize;
+    let len_ref = &inputs[0];
+    let len = if len_ref.len() == 1 {
+        let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
+        len.get(0).unwrap() as usize
+    } else {
+        inputs[0].len()
+    };
+
     let low = inputs[1].f64()?;
     let low = low.get(0).unwrap();
     let high = inputs[2].f64()?;
@@ -161,8 +182,13 @@ fn pl_jitter(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=Float64)]
 fn pl_rand_normal(inputs: &[Series]) -> PolarsResult<Series> {
-    let len = inputs[0].u32()?;
-    let len = len.get(0).unwrap() as usize;
+    let len_ref = &inputs[0];
+    let len = if len_ref.len() == 1 {
+        let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
+        len.get(0).unwrap() as usize
+    } else {
+        inputs[0].len()
+    };
     let mean = inputs[1].f64()?;
     let mean = mean.get(0).unwrap_or(0.);
     let std_ = inputs[2].f64()?;
@@ -186,8 +212,13 @@ fn pl_rand_normal(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=Float64)]
 fn pl_rand_str(inputs: &[Series]) -> PolarsResult<Series> {
-    let len = inputs[0].u32()?;
-    let len = len.get(0).unwrap() as usize;
+    let len_ref = &inputs[0];
+    let len = if len_ref.len() == 1 {
+        let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
+        len.get(0).unwrap() as usize
+    } else {
+        inputs[0].len()
+    };
     let min_size = inputs[1].u32()?;
     let min_size = min_size.get(0).unwrap() as usize;
     let max_size = inputs[2].u32()?;
