@@ -8,6 +8,7 @@ import math
 # Internal dependencies
 from polars_ds.typing import Alternative, CorrMethod, Noise, QuantileMethod
 from polars_ds._utils import pl_plugin, to_expr
+from typing import Tuple
 
 __all__ = [
     "ttest_ind",
@@ -43,6 +44,14 @@ __all__ = [
     "bicor",
     "corr",
 ]
+
+def _get_streamable(len_ref: str | None) -> Tuple[pl.Expr, bool]:
+    if len_ref is None:
+        return pl.len(), False
+    elif isinstance(len_ref, (str, pl.Expr)):
+        return pl.col(len_ref), True
+    else:
+        raise TypeError("Input `len_ref` must be str or None.")
 
 
 def ttest_ind(
@@ -518,7 +527,7 @@ def random(
     lower: pl.Expr | float = 0.0,
     upper: pl.Expr | float = 1.0,
     seed: int | None = None,
-    length: int | pl.Expr = pl.len(),
+    len_ref: str | pl.Expr | None = None
 ) -> pl.Expr:
     """
     Generate random numbers in [lower, upper)
@@ -531,15 +540,19 @@ def random(
         The upper bound, exclusive
     seed
         The random seed. None means no seed.
-    length
-        Custom length. Note length needs to match with other columns in the context.
+    len_ref
+        Length reference. In normal non-streaming context, this should always be None which means it will always
+        use pl.len() as the total length of the data you wish to generate. In streaming mode, you may pass any column 
+        name, e.g. `len_ref = 'id'` so that the random generator knows the corresponding length of each chunk.
     """
     lo = pl.lit(lower, pl.Float64) if isinstance(lower, float) else lower
     up = pl.lit(upper, pl.Float64) if isinstance(upper, float) else upper
-    len_ = pl.lit(length, pl.UInt32) if isinstance(length, int) else length
+    len_, is_elementwise = _get_streamable(len_ref)
+
     return pl_plugin(
         symbol="pl_random",
         args=[len_, lo, up, pl.lit(seed, pl.UInt64)],
+        is_elementwise=is_elementwise
     )
 
 
@@ -562,14 +575,14 @@ def random_null(x: str | pl.Expr, pct: float, seed: int | None = None) -> pl.Exp
     if pct <= 0.0 or pct >= 1.0:
         raise ValueError("Input `pct` must be > 0 and < 1")
 
-    return pl.when(random(0.0, 1.0, seed=seed) < pct).then(None).otherwise(to_expr(x))
+    return pl.when(random(0.0, 1.0, seed=seed, len_ref=x) < pct).then(None).otherwise(to_expr(x))
 
 
 def random_int(
     lower: int | pl.Expr,
     upper: int | pl.Expr,
     seed: int | None = None,
-    length: int | pl.Expr = pl.len(),
+    len_ref: str | pl.Expr | None = None
 ) -> pl.Expr:
     """
     Generates random integer between lower and upper.
@@ -582,15 +595,17 @@ def random_int(
         The upper bound, exclusive
     seed
         The random seed. None means no seed.
-    length
-        Custom length. Note length needs to match with other columns in the context.
+    len_ref
+        Length reference. In normal non-streaming context, this should always be None which means it will always
+        use pl.len() as the total length of the data you wish to generate. In streaming mode, you may pass any column 
+        name, e.g. `len_ref = 'id'` so that the random generator knows the corresponding length of each chunk.
     """
     if lower == upper:
         raise ValueError("Input `lower` must be smaller than `higher`")
 
     lo = pl.lit(lower, pl.Int32) if isinstance(lower, int) else lower.cast(pl.Int32)
     hi = pl.lit(upper, pl.Int32) if isinstance(upper, int) else upper.cast(pl.Int32)
-    len_ = pl.lit(length, pl.UInt32) if isinstance(length, int) else length
+    len_, is_elementwise = _get_streamable(len_ref)
     return pl_plugin(
         symbol="pl_rand_int",
         args=[
@@ -599,6 +614,7 @@ def random_int(
             hi,
             pl.lit(seed, pl.UInt64),
         ],
+        is_elementwise=is_elementwise
     )
 
 
@@ -606,7 +622,7 @@ def random_str(
     min_size: int,
     max_size: int,
     seed: int | None = None,
-    length: int | pl.Expr = pl.len(),
+    len_ref: str | pl.Expr | None = None
 ) -> pl.Expr:
     """
     Generates random strings of length between min_size and max_size. The characters are
@@ -620,26 +636,30 @@ def random_str(
         The max size of the string, inclusive
     seed
         The random seed. None means no seed.
-    length
-        Custom length. Note length needs to match with other columns in the context.
+    len_ref
+        Length reference. In normal non-streaming context, this should always be None which means it will always
+        use pl.len() as the total length of the data you wish to generate. In streaming mode, you may pass any column 
+        name, e.g. `len_ref = 'id'` so that the random generator knows the corresponding length of each chunk.
     """
     mi, ma = min_size, max_size
     if min_size > max_size:
         mi, ma = max_size, min_size
 
+    len_, is_elementwise = _get_streamable(len_ref)
     return pl_plugin(
         symbol="pl_rand_str",
         args=[
-            pl.lit(length, pl.UInt32) if isinstance(length, int) else length,
+            len_,
             pl.lit(mi, pl.UInt32),
             pl.lit(ma, pl.UInt32),
             pl.lit(seed, pl.UInt64),
         ],
+        is_elementwise=is_elementwise
     )
 
 
 def random_binomial(
-    n: int, p: int, seed: int | None = None, length: int | pl.Expr = pl.len()
+    n: int, p: float, seed: int | None = None, len_ref: str | pl.Expr | None = None
 ) -> pl.Expr:
     """
     Generates random integer following a binomial distribution.
@@ -649,28 +669,34 @@ def random_binomial(
     n
         The n in a binomial distribution
     p
-        The p in a binomial distribution
+        The p in a binomial distribution. The success rate.
     seed
         The random seed. None means no seed.
-    length
-        Custom length. Note length needs to match with other columns in the context.
+    len_ref
+        Length reference. In normal non-streaming context, this should always be None which means it will always
+        use pl.len() as the total length of the data you wish to generate. In streaming mode, you may pass any column 
+        name, e.g. `len_ref = 'id'` so that the random generator knows the corresponding length of each chunk.
     """
     if n < 1:
         raise ValueError("Input `n` must be > 1.")
+    if p < 0.0 or p > 1.0:
+        raise ValueError("Input `p` must be between 0 and 1.")
 
+    len_, is_elementwise = _get_streamable(len_ref)
     return pl_plugin(
         symbol="pl_rand_binomial",
         args=[
-            pl.lit(length, pl.UInt32) if isinstance(length, int) else length,
-            pl.lit(n, pl.Int32),
+            len_,
+            pl.lit(n, pl.UInt32),
             pl.lit(p, pl.Float64),
             pl.lit(seed, pl.UInt64),
         ],
+        is_elementwise=is_elementwise
     )
 
 
 def random_exp(
-    lambda_: float, seed: int | None = None, length: int | pl.Expr = pl.len()
+    lambda_: float, seed: int | None = None, len_ref: str | pl.Expr | None = None
 ) -> pl.Expr:
     """
     Generates random numbers following an exponential distribution.
@@ -681,16 +707,20 @@ def random_exp(
         The lambda in an exponential distribution
     seed
         The random seed. None means no seed.
-    length
-        Custom length. Note length needs to match with other columns in the context.
+    len_ref
+        Length reference. In normal non-streaming context, this should always be None which means it will always
+        use pl.len() as the total length of the data you wish to generate. In streaming mode, you may pass any column 
+        name, e.g. `len_ref = 'id'` so that the random generator knows the corresponding length of each chunk.
     """
+    len_, is_elementwise = _get_streamable(len_ref)
     return pl_plugin(
         symbol="pl_rand_exp",
         args=[
-            pl.lit(length, pl.UInt32) if isinstance(length, int) else length,
+            len_,
             pl.lit(lambda_, pl.Float64),
             pl.lit(seed, pl.UInt64),
         ],
+        is_elementwise=is_elementwise
     )
 
 
@@ -698,7 +728,7 @@ def random_normal(
     mean: pl.Expr | float,
     std: pl.Expr | float,
     seed: int | None = None,
-    length: int | pl.Expr = pl.len(),
+    len_ref: str | pl.Expr | None = None,
 ) -> pl.Expr:
     """
     Generates random number following a normal distribution.
@@ -711,17 +741,21 @@ def random_normal(
         The std in a normal distribution
     seed
         The random seed. None means no seed.
-    length
-        Custom length. Note length needs to match with other columns in the context.
+    len_ref
+        Length reference. In normal non-streaming context, this should always be None which means it will always
+        use pl.len() as the total length of the data you wish to generate. In streaming mode, you may pass any column 
+        name, e.g. `len_ref = 'id'` so that the random generator knows the corresponding length of each chunk.
     """
+    len_, is_elementwise = _get_streamable(len_ref)
     return pl_plugin(
         symbol="pl_rand_normal",
         args=[
-            pl.lit(length, pl.UInt32) if isinstance(length, int) else length,
+            len_,
             pl.lit(mean, pl.Float64) if isinstance(mean, float) else mean,
             pl.lit(std, pl.Float64) if isinstance(std, float) else std,
             pl.lit(seed, pl.UInt64),
         ],
+        is_elementwise=is_elementwise
     )
 
 

@@ -6,6 +6,26 @@ import numpy as np
 import polars_ds as pds
 from polars.testing import assert_frame_equal, assert_series_equal
 
+def test_random_functions_in_streaming():
+    df = pl.DataFrame({"x": list(range(0,50))}).lazy()
+
+    try:
+        df_test = df.with_columns(
+            x1 = pds.random(len_ref = 'x')
+            , x2 = pds.random_normal(0.0, 1.0, len_ref='x')
+            , x3 = pds.random_int(0, 10 , len_ref = 'x')
+            , x4 = pds.random_exp(0.5, len_ref = 'x')
+            , x5 = pds.random_str(1, 3, len_ref = 'x')
+            , x6 = pds.random_binomial(5, 0.3, len_ref = 'x')
+        )
+        _ = df_test.collect(engine="streaming")
+        for batch in df_test.collect_batches(chunk_size=10):
+            assert batch.shape == (10, 7)
+
+        assert True
+    except Exception as e:
+        raise e
+
 
 def test_mcc():
     from sklearn.metrics import matthews_corrcoef
