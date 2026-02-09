@@ -119,22 +119,22 @@ def test_cond_indep_and_transfer():
 
     assert np.isclose(t_ans, t_res)
 
+# The package is very old and and relies on an old version of setuptools
+# def test_xi_corr():
+#     df = pds.frame(size=2_000).select(
+#         pds.random(0.0, 12.0).alias("x"),
+#         pds.random(0.0, 1.0).alias("y"),
+#     )
 
-def test_xi_corr():
-    df = pds.frame(size=2_000).select(
-        pds.random(0.0, 12.0).alias("x"),
-        pds.random(0.0, 1.0).alias("y"),
-    )
+#     from xicor.xicor import Xi
 
-    from xicor.xicor import Xi
+#     x = df["x"].to_numpy()
+#     y = df["y"].to_numpy()
+#     xi_obj = Xi(x, y)
+#     ans_statistic = xi_obj.correlation
+#     test_statistic = df.select(pds.xi_corr("x", "y")).item(0, 0)
 
-    x = df["x"].to_numpy()
-    y = df["y"].to_numpy()
-    xi_obj = Xi(x, y)
-    ans_statistic = xi_obj.correlation
-    test_statistic = df.select(pds.xi_corr("x", "y")).item(0, 0)
-
-    assert np.isclose(ans_statistic, test_statistic, rtol=1e-5)
+#     assert np.isclose(ans_statistic, test_statistic, rtol=1e-5)
 
 
 def test_bicor():

@@ -9,7 +9,7 @@ pyarrow
 pandas
 pytest
 pytest-benchmark
-xicor
+# xicor
 category_encoders
 copent
 astropy
