@@ -178,7 +178,7 @@ def scale(
     """
     Scales values in the given columns. This transform will collect if input is lazy.
 
-    Note: if method = 'min_max' and min = max, or method = 'standard' and std = 0.0, or method = 'abs_max' and |min| = |max| = 0.0, 
+    Note: if method = 'min_max' and min = max, or method = 'standard' and std = 0.0, or method = 'abs_max' and |min| = |max| = 0.0,
     then the column(s) will not be transformed.
 
     Parameters
@@ -202,7 +202,9 @@ def scale(
         )
         n = len(cols)
         # do nothing if std = 0.0
-        return [(pl.col(c) - temp[i]) / temp[i + n] for i, c in enumerate(cols) if temp[i + n] != 0.0]
+        return [
+            (pl.col(c) - temp[i]) / temp[i + n] for i, c in enumerate(cols) if temp[i + n] != 0.0
+        ]
     elif method == "min_max":
         temp = (
             df.lazy()
@@ -216,7 +218,11 @@ def scale(
         n = len(cols)
         # If input is constant, this will return all NaNs.
         # If min = max we don't do anything to the column
-        return [(pl.col(c) - temp[i]) / (temp[n + i] - temp[i]) for i, c in enumerate(cols) if temp[n + i] != temp[i]]
+        return [
+            (pl.col(c) - temp[i]) / (temp[n + i] - temp[i])
+            for i, c in enumerate(cols)
+            if temp[n + i] != temp[i]
+        ]
     elif method == "abs_max":
         temp = (
             df.lazy()
@@ -658,6 +664,7 @@ def iv_encode(
         for c in temp.get_columns()
     ]
 
+
 def select_by_std(
     df: PolarsFrame,
     cols: List[str],
@@ -677,15 +684,14 @@ def select_by_std(
         A list of strings representing column names.
     min_
         Min standard deviation to select, inclusive.
-    max_ 
+    max_
         Max standard deviation to select, exclusive
     """
-    numeric = df.lazy().select(
-        cs.by_name(cols) & cs.numeric()
-    ).collect_schema().names()
+    numeric = df.lazy().select(cs.by_name(cols) & cs.numeric()).collect_schema().names()
     std_vals = df.lazy().select(pl.col(numeric).std()).collect().row(0)
     # Do an exclusion instead
     return pl.exclude([c for c, v in zip(numeric, std_vals) if (v < min_ or v > max_)])
+
 
 def polynomial_features(
     cols: List[str],

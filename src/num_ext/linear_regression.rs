@@ -6,9 +6,7 @@ use crate::linear::{
         },
         LRMethods,
     },
-    online_lr::lr_online_solvers::{
-        faer_recursive_lr, faer_rolling_lr, faer_rolling_skipping_lr,
-    },
+    online_lr::lr_online_solvers::{faer_recursive_lr, faer_rolling_lr, faer_rolling_skipping_lr},
 };
 use crate::utils::{columns_to_vec, to_frame, IndexOrder, NullPolicy};
 /// Least Squares using Faer and ndarray.

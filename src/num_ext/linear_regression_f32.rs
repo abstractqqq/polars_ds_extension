@@ -15,9 +15,7 @@ use crate::linear::{
         },
         LRMethods,
     },
-    online_lr::lr_online_solvers::{
-        faer_recursive_lr, faer_rolling_lr, faer_rolling_skipping_lr,
-    },
+    online_lr::lr_online_solvers::{faer_recursive_lr, faer_rolling_lr, faer_rolling_skipping_lr},
 };
 use crate::utils::{columns_to_vec, IndexOrder};
 use crate::utils::{to_frame, NullPolicy};
@@ -277,9 +275,7 @@ fn pl_lr_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
                     (LRMethods::Normal | LRMethods::L2, false) => {
                         faer_solve_lr(x, y, kwargs.l2_reg as f32, add_bias, solver)
                     }
-                    (LRMethods::Normal, true) => {
-                        faer_nn_lr(x, y, add_bias, kwargs.tol as f32, 200)
-                    }
+                    (LRMethods::Normal, true) => faer_nn_lr(x, y, add_bias, kwargs.tol as f32, 200),
                     (LRMethods::L2, true) => faer_coordinate_descent(
                         x,
                         y,
@@ -346,13 +342,9 @@ fn pl_lr_multi_f32(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsResult<
     let x = MatRef::from_column_major_slice(&mat_slice[nrows * last_target_idx..], nrows, nfeats);
 
     let coeffs = match LRMethods::from((0., kwargs.l2_reg)) {
-        LRMethods::Normal | LRMethods::L2 => Ok(faer_solve_lr(
-            x,
-            y,
-            kwargs.l2_reg as f32,
-            add_bias,
-            solver,
-        )),
+        LRMethods::Normal | LRMethods::L2 => {
+            Ok(faer_solve_lr(x, y, kwargs.l2_reg as f32, add_bias, solver))
+        }
         _ => Err(PolarsError::ComputeError(
             "The method is not supported.".into(),
         )),
@@ -400,13 +392,9 @@ fn pl_lr_multi_pred_f32(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsRe
     let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
 
     let coeffs = match LRMethods::from((0., kwargs.l2_reg)) {
-        LRMethods::Normal | LRMethods::L2 => Ok(faer_solve_lr(
-            x,
-            y,
-            kwargs.l2_reg as f32,
-            add_bias,
-            solver,
-        )),
+        LRMethods::Normal | LRMethods::L2 => {
+            Ok(faer_solve_lr(x, y, kwargs.l2_reg as f32, add_bias, solver))
+        }
         _ => Err(PolarsError::ComputeError(
             "The method is not supported.".into(),
         )),

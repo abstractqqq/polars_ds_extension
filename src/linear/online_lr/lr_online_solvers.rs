@@ -107,14 +107,12 @@ impl<T: RealField + Float> LinearModel<T> for OnlineLR<T> {
         if self.add_bias {
             let ones = Mat::full(X.nrows(), 1, T::one());
             let new_x = faer::concat![[X, ones]];
-            let (inv, all_coefficients) =
-                faer_qr_lr_with_inv(new_x.as_ref(), y, self.lambda, true);
+            let (inv, all_coefficients) = faer_qr_lr_with_inv(new_x.as_ref(), y, self.lambda, true);
 
             self.inv = inv;
             self.coefficients = all_coefficients;
         } else {
-            (self.inv, self.coefficients) =
-                faer_qr_lr_with_inv(X.as_ref(), y, self.lambda, false);
+            (self.inv, self.coefficients) = faer_qr_lr_with_inv(X.as_ref(), y, self.lambda, false);
         }
     }
 }
