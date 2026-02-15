@@ -517,7 +517,7 @@ class Blueprint:
         """
         self._steps.append(ExprStep(list(cols), PLContext.SELECT))
         return self
-    
+
     def select_by_std(self, min_: float, max_: float) -> Self:
         """
         Fits and keeps columns that have standard deviation between `min_` and `max_`.
@@ -529,10 +529,17 @@ class Blueprint:
         ----------
         min_
             Min standard deviation to select, inclusive.
-        max_ 
+        max_
             Max standard deviation to select, exclusive
         """
-        self._steps.append(FitStep(partial(t.select_by_std, min_=min_, max_=max_), pl.col("*"), self.exclude, PLContext.SELECT))
+        self._steps.append(
+            FitStep(
+                partial(t.select_by_std, min_=min_, max_=max_),
+                pl.col("*"),
+                self.exclude,
+                PLContext.SELECT,
+            )
+        )
         return self
 
     def polynomial_features(
@@ -1016,7 +1023,9 @@ class Blueprint:
 
         return func(*step_repr.args, **step_repr.kwargs)
 
-    def materialize(self, return_df: bool = False, **kwargs) -> Pipeline | Tuple[pl.LazyFrame, Pipeline]:
+    def materialize(
+        self, return_df: bool = False, **kwargs
+    ) -> Pipeline | Tuple[pl.LazyFrame, Pipeline]:
         """
         Materialize the blueprint, which means that it will fit and learn all the paramters needed.
 
