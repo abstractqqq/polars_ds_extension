@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
 import polars as pl
 from typing import List, Literal, Dict
 
@@ -26,7 +25,6 @@ __all__ = [
     "str_d_leven",
     "str_leven",
     "str_osa",
-    "str_lcs_seq",  # deprecated
     "str_lcs_subseq",
     "str_lcs_subseq_dist",
     "str_lcs_substr",
@@ -35,7 +33,6 @@ __all__ = [
     "extract_numbers",
     "replace_non_ascii",
     "remove_diacritics",
-    "normalize_string",
     "map_words",
     "normalize_whitespace",
 ]
@@ -61,10 +58,9 @@ def filter_by_levenshtein(
     bound
         Closed upper bound. If distance <= bound, return true and false otherwise.
     parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     """
-
     return pl_plugin(
         symbol="pl_levenshtein_filter",
         args=[
@@ -73,6 +69,7 @@ def filter_by_levenshtein(
             pl.lit(abs(bound), pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
+        is_elementwise=True,
     )
 
 
@@ -98,10 +95,9 @@ def filter_by_hamming(
     bound
         Closed upper bound. If distance <= bound, return true and false otherwise.
     parallel
-        Whether to run the comparisons in parallel. Note that this is not always faster, especially
-        when used with other expressions or in group_by/over context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     """
-
     return pl_plugin(
         symbol="pl_hamming_filter",
         args=[
@@ -110,6 +106,7 @@ def filter_by_hamming(
             pl.lit(bound, dtype=pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
+        is_elementwise=True,
     )
 
 
@@ -130,19 +127,21 @@ def str_hamming(
     pad
         Whether to pad the string when lengths are not equal.
     parallel
-        Whether to run the comparisons in parallel. Note that this is not always faster, especially
-        when used with other expressions or in group_by/over context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     """
 
     if pad:
         return pl_plugin(
             symbol="pl_hamming_padded",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
+            is_elementwise=True,
         )
     else:
         return pl_plugin(
             symbol="pl_hamming",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
+            is_elementwise=True,
         )
 
 
@@ -248,8 +247,8 @@ def str_jaccard(
         The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
         the set ('ap', 'pp', 'pl', 'le') before being compared.
     parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     """
     return pl_plugin(
         symbol="pl_str_jaccard",
@@ -259,6 +258,7 @@ def str_jaccard(
             pl.lit(substr_size, pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
+        is_elementwise=True,
     )
 
 
@@ -286,8 +286,8 @@ def str_overlap_coeff(
         The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
         the set ('ap', 'pp', 'pl', 'le') before being compared.
     parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     """
     return pl_plugin(
         symbol="pl_overlap_coeff",
@@ -297,6 +297,7 @@ def str_overlap_coeff(
             pl.lit(substr_size, pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
+        is_elementwise=True,
     )
 
 
@@ -324,8 +325,8 @@ def str_sorensen_dice(
         The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
         the set ('ap', 'pp', 'pl', 'le') before being compared.
     parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     """
     return pl_plugin(
         symbol="pl_sorensen_dice",
@@ -371,8 +372,8 @@ def str_tversky_sim(
         The substring size for Jaccard similarity. E.g. if substr_size = 2, "apple" will be decomposed into
         the set ('ap', 'pp', 'pl', 'le') before being compared.
     parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
 
     Reference
     ---------
@@ -414,8 +415,8 @@ def str_jw(
     weight
         Weight for prefix. A typical value is 0.1.
     parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     """
     return pl_plugin(
         symbol="pl_jw",
@@ -425,6 +426,7 @@ def str_jw(
             pl.lit(weight, pl.Float64),
             pl.lit(parallel, pl.Boolean),
         ],
+        is_elementwise=True,
     )
 
 
@@ -440,8 +442,8 @@ def str_jaro(c: str | pl.Expr, other: str | pl.Expr, parallel: bool = False) -> 
         Either the name of the column or a Polars expression. If you want to compare a single
         string with all of column c, use pl.lit(your_str)
     parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     """
     return pl_plugin(
         symbol="pl_jaro",
@@ -467,8 +469,8 @@ def str_d_leven(
         Either the name of the column or a Polars expression. If you want to compare a single
         string with all of column c, use pl.lit(your_str)
     parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     return_sim
         If true, return normalized Damerau-Levenshtein.
     """
@@ -476,11 +478,13 @@ def str_d_leven(
         return pl_plugin(
             symbol="pl_d_levenshtein_sim",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
+            is_elementwise=True,
         )
     else:
         return pl_plugin(
             symbol="pl_d_levenshtein",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
+            is_elementwise=True,
         )
 
 
@@ -501,8 +505,8 @@ def str_leven(
         Either the name of the column or a Polars expression. If you want to compare a single
         string with all of column c, use pl.lit(your_str)
     parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     return_sim
         If true, return normalized Levenshtein.
     """
@@ -510,11 +514,13 @@ def str_leven(
         return pl_plugin(
             symbol="pl_levenshtein_sim",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
+            is_elementwise=True,
         )
     else:
         return pl_plugin(
             symbol="pl_levenshtein",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
+            is_elementwise=True,
         )
 
 
@@ -536,12 +542,13 @@ def str_lcs_substr(
         Either the name of the column or a Polars expression. If you want to compare a single
         string with all of column c, use pl.lit(your_str)
     parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     """
     return pl_plugin(
         symbol="pl_lcs_substr",
         args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
+        is_elementwise=True,
     )
 
 
@@ -563,27 +570,14 @@ def str_lcs_subseq(
         Either the name of the column or a Polars expression. If you want to compare a single
         string with all of column c, use pl.lit(your_str)
     parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     """
     return pl_plugin(
         symbol="pl_lcs_subseq",
         args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
+        is_elementwise=True,
     )
-
-
-def str_lcs_seq(
-    c: str | pl.Expr,
-    other: str | pl.Expr,
-    parallel: bool = False,
-    return_sim: bool = True,
-) -> pl.Expr:
-    warnings.warn(
-        "`str_lcs_seq` is deprecated and users should use `str_lcs_subseq_dist`.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return str_lcs_subseq_dist(c, other, parallel, return_sim)
 
 
 def str_lcs_subseq_dist(
@@ -595,7 +589,7 @@ def str_lcs_subseq_dist(
     """
     Computes the Longest Common Subsequence distance/similarity between this and the other str.
     The distance is calculated as max(len1, len2) - similarity, where the similarity is the
-    the length of the longest common subsequence. Subsequences may not occupy consecutive positions.
+    the length of the longest common subsequence.
 
     The subsequence does not need to be consecutive.
 
@@ -607,8 +601,8 @@ def str_lcs_subseq_dist(
         Either the name of the column or a Polars expression. If you want to compare a single
         string with all of column c, use pl.lit(your_str)
     parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     return_sim
         If true, return normalized similarity.
     """
@@ -616,11 +610,13 @@ def str_lcs_subseq_dist(
         return pl_plugin(
             symbol="pl_lcs_subseq_sim",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
+            is_elementwise=True,
         )
     else:
         return pl_plugin(
             symbol="pl_lcs_subseq_dist",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
+            is_elementwise=True,
         )
 
 
@@ -641,8 +637,8 @@ def str_osa(
         Either the name of the column or a Polars expression. If you want to compare a single
         string with all of column c, use pl.lit(your_str)
     parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     return_sim
         If true, return normalized OSA similarity.
     """
@@ -650,11 +646,13 @@ def str_osa(
         return pl_plugin(
             symbol="pl_osa_sim",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
+            is_elementwise=True,
         )
     else:
         return pl_plugin(
             symbol="pl_osa",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
+            is_elementwise=True,
         )
 
 
@@ -671,12 +669,13 @@ def str_fuzz(c: str | pl.Expr, other: str | pl.Expr, parallel: bool = False) -> 
         Either the name of the column or a Polars expression. If you want to compare a single
         string with all of column c, use pl.lit(your_str)
     parallel
-        Whether to run the comparisons in parallel. Note that this is only recommended when this query
-        is the only one in the context and we are not in any aggregation context.
+        Whether to run it in parallel. Note that this is only recommended when this query
+        is the only one in execution and when this is not executed in any aggregation / streaming context.
     """
     return pl_plugin(
         symbol="pl_fuzz",
         args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
+        is_elementwise=True,
     )
 
 
@@ -891,64 +890,6 @@ def remove_diacritics(c: str | pl.Expr) -> pl.Expr:
     return pl_plugin(
         symbol="remove_diacritics",
         args=[to_expr(c)],
-        is_elementwise=True,
-    )
-
-
-def normalize_string(c: str | pl.Expr, form: Literal["NFC", "NFKC", "NFD", "NFKD"]) -> pl.Expr:
-    """
-    Normalize Unicode string using one of 'NFC', 'NFKC', 'NFD', or 'NFKD'
-    normalization.
-
-    See https://en.wikipedia.org/wiki/Unicode_equivalence for more information.
-
-    Parameters
-    ----------
-    c : str | pl.Expr
-        The string column
-    form: Literal["NFC", "NFKC", "NFD", "NFKD"]
-        The Unicode normalization form to use
-
-    Returns
-    -------
-    pl.Expr
-
-    Examples
-    --------
-    >>> df = pl.DataFrame({"x": ["\u0043\u0327"], "y": ["\u00c7"]})
-    >>> df.with_columns(
-    >>>     pl.col("x").eq(pl.col("y")).alias("is_equal"),
-    >>>     pds.normalize_string("x", "NFC")
-    >>>     .eq(pds.normalize_string("y", "NFC"))
-    >>>     .alias("normalized_is_equal"),
-    >>> )
-    shape: (1, 4)
-    ┌─────┬─────┬──────────┬─────────────────────┐
-    │ x   ┆ y   ┆ is_equal ┆ normalized_is_equal │
-    │ --- ┆ --- ┆ ---      ┆ ---                 │
-    │ str ┆ str ┆ bool     ┆ bool                │
-    ╞═════╪═════╪══════════╪═════════════════════╡
-    │ Ç   ┆ Ç   ┆ false    ┆ true                │
-    └─────┴─────┴──────────┴─────────────────────┘
-    """
-
-    warnings.warn(
-        "This function is deprecated because Polars>=1.20 has a native str.normalize() method. "
-        + "This will be removed in a future version.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-
-    if form not in ("NFC", "NFKC", "NFD", "NFKD"):
-        raise ValueError(
-            f"{form} is not a valid Unicode normalization form.",
-            " Please specify one of `NFC, NFKC, NFD, NFKD`",
-        )
-
-    return pl_plugin(
-        symbol="normalize_string",
-        args=[to_expr(c)],
-        kwargs={"form": form},
         is_elementwise=True,
     )
 

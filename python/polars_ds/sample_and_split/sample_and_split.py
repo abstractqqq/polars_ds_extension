@@ -17,21 +17,21 @@ def sample(
     value: float | int,
     replace: bool = False,
     seed: int | None = None,
-    return_df: bool = False
+    return_df: bool = False,
 ) -> PolarsFrame:
     r"""
     sample
     ===========
-    Extracts a random sample from a Polars DataFrame or LazyFrame. 
+    Extracts a random sample from a Polars DataFrame or LazyFrame.
 
     Parameters
     ----------
     df : PolarsFrame
         It may be either a polars.DataFrame or a polars.LazyFrame.
-    
+
     value : int or float
         If an integer is provided, `value` observations are selected from `df`. Otherwise, a proportion of `value` over the `df` is selected.
-    
+
     replace : bool, optional, default=False
         Whether to sample with replacement or not.
 
@@ -40,12 +40,12 @@ def sample(
 
     return_df : bool, optional, default=False
         Determines whether the output should always be a polars.DataFrame or not.
-    
+
     Returns
     ----------
     PolarsFrame
         Returns either a polars.DataFrame or a polars.LazyFrame depending on the `df` provided.
-    
+
     Example
     ----------
     >>> import polars as pl
@@ -59,7 +59,7 @@ def sample(
     >>>         ,"category": np.random.choice(["A", "B", "C"], size = 1000)
     >>>     }
     >>> )
-    >>> print(sampling.sample(lf, 100, seed = 101, return_df = True))
+    >>> print(sampling.sample(lf, 100, seed=101, return_df=True))
     shape: (100, 3)
     ┌─────┬───────────┬──────────┐
     │ id  ┆ value     ┆ category │
@@ -79,7 +79,7 @@ def sample(
     │ 404 ┆ 82.645747 ┆ B        │
     └─────┴───────────┴──────────┘
 
-    >>> print(sampling.sample(lf, 0.5, seed = 101, return_df = True))
+    >>> print(sampling.sample(lf, 0.5, seed=101, return_df=True))
     shape: (500, 3)
     ┌─────┬───────────┬──────────┐
     │ id  ┆ value     ┆ category │
@@ -120,17 +120,15 @@ def sample(
     └─────┴───────────┴──────────┘
     """
     # Engine
-    df_size = df.select(pl.len())[0, 0] if isinstance(df, pl.DataFrame) else df.select(pl.len()).collect()[0, 0]
+    df_size = (
+        df.select(pl.len())[0, 0]
+        if isinstance(df, pl.DataFrame)
+        else df.select(pl.len()).collect()[0, 0]
+    )
     n = min(value, df_size) if isinstance(value, int) else None
     fraction = value if isinstance(value, float) else None
     sample = df.select(
-        pl.all().sample(
-            n = n,
-            fraction = fraction,
-            with_replacement = replace,
-            shuffle = True,
-            seed = seed
-        )
+        pl.all().sample(n=n, fraction=fraction, with_replacement=replace, shuffle=True, seed=seed)
     )
 
     # Output(s)
@@ -145,17 +143,17 @@ def volume_neutral(
     control: pl.Expr | List[pl.Expr] | None = None,
     target_volume: int | None = None,
     seed: int | None = None,
-    return_df: bool = False
+    return_df: bool = False,
 ) -> PolarsFrame:
     r"""
     volume_neutral
     ===========
     Subsample a polars.DataFrame or polars.LazyFrame to achieve volume neutrality per group,
-    optionally controlling for additional grouping variables.  
+    optionally controlling for additional grouping variables.
 
-    This function reduces each group defined by `by` (and optionally `control`) to a 
-    target number of rows, ensuring that all groups have the same number of observations. 
-    The selection within groups is randomized, with an optional seed for reproducibility. 
+    This function reduces each group defined by `by` (and optionally `control`) to a
+    target number of rows, ensuring that all groups have the same number of observations.
+    The selection within groups is randomized, with an optional seed for reproducibility.
 
     Parameters
     ----------
@@ -166,11 +164,11 @@ def volume_neutral(
         Expression defining the primary grouping discrete variable for volume balancing.
 
     control : pl.Expr or list of pl.Expr, optional, default=None
-        Additional expressions to control grouping. Subsampling is done within each 
+        Additional expressions to control grouping. Subsampling is done within each
         combination of `control` and `by`.
 
     target_volume : int, optional, default=None
-        Maximum number of rows to retain per group. If None, the size of the smallest 
+        Maximum number of rows to retain per group. If None, the size of the smallest
         group is used.
 
     seed : int, optional, default=None
@@ -178,12 +176,12 @@ def volume_neutral(
 
     return_df : bool, default=False
         Determines whether the output should always be a polars.DataFrame or not.
-    
+
     Returns
     ----------
     PolarsFrame
         Returns either a polars.DataFrame or a polars.LazyFrame depending on the `df` provided.
-    
+
     Example
     ----------
     >>> import polars as pl
@@ -228,7 +226,7 @@ def volume_neutral(
         final_ref = ctrl + [by]
     else:
         final_ref = by
-    
+
     volume_neutral = df.filter(pl.int_range(0, pl.len()).shuffle(seed).over(final_ref) < target)
 
     # Output
@@ -241,7 +239,7 @@ def downsample(
     df: PolarsFrame,
     conditions: List[Tuple[pl.Expr, float | int]] | Tuple[pl.Expr, float | int],
     seed: int | None = None,
-    return_df: bool = False
+    return_df: bool = False,
 ) -> PolarsFrame:
     """
     downsample
@@ -321,22 +319,15 @@ def downsample(
     ## Create samples for each pl.Expr
     results = []
     for expr, value in conditions:
-        df_size = df.select(pl.len())[0, 0] if isinstance(df, pl.DataFrame) else df.select(pl.len()).collect()[0, 0]
+        df_size = (
+            df.select(pl.len())[0, 0]
+            if isinstance(df, pl.DataFrame)
+            else df.select(pl.len()).collect()[0, 0]
+        )
         n = min(value, df_size) if isinstance(value, int) else None
         fraction = value if isinstance(value, float) else None
-        sample = (
-            df.filter(
-                expr
-            )
-            .select(
-                pl.all().sample(
-                    n = n,
-                    fraction = fraction,
-                    with_replacement = False,
-                    shuffle = True,
-                    seed = seed
-                )
-            )
+        sample = df.filter(expr).select(
+            pl.all().sample(n=n, fraction=fraction, with_replacement=False, shuffle=True, seed=seed)
         )
         results.append(sample)
 
@@ -350,7 +341,7 @@ def downsample(
     results.append(sample)
 
     ## Merge samples
-    downsample = pl.concat(results, how = "vertical")
+    downsample = pl.concat(results, how="vertical")
 
     # Output(s)
     if isinstance(df, pl.LazyFrame) and return_df:
@@ -396,7 +387,7 @@ def random_cols(
     -------
     >>> import polars as pl
     >>> import polars_ds.sample_and_split as sampling
-    >>> print(sampling.random_cols(["a", "b", "c", "d", "e", "f"], 2, seed = 101))
+    >>> print(sampling.random_cols(["a", "b", "c", "d", "e", "f"], 2, seed=101))
     ['c', 'd']
     """
     # Engine
@@ -430,7 +421,7 @@ def split_by_ratio(
     default_split_1: str = "train",
     default_split_2: str = "test",
     seed: int | None = None,
-    return_df: bool = False
+    return_df: bool = False,
 ) -> PolarsFrame:
     """
     split_by_ratio
@@ -541,23 +532,25 @@ def split_by_ratio(
     ## Stratified Sampling
     if by is not None:
         results = []
-        cats = df.select(pl.col(by).unique()) if isinstance(df, pl.DataFrame) else df.select(pl.col(by).unique()).collect()
+        cats = (
+            df.select(pl.col(by).unique())
+            if isinstance(df, pl.DataFrame)
+            else df.select(pl.col(by).unique()).collect()
+        )
         for cat in cats.to_series().to_list():
-            subset = df.filter(
-                pl.col(by) == cat
-            )
+            subset = df.filter(pl.col(by) == cat)
             results.append(
                 split_by_ratio(
                     subset,
-                    split_ratio = split_ratio,
-                    seed = seed,
-                    by = None,
-                    split_col = split_col,
-                    default_split_1 = default_split_1,
-                    default_split_2 = default_split_2
+                    split_ratio=split_ratio,
+                    seed=seed,
+                    by=None,
+                    split_col=split_col,
+                    default_split_1=default_split_1,
+                    default_split_2=default_split_2,
                 )
             )
-            split_sample = pl.concat(results, how = "vertical")
+            split_sample = pl.concat(results, how="vertical")
 
     ## Simple Sampling
     else:
@@ -565,9 +558,11 @@ def split_by_ratio(
             split_sample = (
                 df.with_row_index(name="__id")
                 .with_columns(
-                    pl.when(pl.col("__id").shuffle(seed = seed) < (pl.len() * split_ratio).cast(pl.Int64))
-                    .then(pl.lit(default_split_1, dtype = pl.String))
-                    .otherwise(pl.lit(default_split_2, dtype = pl.String))
+                    pl.when(
+                        pl.col("__id").shuffle(seed=seed) < (pl.len() * split_ratio).cast(pl.Int64)
+                    )
+                    .then(pl.lit(default_split_1, dtype=pl.String))
+                    .otherwise(pl.lit(default_split_2, dtype=pl.String))
                     .alias(split_col)
                 )
                 .select(pl.all().exclude("__id"))
@@ -584,18 +579,17 @@ def split_by_ratio(
             pct = ratios.cum_sum()
             expr = pl.when(pl.lit(False)).then(None)
             for p, k in zip(pct, split_names):
-                expr = expr.when(pl.col("__pct") < p).then(pl.lit(k, dtype = pl.String))
-            
+                expr = expr.when(pl.col("__pct") < p).then(pl.lit(k, dtype=pl.String))
+
             split_sample = (
-                    df.with_row_index(name="__id")
-                    .with_columns(pl.col("__id").shuffle(seed = seed).alias("__tt"))
-                    .sort("__tt")
-                    .with_columns((pl.col("__tt") / pl.len()).alias("__pct"))
-                    .select(expr.alias(split_col), pl.all().exclude(["__id", "__pct", "__tt"]))
-                )
+                df.with_row_index(name="__id")
+                .with_columns(pl.col("__id").shuffle(seed=seed).alias("__tt"))
+                .sort("__tt")
+                .with_columns((pl.col("__tt") / pl.len()).alias("__pct"))
+                .select(expr.alias(split_col), pl.all().exclude(["__id", "__pct", "__tt"]))
+            )
 
     # Output(s)
     if isinstance(df, pl.LazyFrame) and return_df:
         split_sample = split_sample.collect()
     return split_sample
-

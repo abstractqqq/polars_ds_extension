@@ -121,6 +121,7 @@ def l1_horizontal(*v: str | pl.Expr, normalize: bool = False) -> pl.Expr:
     else:
         return pl.sum_horizontal(to_expr(x).abs() for x in v)
 
+
 def arr_dot(arr1: str | pl.Expr, arr2: str | pl.Expr) -> pl.Expr:
     """
     Calculates the dot product for two array columns.
@@ -134,6 +135,7 @@ def arr_dot(arr1: str | pl.Expr, arr2: str | pl.Expr) -> pl.Expr:
     """
     x, y = to_expr(arr1), to_expr(arr2)
     return (x * y).arr.sum()
+
 
 def arr_l1_dist(arr1: str | pl.Expr, arr2: str | pl.Expr) -> pl.Expr:
     """
@@ -164,6 +166,7 @@ def arr_sql2_dist(arr1: str | pl.Expr, arr2: str | pl.Expr) -> pl.Expr:
     x, y = to_expr(arr1), to_expr(arr2)
     return (x - y).arr.eval(pl.element().pow(2)).arr.sum()
 
+
 def list_dot(list1: str | pl.Expr, list2: str | pl.Expr) -> pl.Expr:
     """
     Calculates the dot product for two list columns.
@@ -177,6 +180,7 @@ def list_dot(list1: str | pl.Expr, list2: str | pl.Expr) -> pl.Expr:
     """
     x, y = to_expr(list1), to_expr(list2)
     return (x * y).list.sum()
+
 
 def list_l1_dist(list1: str | pl.Expr, list2: str | pl.Expr) -> pl.Expr:
     """

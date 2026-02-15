@@ -33,18 +33,6 @@ def test_remove_diacritics():
     )
 
 
-def test_normalize_string():
-    df = pl.DataFrame({"x": ["\u0043\u0327"], "y": ["\u00c7"]}).with_columns(
-        pl.col("x").eq(pl.col("y")).alias("is_equal"),
-        pds.normalize_string("x", "NFC")
-        .eq(pds.normalize_string("y", "NFC"))
-        .alias("normalized_is_equal"),
-    )
-
-    assert df["is_equal"].sum() == 0
-    assert df["normalized_is_equal"].sum() == df.height
-
-
 def test_map_words():
     df = pl.DataFrame({"x": ["one two three", "onetwo three"]})
 
@@ -96,6 +84,9 @@ def test_hamming(df, res):
     assert_frame_equal(df.select(pds.str_hamming("a", pl.col("b"))), res)
     assert_frame_equal(df.select(pds.str_hamming("a", pl.col("b"), parallel=True)), res)
     assert_frame_equal(df.lazy().select(pds.str_hamming("a", pl.col("b"))).collect(), res)
+    assert_frame_equal(
+        df.lazy().select(pds.str_hamming("a", pl.col("b"))).collect(engine="streaming"), res
+    )
 
 
 @pytest.mark.parametrize(
@@ -116,6 +107,9 @@ def test_jaro(df, res):
     assert_frame_equal(df.select(pds.str_jaro("a", pl.col("b"))), res)
     assert_frame_equal(df.select(pds.str_jaro("a", pl.col("b"), parallel=True)), res)
     assert_frame_equal(df.lazy().select(pds.str_jaro("a", pl.col("b"))).collect(), res)
+    assert_frame_equal(
+        df.lazy().select(pds.str_jaro("a", pl.col("b"))).collect(engine="streaming"), res
+    )
 
 
 @pytest.mark.parametrize(
@@ -139,6 +133,12 @@ def test_lcs_subseq_dist(df, res):
     )
     assert_frame_equal(
         df.lazy().select(pds.str_lcs_subseq_dist("a", pl.col("b"), return_sim=False)).collect(), res
+    )
+    assert_frame_equal(
+        df.lazy()
+        .select(pds.str_lcs_subseq_dist("a", pl.col("b"), return_sim=False))
+        .collect(engine="streaming"),
+        res,
     )
 
 
@@ -249,8 +249,10 @@ def test_lcs_subseq(a, b, lcs):
 )
 def test_levenshtein(df, res):
     assert_frame_equal(df.select(pds.str_leven("a", pl.col("b"))), res)
-
     assert_frame_equal(df.lazy().select(pds.str_leven("a", pl.col("b"))).collect(), res)
+    assert_frame_equal(
+        df.lazy().select(pds.str_leven("a", pl.col("b"))).collect(engine="streaming"), res
+    )
 
 
 @pytest.mark.parametrize(
@@ -279,6 +281,13 @@ def test_levenshtein_filter(df, bound, res):
         df.lazy()
         .select(pds.filter_by_levenshtein(pl.col("a"), pl.col("b"), bound=bound))
         .collect(),
+        res,
+    )
+
+    assert_frame_equal(
+        df.lazy()
+        .select(pds.filter_by_levenshtein(pl.col("a"), pl.col("b"), bound=bound))
+        .collect(engine="streaming"),
         res,
     )
 
@@ -311,6 +320,13 @@ def test_hamming_filter(df, bound, res):
         res,
     )
 
+    assert_frame_equal(
+        df.lazy()
+        .select(pds.filter_by_hamming("a", pl.col("b"), bound=bound))
+        .collect(engine="streaming"),
+        res,
+    )
+
 
 @pytest.mark.parametrize(
     "a, word, res",
@@ -340,9 +356,11 @@ def test_nearest_str(a, word, res):
 )
 def test_osa(df, res):
     assert_frame_equal(df.select(pds.str_osa("a", pl.col("b"))), res)
-
     assert_frame_equal(df.select(pds.str_osa("a", pl.col("b"), parallel=True)), res)
     assert_frame_equal(df.lazy().select(pds.str_osa("a", pl.col("b"))).collect(), res)
+    assert_frame_equal(
+        df.lazy().select(pds.str_osa("a", pl.col("b"))).collect(engine="streaming"), res
+    )
 
 
 @pytest.mark.parametrize(
@@ -356,10 +374,11 @@ def test_osa(df, res):
 )
 def test_sorensen_dice(df, res):
     assert_frame_equal(df.select(pds.str_sorensen_dice("a", pl.col("b"))), res)
-
     assert_frame_equal(df.select(pds.str_sorensen_dice("a", pl.col("b"), parallel=True)), res)
-
     assert_frame_equal(df.lazy().select(pds.str_sorensen_dice("a", pl.col("b"))).collect(), res)
+    assert_frame_equal(
+        df.lazy().select(pds.str_sorensen_dice("a", pl.col("b"))).collect(engine="streaming"), res
+    )
 
 
 @pytest.mark.parametrize(
@@ -387,6 +406,12 @@ def test_str_jaccard(df, size, res):
         df.lazy()
         .select(pds.str_jaccard("a", pl.col("b"), substr_size=size, parallel=True))
         .collect(),
+        res,
+    )
+    assert_frame_equal(
+        df.lazy()
+        .select(pds.str_jaccard("a", pl.col("b"), substr_size=size))
+        .collect(engine="streaming"),
         res,
     )
 
@@ -433,5 +458,19 @@ def test_tversky(df, size, alpha, beta, res):
             )
         )
         .collect(),
+        res,
+    )
+    assert_frame_equal(
+        df.lazy()
+        .select(
+            pds.str_tversky_sim(
+                "a",
+                pl.col("b"),
+                alpha=alpha,
+                beta=beta,
+                substr_size=size,
+            )
+        )
+        .collect(engine="streaming"),
         res,
     )

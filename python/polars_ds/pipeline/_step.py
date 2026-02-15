@@ -424,12 +424,12 @@ class FitStep:
     __slots__ = ("func", "cols", "exclude", "context")
 
     def __init__(
-            self, 
-            func: FitTransformFunc, 
-            cols: IntoExprColumn | None, 
-            exclude: List[str],
-            context: PLContext = PLContext.WITH_COLUMNS
-        ):
+        self,
+        func: FitTransformFunc,
+        cols: IntoExprColumn | None,
+        exclude: List[str],
+        context: PLContext = PLContext.WITH_COLUMNS,
+    ):
         self.func: FitTransformFunc = func
         self.cols: IntoExprColumn | None = cols
         self.exclude: List[str] = exclude

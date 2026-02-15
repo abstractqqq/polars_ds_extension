@@ -1,8 +1,8 @@
+use polars::prelude::*;
+use pyo3_polars::derive::polars_expr;
 /// All things true positive, false positive related.
 /// ROC AUC, Average Precision, precision, recall, etc. m
 use std::f64;
-use polars::prelude::*;
-use pyo3_polars::derive::polars_expr;
 
 fn combo_output(_: &[Field]) -> PolarsResult<Field> {
     let roc_auc = Field::new("roc_auc".into(), DataType::Float64);
