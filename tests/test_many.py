@@ -836,7 +836,7 @@ def test_recursive_ridge():
 
 
 def test_rolling_lin_reg():
-    # Test rolling lstsq by comparing it with a manually rolled lstsq result.
+    # Test rolling linear regression by comparing it with a manually rolled result.
     # Test on multiple window sizes
     size = 500
     df = (

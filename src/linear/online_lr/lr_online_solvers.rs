@@ -57,7 +57,7 @@ impl<T: RealField + Float> OnlineLR<T> {
         }
     }
 
-    pub fn get_inv(&self) -> Result<MatRef<T>, LinalgErrors> {
+    pub fn get_inv(&'_ self) -> Result<MatRef<'_, T>, LinalgErrors> {
         if self.inv.shape() == (0, 0) {
             Err(LinalgErrors::MatNotLearnedYet)
         } else {
@@ -95,7 +95,7 @@ impl<T: RealField + Float> OnlineLR<T> {
 }
 
 impl<T: RealField + Float> LinearModel<T> for OnlineLR<T> {
-    fn fitted_values(&self) -> MatRef<T> {
+    fn fitted_values(&'_ self) -> MatRef<'_, T> {
         self.coefficients.as_ref()
     }
 
@@ -217,7 +217,7 @@ pub fn faer_rolling_lr<T: RealField + Float>(
 }
 
 /// Given all data, we start running a lstsq starting at position n and compute new coefficients recurisively.
-/// This will return all coefficients for rows >= n. This will only be used in Polars Expressions.
+/// This will return all coefficients for rows >= n.
 /// If # of non-null rows in the window is < m, a Matrix with size (0, 0) will be returned.
 /// This supports Normal or Ridge regression
 pub fn faer_rolling_skipping_lr<T: RealField + Float>(
@@ -242,8 +242,7 @@ pub fn faer_rolling_skipping_lr<T: RealField + Float>(
     let mut x_slice: Vec<T> = Vec::with_capacity(n * ncols);
     let mut y_slice: Vec<T> = Vec::with_capacity(n);
 
-    // This is because if add_bias, the 1 is added to
-    // all data already. No need to let OnlineLR add the 1 for the user.
+    // This will only be used in Polars Expressions, in which case add_bias will directly add to input data
     let mut online_lr = OnlineLR::new(lambda, false);
     while right <= xn {
         // Somewhat redundant here.
@@ -262,9 +261,7 @@ pub fn faer_rolling_skipping_lr<T: RealField + Float>(
         }
         if non_null_cnt_in_window >= m {
             let x0 = MatRef::from_row_major_slice(&x_slice, y_slice.len(), ncols);
-            // faer::mat::from_row_major_slice(&x_slice, y_slice.len(), ncols);
             let y0 = MatRef::from_column_major_slice(&y_slice, y_slice.len(), 1);
-            // faer::mat::from_row_major_slice(&y_slice, y_slice.len(), 1);
             online_lr.fit_unchecked(x0, y0);
             coefficients.push(online_lr.fitted_values().to_owned());
             break;
@@ -316,7 +313,7 @@ pub fn woodbury_step<T: RealField + Float>(
     c: T, // +1 or -1, for a "update" and a "removal"
 ) {
     // It is truly amazing that the C in the Woodbury identity essentially controls the update and
-    // and removal of a new record (rolling)... Linear regression seems to be designed by God to work so well
+    // and removal of a new record (rolling)... Linear regression is really amazing
 
     let u = &inverse * new_x.transpose(); // corresponding to u in the reference
                                           // right = left.transpose() by the fact that if A is symmetric, invertible, A-1 is also symmetric
