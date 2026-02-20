@@ -1,7 +1,7 @@
-use crate::stats_utils::gamma::digamma;
 /// Extra functions for floating points
 /// trunc, fract, exp2, logit, expit, gamma,
 /// The logit, expit and gamma functions are as defined in SciPy
+use crate::stats_utils::gamma::digamma;
 use crate::utils::{first_field_output, float_output};
 use arity::binary_elementwise_values;
 use num::traits::Float;

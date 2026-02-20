@@ -51,7 +51,7 @@ impl<T: RealField + Float> LR<T> {
 }
 
 impl<T: RealField + Float> LinearModel<T> for LR<T> {
-    fn fitted_values(&self) -> MatRef<T> {
+    fn fitted_values(&'_ self) -> MatRef<'_, T> {
         self.coefficients.as_ref()
     }
 

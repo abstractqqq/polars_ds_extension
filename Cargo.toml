@@ -21,14 +21,17 @@ polars = {version = "0.52", features = ["lazy",
 # Numerical / Linear Algebra
 rand = "*"
 rand_distr = "*"
-realfft = "*"
 num = "*"
 ordered-float = "4.2.0"
 approx = "*"
-faer = {version = "0.24", default-features = false, features = ["nightly", "rayon", "sparse-linalg"]}
-faer-traits = {version = "0.24"}
-ndarray = {version="0.16"}
+# Heavy math
+realfft = "*"
+ndarray = {version="0.16"} # want to replace one day
 cfavml = {version = "0.3.0", features=["nightly"]} # easy simd
+faer = {version = "0.23", default-features = false, features = ["nightly", "rayon", "sparse-linalg"]}
+faer-traits = {version = "0.23"}
+argmin = "0.11.0"
+argmin-math = {version = "0.5.1", default-features = false, features = ["faer_v0_23"]}
 # Data Structures, Iteration Helpers
 itertools = "*"
 ahash = "*"
@@ -40,6 +43,7 @@ rapidfuzz = "0.5.0"
 inflections = "1.1.1"
 # Deprecated
 unicode-normalization = "0.1.23"
+
 
 [profile.release]
 debug = false
