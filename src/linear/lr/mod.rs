@@ -81,7 +81,7 @@ impl From<(f32, f32)> for LRMethods {
 /// where the coefficients are beta_i, and alpha is the bias/intercept term.
 pub trait LinearModel<T: RealField + Float> {
     /// Typically coefficients + the bias as a single matrix (n x 1) (single slice)
-    fn fitted_values(&self) -> MatRef<T>;
+    fn fitted_values(&'_ self) -> MatRef<'_, T>;
 
     fn add_bias(&self) -> bool;
 
@@ -96,7 +96,7 @@ pub trait LinearModel<T: RealField + Float> {
 
     /// Returns the coefficients as a MatRef
     /// If the model is not fitted yet, empty array will be returned.
-    fn coefficients(&self) -> MatRef<T> {
+    fn coefficients(&'_ self) -> MatRef<'_, T> {
         if self.is_fit() {
             let n = self
                 .fitted_values()

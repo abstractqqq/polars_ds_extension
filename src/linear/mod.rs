@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 pub mod glm;
 pub mod lr;
+pub mod logistic;
 pub mod online_lr;
 
 pub enum LinalgErrors {

@@ -180,7 +180,7 @@ impl<T: RealField + Float> GLM<T> {
 }
 
 impl<T: RealField + Float> LinearModel<T> for GLM<T> {
-    fn fitted_values(&self) -> MatRef<T> {
+    fn fitted_values(&'_ self) -> MatRef<'_, T> {
         self.fitted_values.as_ref()
     }
 
@@ -189,8 +189,6 @@ impl<T: RealField + Float> LinearModel<T> for GLM<T> {
     }
 
     fn fit_unchecked(&mut self, X: MatRef<T>, y: MatRef<T>) {
-        // This looks somewhat awkward but if we don't, we are forced to have owned Mat
-        // in the no bias branch which means we do an additional copy for no reason.
         if self.add_bias() {
             let ones = Mat::full(X.nrows(), 1, T::one());
             let new_x = faer::concat![[X, ones]];
