@@ -7,18 +7,16 @@ edition = "2021"
 name = "_polars_ds"
 crate-type = ["cdylib"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 # PyO3
-numpy = "0.26" # matrix interop
+numpy = "0.26" # matrix interop # Need to replace numpy before we can remove ndarray.
 pyo3 = {version = "0.26", features = ["abi3-py39", "extension-module"]}
 pyo3-polars = {version = "0.25", features = ["derive", "lazy"]} 
 # Polars
 polars = {version = "0.52", features = ["lazy",
 "diff", "array_count", "abs", "cross_join", "rank", "log",
 "cum_agg", "round_series", "chunked_ids", "dtype-i128", "performant", "new_streaming"], default-features = false}
-# Numerical / Linear Algebra
+# Numerical
 rand = "*"
 rand_distr = "*"
 num = "*"
@@ -28,7 +26,7 @@ approx = "*"
 realfft = "*"
 ndarray = {version="0.16"} # want to replace one day
 cfavml = {version = "0.3.0", features=["nightly"]} # easy simd
-faer = {version = "0.23", default-features = false, features = ["nightly", "rayon", "sparse-linalg"]}
+faer = {version = "0.23", default-features = false, features = ["rayon", "sparse-linalg"]}
 faer-traits = {version = "0.23"}
 argmin = "0.11.0"
 argmin-math = {version = "0.5.1", default-features = false, features = ["faer_v0_23"]}
