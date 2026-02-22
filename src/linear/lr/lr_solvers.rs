@@ -300,7 +300,7 @@ fn soft_threshold_l1<T: Float>(z: T, lambda: T) -> T {
     z.signum() * (z.abs() - lambda).max(T::zero())
 }
 
-/// Computes Lasso/Elastic Regression coefficients by the use of Coordinate Descent.
+/// Computes Lasso / Elastic Regression coefficients by the use of Coordinate Descent.
 /// The current stopping criterion is based on L Inf norm of the changes in the
 /// coordinates. A better alternative might be the dual gap.
 ///
@@ -320,6 +320,9 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
     max_iter: usize,
     positive: bool,
 ) -> Mat<T> {
+
+    // Replace this in the future? L-BFGS can do this too. Too much math that I cannot remember.
+
     let m = T::from(x.nrows()).unwrap();
     let ncols = x.ncols();
     let n1 = ncols.abs_diff(add_bias as usize);

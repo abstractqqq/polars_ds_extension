@@ -4,15 +4,9 @@ use faer::{
     mat::Mat,
     prelude::*,
 };
-use faer_traits::{math_utils::is_nan, RealField};
+use faer_traits::RealField;
 use num::Float;
-
 use crate::linear::{lr::LinearModel, LinalgErrors};
-
-#[inline]
-pub fn has_nan<T: RealField>(mat: MatRef<T>) -> bool {
-    mat.col_iter().any(|col| col.iter().any(|x| is_nan(x)))
-}
 
 pub struct OnlineLR<T: RealField + Float> {
     pub lambda: T,
@@ -88,7 +82,7 @@ impl<T: RealField + Float> OnlineLR<T> {
     }
 
     pub fn update(&mut self, new_x: MatRef<T>, new_y: MatRef<T>, c: T) {
-        if !(has_nan(new_x) || has_nan(new_y)) {
+        if new_x.is_all_finite() && new_y.is_all_finite() {
             self.update_unchecked(new_x, new_y, c)
         }
     }
@@ -242,21 +236,25 @@ pub fn faer_rolling_skipping_lr<T: RealField + Float>(
     let mut x_slice: Vec<T> = Vec::with_capacity(n * ncols);
     let mut y_slice: Vec<T> = Vec::with_capacity(n);
 
+    let is_finite = x
+        .row_iter()
+        .zip(y.row_iter())
+        .map(|(xr, yr)| xr.is_all_finite() && yr.is_all_finite())
+        .collect::<Vec<_>>();
+
     // This will only be used in Polars Expressions, in which case add_bias will directly add to input data
     let mut online_lr = OnlineLR::new(lambda, false);
+    // Make the first initial fit
     while right <= xn {
         // Somewhat redundant here.
         non_null_cnt_in_window = 0;
         x_slice.clear();
         y_slice.clear();
         for i in left..right {
-            let x_i = x.get(i, ..);
-            let y_i = y.get(i, ..);
-
-            if !(x_i.iter().any(|x| is_nan(x)) || y_i.iter().any(|y| is_nan(y))) {
+            if is_finite[i] {
+                x_slice.extend(x.get(i, ..).iter());
+                y_slice.push(*y.get(i, 0));
                 non_null_cnt_in_window += 1;
-                x_slice.extend(x_i.iter());
-                y_slice.extend(y_i.iter());
             }
         }
         if non_null_cnt_in_window >= m {
@@ -275,21 +273,21 @@ pub fn faer_rolling_skipping_lr<T: RealField + Float>(
     if right >= xn {
         return coefficients;
     }
+
     // right < xn, the problem must have been initialized (inv and weights are defined.)
     for j in right..xn {
         let remove_x = x.get(j - n..j - n + 1, ..);
         let remove_y = y.get(j - n..j - n + 1, ..);
-
-        if !(has_nan(remove_x) | has_nan(remove_y)) {
+        if is_finite[j - n] {
             non_null_cnt_in_window -= 1; // removed one non-null column
-            online_lr.update_unchecked(remove_x, remove_y, T::one().neg()); // No need to check for nan
+            online_lr.update_unchecked(remove_x, remove_y, T::one().neg()); 
         }
 
         let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
         let next_y = y.get(j..j + 1, ..); // 1 by 1
-        if !(has_nan(next_x) | has_nan(next_y)) {
+        if is_finite[j] {
             non_null_cnt_in_window += 1;
-            online_lr.update_unchecked(next_x, next_y, T::one()); // No need to check for nan
+            online_lr.update_unchecked(next_x, next_y, T::one());
         }
 
         if non_null_cnt_in_window >= m {

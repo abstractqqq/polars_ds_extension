@@ -6,8 +6,9 @@
 /// Most dtype casting is implicitly handled by the series_to_mat_for_lr function,
 /// but there are some exceptions, mainly from functions with weights. In those cases,
 /// a manual cast need to be used before calling .f64() or .f32() on the series.
-use super::linear_regression::{LstsqKwargs, MultiLstsqKwargs, SWWLstsqKwargs, StandardError};
+use super::linear_regression::{LRKwargs, MultiLRKwargs, SWWLRKwargs, StandardError};
 use crate::linear::{
+    NullPolicy,
     lr::{
         lr_solvers::{
             faer_coordinate_descent, faer_nn_lr, faer_solve_lr, faer_solve_lr_rcond,
@@ -17,9 +18,7 @@ use crate::linear::{
     },
     online_lr::lr_online_solvers::{faer_recursive_lr, faer_rolling_lr, faer_rolling_skipping_lr},
 };
-use crate::utils::{columns_to_vec, IndexOrder};
-use crate::utils::{to_frame, NullPolicy};
-/// Least Squares using Faer and ndarray.
+use crate::utils::{to_frame, columns_to_vec, IndexOrder};
 use core::f32;
 use faer::{
     linalg::solvers::{DenseSolveCore, Solve},
@@ -102,7 +101,7 @@ fn series_to_mat_for_lr_f32(
     }
 
     // In mask, true means not null.
-    let y_name = inputs[0].name();
+    // let y_name = inputs[0].name();
     let init_mask = inputs[0].is_not_null();
     let (df, mask) = if has_null {
         match null_policy {
@@ -242,7 +241,7 @@ fn series_to_mat_for_multi_lr_f32(
 // --------------------------------------------------------------------------------------------------
 
 #[polars_expr(output_type_func=coeff_output)]
-fn pl_lr_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+fn pl_lr_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
@@ -253,7 +252,7 @@ fn pl_lr_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
 
     match series_to_mat_for_lr_f32(data_for_matrix, add_bias, null_policy) {
         Ok((mat_slice, nrows, nfeats, _)) => {
-            // Solving Least Square
+            // Solving
             let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
             let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
 
@@ -319,7 +318,7 @@ fn pl_lr_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
 // Strictly speaking, this output type is not correct. Should be struct of last_target_idx many
 // coeff_outputs
 #[polars_expr(output_type_func=coeff_output)]
-fn pl_lr_multi_f32(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsResult<Series> {
+fn pl_lr_multi_f32(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
     let solver = kwargs.solver.as_str().into();
     let last_target_idx = kwargs.last_target_idx;
@@ -374,7 +373,7 @@ fn pl_lr_multi_f32(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsResult<
 
 // Strictly speaking, this output type is not correct.
 #[polars_expr(output_type_func=pred_residue_output)]
-fn pl_lr_multi_pred_f32(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsResult<Series> {
+fn pl_lr_multi_pred_f32(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
     let solver = kwargs.solver.as_str().into();
     let last_target_idx = kwargs.last_target_idx;
@@ -417,7 +416,7 @@ fn pl_lr_multi_pred_f32(inputs: &[Series], kwargs: MultiLstsqKwargs) -> PolarsRe
 }
 
 #[polars_expr(output_type_func=coeff_singular_values_output)]
-fn pl_lr_w_rcond_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+fn pl_lr_w_rcond_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
@@ -469,7 +468,7 @@ fn pl_lr_w_rcond_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
 }
 
 #[polars_expr(output_type_func=pred_residue_output)]
-fn pl_lr_pred_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+fn pl_lr_pred_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
@@ -549,8 +548,8 @@ fn pl_lr_pred_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series
                         r_builder.append_value(resid[i]);
                         i += 1;
                     } else {
-                        p_builder.append_value(f32::NAN);
-                        r_builder.append_value(f32::NAN);
+                        p_builder.append_null();
+                        r_builder.append_null();
                     }
                 }
                 (p_builder.finish(), r_builder.finish())
@@ -569,7 +568,7 @@ fn pl_lr_pred_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series
 }
 
 #[polars_expr(output_type_func=report_output)]
-fn pl_lin_reg_report_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+fn pl_lin_reg_report_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
     let se_type = StandardError::from(kwargs.std_err);
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
@@ -595,7 +594,7 @@ fn pl_lin_reg_report_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult
             let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
             let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
 
-            // Solving Least Square
+            // Solving
             let xtx = x.transpose() * &x;
             let xtx_qr = xtx.col_piv_qr();
             let xtx_inv = xtx_qr.inverse();
@@ -724,7 +723,7 @@ fn pl_lin_reg_report_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult
 }
 
 #[polars_expr(output_type_func=report_output)]
-fn pl_wls_report_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Series> {
+fn pl_wls_report_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
@@ -855,7 +854,7 @@ fn pl_wls_report_f32(inputs: &[Series], kwargs: LstsqKwargs) -> PolarsResult<Ser
 // --- Rolling and Recursive
 
 #[polars_expr(output_type_func=coeff_pred_output)]
-fn pl_recursive_lr_f32(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<Series> {
+fn pl_recursive_lr_f32(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<Series> {
     let n = kwargs.n; // Gauranteed n >= 1
     let add_bias = kwargs.bias;
 
@@ -866,7 +865,7 @@ fn pl_recursive_lr_f32(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResul
     // Target y is at index 0
     match series_to_mat_for_lr_f32(inputs, add_bias, null_policy) {
         Ok((mat_slice, nrows, nfeats, mask)) => {
-            // Solving Least Square
+            // Solving 
             let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
 
             let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
@@ -941,7 +940,7 @@ fn pl_recursive_lr_f32(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResul
 }
 
 #[polars_expr(output_type_func=coeff_pred_output)] // They share the same output type
-fn pl_rolling_lr_f32(inputs: &[Series], kwargs: SWWLstsqKwargs) -> PolarsResult<Series> {
+fn pl_rolling_lr_f32(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<Series> {
     let n = kwargs.n; // Gauranteed n >= 2
     let add_bias = kwargs.bias;
 

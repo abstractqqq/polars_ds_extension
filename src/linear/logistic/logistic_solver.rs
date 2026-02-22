@@ -1,7 +1,14 @@
-use argmin::core::{CostFunction, Error, Gradient, Executor};
-use argmin::solver::gradientdescent::SteepestDescent;
-use argmin::solver::linesearch::MoreThuenteLineSearch;
+use core::f64;
+use std::f64::EPSILON;
+use num::Float;
+use rand::{Rng, SeedableRng};
+use rand_distr::Normal;
+use rand::rngs::StdRng;
+use argmin::core::{CostFunction, Error, Executor, Gradient, State};
+use argmin::solver::quasinewton::LBFGS;
+use argmin::solver::linesearch::{MoreThuenteLineSearch};
 use faer::{Mat, MatRef, Scale};
+
 
 #[inline]
 pub fn stable_sigmoid(x: f64) -> f64 {
@@ -14,19 +21,26 @@ pub fn stable_sigmoid(x: f64) -> f64 {
 }
 
 /// y: actual
-/// z: predicted
+/// z: predicted, before applying sigmoid
 #[inline]
 pub fn stable_log_loss(y: f64, z: f64) -> f64 {
     z.max(0.0) - y * z + (1.0 + (-z.abs()).exp()).ln()
 }
 
+/// LogRegProblem
+/// x: the matrix X, n rows x m cols.
+/// y: the target. We use a slice to simplify some operations
+/// add_bias: whether a bias term has been added or not. This will not add a column of 1s to x!
+/// l2_reg: whether to add a l2 regularization term.
 struct LogRegProblem<'a> {
     x: MatRef<'a, f64>, // Features. n x m
     y: &'a[f64], // Labels (0 or 1). m x 1
+    add_bias: bool,
+    l2_reg: Option<f64>
 }
 
 impl <'a> CostFunction for LogRegProblem<'a> {
-    type Param = MatRef<'a, f64>; // Weights/coefficients
+    type Param = Mat<f64>; // Weights/coefficients
     type Output = f64;
 
     fn cost(&self, w: &Self::Param) -> Result<Self::Output, Error> {
@@ -35,50 +49,89 @@ impl <'a> CostFunction for LogRegProblem<'a> {
         let total_loss = self.y.iter().enumerate().map(
             |(i, y)| stable_log_loss(*y, *out.get(i, 0))
         ).sum::<f64>();
-        Ok(total_loss / m)
+
+        // last term is the bias
+        match self.l2_reg {
+            Some(lambda) => {
+                let n_params = w.nrows() - self.add_bias as usize;
+                let l2_penalty = 
+                    w.get(0..n_params, 0)
+                    .iter()
+                    .map(|x| x.powi(2))
+                    .sum::<f64>() * 0.5 * lambda;
+
+                Ok(total_loss / m + l2_penalty)
+            },
+            None => Ok(total_loss / m),
+        }
     }
 }
 
 impl <'a> Gradient for LogRegProblem<'a> {
-    type Param = MatRef<'a, f64>;
+    type Param = Mat<f64>;
     type Gradient = Mat<f64>;
 
     fn gradient(&self, w: &Self::Param) -> Result<Self::Gradient, Error> {
         let m = self.y.len() as f64;
-        let mut diff_m = self.x * w; 
-        for (i, v) in diff_m.col_as_slice_mut(0).iter_mut().enumerate() {
+        let mut diff = self.x * w; 
+        for (i, v) in diff.col_as_slice_mut(0).iter_mut().enumerate() {
             *v = (stable_sigmoid(*v) - self.y[i]) / m;
         } // (y_hat - y) / m
+        
         // Gradient of log loss: X^T * (y_hat - y) / m
-        Ok(self.x.transpose() * diff_m)
+        // If l2_reg, add lambda * w_i
+        let mut grad = self.x.transpose() * diff;
+        if let Some(lambda) = self.l2_reg {
+            let n_params = w.nrows() - self.add_bias as usize;
+            for i in 0..n_params {
+                *grad.get_mut(i, 0) += lambda * *w.get(i, 0);
+            }
+        }
+        Ok(grad)
     }
 }
 
-// mod test {
-//     use super::*;
+/// Solving logistic regression with faer. The bias (intercept) should already be added in x
+pub fn faer_logistic_reg(
+    x: MatRef<f64>,
+    y: &[f64],
+    add_bias: bool,
+    l1_reg: Option<f64>,
+    l2_reg: Option<f64>,
+    tol: f64,
+    max_iters: usize,
+) -> Mat<f64> {
 
-//     fn test_1() -> Result<(), Error> {
-//         // 1. Prepare data (Add a column of 1s to X for the intercept/bias)
-//         let x = MatRef::from_row_major_slice(
-//             &[1.0, 2.0, 1.0, 3.0, 1.0, 4.0], 
-//             3, 2)
-//         ;
-//         let y = [0.0, 0.0, 1.0];
+    let problem = LogRegProblem {x: x, y: y, add_bias: add_bias, l2_reg: l2_reg};
+    let normal = Normal::new(0.0, 0.01).unwrap();
+    let mut rng = StdRng::seed_from_u64(42);
+    let w = Mat::from_fn(x.ncols(), 1, |_, _| rng.sample(normal));
+    let nrows = w.nrows();
+    let linesearch  = MoreThuenteLineSearch::new();
+    let mut solver = 
+        LBFGS::new(linesearch, 10)
+            .with_tolerance_grad(EPSILON.sqrt().max(tol)).unwrap();
 
-//         let problem = LogRegProblem { x: x, y: &y };
+    if let Some(l1) = l1_reg {
+        solver = solver.with_l1_regularization(l1.max(EPSILON)).unwrap();
+    }
 
-//         let init_param = Mat::full(2, 1, 0f64);
-
-//         // 3. Choose a solver (Steepest Descent with a Line Search)
-//         let linesearch = MoreThuenteLineSearch::new();
-//         let solver = SteepestDescent::new(linesearch);
-
-//         // 4. Run the optimization
-//         let res = Executor::new(problem, solver)
-//             .configure(|state| state.param(init_param).max_iters(100))
-//             .run()?;
-
-//         println!("Optimal weights: {}", res.state().get_best_param().unwrap());
-//         Ok(())
-//     }
-// }
+    let result = Executor::new(problem, solver)
+            .configure(
+                |state| 
+                state
+                    .param(w)
+                    .max_iters(max_iters as u64)
+            )
+            .run();
+    
+    match result {
+        Ok(opt) => {
+            match opt.state.best_param {
+                Some(best) => best,
+                None => Mat::full(nrows, 1, f64::NAN),
+            }
+        },
+        Err(_) => Mat::full(nrows,1, f64::NAN),
+    }
+}

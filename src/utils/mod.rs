@@ -225,39 +225,6 @@ pub fn float_output(fields: &[Field]) -> PolarsResult<Field> {
     FieldsMapper::new(fields).map_to_float_dtype()
 }
 
-// -------------------------------------------------------------------------------
-// Common, Structures
-// -------------------------------------------------------------------------------
-#[derive(PartialEq, Clone, Copy)]
-pub enum NullPolicy<T: Float + FromStr> {
-    RAISE,
-    SKIP,
-    SKIP_WINDOW, // `SKIP` in rolling. Skip, but doesn't really drop data. A specialized algorithm will handle this.
-    IGNORE,
-    FILL(T),
-    FILL_WINDOW(T), // `FILL`` rolling. Doesn't really drop data. A specialized algorithm will handle this.
-}
-
-impl<T: Float + FromStr> TryFrom<String> for NullPolicy<T> {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let binding = value.to_lowercase();
-        let test = binding.as_ref();
-        match test {
-            "raise" => Ok(Self::RAISE),
-            "skip" => Ok(Self::SKIP),
-            "zero" => Ok(Self::FILL(T::zero())),
-            "one" => Ok(Self::FILL(T::one())),
-            "ignore" => Ok(Self::IGNORE),
-            "skip_window" => Ok(Self::SKIP_WINDOW),
-            _ => match test.parse::<T>() {
-                Ok(x) => Ok(Self::FILL(x)),
-                Err(_) => Err("Invalid NullPolicy.".into()),
-            },
-        }
-    }
-}
 
 // --- Distances and Distance Related Abstractions ---
 
