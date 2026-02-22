@@ -259,6 +259,7 @@ def logistic_reg(
 ) -> pl.Expr:
     """
     Fits a logistic regression and returns the coefficients. This uses the L-BFGS algorithm as the solver.
+    This does a data copy internally.
 
     Only supports binary target and the target must be 0s and 1s and the user must ensure this. Otherwise, 
     the output will be nonsensical.

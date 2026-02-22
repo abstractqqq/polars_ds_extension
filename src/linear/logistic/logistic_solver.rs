@@ -1,14 +1,14 @@
 use core::f64;
 use std::f64::EPSILON;
-use num::Float;
 use rand::{Rng, SeedableRng};
 use rand_distr::Normal;
 use rand::rngs::StdRng;
-use argmin::core::{CostFunction, Error, Executor, Gradient, State};
-use argmin::solver::quasinewton::LBFGS;
-use argmin::solver::linesearch::{MoreThuenteLineSearch};
+use argmin::core::{CostFunction, Error, Executor, Gradient};
+use argmin::solver::{
+    quasinewton::LBFGS
+    , linesearch::{MoreThuenteLineSearch, HagerZhangLineSearch}
+};
 use faer::{Mat, MatRef, Scale};
-
 
 #[inline]
 pub fn stable_sigmoid(x: f64) -> f64 {
@@ -34,7 +34,7 @@ pub fn stable_log_loss(y: f64, z: f64) -> f64 {
 /// l2_reg: whether to add a l2 regularization term.
 struct LogRegProblem<'a> {
     x: MatRef<'a, f64>, // Features. n x m
-    y: &'a[f64], // Labels (0 or 1). m x 1
+    y: MatRef<'a, f64>, // Labels (0 or 1). m x 1
     add_bias: bool,
     l2_reg: Option<f64>
 }
@@ -44,11 +44,12 @@ impl <'a> CostFunction for LogRegProblem<'a> {
     type Output = f64;
 
     fn cost(&self, w: &Self::Param) -> Result<Self::Output, Error> {
-        let m = self.y.len() as f64;
+        let m = self.y.nrows() as f64;
         let out = self.x * w; // predicted value before sigmoid
-        let total_loss = self.y.iter().enumerate().map(
-            |(i, y)| stable_log_loss(*y, *out.get(i, 0))
-        ).sum::<f64>();
+        let total_loss = self.y.col(0).iter().zip(out.col(0).iter()).fold(
+            0f64,
+            |acc, (y, z)| acc + stable_log_loss(*y, *z)
+        );
 
         // last term is the bias
         match self.l2_reg {
@@ -72,15 +73,15 @@ impl <'a> Gradient for LogRegProblem<'a> {
     type Gradient = Mat<f64>;
 
     fn gradient(&self, w: &Self::Param) -> Result<Self::Gradient, Error> {
-        let m = self.y.len() as f64;
-        let mut diff = self.x * w; 
-        for (i, v) in diff.col_as_slice_mut(0).iter_mut().enumerate() {
-            *v = (stable_sigmoid(*v) - self.y[i]) / m;
-        } // (y_hat - y) / m
-        
+        let m = self.y.nrows() as f64;
+        let mut diff = self.x * w;
+        for v in diff.col_as_slice_mut(0) {
+            *v = stable_sigmoid(*v);
+        }
+        diff = Scale(1.0 / m) * (diff - self.y);
         // Gradient of log loss: X^T * (y_hat - y) / m
-        // If l2_reg, add lambda * w_i
         let mut grad = self.x.transpose() * diff;
+        // If l2_reg, add lambda * w_i
         if let Some(lambda) = self.l2_reg {
             let n_params = w.nrows() - self.add_bias as usize;
             for i in 0..n_params {
@@ -94,7 +95,7 @@ impl <'a> Gradient for LogRegProblem<'a> {
 /// Solving logistic regression with faer. The bias (intercept) should already be added in x
 pub fn faer_logistic_reg(
     x: MatRef<f64>,
-    y: &[f64],
+    y: MatRef<f64>,
     add_bias: bool,
     l1_reg: Option<f64>,
     l2_reg: Option<f64>,
@@ -102,14 +103,17 @@ pub fn faer_logistic_reg(
     max_iters: usize,
 ) -> Mat<f64> {
 
+    // This seems very slow at this moment.
     let problem = LogRegProblem {x: x, y: y, add_bias: add_bias, l2_reg: l2_reg};
-    let normal = Normal::new(0.0, 0.01).unwrap();
-    let mut rng = StdRng::seed_from_u64(42);
-    let w = Mat::from_fn(x.ncols(), 1, |_, _| rng.sample(normal));
+    // let normal = Normal::new(0.0, 0.01).unwrap();
+    // let mut rng = StdRng::seed_from_u64(42);
+    let w = Mat::full(x.ncols(), 1, 0.0);
+    // let w = Mat::from_fn(x.ncols(), 1, |_, _| rng.sample(normal));
     let nrows = w.nrows();
+
     let linesearch  = MoreThuenteLineSearch::new();
     let mut solver = 
-        LBFGS::new(linesearch, 10)
+        LBFGS::new(linesearch, 20)
             .with_tolerance_grad(EPSILON.sqrt().max(tol)).unwrap();
 
     if let Some(l1) = l1_reg {

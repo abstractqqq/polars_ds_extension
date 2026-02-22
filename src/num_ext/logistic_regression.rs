@@ -32,7 +32,7 @@ fn pl_logistic_coeffs(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Serie
     };
     match series_to_mat_for_lr(inputs, add_bias, null_policy) {
         Ok((mat_slice, nrows, nfeats, _)) => {
-            let y = &mat_slice[..nrows];
+            let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
             let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
             let coeffs = faer_logistic_reg(
                 x, 
@@ -78,7 +78,7 @@ fn pl_logistic_pred(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series>
     };
     match series_to_mat_for_lr(inputs, add_bias, null_policy) {
         Ok((mat_slice, nrows, nfeats, mask)) => {
-            let y = &mat_slice[..nrows];
+            let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
             let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
             let coeffs = faer_logistic_reg(
                 x, 
