@@ -50,7 +50,29 @@ shape: (2, 3)
 └──────────┴──────────┴──────────┘
 ```
 
-### In-dataframe linear regression + feature transformations
+### Quick and simple modeling on the fly (non-persistent)
+
+E.g. running a quick linear regression and see the predictions and residues:
+
+```python
+df.select(pds.lin_reg(pl.col("x1"), pl.col("x2"), target=pl.col("y"), add_bias=False, return_pred=True))
+
+shape: (10_000, 1)
+┌───────────────────────┐
+│ lr_pred               │
+│ ---                   │
+│ struct[2]             │
+╞═══════════════════════╡
+│ {-0.3121,0.392769}    │
+│ {-0.459507,-0.048989} │
+│ {-0.469473,-0.215709} │
+│ {-0.243764,-0.707016} │
+│ {-0.511278,-0.785299} │
+│ …                     │
+└───────────────────────┘
+```
+
+Generating polynomial features and display a statsmodels-like regression summary:
 
 ```python
 import polars_ds as pds
@@ -86,6 +108,8 @@ df.select(
 └──────────┴───────────┴──────────┴───────────┴───────┴───────────┴──────────┴──────────┴──────────┘
 ```
 
+Other available simple models (non-persistent):
+
 - [x] Normal Linear Regression (pds.lin_reg)
 - [x] Lasso, Ridge, Elastic Net (pds.lin_reg, use l1_reg, l2_reg arguments)
 - [x] Rolling linear regression with skipping (pds.rolling_lin_reg)
@@ -93,15 +117,77 @@ df.select(
 - [x] Non-negative linear regression (pds.lin_reg, set positive = True)
 - [x] Statsmodel-like linear regression table (pds.lin_reg_report)
 - [x] f32 support (pds.Config.LIN_REG_EXPR_F64 = False)
+- [x] binary logistic regression with L1, L2 parameters (pds.logistic_reg, doesn't work with F32 yet.)
+
+### Distances
+
+Various string distances:
+
+```Python
+df.select( # Column "word", compared to string in pl.lit(). It also supports column vs column comparison
+    pds.str_leven("word", pl.lit("asasasa"), return_sim=True).alias("Levenshtein"),
+    pds.str_osa("word", pl.lit("apples"), return_sim=True).alias("Optimal String Alignment"),
+    pds.str_jw("word", pl.lit("apples")).alias("Jaro-Winkler"),
+)
+```
+
+Array, list distances:
+
+```python
+df = pl.DataFrame({
+    "x": [[1,2,3], [4,5,6]]
+    , "y": [[0.5, 0.2, 0.3], [4.0, 5.0, 6.1]]
+})
+
+df.select(
+    x = pl.col('x').cast(pl.Array(inner=pl.Float64, shape=3))
+    , y = pl.col('y').cast(pl.Array(inner=pl.Float64, shape=3))
+).select(
+    pds.arr_sql2_dist('x', 'y')
+)
+
+shape: (2, 1)
+┌───────┐
+│ x     │
+│ ---   │
+│ f64   │
+╞═══════╡
+│ 10.78 │
+│ 0.01  │
+└───────┘
+```
+
+Replace arr_sql2_dist with list_sql2_dist. Note: sql2 stands for squared l2 distance, which is the same as squared euclidean distance.
+
+### In-dataframe statistical tests
+
+```Python
+df.group_by("market_id").agg(
+    pds.ttest_ind("var1", "var2", equal_var=False).alias("t-test"),
+    pds.chi2("category_1", "category_2").alias("chi2-test"),
+    pds.f_test("var1", group = "category_1").alias("f-test")
+)
+
+shape: (3, 4)
+┌───────────┬──────────────────────┬──────────────────────┬─────────────────────┐
+│ market_id ┆ t-test               ┆ chi2-test            ┆ f-test              │
+│ ---       ┆ ---                  ┆ ---                  ┆ ---                 │
+│ i64       ┆ struct[2]            ┆ struct[2]            ┆ struct[2]           │
+╞═══════════╪══════════════════════╪══════════════════════╪═════════════════════╡
+│ 0         ┆ {2.072749,0.038272}  ┆ {33.487634,0.588673} ┆ {0.312367,0.869842} │
+│ 1         ┆ {0.469946,0.638424}  ┆ {42.672477,0.206119} ┆ {2.148937,0.072536} │
+│ 2         ┆ {-1.175325,0.239949} ┆ {28.55723,0.806758}  ┆ {0.506678,0.730849} │
+└───────────┴──────────────────────┴──────────────────────┴─────────────────────┘
+```
 
 ### Making Polars More Convenient
 
 ```python
 import polars_ds as pds
 df = pl.DataFrame({
-"group": ['A', 'A', 'B', 'B', 'A']
-, "a": [1, 2, 3, 4, 5]
-, "b": [4, 1, 99, 12, 33]
+    "group": ['A', 'A', 'B', 'B', 'A']
+    , "a": [1, 2, 3, 4, 5]
+    , "b": [4, 1, 99, 12, 33]
 })
 df.group_by("group").agg(
     *pds.E(['a', 'b'], ["min", "max", "n_unique", "len"])
@@ -118,7 +204,7 @@ shape: (2, 8)
 └───────┴───────┴───────┴───────┴───────┴────────────┴────────────┴─────────┘
 ```
 
-### Tabular Machine Learning Data Transformation Pipeline
+### Streamable Tabular Machine Learning Data Transformation Pipeline
 
 See [SKLEARN_COMPATIBILITY](SKLEARN_COMPATIBILITY.md) for more details.
 
@@ -202,67 +288,6 @@ shape: (5, 3)
 │ 3   ┆ [3, 102, … 1129]  ┆ 110                │
 │ 4   ┆ [4, 1280, … 1543] ┆ 226                │
 └─────┴───────────────────┴────────────────────┘
-```
-
-### Distances
-
-Various string distances:
-
-```Python
-df.select( # Column "word", compared to string in pl.lit(). It also supports column vs column comparison
-    pds.str_leven("word", pl.lit("asasasa"), return_sim=True).alias("Levenshtein"),
-    pds.str_osa("word", pl.lit("apples"), return_sim=True).alias("Optimal String Alignment"),
-    pds.str_jw("word", pl.lit("apples")).alias("Jaro-Winkler"),
-)
-```
-
-Array, list distances:
-
-```python
-df = pl.DataFrame({
-    "x": [[1,2,3], [4,5,6]]
-    , "y": [[0.5, 0.2, 0.3], [4.0, 5.0, 6.1]]
-})
-
-df.select(
-    x = pl.col('x').cast(pl.Array(inner=pl.Float64, shape=3))
-    , y = pl.col('y').cast(pl.Array(inner=pl.Float64, shape=3))
-).select(
-    pds.arr_sql2_dist('x', 'y')
-)
-
-shape: (2, 1)
-┌───────┐
-│ x     │
-│ ---   │
-│ f64   │
-╞═══════╡
-│ 10.78 │
-│ 0.01  │
-└───────┘
-```
-
-Replace arr_sql2_dist with list_sql2_dist. Note: sql2 stands for squared l2 distance, which is the same as squared euclidean distance.
-
-### In-dataframe statistical tests
-
-```Python
-df.group_by("market_id").agg(
-    pds.ttest_ind("var1", "var2", equal_var=False).alias("t-test"),
-    pds.chi2("category_1", "category_2").alias("chi2-test"),
-    pds.f_test("var1", group = "category_1").alias("f-test")
-)
-
-shape: (3, 4)
-┌───────────┬──────────────────────┬──────────────────────┬─────────────────────┐
-│ market_id ┆ t-test               ┆ chi2-test            ┆ f-test              │
-│ ---       ┆ ---                  ┆ ---                  ┆ ---                 │
-│ i64       ┆ struct[2]            ┆ struct[2]            ┆ struct[2]           │
-╞═══════════╪══════════════════════╪══════════════════════╪═════════════════════╡
-│ 0         ┆ {2.072749,0.038272}  ┆ {33.487634,0.588673} ┆ {0.312367,0.869842} │
-│ 1         ┆ {0.469946,0.638424}  ┆ {42.672477,0.206119} ┆ {2.148937,0.072536} │
-│ 2         ┆ {-1.175325,0.239949} ┆ {28.55723,0.806758}  ┆ {0.506678,0.730849} │
-└───────────┴──────────────────────┴──────────────────────┴─────────────────────┘
 ```
 
 ### Compatibility
