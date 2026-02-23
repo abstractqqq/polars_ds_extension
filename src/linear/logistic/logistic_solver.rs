@@ -6,7 +6,7 @@ use rand::rngs::StdRng;
 use argmin::core::{CostFunction, Error, Executor, Gradient};
 use argmin::solver::{
     quasinewton::LBFGS
-    , linesearch::{MoreThuenteLineSearch, HagerZhangLineSearch}
+    , linesearch::MoreThuenteLineSearch
 };
 use faer::{Mat, MatRef, Scale};
 
@@ -105,10 +105,10 @@ pub fn faer_logistic_reg(
 
     // This seems very slow at this moment.
     let problem = LogRegProblem {x: x, y: y, add_bias: add_bias, l2_reg: l2_reg};
-    // let normal = Normal::new(0.0, 0.01).unwrap();
-    // let mut rng = StdRng::seed_from_u64(42);
-    let w = Mat::full(x.ncols(), 1, 0.0);
-    // let w = Mat::from_fn(x.ncols(), 1, |_, _| rng.sample(normal));
+    let normal = Normal::new(0.0, 0.01).unwrap();
+    let mut rng = StdRng::seed_from_u64(42);
+    // let w = Mat::full(x.ncols(), 1, 0.0);
+    let w = Mat::from_fn(x.ncols(), 1, |_, _| rng.sample(normal));
     let nrows = w.nrows();
 
     let linesearch  = MoreThuenteLineSearch::new();
