@@ -15,7 +15,6 @@ use pyo3_polars::export::{
     },
     polars_plan::plans::FieldsMapper,
 };
-use std::str::FromStr;
 
 pub mod interop;
 pub enum IndexOrder {

@@ -8,6 +8,7 @@ name = "_polars_ds"
 crate-type = ["cdylib"]
 
 [dependencies]
+# For dependencies found in polars, keep it the same as polars to minimize duplicates
 # PyO3
 numpy = "0.26" # matrix interop # Need to replace numpy before we can remove ndarray.
 pyo3 = {version = "0.26", features = ["abi3-py39", "extension-module"]}
@@ -16,32 +17,31 @@ pyo3-polars = {version = "0.25", features = ["derive", "lazy"]}
 polars = {version = "0.52", features = ["lazy",
 "diff", "array_count", "abs", "cross_join", "rank", "log",
 "cum_agg", "round_series", "chunked_ids", "dtype-i128", "performant", "new_streaming"], default-features = false}
-# Numerical
-rand = "*"
-rand_distr = "*"
-num = "*"
-ordered-float = "4.2.0"
-approx = "*"
 # Heavy math
 realfft = "*"
 ndarray = {version="0.16"} # want to replace one day
 cfavml = {version = "0.3.0", features=["nightly"]} # easy simd
-faer = {version = "0.23", default-features = false, features = ["rayon", "sparse-linalg"]}
-faer-traits = {version = "0.23"}
-argmin = "0.11.0"
-argmin-math = {version = "0.5.1", default-features = false, features = ["faer_v0_23"]}
+faer = {version = "0.24", default-features = false, features = ["nightly", "rayon", "sparse-linalg"]}
+faer-traits = {version = "0.24"}
+argmin-math = {git = "https://github.com/abstractqqq/argmin.git", default-features = false, features = ["faer_v0_24"]}
+argmin = {git = "https://github.com/abstractqqq/argmin.git"}
+# Numerical
+rand = "0.9" # same as polars
+rand_distr = "0.5" # same as polars
+num = "*"
+ordered-float = "4.2.0"
+approx = "*"
 # Data Structures, Iteration Helpers
 itertools = "*"
 ahash = "*"
-hashbrown = "*"
+hashbrown = { version = "0.16.0", features = ["rayon", "serde"] } # same as polars
 # Serialization
 serde = {version = "*", features=["derive"]}
 # String related
 rapidfuzz = "0.5.0"
 inflections = "1.1.1"
 # Deprecated
-unicode-normalization = "0.1.23"
-
+unicode-normalization = "0.1.24" # same as polars
 
 [profile.release]
 debug = false
