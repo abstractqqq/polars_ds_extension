@@ -21,10 +21,11 @@ polars = {version = "0.52", features = ["lazy",
 realfft = "*"
 ndarray = {version="0.16"} # want to replace one day
 cfavml = {version = "0.3.0", features=["nightly"]} # easy simd
-faer = {version = "0.24", default-features = false, features = ["nightly", "rayon", "sparse-linalg"]}
-faer-traits = {version = "0.24"}
-argmin-math = {git = "https://github.com/abstractqqq/argmin.git", default-features = false, features = ["faer_v0_24"]}
-argmin = {git = "https://github.com/abstractqqq/argmin.git"}
+faer = { git = "https://codeberg.org/sarah-quinones/faer", rev = "8377404e78", default-features = false, features = ["nightly", "rayon", "sparse-linalg"]}
+# faer = {version = "0.24", default-features = false, features = ["nightly", "rayon", "sparse-linalg"]}
+faer-traits = { git = "https://codeberg.org/sarah-quinones/faer", rev = "8377404e78"}
+argmin-math = {git = "https://github.com/abstractqqq/argmin.git", branch = "main", default-features = false, features = ["faer_v0_24"]}
+argmin = {git = "https://github.com/abstractqqq/argmin.git", branch = "main"}
 # Numerical
 rand = "0.9" # same as polars
 rand_distr = "0.5" # same as polars

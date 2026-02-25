@@ -10,19 +10,16 @@ use argmin::solver::{
 };
 use faer::{Mat, MatRef, Scale};
 
-#[inline]
+#[inline(always)]
 pub fn stable_sigmoid(x: f64) -> f64 {
-    if x >= 0.0 {
-        1.0 / (1.0 + (-x).exp())
-    } else {
-        let e = x.exp();
-        e / (1.0 + e)
-    }
+    let abs_x = x.abs();
+    let res = 1.0 / (1.0 + (-abs_x).exp());
+    if x >= 0.0 { res } else { 1.0 - res }
 }
 
 /// y: actual
 /// z: predicted, before applying sigmoid
-#[inline]
+#[inline(always)]
 pub fn stable_log_loss(y: f64, z: f64) -> f64 {
     z.max(0.0) - y * z + (1.0 + (-z.abs()).exp()).ln()
 }
@@ -46,20 +43,23 @@ impl <'a> CostFunction for LogRegProblem<'a> {
     fn cost(&self, w: &Self::Param) -> Result<Self::Output, Error> {
         let m = self.y.nrows() as f64;
         let out = self.x * w; // predicted value before sigmoid
-        let total_loss = self.y.col(0).iter().zip(out.col(0).iter()).fold(
-            0f64,
-            |acc, (y, z)| acc + stable_log_loss(*y, *z)
-        );
+        let total_loss = 
+            self.y.col(0).iter().copied()
+            .zip(out.col(0).iter().copied())
+            .map(|(y, z)| stable_log_loss(y, z))
+            .sum::<f64>();
 
         // last term is the bias
         match self.l2_reg {
             Some(lambda) => {
                 let n_params = w.nrows() - self.add_bias as usize;
-                let l2_penalty = 
-                    w.get(0..n_params, 0)
+                // safe because the indices are within bounds
+                let l2_penalty = unsafe {
+                    w.get_unchecked(0..n_params, 0)
                     .iter()
                     .map(|x| x.powi(2))
-                    .sum::<f64>() * 0.5 * lambda;
+                    .sum::<f64>() * 0.5 * lambda
+                };
 
                 Ok(total_loss / m + l2_penalty)
             },
@@ -75,17 +75,21 @@ impl <'a> Gradient for LogRegProblem<'a> {
     fn gradient(&self, w: &Self::Param) -> Result<Self::Gradient, Error> {
         let m = self.y.nrows() as f64;
         let mut diff = self.x * w;
-        for v in diff.col_as_slice_mut(0) {
-            *v = stable_sigmoid(*v);
-        }
+        diff.col_as_slice_mut(0).iter_mut().for_each(
+            |v| *v = stable_sigmoid(*v)
+        );
         diff = Scale(1.0 / m) * (diff - self.y);
         // Gradient of log loss: X^T * (y_hat - y) / m
         let mut grad = self.x.transpose() * diff;
         // If l2_reg, add lambda * w_i
         if let Some(lambda) = self.l2_reg {
             let n_params = w.nrows() - self.add_bias as usize;
-            for i in 0..n_params {
-                *grad.get_mut(i, 0) += lambda * *w.get(i, 0);
+            unsafe {
+                (0..n_params).for_each(
+                    |i| {
+                        *grad.get_mut_unchecked(i, 0) += lambda * *w.get_unchecked(i, 0);
+                    }
+                );
             }
         }
         Ok(grad)
@@ -113,7 +117,7 @@ pub fn faer_logistic_reg(
 
     let linesearch  = MoreThuenteLineSearch::new();
     let mut solver = 
-        LBFGS::new(linesearch, 20)
+        LBFGS::new(linesearch, 10)
             .with_tolerance_grad(EPSILON.sqrt().max(tol)).unwrap();
 
     if let Some(l1) = l1_reg {
