@@ -58,7 +58,6 @@ jobs:
           pip install --force-reinstall --verbose dist/*.tar.gz
           python -c 'import polars_ds as pds'
           python -c 'from polars_ds import linear_models'
-          python -c 'from polars_ds.spatial import *'
           python -c 'from polars_ds.sample_and_split import *'
           python -c 'from polars_ds.exprs.ts_features import *'
 
@@ -173,7 +172,6 @@ jobs:
           pip install -r requirements.txt
           python -c 'import polars_ds'
           python -c 'from polars_ds import linear_models'
-          python -c 'from polars_ds.spatial import *'
           python -c 'from polars_ds.sample_and_split import *'
 
       - name: Upload wheel
