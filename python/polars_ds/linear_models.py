@@ -184,10 +184,10 @@ class LR:
         """
         Returns a copy of the coefficients.
         """
-        return self._lr.coeffs
+        return np.asarray(self._lr.coeffs)
 
     def bias(self) -> float:
-        self._lr.bias
+        return self._lr.bias
 
     def fit(self, X: np.ndarray, y: np.ndarray, null_policy: NullPolicy = "ignore") -> Self:
         """
@@ -205,7 +205,8 @@ class LR:
             the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
             columns. If target has null, then the row will still be dropped.
         """
-        self._lr.fit(*_handle_nans_in_np(X, y.reshape((-1, 1)), null_policy))
+        X_, y_ = _handle_nans_in_np(X, y.reshape((-1, 1)), null_policy)
+        self._lr.fit(X_, y_)
         return self
 
     def fit_df(
@@ -273,7 +274,7 @@ class LR:
         X
             Data to predict on, as a matrix
         """
-        return self._lr.predict(X).reshape((-1, 1))
+        return np.asarray(self._lr.predict(X))
 
     def predict_df(self, df: PolarsFrame, name: str = "prediction") -> PolarsFrame:
         """
@@ -403,7 +404,7 @@ class ElasticNet:
         """
         Returns a copy of the coefficients.
         """
-        return self._en.coeffs
+        return np.asarray(self._en.coeffs)
 
     def has_bias(self) -> bool:
         return self._en.has_bias()
@@ -427,7 +428,8 @@ class ElasticNet:
             the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
             columns. If target has null, then the row will still be dropped.
         """
-        self._en.fit(*_handle_nans_in_np(X, y.reshape((-1, 1)), null_policy))
+        X_, y_ = _handle_nans_in_np(X, y.reshape((-1, 1)), null_policy)
+        self._en.fit(X_, y_)
         return self
 
     def fit_df(
@@ -476,7 +478,7 @@ class ElasticNet:
         X
             Data to predict on, as a matrix
         """
-        return self._en.predict(X).reshape((-1, 1))
+        return np.asarray(self._en.predict(X))
 
     def predict_df(self, df: PolarsFrame, name: str = "prediction") -> PolarsFrame:
         """
@@ -571,16 +573,16 @@ class OnlineLR:
         """
         Returns a copy of the current coefficients.
         """
-        return self._lr.coeffs
+        return np.asarray(self._lr.coeffs)
 
     def bias(self) -> float:
-        self._lr.bias
+        return self._lr.bias
 
     def inv(self) -> np.ndarray:
         """
         Returns a copy of the current inverse matrix (inverse of XtX in a linear regression).
         """
-        return self._lr.inv
+        return np.asarray(self._lr.inv)
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> Self:
         """
@@ -638,7 +640,7 @@ class OnlineLR:
         X
             Data to predict on, as a matrix
         """
-        return self._lr.predict(X).reshape((-1, 1))
+        return np.asarray(self._lr.predict(X))
 
 
 # ------------------------------------------------------------------------------------
@@ -804,7 +806,8 @@ class GLM:
             the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
             columns. If target has null, then the row will still be dropped.
         """
-        self._glm.fit(*_handle_nans_in_np(X, y.astype(np.float64).reshape((-1, 1)), null_policy))
+        X_, y_ = _handle_nans_in_np(X, y.astype(np.float64).reshape((-1, 1)), null_policy)
+        self._glm.fit(X_, y_)
         return self
 
     def fit_df(

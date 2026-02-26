@@ -353,7 +353,9 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
             let xtx_j = unsafe { xtx.get_unchecked(j..j + 1, ..) };
 
             // Xi^t(y - X-i Beta-i)
-            let main_update = *xty.get(j, 0) - *(xtx_j * &beta).get(0, 0);
+            let main_update = unsafe {
+                *xty.get_unchecked(j, 0) - *(xtx_j * &beta).get_unchecked(0, 0)
+            };
 
             // update beta(j, 0).
             let after = if positive && main_update < T::zero() {
@@ -391,6 +393,7 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
 }
 
 /// Non-negative Lstsq. Returns the coefficients as a ncols x 1 faer matrix
+/// Reference???
 pub fn faer_nn_lr<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
@@ -421,7 +424,7 @@ pub fn faer_nn_lr<T: RealField + Float>(
             };
 
             for k in 0..x.ncols() {
-                let beta_k = *beta.get(k, 0);
+                let beta_k = *beta.get_unchecked(k, 0);
                 let mut x_diff = -beta_k;
                 let mut update = beta_k - *mu.get_unchecked(k, 0) / *xtx.get_unchecked(k, k);
                 if !add_bias || k < x.ncols() - 1 {
@@ -429,7 +432,7 @@ pub fn faer_nn_lr<T: RealField + Float>(
                 } // No need for max with 0 if this is the bias term
                 *beta.get_mut_unchecked(k, 0) = update;
                 x_diff = x_diff + update;
-                mu = mu + Scale(x_diff) * xtx.get(.., k).as_mat();
+                mu = mu + Scale(x_diff) * xtx.get_unchecked(.., k).as_mat();
             }
         }
     }

@@ -148,13 +148,12 @@ pub trait LinearModel<T: RealField + Float> {
         } else if !self.is_fit() {
             Err(LinalgErrors::MatNotLearnedYet)
         } else {
-            let mut pred = Mat::full(X.nrows(), 1, {
-                if self.add_bias() {
-                    self.bias()
-                } else {
-                    T::zero()
-                }
-            });
+            let value = if self.add_bias() {
+                self.bias()
+            } else {
+                T::zero()
+            };
+            let mut pred = Mat::full(X.nrows(), 1, value);
             // Result is 0 if no bias, result is [bias] (ncols x 1) if has bias.
             // result = result + 1.0 * (X * coeffs)
             faer::linalg::matmul::matmul(
