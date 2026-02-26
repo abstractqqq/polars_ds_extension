@@ -35,6 +35,7 @@ impl<T: RealField + Float> LR<T> {
     }
 
     pub fn set_coeffs_and_bias(&mut self, coeffs: &[T], bias: T) {
+
         self.add_bias = bias.abs() > T::epsilon();
         if self.add_bias {
             self.coefficients = Mat::from_fn(coeffs.len() + 1, 1, |i, _| {

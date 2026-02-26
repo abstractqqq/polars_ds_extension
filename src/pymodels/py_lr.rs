@@ -8,16 +8,7 @@ use crate::linear::{
     online_lr::lr_online_solvers::OnlineLR,
     LinalgErrors,
 };
-use super::{
-    numpy_faer::{
-        numpy_mat_to_faer
-        , numpy_1d_to_slice
-        , PyFaerMat
-        , PyVec
-    }
-};
-// use crate::utils::interop::{IntoFaer, IntoNdarray};
-// use numpy::{IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
+use super::numpy_faer::{PyArrRef, PyArr, PyFaerRef, PyFaerMat};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -51,14 +42,8 @@ impl PyLR {
         self.lr.is_fit()
     }                   
 
-    pub fn fit<'py>(&mut self, X: Bound<'py, PyAny>, y: Bound<'py, PyAny>) -> PyResult<()> {
-        // return Err(pyo3::exceptions::PyValueError::new_err(
-        //         "Error here!"
-        //     )
-        // );
-        let x = numpy_mat_to_faer(X)?;
-        let y = numpy_mat_to_faer(y)?;
-        match self.lr.fit(x, y) {
+    pub fn fit<'py>(&mut self, X: PyFaerRef, y: PyFaerRef) -> PyResult<()> {
+        match self.lr.fit(X.0, y.0) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
         }
@@ -66,38 +51,28 @@ impl PyLR {
 
     pub fn set_coeffs_and_bias<'py>(
         &mut self,
-        coeffs: Bound<'py, PyAny>,
+        coeffs: PyArrRef,
         bias: f64,
     ) -> PyResult<()> {
-        match numpy_1d_to_slice(coeffs) {
-            Ok(s) => Ok(self.lr.set_coeffs_and_bias(s, bias)),
-            Err(e) => Err(e.into()),
-        }
+        Ok(self.lr.set_coeffs_and_bias(coeffs.0, bias))
     }
 
     pub fn predict<'py>(
         &self,
         py: Python<'py>,
-        X: Bound<'py, PyAny>,
+        X: PyFaerRef
     ) -> PyResult<Bound<'py, PyFaerMat>> {
-        let x = numpy_mat_to_faer(X)?;
-        match self.lr.predict(x) {
-            Ok(result) => {
-                let out = Bound::new(py, PyFaerMat{mat: result})?;
-                Ok(out)
-            }
-            Err(e) => Err(e.into()),
+        match self.lr.predict(X.0) {
+            Ok(result) => Bound::new(py, PyFaerMat(result))
+            , Err(e) => Err(e.into()),
         }
     }
 
     #[getter]
-    pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyVec>> {
+    pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArr>> {
         match self.lr.coeffs_as_vec() {
-            Ok(v) => {
-                let out = Bound::new(py, PyVec{data: v})?;
-                Ok(out)
-            },
-            Err(e) => Err(e.into()),
+            Ok(v) => Bound::new(py, PyArr(v))
+            , Err(e) => Err(e.into()),
         }
     }
 
@@ -136,23 +111,18 @@ impl PyElasticNet {
 
     pub fn set_coeffs_and_bias<'py>(
         &mut self,
-        coeffs: Bound<'py, PyAny>,
+        coeffs: PyArrRef,
         bias: f64,
     ) -> PyResult<()> {
-        match numpy_1d_to_slice(coeffs) {
-            Ok(s) => Ok(self.lr.set_coeffs_and_bias(s, bias)),
-            Err(e) => Err(e.into()),
-        }
+        Ok(self.lr.set_coeffs_and_bias(coeffs.0, bias))
     }
 
     pub fn is_fit(&self) -> bool {
         self.lr.is_fit()
     }
 
-    pub fn fit<'py>(&mut self, X: Bound<'py, PyAny>, y: Bound<'py, PyAny>) -> PyResult<()> {
-        let x = numpy_mat_to_faer(X)?;
-        let y = numpy_mat_to_faer(y)?;
-        match self.lr.fit(x, y) {
+    pub fn fit<'py>(&mut self, X: PyFaerRef, y: PyFaerRef) -> PyResult<()> {
+        match self.lr.fit(X.0, y.0) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
         }
@@ -161,15 +131,11 @@ impl PyElasticNet {
     pub fn predict<'py>(
         &self,
         py: Python<'py>,
-        X: Bound<'py, PyAny>,
+        X: PyFaerRef,
     ) -> PyResult<Bound<'py, PyFaerMat>> {
-        let x = numpy_mat_to_faer(X)?;
-        match self.lr.predict(x) {
-            Ok(result) => {
-                let out = Bound::new(py, PyFaerMat{mat: result})?;
-                Ok(out)
-            }
-            Err(e) => Err(e.into()),
+        match self.lr.predict(X.0) {
+            Ok(result) => Bound::new(py, PyFaerMat(result))
+            , Err(e) => Err(e.into()),
         }
     }
 
@@ -178,13 +144,10 @@ impl PyElasticNet {
     }
 
     #[getter]
-    pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyVec>> {
+    pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArr>> {
         match self.lr.coeffs_as_vec() {
-            Ok(v) => {
-                let out = Bound::new(py, PyVec{data: v})?;
-                Ok(out)
-            },
-            Err(e) => Err(e.into()),
+            Ok(v) => Bound::new(py, PyArr(v))
+            , Err(e) => Err(e.into()),
         }
     }
 
@@ -219,45 +182,25 @@ impl PyOnlineLR {
         self.lr.is_fit()
     }
 
-    pub fn fit<'py>(&mut self, X: Bound<'py, PyAny>, y: Bound<'py, PyAny>) -> PyResult<()> {
-        let x = numpy_mat_to_faer(X)?;
-        let y = numpy_mat_to_faer(y)?;
-        match self.lr.fit(x, y) {
+    pub fn fit<'py>(&mut self, X: PyFaerRef, y: PyFaerRef) -> PyResult<()> {
+        match self.lr.fit(X.0, y.0) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
         }
     }
 
-    pub fn update<'py>(&mut self, X: Bound<'py, PyAny>, y: Bound<'py, PyAny>, c: f64) -> PyResult<()> {
-        let x = numpy_mat_to_faer(X)?;
-        let y = numpy_mat_to_faer(y)?;
-        self.lr.update(x, y, c);
-        Ok(())
+    pub fn update<'py>(&mut self, X: PyFaerRef, y: PyFaerRef, c: f64) -> PyResult<()> {
+        Ok(self.lr.update(X.0, y.0, c))
     }
-
-    // pub fn set_coeffs_and_bias<'py>(
-    //     &mut self,
-    //     coeffs: Bound<'py, PyAny>,
-    //     bias: f64,
-    // ) -> PyResult<()> {
-    //     match numpy_1d_to_slice(coeffs) {
-    //         Ok(s) => Ok(self.lr.set_coeffs_and_bias(s, bias)),
-    //         Err(e) => Err(e.into()),
-    //     }
-    // }
 
     pub fn set_coeffs_bias_inverse<'py>(
         &mut self,
-        coeffs: Bound<'py, PyAny>,
+        coeffs: PyArrRef,
         bias: f64,
-        inv: Bound<'py, PyAny>,
+        inv: PyFaerRef,
     ) -> PyResult<()> {
-        let inverse = numpy_mat_to_faer(inv)?;
-        match numpy_1d_to_slice(coeffs) {
-            Ok(s) => match self.lr.set_coeffs_bias_inverse(s, bias, inverse) {
-                Ok(_) => Ok(()),
-                Err(e) => Err(e.into()),
-            },
+        match self.lr.set_coeffs_bias_inverse(coeffs.0, bias, inv.0) {
+            Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
         }
     }
@@ -265,38 +208,27 @@ impl PyOnlineLR {
     pub fn predict<'py>(
         &self,
         py: Python<'py>,
-        X: Bound<'py, PyAny>,
+        X: PyFaerRef,
     ) -> PyResult<Bound<'py, PyFaerMat>> {
-        let x = numpy_mat_to_faer(X)?;
-        match self.lr.predict(x) {
-            Ok(result) => {
-                let out = Bound::new(py, PyFaerMat{mat: result})?;
-                Ok(out)
-            }
-            Err(e) => Err(e.into()),
+        match self.lr.predict(X.0) {
+            Ok(result) => Bound::new(py, PyFaerMat(result))
+            , Err(e) => Err(e.into()),
         }
     }
 
     #[getter]
-    pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyVec>> {
+    pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArr>> {
         match self.lr.coeffs_as_vec() {
-            Ok(v) => {
-                let out = Bound::new(py, PyVec{data: v})?;
-                Ok(out)
-            },
-            Err(e) => Err(e.into()),
+            Ok(v) => Bound::new(py, PyArr(v))
+            , Err(e) => Err(e.into()),
         }
     }
 
     #[getter]
     pub fn inv<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyFaerMat>> {
         match self.lr.get_inv() {
-            Ok(matrix) => {
-                let mat = PyFaerMat {mat: matrix.to_owned()};
-                let out = Bound::new(py, mat)?;
-                Ok(out)
-            }
-            Err(e) => Err(e.into()),
+            Ok(matrix) => Bound::new(py, PyFaerMat(matrix.to_owned()))
+            , Err(e) => Err(e.into()),
         }
     }
 

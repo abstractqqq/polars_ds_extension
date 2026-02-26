@@ -16,7 +16,6 @@ use pyo3_polars::export::{
     polars_plan::plans::FieldsMapper,
 };
 
-pub mod interop;
 pub enum IndexOrder {
     C,
     Fortran,

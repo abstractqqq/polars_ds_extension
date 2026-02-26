@@ -18,13 +18,13 @@ pub mod leaf;
 pub mod neighbor;
 pub mod utils;
 
-pub use kdt::{OwnedKDT, KDT};
+pub use kdt::KDT;
 // pub use ball_tree::BallTree;
 pub use leaf::{KdLeaf, Leaf};
 pub use neighbor::NB;
 use serde::Deserialize;
 pub use utils::{
-    slice_to_empty_leaves, slice_to_leaves, slice_to_owned_leaves, suggest_capacity, SplitMethod,
+    slice_to_empty_leaves, slice_to_leaves, suggest_capacity, SplitMethod,
 };
 
 // ---------------------------------------------------------------------------------------------------------

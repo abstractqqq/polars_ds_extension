@@ -6,10 +6,8 @@ use crate::linear::{
         GeneralizedLinearModel,
     },
     lr::LinearModel,
-    LinalgErrors,
 };
-use crate::utils::interop::IntoFaer;
-use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2};
+use super::numpy_faer::{PyArrRef, PyArr, PyFaerRef, PyFaerMat};
 use pyo3::prelude::*;
 
 #[pyclass(subclass)]
@@ -45,10 +43,8 @@ impl PyGLM {
         self.glm.is_fit()
     }
 
-    pub fn fit(&mut self, X: PyReadonlyArray2<f64>, y: PyReadonlyArray2<f64>) -> PyResult<()> {
-        let x = X.as_array().into_faer();
-        let y = y.as_array().into_faer();
-        match self.glm.fit(x, y) {
+    pub fn fit(&mut self, X: PyFaerRef, y: PyFaerRef) -> PyResult<()> {
+        match self.glm.fit(X.0, y.0) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
         }
@@ -56,64 +52,44 @@ impl PyGLM {
 
     pub fn set_coeffs_and_bias(
         &mut self,
-        coeffs: PyReadonlyArray1<f64>,
+        coeffs: PyArrRef,
         bias: f64,
     ) -> PyResult<()> {
-        if coeffs.len().unwrap_or(0) <= 0 {
-            return Err(LinalgErrors::Other("Input coefficients array is empty.".into()).into());
-        }
-        match coeffs.as_slice() {
-            Ok(s) => Ok(self.glm.set_coeffs_and_bias(s, bias)),
-            Err(_) => {
-                // Copy if not contiguous
-                let vec = coeffs.as_array().iter().copied().collect::<Vec<_>>();
-                Ok(self.glm.set_coeffs_and_bias(&vec, bias))
-            }
-        }
+        Ok(self.glm.set_coeffs_and_bias(coeffs.0, bias))
     }
 
     pub fn linear_predict<'py>(
         &self,
         py: Python<'py>,
-        X: PyReadonlyArray2<f64>,
-    ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        let x = X.as_array().into_faer();
-        match self.glm.predict(x) {
-            Ok(result) => {
-                // result should be n by 1, where n = x.nrows()
-                let res = result.col_as_slice(0);
-                Ok(PyArray1::from_slice(py, res))
-            }
-            Err(e) => Err(e.into()),
+        X: PyFaerRef,
+    ) -> PyResult<Bound<'py, PyFaerMat>> {
+        match self.glm.predict(X.0) {
+            Ok(result) => Bound::new(py, PyFaerMat(result))
+            , Err(e) => Err(e.into()),
         }
     }
 
     pub fn predict<'py>(
         &self,
         py: Python<'py>,
-        X: PyReadonlyArray2<f64>,
+        X: PyFaerRef,
         linear: bool,
-    ) -> PyResult<Bound<'py, PyArray1<f64>>> {
-        let x = X.as_array().into_faer();
+    ) -> PyResult<Bound<'py, PyFaerMat>> {
         let prediction = if linear {
-            self.glm.predict(x)
+            self.glm.predict(X.0)
         } else {
-            self.glm.glm_predict(x)
+            self.glm.glm_predict(X.0)
         };
         match prediction {
-            Ok(result) => {
-                // result should be n by 1, where n = x.nrows()
-                let res = result.col_as_slice(0);
-                Ok(PyArray1::from_slice(py, res))
-            }
-            Err(e) => Err(e.into()),
+            Ok(result) => Bound::new(py, PyFaerMat(result))
+            , Err(e) => Err(e.into()),
         }
     }
 
     #[getter]
-    pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray1<f64>>> {
+    pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArr>> {
         match self.glm.coeffs_as_vec() {
-            Ok(v) => Ok(v.into_pyarray(py)),
+            Ok(v) => Bound::new(py, PyArr(v)),
             Err(e) => Err(e.into()),
         }
     }
