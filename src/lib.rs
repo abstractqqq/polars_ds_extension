@@ -22,7 +22,8 @@ fn _polars_ds(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<pymodels::py_lr::PyElasticNet>()?;
     m.add_class::<pymodels::py_lr::PyOnlineLR>()?;
     m.add_class::<pymodels::py_glm::PyGLM>()?;
-    m.add_class::<pymodels::py_kdt::PyKDT>()?;
+    m.add_class::<pymodels::numpy_faer::PyFaerMat>()?;
+    m.add_class::<pymodels::numpy_faer::PyArr>()?;
     Ok(())
 }
 

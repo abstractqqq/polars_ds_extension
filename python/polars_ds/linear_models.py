@@ -1,5 +1,7 @@
 """
 Linear models. This module is in very early development and is subject to frequent breaking changes.
+Since the backend is Faer in Rust, better performance might be achieved if your NumPy ndarrays are Fortran-style 
+column major. This currently only supports f64.
 
 This module requires the NumPy package. PDS only requires Polars, but you can get all the optional dependencies by
 
@@ -12,6 +14,8 @@ This module requires the NumPy package. PDS only requires Polars, but you can ge
 
 from __future__ import annotations
 
+import functools
+import inspect
 import polars as pl
 import numpy as np
 from typing import List, Tuple, Literal
@@ -58,6 +62,32 @@ def _handle_nulls_in_df(
             raise ValueError("When null_policy is a number, it cannot be nan or infinite.")
         except Exception as e:
             raise ValueError(f"Unknown null_policy. Error: {e}")
+
+def _sanitize_np(*ndarrays: str):
+    """
+    Decorator that strictly passes the specified arguments through np.asarray(),
+    ignoring all other arguments.
+    """
+    def decorator(func):
+        sig = inspect.signature(func)
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            # Bind the user's inputs to the Rust function's signature
+            bound_args = sig.bind(*args, **kwargs)
+            bound_args.apply_defaults()
+
+            for arr in ndarrays:
+                if arr in bound_args.arguments:
+                    val = bound_args.arguments[arr]
+                    # Pass it through NumPy
+                    bound_args.arguments[arr] = np.asarray(val, dtype=np.float64)
+
+            # Pass the guaranteed-safe arguments into the Rust FFI
+            return func(*bound_args.args, **bound_args.kwargs)
+
+        return wrapper
+    return decorator
 
 
 def _handle_nans_in_np(
@@ -180,15 +210,18 @@ class LR:
         self.feature_names_in_ = list(features)
         return self
 
+    
     def coeffs(self) -> np.ndarray:
         """
         Returns a copy of the coefficients.
         """
-        return self._lr.coeffs
+        return np.asarray(self._lr.coeffs)
 
+    
     def bias(self) -> float:
-        self._lr.bias
+        return self._lr.bias
 
+    @_sanitize_np('X', 'y')
     def fit(self, X: np.ndarray, y: np.ndarray, null_policy: NullPolicy = "ignore") -> Self:
         """
         Fit the linear regression model on NumPy data.
@@ -205,7 +238,8 @@ class LR:
             the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
             columns. If target has null, then the row will still be dropped.
         """
-        self._lr.fit(*_handle_nans_in_np(X, y.reshape((-1, 1)), null_policy))
+        X_, y_ = _handle_nans_in_np(X, y.reshape((-1, 1)), null_policy)
+        self._lr.fit(X_, y_)
         return self
 
     def fit_df(
@@ -262,8 +296,10 @@ class LR:
         y = df2.select(target).to_numpy()
         self.feature_names_in_.clear()
         self.feature_names_in_ = list(features)
-        return self.fit(X, y)
+        self._lr.fit(X, y)
+        return self
 
+    @_sanitize_np('X')
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
         Returns the prediction of this linear model.
@@ -273,7 +309,7 @@ class LR:
         X
             Data to predict on, as a matrix
         """
-        return self._lr.predict(X).reshape((-1, 1))
+        return np.asarray(self._lr.predict(X))
 
     def predict_df(self, df: PolarsFrame, name: str = "prediction") -> PolarsFrame:
         """
@@ -399,18 +435,21 @@ class ElasticNet:
         self.feature_names_in_ = list(features)
         return self
 
+    
     def coeffs(self) -> np.ndarray:
         """
         Returns a copy of the coefficients.
         """
-        return self._en.coeffs
+        return np.asarray(self._en.coeffs)
 
     def has_bias(self) -> bool:
         return self._en.has_bias()
 
+    
     def bias(self) -> float:
         return self._en.bias
 
+    @_sanitize_np('X', 'y')
     def fit(self, X: np.ndarray, y: np.ndarray, null_policy: NullPolicy = "ignore") -> Self:
         """
         Fit the Elastic Net model on NumPy data.
@@ -427,7 +466,8 @@ class ElasticNet:
             the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
             columns. If target has null, then the row will still be dropped.
         """
-        self._en.fit(*_handle_nans_in_np(X, y.reshape((-1, 1)), null_policy))
+        X_, y_ = _handle_nans_in_np(X, y.reshape((-1, 1)), null_policy)
+        self._en.fit(X_, y_)
         return self
 
     def fit_df(
@@ -465,8 +505,10 @@ class ElasticNet:
         y = df2.select(target).to_numpy()
         self.feature_names_in_.clear()
         self.feature_names_in_ = list(features)
-        return self.fit(X, y)
+        self._en.fit(X, y)
+        return self
 
+    @_sanitize_np('X')
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
         Returns the prediction of this linear model.
@@ -476,7 +518,7 @@ class ElasticNet:
         X
             Data to predict on, as a matrix
         """
-        return self._en.predict(X).reshape((-1, 1))
+        return np.asarray(self._en.predict(X))
 
     def predict_df(self, df: PolarsFrame, name: str = "prediction") -> PolarsFrame:
         """
@@ -532,6 +574,7 @@ class OnlineLR:
         self._lr = PyOnlineLR(lambda_, has_bias)
 
     @classmethod
+    @_sanitize_np('inv')
     def from_coeffs_bias_inverse(cls, coeffs: List[float], bias: float, inv: np.ndarray) -> Self:
         """
         Constructs an online linear regression instance from coefficients, inverse. This copies
@@ -567,21 +610,25 @@ class OnlineLR:
             output += "Not fitted yet."
         return output
 
+    
     def coeffs(self) -> np.ndarray:
         """
         Returns a copy of the current coefficients.
         """
-        return self._lr.coeffs
+        return np.asarray(self._lr.coeffs)
 
+    
     def bias(self) -> float:
-        self._lr.bias
+        return self._lr.bias
 
+    
     def inv(self) -> np.ndarray:
         """
         Returns a copy of the current inverse matrix (inverse of XtX in a linear regression).
         """
-        return self._lr.inv
+        return np.asarray(self._lr.inv)
 
+    @_sanitize_np('X', 'y')
     def fit(self, X: np.ndarray, y: np.ndarray) -> Self:
         """
         Initial Fit for the online linear regression model on NumPy data.
@@ -601,6 +648,7 @@ class OnlineLR:
         self._lr.fit(X, y)
         return self
 
+    @_sanitize_np('X', 'y')
     def update(self, X: np.ndarray, y: np.ndarray | float, c: float = 1.0) -> Self:
         """
         Updates the online linear regression model with one row of data. If the row contains np.nan,
@@ -621,14 +669,14 @@ class OnlineLR:
             raise ValueError("You cannot update before the initial fit of the matrix.")
 
         x_2d = X.reshape((1, -1))
-        if isinstance(y, float):
-            y_2d = np.array([[y]])
-        else:
-            y_2d = y.reshape((1, 1))
+        # Sanitization will do np.asarray(y). This means y at this point is already 
+        # an array.
+        y_2d = y.reshape((1, 1))
 
         self._lr.update(x_2d, y_2d, c)
         return self
 
+    @_sanitize_np('X')
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
         Returns the prediction of this online linear model.
@@ -638,8 +686,7 @@ class OnlineLR:
         X
             Data to predict on, as a matrix
         """
-        return self._lr.predict(X).reshape((-1, 1))
-
+        return np.asarray(self._lr.predict(X))
 
 # ------------------------------------------------------------------------------------
 
@@ -779,15 +826,18 @@ class GLM:
         self.feature_names_in_ = list(features)
         return self
 
+    
     def coeffs(self) -> np.ndarray:
         """
         Returns a copy of the coefficients.
         """
         return self._glm.coeffs
 
+    
     def bias(self) -> float:
         return self._glm.bias
 
+    @_sanitize_np('X', 'y')
     def fit(self, X: np.ndarray, y: np.ndarray, null_policy: NullPolicy = "ignore") -> Self:
         """
         Fit the GLM model on NumPy data.
@@ -804,7 +854,8 @@ class GLM:
             the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
             columns. If target has null, then the row will still be dropped.
         """
-        self._glm.fit(*_handle_nans_in_np(X, y.astype(np.float64).reshape((-1, 1)), null_policy))
+        X_, y_ = _handle_nans_in_np(X, y.astype(np.float64).reshape((-1, 1)), null_policy)
+        self._glm.fit(X_, y_)
         return self
 
     def fit_df(
@@ -844,8 +895,10 @@ class GLM:
         y = df2.select(target).to_numpy()
         self.feature_names_in_.clear()
         self.feature_names_in_ = list(features)
-        return self.fit(X, y)
+        self._glm.fit(X, y)
+        return self
 
+    @_sanitize_np('X')
     def predict(self, X: np.ndarray, linear: bool = False) -> np.ndarray:
         """
         Returns the prediction of this linear model.

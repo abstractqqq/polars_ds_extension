@@ -90,16 +90,16 @@ fn valid_fft_convolve(input: &[f64], kernel: &[f64]) -> PolarsResult<Vec<f64>> {
 
     // Write kernel to output_vec, then 0 fill the rest
     output_vec[..kernel.len()].copy_from_slice(kernel);
-    for i in kernel.len()..output_vec.len() {
-        output_vec[i] = 0.;
-    }
+    let n_out = output_vec.len();
+    output_vec[kernel.len()..n_out].fill(0.);
+
     // Now output_vec is the kernel
     let _ = r2c.process(&mut output_vec, &mut spec_q);
 
     // After forward FFT, multiply elementwise
-    for i in 0..spec_p.len() {
-        spec_p[i] *= spec_q[i];
-    }
+    spec_p.iter_mut().zip(spec_q.iter()).for_each(
+        |(x, y)| {*x *= y;}
+    );
     // Inverse FFT
     let _ = c2r.process(&mut spec_p, &mut output_vec);
 

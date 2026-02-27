@@ -43,6 +43,7 @@ pub fn lcs_subseq_extract(s1: &str, s2: &str) -> String {
     // i iterates through chars1, j iterates through chars2.
     // Note: The loop indices (i, j) correspond to the lengths of prefixes,
     // so chars1[i-1] and chars2[j-1] are used to access the actual characters.
+    
     for i in 1..=len1 {
         for j in 1..=len2 {
             // If the current characters match, extend the LCS from the diagonal element.
