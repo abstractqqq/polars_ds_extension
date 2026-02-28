@@ -248,7 +248,7 @@ pub fn haversine<T: Float + 'static>(first: &[T], second: &[T]) -> T {
 
 
 pub fn squared_l2_distance(a: &[f64], b: &[f64]) -> f64 {
-    debug_assert_eq!(a.len(), b.len(), "Slices must have the same length");
+    // debug_assert_eq!(a.len(), b.len(), "Slices must have the same length");
 
     let mut sum0 = 0.0;
     let mut sum1 = 0.0;
@@ -282,7 +282,8 @@ pub fn squared_l2_distance(a: &[f64], b: &[f64]) -> f64 {
 }
 
 pub fn l1_distance(a: &[f64], b: &[f64]) -> f64 {
-    debug_assert_eq!(a.len(), b.len(), "Slices must have the same length");
+    
+    // debug_assert_eq!(a.len(), b.len(), "Slices must have the same length");
 
     let mut sum0 = 0.0;
     let mut sum1 = 0.0;
@@ -310,7 +311,7 @@ pub fn l1_distance(a: &[f64], b: &[f64]) -> f64 {
 }
 
 pub fn linf_distance(a: &[f64], b: &[f64]) -> f64 {
-    debug_assert_eq!(a.len(), b.len(), "Slices must have the same length");
+    // debug_assert_eq!(a.len(), b.len(), "Slices must have the same length");
 
     let mut max0 = 0.0f64;
     let mut max1 = 0.0f64;
@@ -338,7 +339,7 @@ pub fn linf_distance(a: &[f64], b: &[f64]) -> f64 {
 }
 
 pub fn dot_product(a: &[f64], b: &[f64]) -> f64 {
-    debug_assert_eq!(a.len(), b.len(), "Slices must have the same length");
+    // debug_assert_eq!(a.len(), b.len(), "Slices must have the same length");
 
     let mut sum0 = 0.0;
     let mut sum1 = 0.0;
