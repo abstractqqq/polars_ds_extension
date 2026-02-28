@@ -46,7 +46,7 @@ impl TryFrom<String> for KNNDist {
             "l1" => Ok(KNNDist::L1)
             , "sql2" => Ok(KNNDist::SQL2)
             , "l2" => Ok(KNNDist::L2)
-            , "linf" => Ok(KNNDist::LINF)
+            , "linf" | "inf" => Ok(KNNDist::LINF)
             , _ => Err(format!("Unknown distance indicator: {}", value))
         }
     }
