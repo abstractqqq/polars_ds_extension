@@ -1,5 +1,4 @@
 /// Subsequence similarity related queries
-use cfavml;
 use polars::prelude::*;
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
@@ -11,6 +10,7 @@ use pyo3_polars::{
         POOL,
     },
 };
+use crate::utils::squared_l2_distance;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
@@ -42,7 +42,7 @@ fn pl_subseq_sim_cnt_l2(
 
     let n = if par {
         seq.par_windows(window_size)
-            .map(|w| (cfavml::squared_euclidean(query, w) < threshold) as u32)
+            .map(|w| (squared_l2_distance(query, w) < threshold) as u32)
             .sum()
     } else {
         if window_size < 16 {
@@ -56,7 +56,7 @@ fn pl_subseq_sim_cnt_l2(
             })
         } else {
             seq.windows(window_size).fold(0u32, |acc, w| {
-                acc + (cfavml::squared_euclidean(query, w) < threshold) as u32
+                acc + (squared_l2_distance(query, w) < threshold) as u32
             })
         }
     };
@@ -95,13 +95,13 @@ fn pl_subseq_sim_cnt_zl2(
             .into_par_iter()
             .map(|(offset, len)| {
                 let mut acc: u32 = 0;
-                for (i, w) in windows[offset..offset + len].iter().enumerate() {
+                for (i, &w) in windows[offset..offset + len].iter().enumerate() {
                     let actual_i = i + offset;
                     let normalized = w
                         .iter()
                         .map(|x| (x - rolling_mean[actual_i]) / rolling_var[actual_i].sqrt())
                         .collect::<Vec<_>>();
-                    acc += (cfavml::squared_euclidean(query, &normalized) < threshold) as u32;
+                    acc += (squared_l2_distance(query, &normalized) < threshold) as u32;
                 }
                 acc
             })
@@ -114,7 +114,7 @@ fn pl_subseq_sim_cnt_zl2(
                     .iter()
                     .map(|x| (x - rolling_mean[i]) / rolling_var[i].sqrt())
                     .collect::<Vec<_>>();
-                acc + (cfavml::squared_euclidean(query, &normalized) < threshold) as u32
+                acc + (squared_l2_distance(query, &normalized) < threshold) as u32
             })
     };
 

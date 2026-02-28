@@ -330,12 +330,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cfavml"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f17fed3f25ab174007bfafd41dcbfc7981da0163477b8a716f82ad808b1d2ed"
-
-[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2445,7 +2439,6 @@ dependencies = [
  "approx",
  "argmin",
  "argmin-math",
- "cfavml",
  "faer",
  "faer-traits",
  "hashbrown 0.16.1",

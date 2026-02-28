@@ -40,7 +40,6 @@ def warn_len_compare(item1: Iterable[Any], item2: Iterable[Any]) -> bool:
             they have equal size. If they don't have len then it returns True with a
             warning
     """
-    # print()
     if hasattr(item1, "__len__") and hasattr(item2, "__len__"):
         return len(cast(Sequence, item1)) == len(cast(Sequence, item2))
     else:

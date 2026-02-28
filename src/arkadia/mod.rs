@@ -26,9 +26,43 @@ use serde::Deserialize;
 pub use utils::{
     slice_to_empty_leaves, slice_to_leaves, suggest_capacity, SplitMethod,
 };
-
-// ---------------------------------------------------------------------------------------------------------
 use num::Float;
+use crate::utils::{
+    l1_distance, squared_l2_distance, linf_distance
+};
+// ---------------------------------------------------------------------------------------------------------
+#[derive(Clone, Copy)]
+pub enum KNNDist {
+    L1,
+    L2,
+    SQL2,
+    LINF
+}
+
+impl TryFrom<String> for KNNDist {
+    type Error = String;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.to_lowercase().as_ref() {
+            "l1" => Ok(KNNDist::L1)
+            , "sql2" => Ok(KNNDist::SQL2)
+            , "l2" => Ok(KNNDist::L2)
+            , "linf" => Ok(KNNDist::LINF)
+            , _ => Err(format!("Unknown distance indicator: {}", value))
+        }
+    }
+}
+
+impl KNNDist {
+    pub fn dist(&self, v1: &[f64], v2: &[f64]) -> f64 {
+        match self {
+            KNNDist::L1 => l1_distance(v1, v2),
+            KNNDist::L2 => squared_l2_distance(v1, v2).sqrt(),
+            KNNDist::SQL2 => squared_l2_distance(v1, v2),
+            KNNDist::LINF => linf_distance(v1, v2),
+        }
+    }
+}
+
 
 #[derive(Clone, Copy, Default, Deserialize)]
 pub enum KNNMethod {
@@ -53,39 +87,39 @@ impl KNNMethod {
 }
 
 /// K Dimensional Tree Queries. Should be the same for ball trees, etc.
-pub trait SpatialQueries<'a, T: Float + 'static, A> {
+pub trait SpatialQueries<'a, A> {
     fn dim(&self) -> usize;
 
     fn knn_one_step(
         &self,
-        pending: &mut Vec<(T, &Self)>,
-        top_k: &mut Vec<NB<T, A>>,
+        pending: &mut Vec<(f64, &Self)>,
+        top_k: &mut Vec<NB<f64, A>>,
         k: usize,
-        point: &[T],
-        max_dist_bound: T,
-        epsilon: T,
+        point: &[f64],
+        max_dist_bound: f64,
+        epsilon: f64,
     );
 
     fn within_one_step(
         &self,
-        pending: &mut Vec<(T, &Self)>,
-        neighbors: &mut Vec<NB<T, A>>,
-        point: &[T],
-        radius: T,
+        pending: &mut Vec<(f64, &Self)>,
+        neighbors: &mut Vec<NB<f64, A>>,
+        point: &[f64],
+        radius: f64,
     );
 
-    fn within_count_one_step(&self, pending: &mut Vec<(T, &Self)>, point: &[T], radius: T) -> u32;
+    fn within_count_one_step(&self, pending: &mut Vec<(f64, &Self)>, point: &[f64], radius: f64) -> u32;
 
-    fn knn(&self, k: usize, point: &[T], epsilon: T) -> Option<Vec<NB<T, A>>> {
+    fn knn(&self, k: usize, point: &[f64], epsilon: f64) -> Option<Vec<NB<f64, A>>> {
         if k == 0 || (point.len() != self.dim()) || (point.iter().any(|x| !x.is_finite())) {
             None
         } else {
             // Always allocate 1 more.
             let mut top_k = Vec::with_capacity(k + 1);
             let mut pending = Vec::with_capacity(k + 1);
-            pending.push((T::min_value(), self));
+            pending.push((f64::min_value(), self));
             while !pending.is_empty() {
-                self.knn_one_step(&mut pending, &mut top_k, k, point, T::max_value(), epsilon);
+                self.knn_one_step(&mut pending, &mut top_k, k, point, f64::max_value(), epsilon);
             }
             Some(top_k)
         }
@@ -94,21 +128,21 @@ pub trait SpatialQueries<'a, T: Float + 'static, A> {
     fn knn_bounded(
         &self,
         k: usize,
-        point: &[T],
-        max_dist_bound: T,
-        epsilon: T,
-    ) -> Option<Vec<NB<T, A>>> {
+        point: &[f64],
+        max_dist_bound: f64,
+        epsilon: f64,
+    ) -> Option<Vec<NB<f64, A>>> {
         if k == 0
             || (point.len() != self.dim())
             || (point.iter().any(|x| !x.is_finite()))
-            || max_dist_bound <= T::epsilon()
+            || max_dist_bound <= f64::epsilon()
         {
             None
         } else {
             // Always allocate 1 more.
             let mut top_k = Vec::with_capacity(k + 1);
             let mut pending = Vec::with_capacity(k + 1);
-            pending.push((T::min_value(), self));
+            pending.push((f64::min_value(), self));
             while !pending.is_empty() {
                 self.knn_one_step(&mut pending, &mut top_k, k, point, max_dist_bound, epsilon);
             }
@@ -119,27 +153,27 @@ pub trait SpatialQueries<'a, T: Float + 'static, A> {
     fn knn_bounded_unchecked(
         &self,
         k: usize,
-        point: &[T],
-        max_dist_bound: T,
-        epsilon: T,
-    ) -> Vec<NB<T, A>> {
+        point: &[f64],
+        max_dist_bound: f64,
+        epsilon: f64,
+    ) -> Vec<NB<f64, A>> {
         let mut top_k = Vec::with_capacity(k + 1);
         let mut pending = Vec::with_capacity(k + 1);
-        pending.push((T::min_value(), self));
+        pending.push((f64::min_value(), self));
         while !pending.is_empty() {
             self.knn_one_step(&mut pending, &mut top_k, k, point, max_dist_bound, epsilon);
         }
         top_k
     }
 
-    fn within(&self, point: &[T], radius: T, sort: bool) -> Option<Vec<NB<T, A>>> {
+    fn within(&self, point: &[f64], radius: f64, sort: bool) -> Option<Vec<NB<f64, A>>> {
         // radius is actually squared radius
-        if radius <= T::zero() + T::epsilon() || (point.iter().any(|x| !x.is_finite())) {
+        if radius <= 0f64 + f64::epsilon() || (point.iter().any(|x| !x.is_finite())) {
             None
         } else {
             // Always allocate some.
             let mut neighbors = Vec::with_capacity(32);
-            let mut pending = vec![(T::min_value(), self)];
+            let mut pending = vec![(f64::min_value(), self)];
             while !pending.is_empty() {
                 self.within_one_step(&mut pending, &mut neighbors, point, radius);
             }
@@ -151,14 +185,14 @@ pub trait SpatialQueries<'a, T: Float + 'static, A> {
         }
     }
 
-    fn within_count(&self, point: &[T], radius: T) -> Option<u32> {
+    fn within_count(&self, point: &[f64], radius: f64) -> Option<u32> {
         // radius is actually squared radius
-        if radius <= T::zero() + T::epsilon() || (point.iter().any(|x| !x.is_finite())) {
+        if radius <= 0f64 + f64::epsilon() || (point.iter().any(|x| !x.is_finite())) {
             None
         } else {
             // Always allocate some.
             let mut cnt = 0u32;
-            let mut pending = vec![(T::min_value(), self)];
+            let mut pending = vec![(f64::min_value(), self)];
             while !pending.is_empty() {
                 cnt += self.within_count_one_step(&mut pending, point, radius);
             }
@@ -167,82 +201,63 @@ pub trait SpatialQueries<'a, T: Float + 'static, A> {
     }
 }
 
-pub trait KNNRegressor<'a, T: Float + Into<f64> + 'static, A: Float + Into<f64>>:
-    SpatialQueries<'a, T, A>
+pub trait KNNRegressor<'a, A: Float + Into<f64>>:
+    SpatialQueries<'a, A>
 {
     fn knn_regress(
         &self,
         k: usize,
-        point: &[T],
-        min_dist_bound: T,
-        max_dist_bound: T,
+        point: &[f64],
+        min_dist_bound: f64,
+        max_dist_bound: f64,
         how: KNNMethod,
     ) -> Option<f64> {
         let knn = self
-            .knn_bounded(k, point, max_dist_bound, T::zero())
+            .knn_bounded(k, point, max_dist_bound, 0f64)
             .map(|nn| {
                 nn.into_iter()
                     .filter(|nb| nb.dist >= min_dist_bound)
                     .collect::<Vec<_>>()
             });
         match knn {
-            Some(nn) => match how {
+            Some(nn) if !nn.is_empty() => match how {
                 KNNMethod::P1Weighted => {
-                    if nn.is_empty() {
-                        None
-                    } else {
-                        let weights = nn
-                            .iter()
-                            .map(|nb| (T::one() + nb.dist).recip().into())
-                            .collect::<Vec<f64>>();
-                        let sum = weights.iter().copied().sum::<f64>();
-                        Some(
-                            nn.into_iter()
-                                .zip(weights.into_iter())
-                                .fold(0f64, |acc, (nb, w)| acc + w * nb.to_item().into())
-                                / sum,
-                        )
-                    }
+                    let weights = nn
+                        .iter()
+                        .map(|nb| (1.0 + nb.dist).recip().into())
+                        .collect::<Vec<f64>>();
+                    let sum = weights.iter().copied().sum::<f64>();
+                    Some(
+                        nn.into_iter()
+                            .zip(weights.into_iter())
+                            .fold(0f64, |acc, (nb, w)| acc + w * nb.to_item().into())
+                            / sum,
+                    )
                 }
                 KNNMethod::Weighted => {
-                    if nn.is_empty() {
-                        None
-                    } else {
-                        let weights = nn
-                            .iter()
-                            .map(|nb| nb.dist.recip().into())
-                            .collect::<Vec<f64>>();
-                        let sum = weights.iter().copied().sum::<f64>();
-                        Some(
-                            nn.into_iter()
-                                .zip(weights.into_iter())
-                                .fold(0f64, |acc, (nb, w)| acc + w * nb.to_item().into())
-                                / sum,
-                        )
-                    }
+                    let weights = nn
+                        .iter()
+                        .map(|nb| nb.dist.recip().into())
+                        .collect::<Vec<f64>>();
+                    let sum = weights.iter().copied().sum::<f64>();
+                    Some(
+                        nn.into_iter()
+                            .zip(weights.into_iter())
+                            .fold(0f64, |acc, (nb, w)| acc + w * nb.to_item().into())
+                            / sum,
+                    )
                 }
                 KNNMethod::NotWeighted => {
-                    if nn.is_empty() {
-                        None
-                    } else {
-                        let n = nn.len() as f64;
-                        Some(
-                            nn.into_iter()
-                                .fold(A::zero(), |acc, nb| acc + nb.to_item())
-                                .into()
-                                / n,
-                        )
-                    }
+                    let n = nn.len() as f64;
+                    Some(
+                        nn.into_iter()
+                            .fold(A::zero(), |acc, nb| acc + nb.to_item())
+                            .into()
+                            / n,
+                    )
                 }
             },
-            None => None,
+            _ => None,
         }
-    }
-}
-
-pub trait KNNClassifier<'a, T: Float + 'static>: SpatialQueries<'a, T, u32> {
-    fn knn_classif(&self, k: usize, point: &[T], max_dist_bound: T, how: KNNMethod) -> Option<u32> {
-        let knn = self.knn_bounded(k, point, max_dist_bound, T::zero());
-        todo!()
     }
 }

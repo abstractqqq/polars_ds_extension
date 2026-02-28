@@ -1,7 +1,7 @@
 use crate::arkadia::utils::slice_to_empty_leaves;
-use crate::arkadia::{kdt::KDT, SpatialQueries};
+use crate::arkadia::{kdt::KDT, SpatialQueries, KNNDist};
 use crate::num_ext::knn::KDTKwargs;
-use crate::utils::{series_to_slice, split_offsets, IndexOrder, DIST};
+use crate::utils::{series_to_slice, split_offsets, IndexOrder};
 use core::f64;
 use polars::prelude::*;
 use polars_core::POOL;
@@ -46,7 +46,7 @@ fn pl_approximate_entropy(
         .map(|sl| ((), &sl[..ncols_minus_1]).into())
         .collect::<Vec<_>>();
 
-    let tree = KDT::from_leaves_unchecked(&mut leaves, DIST::LINF);
+    let tree = KDT::from_leaves_unchecked(&mut leaves, KNNDist::LINF);
 
     let nrows_recip = (nrows as f64).recip();
     let phi_m = if can_parallel {
@@ -75,7 +75,7 @@ fn pl_approximate_entropy(
         .map(|sl| ((), sl).into())
         .collect::<Vec<_>>();
 
-    let tree = KDT::from_leaves_unchecked(&mut leaves2, DIST::LINF);
+    let tree = KDT::from_leaves_unchecked(&mut leaves2, KNNDist::LINF);
 
     let nrows_minus_1_recip = 1.0 / (nrows_minus_1 as f64);
     let phi_m1 = if can_parallel {
@@ -131,7 +131,7 @@ fn pl_sample_entropy(
         .collect::<Vec<_>>();
 
     // let mut leaves = matrix_to_empty_leaves(&data_1_view);
-    let tree = KDT::from_leaves_unchecked(&mut leaves, DIST::LINF);
+    let tree = KDT::from_leaves_unchecked(&mut leaves, KNNDist::LINF);
 
     let b = if can_parallel {
         data.chunks_exact(ncols)
@@ -155,7 +155,7 @@ fn pl_sample_entropy(
         .map(|sl| ((), sl).into())
         .collect::<Vec<_>>();
 
-    let tree = KDT::from_leaves_unchecked(&mut leaves2, DIST::LINF);
+    let tree = KDT::from_leaves_unchecked(&mut leaves2, KNNDist::LINF);
     let a = if can_parallel {
         data.chunks_exact(ncols)
             .take(nrows_minus_1)
@@ -175,7 +175,7 @@ fn pl_sample_entropy(
 
 /// Comptues the logd part of the KNN entropy
 fn _knn_entropy_helper<'a>(
-    tree: KDT<'a, f64, ()>,
+    tree: KDT<'a, ()>,
     data: &'a [f64],
     k: usize,
     can_parallel: bool,
@@ -241,11 +241,11 @@ fn pl_knn_entropy(
     let (cd, log_d) = if metric_str == "l2" {
         let half_d: f64 = d / 2.0;
         let cd = std::f64::consts::PI.powf(half_d) / (2f64.powf(d)) / (1.0 + half_d).gamma();
-        let tree = KDT::from_leaves_unchecked(&mut leaves, DIST::L2);
+        let tree = KDT::from_leaves_unchecked(&mut leaves, KNNDist::L2);
         (cd, _knn_entropy_helper(tree, &data, k, can_parallel))
     } else if metric_str == "inf" {
         let cd = 1.0;
-        let tree = KDT::from_leaves_unchecked(&mut leaves, DIST::LINF);
+        let tree = KDT::from_leaves_unchecked(&mut leaves, KNNDist::LINF);
         (cd, _knn_entropy_helper(tree, &data, k, can_parallel))
     } else {
         return Err(PolarsError::ComputeError(
