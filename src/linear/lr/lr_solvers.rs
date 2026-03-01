@@ -137,7 +137,7 @@ impl<T: RealField + Float> ElasticNet<T> {
 }
 
 impl<T: RealField + Float> LinearModel<T> for ElasticNet<T> {
-    fn fitted_values(&self) -> MatRef<T> {
+    fn fitted_values(&'_ self) -> MatRef<'_, T> {
         self.coefficients.as_ref()
     }
 
@@ -197,38 +197,42 @@ pub fn faer_solve_lr_rcond<T: RealField + Float>(
     lambda: T,
     add_bias: bool,
     rcond: T,
-) -> (Mat<T>, Vec<T>) {
+) -> Result<(Mat<T>, Vec<T>), String> {
     let n1 = x.ncols().abs_diff(add_bias as usize);
     let xt = x.transpose();
     let mut xtx = xt * x;
-    // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
-    // Safe. Index is valid and value is initialized.
-    if lambda >= T::zero() && n1 >= 1 {
+    // xtx + diagonal of lambda. If has bias, don't add to the last diagonal.
+    if lambda > T::zero() && n1 >= 1 {
         unsafe {
-            for i in 0..n1 {
-                *xtx.get_mut_unchecked(i, i) = *xtx.get_mut_unchecked(i, i) + lambda;
-            }
+            xtx.get_mut_unchecked(0..n1, 0..n1).diagonal_mut().for_each_mut(
+                |d| {*d += lambda;}
+            );
         }
     }
     // need work here
-    let svd = xtx.thin_svd().unwrap();
-    let s = svd.S().column_vector();
-    let singular_values = s.iter().copied().map(T::sqrt).collect::<Vec<_>>();
+    match xtx.thin_svd() {
+        Ok(svd) => {
+            let s = svd.S().column_vector();
+            let singular_values = s.iter().copied().map(T::sqrt).collect::<Vec<_>>();
+            let n = singular_values.len();
+            let max_singular_value = singular_values[0]; // at least 1.
+            // singular_values.iter().copied().fold(T::min_value(), T::max);
+            let threshold = rcond * max_singular_value;
+            // Safe, because i <= n
+            let mut s_inv = Mat::<T>::zeros(n, n);
+            unsafe {
+                for (i, v) in s.iter().copied().enumerate() {
+                    *s_inv.get_mut_unchecked(i, i) = if v >= threshold { v.recip() } else { T::zero() };
+                }
+            }
+            let weights = svd.V() * s_inv * svd.U().transpose() * xt * y;
+            Ok((weights, singular_values))
 
-    let n = singular_values.len();
-
-    let max_singular_value = singular_values.iter().copied().fold(T::min_value(), T::max);
-    let threshold = rcond * max_singular_value;
-    // Safe, because i <= n
-    let mut s_inv = Mat::<T>::zeros(n, n);
-    unsafe {
-        for (i, v) in s.iter().copied().enumerate() {
-            *s_inv.get_mut_unchecked(i, i) = if v >= threshold { v.recip() } else { T::zero() };
         }
+        , _ => Err("SVD failed.".to_string())
+
     }
 
-    let weights = svd.V() * s_inv * svd.U().transpose() * xt * y;
-    (weights, singular_values)
 }
 
 /// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
@@ -241,18 +245,16 @@ pub fn faer_solve_lr<T: RealField + Float>(
     add_bias: bool,
     how: LRSolverMethods,
 ) -> Mat<T> {
-    // Add ridge SVD with rconditional number later.
 
     let n1 = x.ncols().abs_diff(add_bias as usize);
     let xt = x.transpose();
     let mut xtx = xt * x;
-    // xtx + diagonal of lambda. If has bias, last diagonal element is 0.
-    // Safe. Index is valid and value is initialized.
-    if lambda >= T::zero() && n1 >= 1 {
+    // xtx + diagonal of lambda. If has bias, don't add to the last diagonal.
+    if lambda > T::zero() && n1 >= 1 {
         unsafe {
-            for i in 0..n1 {
-                *xtx.get_mut_unchecked(i, i) = *xtx.get_mut_unchecked(i, i) + lambda;
-            }
+            xtx.get_mut_unchecked(0..n1, 0..n1).diagonal_mut().for_each_mut(
+                |d| {*d += lambda;}
+            );
         }
     }
 
