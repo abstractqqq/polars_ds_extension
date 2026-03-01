@@ -18,7 +18,6 @@ polars = {version = "0.52", features = ["lazy",
 "cum_agg", "round_series", "chunked_ids", "dtype-i128", "performant", "new_streaming"], default-features = false}
 # Heavy math
 realfft = "*"
-cfavml = {version = "0.3.0", features=["nightly"]} # easy simd
 faer = { git = "https://codeberg.org/sarah-quinones/faer", rev = "8377404e78", default-features = false, features = ["nightly", "rayon", "sparse-linalg"]}
 # faer = {version = "0.24", default-features = false, features = ["nightly", "rayon", "sparse-linalg"]}
 faer-traits = { git = "https://codeberg.org/sarah-quinones/faer", rev = "8377404e78"}

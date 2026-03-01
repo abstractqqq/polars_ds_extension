@@ -1,5 +1,5 @@
-use cfavml::safe_trait_distance_ops::DistanceOps;
 use itertools::Itertools;
+// use cfavml::safe_trait_distance_ops::DistanceOps;
 use num::Float;
 use polars::{
     datatypes::{DataType, Field},
@@ -246,82 +246,124 @@ pub fn haversine<T: Float + 'static>(first: &[T], second: &[T]) -> T {
     haversine_elementwise(first[0], first[1], second[0], second[1])
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum DIST<T: Float + 'static> {
-    L1,
-    L2,
-    L2SIMD,
-    SQL2, // Squared L2
-    SQL2SIMD,
-    LINF,
-    ANY(fn(&[T], &[T]) -> T),
-}
 
-impl<T: Float + DistanceOps + 'static> DIST<T> {
-    /// New DIST from the string and informed by the dimension
-    pub fn new_from_str_informed(dist_str: String, dim: usize) -> Result<Self, String> {
-        match dist_str.as_ref() {
-            "l1" => Ok(DIST::L1),
-            "l2" => {
-                if dim < 16 {
-                    Ok(DIST::L2)
-                } else {
-                    Ok(DIST::L2SIMD)
-                }
-            }
-            "sql2" => {
-                if dim < 16 {
-                    Ok(DIST::SQL2)
-                } else {
-                    Ok(DIST::SQL2SIMD)
-                }
-            }
-            "linf" | "inf" => Ok(DIST::LINF),
-            "cosine" => Ok(DIST::ANY(cfavml::cosine)),
-            "h" | "haversine" => {
-                if dim == 2 {
-                    Ok(DIST::ANY(haversine))
-                } else {
-                    Err("Haversine distance only works with 2-d data.".into())
-                }
-            }
-            _ => Err("Unknown distance metric.".into()),
-        }
+pub fn squared_l2_distance(a: &[f64], b: &[f64]) -> f64 {
+    // debug_assert_eq!(a.len(), b.len(), "Slices must have the same length");
+
+    let mut sum0 = 0.0;
+    let mut sum1 = 0.0;
+    let mut sum2 = 0.0;
+    let mut sum3 = 0.0;
+
+    let mut a_chunks = a.chunks_exact(4);
+    let mut b_chunks = b.chunks_exact(4);
+
+    for (chunk_a, chunk_b) in a_chunks.by_ref().zip(b_chunks.by_ref()) {
+        let diff0 = chunk_a[0] - chunk_b[0];
+        let diff1 = chunk_a[1] - chunk_b[1];
+        let diff2 = chunk_a[2] - chunk_b[2];
+        let diff3 = chunk_a[3] - chunk_b[3];
+
+        sum0 += diff0 * diff0;
+        sum1 += diff1 * diff1;
+        sum2 += diff2 * diff2;
+        sum3 += diff3 * diff3;
     }
 
-    #[inline(always)]
-    pub fn dist(&self, a1: &[T], a2: &[T]) -> T {
-        match self {
-            DIST::L1 => a1
-                .iter()
-                .copied()
-                .zip(a2.iter().copied())
-                .fold(T::zero(), |acc, (x, y)| acc + ((x - y).abs())),
+    let mut total_sq_dist = sum0 + sum1 + sum2 + sum3;
 
-            DIST::L2 => a1
-                .iter()
-                .copied()
-                .zip(a2.iter().copied())
-                .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y))
-                .sqrt(),
-
-            DIST::L2SIMD => cfavml::squared_euclidean(a1, a2).sqrt(),
-
-            DIST::SQL2 => a1
-                .iter()
-                .copied()
-                .zip(a2.iter().copied())
-                .fold(T::zero(), |acc, (x, y)| acc + (x - y) * (x - y)),
-
-            DIST::SQL2SIMD => cfavml::squared_euclidean(a1, a2),
-
-            DIST::LINF => a1
-                .iter()
-                .copied()
-                .zip(a2.iter().copied())
-                .fold(T::zero(), |acc, (x, y)| acc.max((x - y).abs())),
-
-            DIST::ANY(func) => func(a1, a2),
-        }
+    // Leftover
+    for (&x, &y) in a_chunks.remainder().iter().zip(b_chunks.remainder()) {
+        let diff = x - y;
+        total_sq_dist += diff * diff;
     }
+
+    total_sq_dist
 }
+
+pub fn l1_distance(a: &[f64], b: &[f64]) -> f64 {
+    
+    // debug_assert_eq!(a.len(), b.len(), "Slices must have the same length");
+
+    let mut sum0 = 0.0;
+    let mut sum1 = 0.0;
+    let mut sum2 = 0.0;
+    let mut sum3 = 0.0;
+
+    let mut a_chunks = a.chunks_exact(4);
+    let mut b_chunks = b.chunks_exact(4);
+
+    for (chunk_a, chunk_b) in a_chunks.by_ref().zip(b_chunks.by_ref()) {
+        sum0 += (chunk_a[0] - chunk_b[0]).abs();
+        sum1 += (chunk_a[1] - chunk_b[1]).abs();
+        sum2 += (chunk_a[2] - chunk_b[2]).abs();
+        sum3 += (chunk_a[3] - chunk_b[3]).abs();
+    }
+
+    let mut total_dist = sum0 + sum1 + sum2 + sum3;
+
+    // Handle any leftover
+    for (&x, &y) in a_chunks.remainder().iter().zip(b_chunks.remainder()) {
+        total_dist += (x - y).abs();
+    }
+
+    total_dist
+}
+
+pub fn linf_distance(a: &[f64], b: &[f64]) -> f64 {
+    // debug_assert_eq!(a.len(), b.len(), "Slices must have the same length");
+
+    let mut max0 = 0.0f64;
+    let mut max1 = 0.0f64;
+    let mut max2 = 0.0f64;
+    let mut max3 = 0.0f64;
+
+    let mut a_chunks = a.chunks_exact(4);
+    let mut b_chunks = b.chunks_exact(4);
+
+    for (chunk_a, chunk_b) in a_chunks.by_ref().zip(b_chunks.by_ref()) {
+        max0 = max0.max((chunk_a[0] - chunk_b[0]).abs());
+        max1 = max1.max((chunk_a[1] - chunk_b[1]).abs());
+        max2 = max2.max((chunk_a[2] - chunk_b[2]).abs());
+        max3 = max3.max((chunk_a[3] - chunk_b[3]).abs());
+    }
+
+    let mut total_max = max0.max(max1).max(max2).max(max3);
+
+    // leftover
+    for (&x, &y) in a_chunks.remainder().iter().zip(b_chunks.remainder()) {
+        total_max = total_max.max((x - y).abs());
+    }
+
+    total_max
+}
+
+pub fn dot_product(a: &[f64], b: &[f64]) -> f64 {
+    // debug_assert_eq!(a.len(), b.len(), "Slices must have the same length");
+
+    let mut sum0 = 0.0;
+    let mut sum1 = 0.0;
+    let mut sum2 = 0.0;
+    let mut sum3 = 0.0;
+
+    let mut a_chunks = a.chunks_exact(4);
+    let mut b_chunks = b.chunks_exact(4);
+
+    for (chunk_a, chunk_b) in a_chunks.by_ref().zip(b_chunks.by_ref()) {
+        sum0 += chunk_a[0] * chunk_b[0];
+        sum1 += chunk_a[1] * chunk_b[1];
+        sum2 += chunk_a[2] * chunk_b[2];
+        sum3 += chunk_a[3] * chunk_b[3];
+    }
+
+    let mut total = sum0 + sum1 + sum2 + sum3;
+
+    // leftover
+    for (&x, &y) in a_chunks.remainder().iter().zip(b_chunks.remainder()) {
+        total += x * y;
+    }
+
+    total
+}
+
+

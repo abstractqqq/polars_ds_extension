@@ -1,53 +1,54 @@
+use crate::arkadia::KNNRegressor;
+
 /// A Kdtree
 use super::{
     leaf::KdLeaf,
-    suggest_capacity, KNNRegressor, Leaf, SpatialQueries, SplitMethod, NB,
+    KNNDist,
+    suggest_capacity, Leaf, SpatialQueries, SplitMethod, NB,
 };
-use crate::utils::DIST;
-use cfavml::safe_trait_distance_ops::DistanceOps;
 use num::Float;
-use std::{fmt::Debug, usize};
+use std::usize;
 
 /// This checks the closest distance from point to the boundaries of the box (subtree),
 /// which can help us skip entire boxes.
 #[inline]
-fn _closest_dist_to_box<T: Float>(bounds: &[T], point: &[T], dim: usize, d: DIST<T>) -> T {
-    let mut dist = T::zero();
+fn _closest_dist_to_box(bounds: &[f64], point: &[f64], dim: usize, d: KNNDist) -> f64 {
+    let mut dist = 0f64;
     match d {
-        DIST::L1 => {
+        KNNDist::L1 => {
             for i in 0..point.len() {
                 if point[i] > bounds[i + dim] {
-                    dist = dist + (point[i] - bounds[i + dim]).abs();
+                    dist += (point[i] - bounds[i + dim]).abs();
                 } else if point[i] < bounds[i] {
-                    dist = dist + (point[i] - bounds[i]).abs();
+                    dist += dist + (point[i] - bounds[i]).abs();
                 }
             }
             dist
         }
 
-        DIST::L2 | DIST::L2SIMD => {
+        KNNDist::L2 => {
             for i in 0..point.len() {
                 if point[i] > bounds[i + dim] {
-                    dist = dist + (point[i] - bounds[i + dim]).powi(2);
+                    dist += (point[i] - bounds[i + dim]).powi(2);
                 } else if point[i] < bounds[i] {
-                    dist = dist + (point[i] - bounds[i]).powi(2);
+                    dist += (point[i] - bounds[i]).powi(2);
                 }
             }
             dist.sqrt()
         }
 
-        DIST::SQL2 | DIST::SQL2SIMD => {
+        KNNDist::SQL2 => {
             for i in 0..point.len() {
                 if point[i] > bounds[i + dim] {
-                    dist = dist + (point[i] - bounds[i + dim]).powi(2);
+                    dist += (point[i] - bounds[i + dim]).powi(2);
                 } else if point[i] < bounds[i] {
-                    dist = dist + (point[i] - bounds[i]).powi(2);
+                    dist += (point[i] - bounds[i]).powi(2);
                 }
             }
             dist
         }
 
-        DIST::LINF => {
+        KNNDist::LINF => {
             for i in 0..point.len() {
                 if point[i] > bounds[i + dim] {
                     dist = dist.max((point[i] - bounds[i + dim]).abs());
@@ -57,44 +58,32 @@ fn _closest_dist_to_box<T: Float>(bounds: &[T], point: &[T], dim: usize, d: DIST
             }
             dist
         }
-
-        DIST::ANY(func) => {
-            let mut new_point = point.to_vec();
-            for i in 0..point.len() {
-                if point[i] > bounds[i + dim] {
-                    new_point[i] = bounds[i + dim];
-                } else if point[i] < bounds[i] {
-                    new_point[i] = bounds[i];
-                }
-            }
-            func(point, &new_point)
-        }
     }
 }
 
-pub struct KDT<'a, T: Float + DistanceOps + 'static + Debug, A> {
+pub struct KDT<'a, A> {
     pub dim: usize,
     pub capacity: usize,
     // Nodes
-    left: Option<Box<KDT<'a, T, A>>>,
-    right: Option<Box<KDT<'a, T, A>>>,
+    left: Option<Box<KDT<'a, A>>>,
+    right: Option<Box<KDT<'a, A>>>,
     // Is a leaf node if this has valid values
     split_axis: usize,
-    split_axis_value: T,
+    split_axis_value: f64,
     // vec of len 2 * dim. First dim values are mins in each dim, second dim values are maxs
-    bounds: Vec<T>,
+    bounds: Vec<f64>,
     // Data
-    data: Vec<Leaf<'a, T, A>>, // Not empty when this is a leaf
+    data: Vec<Leaf<'a, f64, A>>, // Not empty when this is a leaf
     //
-    d: DIST<T>,
+    d: KNNDist,
 }
 
-impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
+impl<'a, A: Copy> KDT<'a, A> {
     // Helper function that finds the bounding box for each (sub)kdtree
     // Vec of length 2 * dim. First dim values are the mins, and the rest are maxes
-    fn find_bounds(data: &[Leaf<'a, T, A>], dim: usize) -> Vec<T> {
-        let mut bounds = vec![T::max_value(); dim];
-        bounds.extend(std::iter::repeat(T::min_value()).take(dim));
+    fn find_bounds(data: &[Leaf<'a, f64, A>], dim: usize) -> Vec<f64> {
+        let mut bounds = vec![f64::max_value(); dim];
+        bounds.extend(std::iter::repeat(f64::min_value()).take(dim));
         for elem in data.iter() {
             for i in 0..dim {
                 bounds[i] = bounds[i].min(elem.value_at(i));
@@ -104,7 +93,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
         bounds
     }
 
-    pub fn from_leaves(data: &'a mut [Leaf<'a, T, A>], d: DIST<T>) -> Result<Self, String> {
+    pub fn from_leaves(data: &'a mut [Leaf<'a, f64, A>], d: KNNDist) -> Result<Self, String> {
         if data.is_empty() {
             return Err("Empty data.".into());
         }
@@ -120,7 +109,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
         Ok(tree)
     }
 
-    pub fn from_leaves_unchecked(data: &'a mut [Leaf<'a, T, A>], d: DIST<T>) -> Self {
+    pub fn from_leaves_unchecked(data: &'a mut [Leaf<'a, f64, A>], d: KNNDist) -> Self {
         let dim = data[0].dim();
         let mut tree = KDT::new_empty(dim, suggest_capacity(dim), d);
         for leaf in data.iter().copied() {
@@ -129,16 +118,16 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
         tree
     }
 
-    pub fn new_empty(dim: usize, capacity: usize, d: DIST<T>) -> Self {
-        let mut bounds = vec![T::max_value(); dim];
-        bounds.extend(std::iter::repeat(T::min_value()).take(dim));
+    pub fn new_empty(dim: usize, capacity: usize, d: KNNDist) -> Self {
+        let mut bounds = vec![f64::MAX; dim];
+        bounds.extend(std::iter::repeat(f64::min_value()).take(dim));
         KDT {
             dim: dim,
             capacity: capacity,
             left: None,
             right: None,
             split_axis: usize::MAX,
-            split_axis_value: T::nan(),
+            split_axis_value: f64::nan(),
             bounds: bounds,
             data: vec![],
             d: d,
@@ -146,7 +135,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
     }
 
     /// Creates a new leaf node out of the data.
-    pub fn grow_new_leaf(&self, data: Vec<Leaf<'a, T, A>>) -> Self {
+    pub fn grow_new_leaf(&self, data: Vec<Leaf<'a, f64, A>>) -> Self {
         let bounds = Self::find_bounds(&data, self.dim);
         KDT {
             dim: self.dim,
@@ -154,7 +143,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
             left: None,
             right: None,
             split_axis: usize::MAX,
-            split_axis_value: T::nan(),
+            split_axis_value: f64::nan(),
             bounds: bounds,
             data: data,
             d: self.d,
@@ -166,7 +155,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
     }
 
     /// Updates the bounds according to the new leaf
-    fn update_bounds(&mut self, leaf: &Leaf<'a, T, A>) {
+    fn update_bounds(&mut self, leaf: &Leaf<'a, f64, A>) {
         for i in 0..self.dim {
             self.bounds[i] = self.bounds[i].min(leaf.value_at(i));
             self.bounds[i + self.dim] = self.bounds[i + self.dim].max(leaf.value_at(i));
@@ -174,7 +163,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
     }
 
     /// Updates the bounds and push to new leaf to the data vec.
-    fn update_and_push(&mut self, leaf: Leaf<'a, T, A>) {
+    fn update_and_push(&mut self, leaf: Leaf<'a, f64, A>) {
         for i in 0..self.dim {
             self.bounds[i] = self.bounds[i].min(leaf.value_at(i));
             self.bounds[i + self.dim] = self.bounds[i + self.dim].max(leaf.value_at(i));
@@ -187,7 +176,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
     /// to use this if most the data have been already ingested in bulk and you
     /// are only adding a few more points. Attaching too much can be
     /// bad for performance in lower dimensions.
-    pub fn attach(&mut self, leaf: Leaf<'a, T, A>) -> Result<(), String> {
+    pub fn attach(&mut self, leaf: Leaf<'a, f64, A>) -> Result<(), String> {
         if leaf.dim() != self.dim {
             Err("Dimension does not match.".into())
         } else {
@@ -196,7 +185,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
     }
 
     #[inline(always)]
-    pub fn attach_unchecked(&mut self, leaf: Leaf<'a, T, A>) {
+    pub fn attach_unchecked(&mut self, leaf: Leaf<'a, f64, A>) {
         if self.is_leaf() {
             self.update_and_push(leaf);
         } else {
@@ -210,7 +199,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
 
     /// Add a new point (leaf) to the Kdtree. This will further split the kdtree
     /// if capacity is reached in the leaf node.
-    pub fn add(&mut self, leaf: Leaf<'a, T, A>) -> Result<(), String> {
+    pub fn add(&mut self, leaf: Leaf<'a, f64, A>) -> Result<(), String> {
         if leaf.dim() != self.dim {
             Err("Dimension does not match.".into())
         } else {
@@ -219,7 +208,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
     }
 
     #[inline(always)]
-    pub fn add_unchecked(&mut self, leaf: Leaf<'a, T, A>, depth: usize) {
+    pub fn add_unchecked(&mut self, leaf: Leaf<'a, f64, A>, depth: usize) {
         if self.is_leaf() {
             // Always update
             self.update_and_push(leaf);
@@ -230,7 +219,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
 
                 let axis = depth % self.dim;
                 let midpoint = self.bounds[axis]
-                    + (self.bounds[axis + self.dim] - self.bounds[axis]) / (T::one() + T::one());
+                    + (self.bounds[axis + self.dim] - self.bounds[axis]) / (2f64);
 
                 // True will go right, false go left
                 new_data.sort_unstable_by_key(|leaf| leaf.value_at(axis) >= midpoint);
@@ -277,11 +266,11 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
 
     fn update_top_k(
         &self,
-        top_k: &mut Vec<NB<T, A>>,
+        top_k: &mut Vec<NB<f64, A>>,
         k: usize,
-        point: &[T],
-        current_max: T,
-        max_dist_bound: T,
+        point: &[f64],
+        current_max: f64,
+        max_dist_bound: f64,
     ) {
         let mut cur_max = current_max;
         for element in self.data.iter() {
@@ -304,7 +293,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
     }
 
     // #[inline(always)]
-    fn update_nb_within(&self, neighbors: &mut Vec<NB<T, A>>, point: &[T], radius: T) {
+    fn update_nb_within(&self, neighbors: &mut Vec<NB<f64, A>>, point: &[f64], radius: f64) {
         for element in self.data.iter() {
             let y = element.row_vec;
             let dist = self.d.dist(y, point);
@@ -318,8 +307,8 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> KDT<'a, T, A> {
     }
 }
 
-impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpatialQueries<'a, T, A>
-    for KDT<'a, T, A>
+impl<'a, A: Copy> SpatialQueries<'a, A>
+    for KDT<'a, A>
 {
     fn dim(&self) -> usize {
         self.dim
@@ -328,12 +317,12 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpatialQueries<'a, T
     // #[inline(always)]
     fn knn_one_step(
         &self,
-        pending: &mut Vec<(T, &KDT<'a, T, A>)>,
-        top_k: &mut Vec<NB<T, A>>,
+        pending: &mut Vec<(f64, &KDT<'a, A>)>,
+        top_k: &mut Vec<NB<f64, A>>,
         k: usize,
-        point: &[T],
-        max_dist_bound: T,
-        epsilon: T,
+        point: &[f64],
+        max_dist_bound: f64,
+        epsilon: f64,
     ) {
         // k > 0 is guaranteed.
         let current_max = if top_k.len() < k {
@@ -368,10 +357,10 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpatialQueries<'a, T
     #[inline(always)]
     fn within_one_step(
         &self,
-        pending: &mut Vec<(T, &KDT<'a, T, A>)>,
-        neighbors: &mut Vec<NB<T, A>>,
-        point: &[T],
-        radius: T,
+        pending: &mut Vec<(f64, &KDT<'a, A>)>,
+        neighbors: &mut Vec<NB<f64, A>>,
+        point: &[f64],
+        radius: f64,
     ) {
         let (dist_to_box, tree) = pending.pop().unwrap(); // safe
         if dist_to_box > radius {
@@ -399,9 +388,9 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpatialQueries<'a, T
     #[inline(always)]
     fn within_count_one_step(
         &self,
-        pending: &mut Vec<(T, &KDT<'a, T, A>)>,
-        point: &[T],
-        radius: T,
+        pending: &mut Vec<(f64, &KDT<'a, A>)>,
+        point: &[f64],
+        radius: f64,
     ) -> u32 {
         let (dist_to_box, tree) = pending.pop().unwrap(); // safe
         if dist_to_box > radius {
@@ -436,10 +425,7 @@ impl<'a, T: Float + DistanceOps + 'static + Debug, A: Copy> SpatialQueries<'a, T
     }
 }
 
-impl<'a, T: Float + DistanceOps + 'static + Debug + Into<f64>, A: Float + Into<f64>>
-    KNNRegressor<'a, T, A> for KDT<'a, T, A>
-{
-}
+impl <'a, A: Float + Into<f64>> KNNRegressor<'a, A> for KDT<'a, A> {}
 
 #[cfg(test)]
 mod tests {
@@ -459,10 +445,10 @@ mod tests {
             .fold(0., |acc, (x, y)| acc.max((x - y).abs()))
     }
 
-    pub fn squared_l2<T: Float + 'static>(a: &[T], b: &[T]) -> T {
+    pub fn squared_l2(a: &[f64], b: &[f64]) -> f64 {
         a.iter()
             .zip(b.iter())
-            .fold(T::zero(), |acc, (&a, &b)| acc + (a - b) * (a - b))
+            .fold(0f64, |acc, (&a, &b)| acc + (a - b) * (a - b))
     }
 
     fn random_10d_rows() -> [f64; 10] {
@@ -505,7 +491,7 @@ mod tests {
         let values = (0..rows).collect::<Vec<_>>();
         let mut leaves = slice_to_leaves(&v, 10, &values);
 
-        let tree = KDT::from_leaves(&mut leaves, DIST::LINF).unwrap();
+        let tree = KDT::from_leaves(&mut leaves, KNNDist::LINF).unwrap();
 
         let output = tree.knn(k, &point, 0f64);
 
@@ -537,7 +523,7 @@ mod tests {
         let values = (0..rows).collect::<Vec<_>>();
         let mut leaves = slice_to_leaves(&v, 10, &values);
 
-        let tree = KDT::from_leaves(&mut leaves, DIST::L1).unwrap();
+        let tree = KDT::from_leaves(&mut leaves, KNNDist::L1).unwrap();
 
         let output = tree.knn(k, &point, 0f64);
 
@@ -569,7 +555,7 @@ mod tests {
         let values = (0..rows).collect::<Vec<_>>();
         let mut leaves = slice_to_leaves(&v, 10, &values);
 
-        let tree = KDT::from_leaves(&mut leaves, DIST::SQL2).unwrap();
+        let tree = KDT::from_leaves(&mut leaves, KNNDist::SQL2).unwrap();
 
         let output = tree.knn(k, &point, 0f64);
 
@@ -584,36 +570,4 @@ mod tests {
         }
     }
 
-    // #[test]
-    // fn test_10d_knn_l2_dist_owned() {
-    //     // 10 nearest neighbors, matrix of size 1000 x 10
-    //     let k = 10usize;
-    //     let mut v = Vec::new();
-    //     let rows = 5_000usize;
-    //     for _ in 0..rows {
-    //         v.extend_from_slice(&random_10d_rows());
-    //     }
-
-    //     let point = [0.5; 10];
-    //     // brute force test
-    //     let (ans_argmins, ans_distances) = generate_test_answer(&v, 10, &point, squared_l2);
-
-    //     let values = (0..rows).collect::<Vec<_>>();
-    //     let leaves = slice_to_owned_leaves(&v, 10, &values);
-
-    //     let tree = OwnedKDT::from_leaves(leaves, DIST::SQL2, SplitMethod::MIDPOINT).unwrap();
-    //     assert!(tree.count_all() == rows);
-
-    //     let output = tree.knn(k, &point, 0f64);
-
-    //     assert!(output.is_some());
-    //     let output = output.unwrap();
-    //     let indices = output.iter().map(|nb| nb.item).collect::<Vec<_>>();
-    //     let distances = output.iter().map(|nb| nb.dist).collect::<Vec<_>>();
-
-    //     assert_eq!(&ans_argmins[..k], &indices);
-    //     for (d1, d2) in ans_distances[..k].iter().zip(distances.into_iter()) {
-    //         assert!((d1 - d2).abs() < 1e-10);
-    //     }
-    // }
 }

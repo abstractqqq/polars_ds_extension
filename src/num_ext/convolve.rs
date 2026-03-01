@@ -1,4 +1,3 @@
-use cfavml;
 use polars::prelude::*;
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
@@ -7,7 +6,7 @@ use pyo3_polars::{
         slice::ParallelSlice,
     },
 };
-
+use crate::utils::dot_product;
 use realfft::RealFftPlanner;
 use serde::Deserialize;
 
@@ -176,13 +175,13 @@ fn convolve(
                 let mut out = vec![0f64; input.len() - kernel.len() + 1];
                 input
                     .par_windows(kernel.len())
-                    .map(|sl| cfavml::dot(kernel, sl))
+                    .map(|sl| dot_product(kernel, sl))
                     .collect_into_vec(&mut out);
                 Ok(out)
             } else {
                 Ok(input
                     .windows(kernel.len())
-                    .map(|sl| cfavml::dot(kernel, sl))
+                    .map(|sl| dot_product(kernel, sl))
                     .collect())
             }
         }

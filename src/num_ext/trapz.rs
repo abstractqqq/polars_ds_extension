@@ -1,5 +1,4 @@
 /// Integration via Trapezoidal rule.
-use cfavml;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
@@ -9,11 +8,10 @@ pub fn trapz(y: &[f64], x: &[f64]) -> f64 {
     if x.len() == 1 && y.len() == 1 {
         y[0] * x[0] * -0.5 // y[0] * (-x[0]) * 0.5
     } else {
-        let mut y_d = vec![0.; y.len() - 1];
-        cfavml::add_vector(&y[1..], &y[..y.len() - 1], &mut y_d);
-        let mut x_d = vec![0.; y.len() - 1];
-        cfavml::sub_vector(&x[1..], &x[..x.len() - 1], &mut x_d);
-        0.5 * cfavml::dot(&y_d, &x_d)
+        // y[1..] + y[..y.len() - 1] dot with x[1..] - x[..x.len() - 1]
+        y.windows(2).zip(x.windows(2)).map(
+            |(yw, xw)| (yw[1] + yw[0]) * (xw[1] - xw[0])
+        ).sum::<f64>() * 0.5
     }
 }
 

@@ -3,9 +3,9 @@
 use crate::{
     arkadia::{
         utils::{slice_to_empty_leaves, slice_to_leaves},
-        KNNMethod, KNNRegressor, Leaf, SpatialQueries, KDT,
+        KNNMethod, Leaf, SpatialQueries, KDT, KNNDist, KNNRegressor
     },
-    utils::{list_u32_output, series_to_slice, split_offsets, IndexOrder, DIST},
+    utils::{list_u32_output, series_to_slice, split_offsets, IndexOrder},
 };
 
 use num::Float;
@@ -109,11 +109,10 @@ fn pl_knn_avg(
     let data = series_to_slice::<Float64Type>(&inputs[2..], IndexOrder::C)?;
     let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, &null_mask);
 
-    let tree = match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
+    let tree = match KNNDist::try_from(kwargs.metric) {
         Ok(d) => Ok(KDT::from_leaves_unchecked(&mut leaves, d)),
-        Err(e) => Err(e),
-    }
-    .map_err(|err| PolarsError::ComputeError(err.into()))?;
+        Err(e) => Err(PolarsError::ComputeError(e.into())),
+    }?;
 
     let ca = if can_parallel {
         let n_threads = POOL.current_num_threads();
@@ -155,7 +154,7 @@ pub fn knn_ptwise<'a, Kdt>(
     epsilon: f64,
 ) -> ListChunked
 where
-    Kdt: SpatialQueries<'a, f64, u32> + std::marker::Sync,
+    Kdt: SpatialQueries<'a, u32> + std::marker::Sync,
 {
     let ncols = tree.dim();
     let nrows = data.len() / ncols;
@@ -221,7 +220,7 @@ fn pl_dist_from_kth_nb(
     let can_parallel = kwargs.parallel && !context.parallel();
     let ncols = inputs.len();
     let data = series_to_slice::<Float64Type>(inputs, IndexOrder::C)?;
-    match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
+    match KNNDist::try_from(kwargs.metric) {
         Ok(d) => {
             let mut leaves: Vec<Leaf<f64, ()>> =
                 data.chunks_exact(ncols).map(|sl| ((), sl).into()).collect();
@@ -304,7 +303,7 @@ fn pl_knn_ptwise(
     let ncols = inputs[inputs_offset..].len();
     let data = series_to_slice::<Float64Type>(&inputs[inputs_offset..], IndexOrder::C)?;
 
-    match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
+    match KNNDist::try_from(kwargs.metric) {
         Ok(d) => {
             let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, keep_mask);
             let tree = KDT::from_leaves_unchecked(&mut leaves, d);
@@ -333,7 +332,7 @@ pub fn knn_ptwise_w_dist<'a, Kdt>(
     epsilon: f64,
 ) -> (ListChunked, ListChunked)
 where
-    Kdt: SpatialQueries<'a, f64, u32> + std::marker::Sync,
+    Kdt: SpatialQueries<'a, u32> + std::marker::Sync,
 {
     let ncols = tree.dim();
     let nrows = data.len() / ncols;
@@ -469,7 +468,7 @@ fn pl_knn_ptwise_w_dist(
 
     let ncols = inputs[inputs_offset..].len();
     let data = series_to_slice::<Float64Type>(&inputs[inputs_offset..], IndexOrder::C)?;
-    let (ca_nb, ca_dist) = match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
+    let (ca_nb, ca_dist) = match KNNDist::try_from(kwargs.metric) {
         Ok(d) => {
             let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, null_mask);
             let tree = KDT::from_leaves_unchecked(&mut leaves, d);
@@ -502,7 +501,7 @@ pub fn query_radius_ptwise<'a, Kdt>(
     sort: bool,
 ) -> ListChunked
 where
-    Kdt: SpatialQueries<'a, f64, u32> + std::marker::Sync,
+    Kdt: SpatialQueries<'a, u32> + std::marker::Sync,
 {
     let ncols = tree.dim();
     let nrows = data.len() / ncols;
@@ -567,7 +566,7 @@ fn pl_query_radius_ptwise(
     let ncols = inputs[1..].len();
     let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
     // Building output
-    match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
+    match KNNDist::try_from(kwargs.metric) {
         Ok(d) => {
             let mut leaves = slice_to_leaves(&data, ncols, id);
             let tree = KDT::from_leaves_unchecked(&mut leaves, d);
@@ -585,7 +584,7 @@ pub fn query_nb_cnt<'a, Kdt>(
     can_parallel: bool,
 ) -> UInt32Chunked
 where
-    Kdt: SpatialQueries<'a, f64, ()> + std::marker::Sync,
+    Kdt: SpatialQueries<'a, ()> + std::marker::Sync,
 {
     // as_slice.unwrap() is safe because when we create the matrices, we specified C order.
     let ncols = tree.dim();
@@ -622,7 +621,7 @@ pub fn query_nb_cnt_w_radius<'a, Kdt>(
     can_parallel: bool,
 ) -> UInt32Chunked
 where
-    Kdt: SpatialQueries<'a, f64, ()> + std::marker::Sync,
+    Kdt: SpatialQueries<'a, ()> + std::marker::Sync,
 {
     let ncols = tree.dim();
     let nrows = data.len() / ncols;
@@ -672,7 +671,7 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
 
     if radius.len() == 1 {
         let r = radius.get(0).unwrap();
-        match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
+        match KNNDist::try_from(kwargs.metric) {
             Ok(d) => {
                 let mut leaves = slice_to_empty_leaves(&data, ncols);
                 let tree = KDT::from_leaves_unchecked(&mut leaves, d);
@@ -683,7 +682,7 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
             Err(e) => Err(PolarsError::ComputeError(e.into())),
         }
     } else if radius.len() == nrows {
-        match DIST::<f64>::new_from_str_informed(kwargs.metric, ncols) {
+        match KNNDist::try_from(kwargs.metric) {
             Ok(d) => {
                 let mut leaves = slice_to_empty_leaves(&data, ncols);
                 let tree = KDT::from_leaves_unchecked(&mut leaves, d);
