@@ -501,9 +501,10 @@ fn pl_lr_w_rcond(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
             let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
             let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
 
-            // faer_solve_ridge_rcond
+            // faer_solve_lr_rcond
             let (coeffs, singular_values) =
-                faer_solve_lr_rcond(x, y, kwargs.l2_reg, add_bias, rcond);
+                faer_solve_lr_rcond(x, y, kwargs.l2_reg, add_bias, rcond)
+                .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(
