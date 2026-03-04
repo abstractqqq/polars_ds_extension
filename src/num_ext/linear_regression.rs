@@ -473,6 +473,7 @@ fn pl_lr_multi_pred(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Se
     let pred = x * &coeffs;
     let resid = y - &pred;
 
+    // can be faster if I pass unsafe owned vec, e.g. Float64Chunked::from_vec
     let mut s = Vec::with_capacity(y_names.len() * 2);
     for (i, y) in y_names.into_iter().enumerate() {
         let pred_name = format!("{}_pred", y);
