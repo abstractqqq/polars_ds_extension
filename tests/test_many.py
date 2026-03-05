@@ -6,7 +6,6 @@ import numpy as np
 import polars_ds as pds
 from polars.testing import assert_frame_equal, assert_series_equal
 
-
 def test_random_functions_in_streaming():
     df = pl.DataFrame({"x": list(range(0, 50))}).lazy()
 

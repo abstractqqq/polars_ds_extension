@@ -1,8 +1,8 @@
 # Needed for local development
-maturin[patchelf]>=1.7, !=1.12.5; sys_platform == "linux"
-maturin>=1.7, !=1.12.5; sys_platform != "linux"
+maturin[patchelf]>=1.7, <1.12.5; sys_platform == "linux"
+maturin>=1.7, <1.12.5; sys_platform != "linux"
 polars
 pre-commit
 ipykernel
 numpy
-# nbformat>=4.2.0 # Need this if we have plotly
+matplotlib

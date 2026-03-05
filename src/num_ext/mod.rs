@@ -21,6 +21,5 @@ mod tp_fp;
 mod trapz;
 mod welch;
 mod woe_iv;
+mod splines;
 mod logistic_regression;
-
-// mod ball_tree;

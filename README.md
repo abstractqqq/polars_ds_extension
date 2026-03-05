@@ -385,3 +385,7 @@ You can then publish it to your private PYPI server, or just use it locally.
 # Other Projects
 
 1. [Caching for Polars](https://github.com/abstractqqq/pocache)
+
+# AI Usage Disclosure
+
+Since this project is mostly maintained by a single person, and a single person cannot be fluent with all topics in scientific programming, some of the code in this package is AI-guided. I will not accept vibe-coded functions. For AI-generated PRs, see contributing.md.
