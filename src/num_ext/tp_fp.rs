@@ -1,7 +1,7 @@
-use polars::prelude::*;
-use pyo3_polars::derive::polars_expr;
 /// All things true positive, false positive related.
 /// ROC AUC, Average Precision, precision, recall, etc. m
+use polars::prelude::*;
+use pyo3_polars::derive::polars_expr;
 use std::f64;
 
 fn combo_output(_: &[Field]) -> PolarsResult<Field> {
@@ -311,16 +311,16 @@ fn pl_binary_confusion_matrix(inputs: &[Series]) -> PolarsResult<Series> {
     // 0 is tn, 1 is fp, 2 is fn, 3 is tp
     let combined_series = inputs[0].u32()?;
     let confusion = binary_confusion_matrix(combined_series);
-    let tn = UInt32Chunked::from_vec("tn".into(), vec![confusion[0]]);
+    let tn = Float64Chunked::from_vec("tn".into(), vec![confusion[0] as f64]);
     let tn = Column::Series(tn.into_series().into());
 
-    let fp = UInt32Chunked::from_vec("fp".into(), vec![confusion[1]]);
+    let fp = Float64Chunked::from_vec("fp".into(), vec![confusion[1] as f64]);
     let fp = Column::Series(fp.into_series().into());
 
-    let fn_ = UInt32Chunked::from_vec("fn".into(), vec![confusion[2]]);
+    let fn_ = Float64Chunked::from_vec("fn".into(), vec![confusion[2] as f64]);
     let fn_ = Column::Series(fn_.into_series().into());
 
-    let tp = UInt32Chunked::from_vec("tp".into(), vec![confusion[3]]);
+    let tp = Float64Chunked::from_vec("tp".into(), vec![confusion[3] as f64]);
     let tp = Column::Series(tp.into_series().into());
     // All series have length 1 and no duplicate names
 
@@ -349,11 +349,11 @@ fn pl_binary_confusion_matrix(inputs: &[Series]) -> PolarsResult<Series> {
         .with_columns([
             (col("tpr") / col("fpr")).alias("plr"),
             (col("fnr") / col("tnr")).alias("nlr"),
-            (col("tpr") + col("tnr") - lit(1)).alias("informedness"),
+            (col("tpr") + col("tnr") - lit(1.0)).alias("informedness"),
             (col("precision") - col("false_omission_rate")).alias("markedness"),
             (((col("tpr") * col("fpr")).sqrt() - col("fpr")) / (col("tpr") - col("fpr")))
                 .alias("prevalence_threshold"),
-            ((col("tpr") + col("tnr")) / lit(2)).alias("balanced_accuracy"),
+            ((col("tpr") + col("tnr")) / lit(2.0)).alias("balanced_accuracy"),
             ((lit(2) * col("precision") * col("tpr")) / (col("precision") + col("tpr")))
                 .alias("f1"),
             ((col("precision") * col("tpr")).sqrt()).alias("folkes_mallows_index"),
