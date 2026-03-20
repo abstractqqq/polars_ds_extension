@@ -53,17 +53,18 @@ def test_map_words():
 
 
 def test_normalize_whitespace():
-    df = pl.DataFrame({"x": ["a   b", "ab", "a b", "a\t\nb"]})
+    df = pl.DataFrame({"x": ["a   b", "ab", "a b", "a\t\nb", "a \rb"]})
 
     assert_frame_equal(
         df.select(pds.normalize_whitespace("x")),
-        pl.DataFrame({"x": ["a b", "ab", "a b", "a b"]}),
+        pl.DataFrame({"x": ["a b", "ab", "a b", "a b", "a b"]}),
     )
 
     assert_frame_equal(
         df.select(pds.normalize_whitespace("x", only_spaces=True)),
-        pl.DataFrame({"x": ["a b", "ab", "a b", "a\t\nb"]}),
+        pl.DataFrame({"x": ["a b", "ab", "a b", "a\t\nb", "a \rb"]}),
     )
+
 
 
 @pytest.mark.parametrize(
