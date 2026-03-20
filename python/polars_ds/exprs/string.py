@@ -940,7 +940,7 @@ def normalize_whitespace(c: str | pl.Expr, only_spaces: bool = False) -> pl.Expr
         The string column
     only_spaces: bool
         If false, it will first replace '\t', '\n' and '\r' with a whitespace
-        and them normalize whitespaces to 1. 
+        and then normalize whitespaces to 1. 
 
     Returns
     -------
