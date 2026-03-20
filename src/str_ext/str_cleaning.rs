@@ -76,10 +76,3 @@ fn map_words(inputs: &[Series], kwargs: MapWordsKwargs) -> PolarsResult<Series> 
     });
     Ok(out.into_series())
 }
-
-#[polars_expr(output_type=String)]
-fn normalize_whitespace(inputs: &[Series]) -> PolarsResult<Series> {
-    let ca = inputs[0].str()?;
-    let out = ca.apply_into_string_amortized(|s, buf| *buf = s.split_whitespace().join(" "));
-    Ok(out.into_series())
-}

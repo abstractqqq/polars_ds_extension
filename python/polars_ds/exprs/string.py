@@ -939,8 +939,8 @@ def normalize_whitespace(c: str | pl.Expr, only_spaces: bool = False) -> pl.Expr
     c : str | pl.Expr
         The string column
     only_spaces: bool
-        If True, only split on the space character ' ' instead of any whitespace
-        character such as '\t' and '\n', by default False
+        If false, it will first replace '\t', '\n' and '\r' with a whitespace
+        and them normalize whitespaces to 1. 
 
     Returns
     -------
@@ -959,12 +959,7 @@ def normalize_whitespace(c: str | pl.Expr, only_spaces: bool = False) -> pl.Expr
     └─────────┴─────┴────────┘
     """
     expr = to_expr(c)
-
     if only_spaces:
-        return expr.str.replace_all(" +", " ")
-
-    return pl_plugin(
-        symbol="normalize_whitespace",
-        args=[expr],
-        is_elementwise=True,
-    )
+        return expr.str.replace_all(r" +", " ")
+    else:
+        return expr.str.replace_all(r"\n|\r|\t", " ").str.replace_all(r" +", " ")

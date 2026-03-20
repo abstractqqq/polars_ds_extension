@@ -388,4 +388,4 @@ You can then publish it to your private PYPI server, or just use it locally.
 
 # AI Usage Disclosure
 
-Since this project is mostly maintained by a single person, and a single person cannot be fluent with all topics in scientific programming, some of the code in this package is AI-guided. I will not accept vibe-coded functions. For AI-generated PRs, see contributing.md.
+Since this project is mostly maintained by a single person, and a single person cannot be fluent with all topics in scientific programming, some of the code in this package is guided by AI and reviewd by me. I will not accept vibe-coded functions. For AI-generated PRs, see contributing.md.
