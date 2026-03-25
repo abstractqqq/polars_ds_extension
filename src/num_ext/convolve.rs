@@ -1,3 +1,4 @@
+use crate::utils::dot_product;
 use polars::prelude::*;
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
@@ -6,7 +7,6 @@ use pyo3_polars::{
         slice::ParallelSlice,
     },
 };
-use crate::utils::dot_product;
 use realfft::RealFftPlanner;
 use serde::Deserialize;
 
@@ -96,9 +96,9 @@ fn valid_fft_convolve(input: &[f64], kernel: &[f64]) -> PolarsResult<Vec<f64>> {
     let _ = r2c.process(&mut output_vec, &mut spec_q);
 
     // After forward FFT, multiply elementwise
-    spec_p.iter_mut().zip(spec_q.iter()).for_each(
-        |(x, y)| {*x *= y;}
-    );
+    spec_p.iter_mut().zip(spec_q.iter()).for_each(|(x, y)| {
+        *x *= y;
+    });
     // Inverse FFT
     let _ = c2r.process(&mut spec_p, &mut output_vec);
 

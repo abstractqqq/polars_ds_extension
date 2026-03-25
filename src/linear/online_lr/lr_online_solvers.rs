@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+use crate::linear::{lr::LinearModel, LinalgErrors};
 use faer::{
     linalg::solvers::{DenseSolveCore, Solve},
     mat::Mat,
@@ -6,7 +7,6 @@ use faer::{
 };
 use faer_traits::RealField;
 use num::Float;
-use crate::linear::{lr::LinearModel, LinalgErrors};
 
 pub struct OnlineLR<T: RealField + Float> {
     pub lambda: T,
@@ -280,7 +280,7 @@ pub fn faer_rolling_skipping_lr<T: RealField + Float>(
         let remove_y = y.get(j - n..j - n + 1, ..);
         if is_finite[j - n] {
             non_null_cnt_in_window -= 1; // removed one non-null column
-            online_lr.update_unchecked(remove_x, remove_y, T::one().neg()); 
+            online_lr.update_unchecked(remove_x, remove_y, T::one().neg());
         }
 
         let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns

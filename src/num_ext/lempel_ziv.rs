@@ -1,4 +1,4 @@
-use hashbrown::HashSet;
+use foldhash::{HashSet, HashSetExt};
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 

@@ -8,7 +8,6 @@
 /// a manual cast need to be used before calling .f64() or .f32() on the series.
 use super::linear_regression::{LRKwargs, MultiLRKwargs, SWWLRKwargs, StandardError};
 use crate::linear::{
-    NullPolicy,
     lr::{
         lr_solvers::{
             faer_coordinate_descent, faer_nn_lr, faer_solve_lr, faer_solve_lr_rcond,
@@ -17,8 +16,9 @@ use crate::linear::{
         LRMethods,
     },
     online_lr::lr_online_solvers::{faer_recursive_lr, faer_rolling_lr, faer_rolling_skipping_lr},
+    NullPolicy,
 };
-use crate::utils::{to_frame, columns_to_vec, IndexOrder};
+use crate::utils::{columns_to_vec, to_frame, IndexOrder};
 use core::f32;
 use faer::{
     linalg::solvers::{DenseSolveCore, Solve},
@@ -433,7 +433,7 @@ fn pl_lr_w_rcond_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series
             // faer_solve_lr_rcond
             let (coeffs, singular_values) =
                 faer_solve_lr_rcond(x, y, kwargs.l2_reg as f32, add_bias, rcond)
-                .map_err(|e| PolarsError::ComputeError(e.into()))?;
+                    .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
             let mut builder: ListPrimitiveChunkedBuilder<Float32Type> =
                 ListPrimitiveChunkedBuilder::new(
@@ -866,7 +866,7 @@ fn pl_recursive_lr_f32(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<S
     // Target y is at index 0
     match series_to_mat_for_lr_f32(inputs, add_bias, null_policy) {
         Ok((mat_slice, nrows, nfeats, mask)) => {
-            // Solving 
+            // Solving
             let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
 
             let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);

@@ -223,7 +223,6 @@ pub fn float_output(fields: &[Field]) -> PolarsResult<Field> {
     FieldsMapper::new(fields).map_to_float_dtype()
 }
 
-
 // --- Distances and Distance Related Abstractions ---
 
 pub fn haversine_elementwise<T: Float>(start_lat: T, start_long: T, end_lat: T, end_long: T) -> T {
@@ -245,7 +244,6 @@ pub fn haversine_elementwise<T: Float>(start_lat: T, start_long: T, end_lat: T, 
 pub fn haversine<T: Float + 'static>(first: &[T], second: &[T]) -> T {
     haversine_elementwise(first[0], first[1], second[0], second[1])
 }
-
 
 pub fn squared_l2_distance(a: &[f64], b: &[f64]) -> f64 {
     // debug_assert_eq!(a.len(), b.len(), "Slices must have the same length");
@@ -282,7 +280,6 @@ pub fn squared_l2_distance(a: &[f64], b: &[f64]) -> f64 {
 }
 
 pub fn l1_distance(a: &[f64], b: &[f64]) -> f64 {
-    
     // debug_assert_eq!(a.len(), b.len(), "Slices must have the same length");
 
     let mut sum0 = 0.0;
@@ -365,5 +362,3 @@ pub fn dot_product(a: &[f64], b: &[f64]) -> f64 {
 
     total
 }
-
-

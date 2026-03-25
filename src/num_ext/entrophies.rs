@@ -1,5 +1,5 @@
 use crate::arkadia::utils::slice_to_empty_leaves;
-use crate::arkadia::{kdt::KDT, SpatialQueries, KNNDist};
+use crate::arkadia::{kdt::KDT, KNNDist, SpatialQueries};
 use crate::num_ext::knn::KDTKwargs;
 use crate::utils::{series_to_slice, split_offsets, IndexOrder};
 use core::f64;

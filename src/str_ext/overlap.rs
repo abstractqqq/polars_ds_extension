@@ -1,4 +1,4 @@
-use super::str_set_sim_helper;
+use super::{str_set_sim_helper, str_to_hashset};
 use crate::utils::split_offsets;
 use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
@@ -9,13 +9,17 @@ use pyo3_polars::{
     },
 };
 
-// Todo.
-// Can optimize the case when ca1 is scalar. No need to regenerate the hashset in that case.
-
 #[inline(always)]
 fn overlap_coeff(w1: &str, w2: &str, ngram: usize) -> f64 {
     let (s1, s2, intersect) = str_set_sim_helper(w1, w2, ngram);
     (intersect as f64) / ((s1.min(s2)) as f64)
+}
+
+#[inline(always)]
+fn overlap_coeff_cached(w1: &str, cached_s2: &foldhash::HashSet<&[u8]>, ngram: usize) -> f64 {
+    let s1 = str_to_hashset(w1, ngram);
+    let intersection = s1.intersection(cached_s2).count();
+    (intersection as f64) / ((s1.len().min(cached_s2.len())) as f64)
 }
 
 #[polars_expr(output_type=Float64)]
@@ -33,20 +37,23 @@ fn pl_overlap_coeff(inputs: &[Series], context: CallerContext) -> PolarsResult<S
 
     if ca2.len() == 1 {
         let r = ca2.get(0).unwrap();
+        let cached_r_set = str_to_hashset(r, ngram); // Cache the set for r
         let out: Float64Chunked = if can_parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
             let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
                 let s1 = ca1.slice(offset as i64, len);
                 let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| {
-                    overlap_coeff(s, r, ngram)
+                    overlap_coeff_cached(s, &cached_r_set, ngram)
                 });
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             Float64Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
-            ca1.apply_nonnull_values_generic(DataType::Float64, |s| overlap_coeff(s, r, ngram))
+            ca1.apply_nonnull_values_generic(DataType::Float64, |s| {
+                overlap_coeff_cached(s, &cached_r_set, ngram)
+            })
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {

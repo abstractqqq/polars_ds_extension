@@ -69,7 +69,7 @@ def filter_by_levenshtein(
             pl.lit(abs(bound), pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
-        is_elementwise=True,
+        is_elementwise=True and not parallel,
     )
 
 
@@ -106,7 +106,7 @@ def filter_by_hamming(
             pl.lit(bound, dtype=pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
-        is_elementwise=True,
+        is_elementwise=True and not parallel,
     )
 
 
@@ -135,13 +135,13 @@ def str_hamming(
         return pl_plugin(
             symbol="pl_hamming_padded",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
+            is_elementwise=True and not parallel,
         )
     else:
         return pl_plugin(
             symbol="pl_hamming",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
+            is_elementwise=True and not parallel,
         )
 
 
@@ -258,7 +258,7 @@ def str_jaccard(
             pl.lit(substr_size, pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
-        is_elementwise=True,
+        is_elementwise=True and not parallel,
     )
 
 
@@ -297,7 +297,7 @@ def str_overlap_coeff(
             pl.lit(substr_size, pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
-        is_elementwise=True,
+        is_elementwise=True and not parallel,
     )
 
 
@@ -336,6 +336,7 @@ def str_sorensen_dice(
             pl.lit(substr_size, pl.UInt32),
             pl.lit(parallel, pl.Boolean),
         ],
+        is_elementwise=True and not parallel,
     )
 
 
@@ -392,6 +393,7 @@ def str_tversky_sim(
             pl.lit(beta, pl.Float64),
             pl.lit(parallel, pl.Boolean),
         ],
+        is_elementwise=True and not parallel,
     )
 
 
@@ -426,7 +428,7 @@ def str_jw(
             pl.lit(weight, pl.Float64),
             pl.lit(parallel, pl.Boolean),
         ],
-        is_elementwise=True,
+        is_elementwise=True and not parallel,
     )
 
 
@@ -448,7 +450,7 @@ def str_jaro(c: str | pl.Expr, other: str | pl.Expr, parallel: bool = False) -> 
     return pl_plugin(
         symbol="pl_jaro",
         args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
-        is_elementwise=True,
+        is_elementwise=True and not parallel,
     )
 
 
@@ -478,13 +480,13 @@ def str_d_leven(
         return pl_plugin(
             symbol="pl_d_levenshtein_sim",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
+            is_elementwise=True and not parallel,
         )
     else:
         return pl_plugin(
             symbol="pl_d_levenshtein",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
+            is_elementwise=True and not parallel,
         )
 
 
@@ -514,13 +516,13 @@ def str_leven(
         return pl_plugin(
             symbol="pl_levenshtein_sim",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
+            is_elementwise=True and not parallel,
         )
     else:
         return pl_plugin(
             symbol="pl_levenshtein",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
+            is_elementwise=True and not parallel,
         )
 
 
@@ -548,7 +550,7 @@ def str_lcs_substr(
     return pl_plugin(
         symbol="pl_lcs_substr",
         args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
-        is_elementwise=True,
+        is_elementwise=True and not parallel,
     )
 
 
@@ -576,7 +578,7 @@ def str_lcs_subseq(
     return pl_plugin(
         symbol="pl_lcs_subseq",
         args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
-        is_elementwise=True,
+        is_elementwise=True and not parallel,
     )
 
 
@@ -610,13 +612,13 @@ def str_lcs_subseq_dist(
         return pl_plugin(
             symbol="pl_lcs_subseq_sim",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
+            is_elementwise=True and not parallel,
         )
     else:
         return pl_plugin(
             symbol="pl_lcs_subseq_dist",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
+            is_elementwise=True and not parallel,
         )
 
 
@@ -646,13 +648,13 @@ def str_osa(
         return pl_plugin(
             symbol="pl_osa_sim",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
+            is_elementwise=True and not parallel,
         )
     else:
         return pl_plugin(
             symbol="pl_osa",
             args=[to_expr(c), to_expr(other), pl.lit(parallel, pl.Boolean)],
-            is_elementwise=True,
+            is_elementwise=True and not parallel,
         )
 
 

@@ -1,5 +1,4 @@
 use crate::linear::{
-    NullPolicy, 
     lr::{
         lr_solvers::{
             faer_coordinate_descent, faer_nn_lr, faer_solve_lr, faer_solve_lr_rcond,
@@ -8,6 +7,7 @@ use crate::linear::{
         LRMethods,
     },
     online_lr::lr_online_solvers::{faer_recursive_lr, faer_rolling_lr, faer_rolling_skipping_lr},
+    NullPolicy,
 };
 use crate::utils::{columns_to_vec, to_frame, IndexOrder};
 /// Least Squares using Faer and ndarray.
@@ -37,7 +37,7 @@ pub(crate) struct LRKwargs {
     #[serde(default)]
     pub(crate) positive: bool,
     #[serde(default)]
-    pub(crate) max_iter: usize
+    pub(crate) max_iter: usize,
 }
 
 #[derive(Deserialize, Debug)]
@@ -505,7 +505,7 @@ fn pl_lr_w_rcond(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
             // faer_solve_lr_rcond
             let (coeffs, singular_values) =
                 faer_solve_lr_rcond(x, y, kwargs.l2_reg, add_bias, rcond)
-                .map_err(|e| PolarsError::ComputeError(e.into()))?;
+                    .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(

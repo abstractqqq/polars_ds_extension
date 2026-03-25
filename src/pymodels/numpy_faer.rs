@@ -1,6 +1,6 @@
+use faer::{Mat, MatRef};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use faer::{Mat, MatRef};
 
 // All FromPyObject code is trust-based. Anyone can pass a rogue Python class
 // implementing the Array Protocal. However, all Python code that passes numpy array to Rust
@@ -18,10 +18,10 @@ impl<'py> FromPyObject<'py> for PyFaerRef<'py> {
 
         let typestr: String = interface.get_item("typestr")?.unwrap().extract()?;
         if typestr != "<f8" {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                    format!("Only little-endian f64 dtype is expected. Found {}", typestr)
-                )
-            );
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Only little-endian f64 dtype is expected. Found {}",
+                typestr
+            )));
         }
 
         // If we have __array_interface__, we should have shape. However, to prevent bad
@@ -29,7 +29,9 @@ impl<'py> FromPyObject<'py> for PyFaerRef<'py> {
         // 2. Extract Shape
         let shape: Vec<usize> = interface.get_item("shape")?.unwrap().extract()?;
         if shape.len() != 2 {
-            return Err(pyo3::exceptions::PyValueError::new_err("Expected a 2D array"));
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "Expected a 2D array",
+            ));
         }
 
         let nrows = shape[0];
@@ -51,8 +53,8 @@ impl<'py> FromPyObject<'py> for PyFaerRef<'py> {
                     (strides[0] / elem_size as isize) as usize,
                     (strides[1] / elem_size as isize) as usize,
                 )
-            },
-            _ => (ncols, 1), 
+            }
+            _ => (ncols, 1),
         };
 
         // 5. Construct the Faer MatRef safely
@@ -68,20 +70,24 @@ pub struct PyArrRef<'py>(pub &'py [f64]);
 impl<'py> FromPyObject<'py> for PyArrRef<'py> {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
         // 1. Extract the __array_interface__ dictionary
-        let interface = ob.getattr("__array_interface__")?.downcast_into::<PyDict>()?;
+        let interface = ob
+            .getattr("__array_interface__")?
+            .downcast_into::<PyDict>()?;
 
         // 2. Validate Data Type (ensure it is a 64-bit float)
         let typestr: String = interface.get_item("typestr")?.unwrap().extract()?;
         if typestr != "<f8" {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                    format!("Only little-endian f64 dtype is expected. Found {}", typestr)
-                )
-            );
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Only little-endian f64 dtype is expected. Found {}",
+                typestr
+            )));
         }
         // 3. Extract Shape and validate it is exactly 1D
         let shape: Vec<usize> = interface.get_item("shape")?.unwrap().extract()?;
         if shape.len() != 1 {
-            return Err(pyo3::exceptions::PyValueError::new_err("Expected a 1D array"));
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "Expected a 1D array",
+            ));
         }
         let len = shape[0];
 
@@ -97,12 +103,12 @@ impl<'py> FromPyObject<'py> for PyArrRef<'py> {
             // If "strides" exists and is NOT Python's None
             Some(strides_obj) if !strides_obj.is_none() => {
                 let strides: Vec<isize> = strides_obj.extract()?;
-                // For a 1D array, it is contiguous if the distance between elements 
+                // For a 1D array, it is contiguous if the distance between elements
                 // exactly equals the byte size of a single element (8 bytes for f64).
                 strides[0] == elem_size
-            },
+            }
             // If "strides" is None or completely missing, NumPy guarantees it is contiguous.
-            _ => true, 
+            _ => true,
         };
         if !is_contiguous {
             return Err(pyo3::exceptions::PyValueError::new_err(
@@ -124,7 +130,6 @@ pub struct PyFaerMat(pub Mat<f64>);
 
 #[pymethods]
 impl PyFaerMat {
-
     /// Expose the memory to Python/NumPy via the Array Interface
     #[getter]
     fn __array_interface__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
@@ -164,7 +169,7 @@ impl PyArr {
         let dict = PyDict::new(py);
 
         // 1. Shape
-        // CRITICAL: A 1D shape must be a tuple with one element. 
+        // CRITICAL: A 1D shape must be a tuple with one element.
         // In Rust, `(len,)` creates a 1-element tuple.
         dict.set_item("shape", (self.0.len(),))?;
 

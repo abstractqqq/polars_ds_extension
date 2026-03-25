@@ -20,34 +20,30 @@ pub mod utils;
 
 pub use kdt::KDT;
 // pub use ball_tree::BallTree;
+use crate::utils::{l1_distance, linf_distance, squared_l2_distance};
 pub use leaf::{KdLeaf, Leaf};
 pub use neighbor::NB;
-use serde::Deserialize;
-pub use utils::{
-    slice_to_empty_leaves, slice_to_leaves, suggest_capacity, SplitMethod,
-};
 use num::Float;
-use crate::utils::{
-    l1_distance, squared_l2_distance, linf_distance
-};
+use serde::Deserialize;
+pub use utils::{slice_to_empty_leaves, slice_to_leaves, suggest_capacity, SplitMethod};
 // ---------------------------------------------------------------------------------------------------------
 #[derive(Clone, Copy)]
 pub enum KNNDist {
     L1,
     L2,
     SQL2,
-    LINF
+    LINF,
 }
 
 impl TryFrom<String> for KNNDist {
     type Error = String;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         match value.to_lowercase().as_ref() {
-            "l1" => Ok(KNNDist::L1)
-            , "sql2" => Ok(KNNDist::SQL2)
-            , "l2" => Ok(KNNDist::L2)
-            , "linf" | "inf" => Ok(KNNDist::LINF)
-            , _ => Err(format!("Unknown distance indicator: {}", value))
+            "l1" => Ok(KNNDist::L1),
+            "sql2" => Ok(KNNDist::SQL2),
+            "l2" => Ok(KNNDist::L2),
+            "linf" | "inf" => Ok(KNNDist::LINF),
+            _ => Err(format!("Unknown distance indicator: {}", value)),
         }
     }
 }
@@ -62,7 +58,6 @@ impl KNNDist {
         }
     }
 }
-
 
 #[derive(Clone, Copy, Default, Deserialize)]
 pub enum KNNMethod {
@@ -108,7 +103,12 @@ pub trait SpatialQueries<'a, A> {
         radius: f64,
     );
 
-    fn within_count_one_step(&self, pending: &mut Vec<(f64, &Self)>, point: &[f64], radius: f64) -> u32;
+    fn within_count_one_step(
+        &self,
+        pending: &mut Vec<(f64, &Self)>,
+        point: &[f64],
+        radius: f64,
+    ) -> u32;
 
     fn knn(&self, k: usize, point: &[f64], epsilon: f64) -> Option<Vec<NB<f64, A>>> {
         if k == 0 || (point.len() != self.dim()) || (point.iter().any(|x| !x.is_finite())) {
@@ -119,7 +119,14 @@ pub trait SpatialQueries<'a, A> {
             let mut pending = Vec::with_capacity(k + 1);
             pending.push((f64::min_value(), self));
             while !pending.is_empty() {
-                self.knn_one_step(&mut pending, &mut top_k, k, point, f64::max_value(), epsilon);
+                self.knn_one_step(
+                    &mut pending,
+                    &mut top_k,
+                    k,
+                    point,
+                    f64::max_value(),
+                    epsilon,
+                );
             }
             Some(top_k)
         }
@@ -201,9 +208,7 @@ pub trait SpatialQueries<'a, A> {
     }
 }
 
-pub trait KNNRegressor<'a, A: Float + Into<f64>>:
-    SpatialQueries<'a, A>
-{
+pub trait KNNRegressor<'a, A: Float + Into<f64>>: SpatialQueries<'a, A> {
     fn knn_regress(
         &self,
         k: usize,
@@ -212,13 +217,11 @@ pub trait KNNRegressor<'a, A: Float + Into<f64>>:
         max_dist_bound: f64,
         how: KNNMethod,
     ) -> Option<f64> {
-        let knn = self
-            .knn_bounded(k, point, max_dist_bound, 0f64)
-            .map(|nn| {
-                nn.into_iter()
-                    .filter(|nb| nb.dist >= min_dist_bound)
-                    .collect::<Vec<_>>()
-            });
+        let knn = self.knn_bounded(k, point, max_dist_bound, 0f64).map(|nn| {
+            nn.into_iter()
+                .filter(|nb| nb.dist >= min_dist_bound)
+                .collect::<Vec<_>>()
+        });
         match knn {
             Some(nn) if !nn.is_empty() => match how {
                 KNNMethod::P1Weighted => {
