@@ -28,31 +28,32 @@ fn lcs_seq_sim(s1: &str, s2: &str) -> f64 {
 pub fn lcs_subseq_extract(s1: &str, s2: &str) -> String {
     // Convert string slices to character vectors for easier indexing.
     // This handles multi-byte UTF-8 characters correctly.
-    let chars1: Vec<char> = s1.chars().collect();
-    let chars2: Vec<char> = s2.chars().collect();
+    let chars1: Vec<char> = s1.chars().collect::<Vec<char>>();
+    let chars2: Vec<char> = s2.chars().collect::<Vec<char>>();
 
     let len1 = chars1.len();
     let len2 = chars2.len();
 
     // Create a 2D dynamic programming table (matrix).
     // dp[i][j] will store the length of the LCS of chars1[0...i-1] and chars2[0...j-1].
-    // Dimensions are (len1 + 1) x (len2 + 1) to handle empty prefixes.
-    let mut dp = vec![vec![0i32; len2 + 1]; len1 + 1];
+    // We use a flattened representation
+    let cols = len2 + 1;
+    let mut dp = vec![0i32; (len1 + 1) * cols];
 
     // Fill the dp table.
     // i iterates through chars1, j iterates through chars2.
     // Note: The loop indices (i, j) correspond to the lengths of prefixes,
     // so chars1[i-1] and chars2[j-1] are used to access the actual characters.
-    
+
     for i in 1..=len1 {
         for j in 1..=len2 {
             // If the current characters match, extend the LCS from the diagonal element.
             if chars1[i - 1] == chars2[j - 1] {
-                dp[i][j] = 1 + dp[i - 1][j - 1];
+                dp[i * cols + j] = 1 + dp[(i - 1) * cols + (j - 1)];
             } else {
                 // If characters do not match, take the maximum LCS length
                 // from either skipping a character from s1 or skipping a character from s2.
-                dp[i][j] = dp[i - 1][j].max(dp[i][j - 1]);
+                dp[i * cols + j] = dp[(i - 1) * cols + j].max(dp[i * cols + (j - 1)]);
             }
         }
     }
@@ -69,7 +70,7 @@ pub fn lcs_subseq_extract(s1: &str, s2: &str) -> String {
             lcs_chars.push(chars1[i - 1]);
             i -= 1;
             j -= 1;
-        } else if dp[i - 1][j] > dp[i][j - 1] {
+        } else if dp[(i - 1) * cols + j] > dp[i * cols + (j - 1)] {
             // If the character from s1 was skipped (dp[i-1][j] was larger), move up.
             i -= 1;
         } else {

@@ -1,4 +1,4 @@
-use super::str_set_sim_helper;
+use super::{str_set_sim_helper, str_to_hashset};
 use crate::utils::split_offsets;
 use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
@@ -10,15 +10,27 @@ use pyo3_polars::{
     },
 };
 
-// Todo.
-// Can optimize the case when ca1 is scalar. No need to regenerate the hashset in that case.
-
 #[inline(always)]
 fn tversky_sim(w1: &str, w2: &str, ngram: usize, alpha: f64, beta: f64) -> f64 {
     let (s1, s2, intersect) = str_set_sim_helper(w1, w2, ngram);
     let s1ms2 = s1.abs_diff(intersect) as f64;
     let s2ms1 = s2.abs_diff(intersect) as f64;
     (intersect as f64) / (intersect as f64 + alpha * s1ms2 + beta * s2ms1)
+}
+
+#[inline(always)]
+fn tversky_sim_cached(
+    w1: &str,
+    cached_s2: &foldhash::HashSet<&[u8]>,
+    ngram: usize,
+    alpha: f64,
+    beta: f64,
+) -> f64 {
+    let s1 = str_to_hashset(w1, ngram);
+    let intersection = s1.intersection(cached_s2).count();
+    let s1ms2 = s1.len().abs_diff(intersection) as f64;
+    let s2ms1 = cached_s2.len().abs_diff(intersection) as f64;
+    (intersection as f64) / (intersection as f64 + alpha * s1ms2 + beta * s2ms1)
 }
 
 #[polars_expr(output_type=Float64)]

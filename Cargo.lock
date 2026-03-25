@@ -9,19 +9,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "ahash"
-version = "0.8.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
-dependencies = [
- "cfg-if",
- "getrandom 0.3.4",
- "once_cell",
- "version_check",
- "zerocopy",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -72,7 +59,7 @@ dependencies = [
 [[package]]
 name = "argmin"
 version = "0.11.0"
-source = "git+https://github.com/abstractqqq/argmin.git?branch=main#41e050ac28b0a316ed17d9371acb673f16de58ca"
+source = "git+https://github.com/abstractqqq/argmin.git?branch=main#77cbfe9ef6c04f03efbe50bdbfa24e4654cef68d"
 dependencies = [
  "anyhow",
  "argmin-math",
@@ -87,7 +74,7 @@ dependencies = [
 [[package]]
 name = "argmin-math"
 version = "0.5.1"
-source = "git+https://github.com/abstractqqq/argmin.git?branch=main#41e050ac28b0a316ed17d9371acb673f16de58ca"
+source = "git+https://github.com/abstractqqq/argmin.git?branch=main#77cbfe9ef6c04f03efbe50bdbfa24e4654cef68d"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -643,7 +630,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1700,7 +1687,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2435,13 +2422,12 @@ dependencies = [
 name = "polars_ds"
 version = "0.11.1"
 dependencies = [
- "ahash",
  "approx",
  "argmin",
  "argmin-math",
  "faer",
  "faer-traits",
- "hashbrown 0.16.1",
+ "foldhash 0.2.0",
  "inflections",
  "itertools",
  "num",
@@ -3010,7 +2996,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3964,7 +3950,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

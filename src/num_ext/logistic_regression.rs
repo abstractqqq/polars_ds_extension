@@ -1,14 +1,7 @@
-use super::linear_regression::{
-    LRKwargs
-    , series_to_mat_for_lr
-    , coeff_output
-};
+use super::linear_regression::{coeff_output, series_to_mat_for_lr, LRKwargs};
 use crate::linear::{
-    NullPolicy
-    , logistic::logistic_solver::{
-        faer_logistic_reg
-        , stable_sigmoid
-    }
+    logistic::logistic_solver::{faer_logistic_reg, stable_sigmoid},
+    NullPolicy,
 };
 use faer::MatRef;
 use polars::prelude::*;
@@ -34,15 +27,8 @@ fn pl_logistic_coeffs(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Serie
         Ok((mat_slice, nrows, nfeats, _)) => {
             let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
             let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
-            let coeffs = faer_logistic_reg(
-                x, 
-                y, 
-                add_bias,
-                l1_reg,
-                l2_reg, 
-                kwargs.tol,
-                kwargs.max_iter, 
-            );
+            let coeffs =
+                faer_logistic_reg(x, y, add_bias, l1_reg, l2_reg, kwargs.tol, kwargs.max_iter);
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
                 ListPrimitiveChunkedBuilder::new(
                     "coeffs".into(),
@@ -58,7 +44,6 @@ fn pl_logistic_coeffs(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Serie
         Err(e) => Err(e),
     }
 }
-
 
 #[polars_expr(output_type=Float64)]
 fn pl_logistic_pred(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
@@ -80,15 +65,8 @@ fn pl_logistic_pred(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series>
         Ok((mat_slice, nrows, nfeats, mask)) => {
             let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
             let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
-            let coeffs = faer_logistic_reg(
-                x, 
-                y, 
-                add_bias,
-                l1_reg,
-                l2_reg, 
-                kwargs.tol,
-                kwargs.max_iter, 
-            );
+            let coeffs =
+                faer_logistic_reg(x, y, add_bias, l1_reg, l2_reg, kwargs.tol, kwargs.max_iter);
 
             let mut pred = x * coeffs;
             for p in pred.col_as_slice_mut(0) {
@@ -119,4 +97,3 @@ fn pl_logistic_pred(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series>
         Err(e) => Err(e),
     }
 }
-

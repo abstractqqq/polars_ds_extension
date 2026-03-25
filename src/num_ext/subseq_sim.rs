@@ -1,3 +1,4 @@
+use crate::utils::squared_l2_distance;
 /// Subsequence similarity related queries
 use polars::prelude::*;
 use pyo3_polars::{
@@ -10,7 +11,6 @@ use pyo3_polars::{
         POOL,
     },
 };
-use crate::utils::squared_l2_distance;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]

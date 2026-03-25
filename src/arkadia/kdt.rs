@@ -1,11 +1,7 @@
 use crate::arkadia::KNNRegressor;
 
 /// A Kdtree
-use super::{
-    leaf::KdLeaf,
-    KNNDist,
-    suggest_capacity, Leaf, SpatialQueries, SplitMethod, NB,
-};
+use super::{leaf::KdLeaf, suggest_capacity, KNNDist, Leaf, SpatialQueries, SplitMethod, NB};
 use num::Float;
 use std::usize;
 
@@ -218,8 +214,8 @@ impl<'a, A: Copy> KDT<'a, A> {
                 let mut new_data = self.data.split_off(0);
 
                 let axis = depth % self.dim;
-                let midpoint = self.bounds[axis]
-                    + (self.bounds[axis + self.dim] - self.bounds[axis]) / (2f64);
+                let midpoint =
+                    self.bounds[axis] + (self.bounds[axis + self.dim] - self.bounds[axis]) / (2f64);
 
                 // True will go right, false go left
                 new_data.sort_unstable_by_key(|leaf| leaf.value_at(axis) >= midpoint);
@@ -307,9 +303,7 @@ impl<'a, A: Copy> KDT<'a, A> {
     }
 }
 
-impl<'a, A: Copy> SpatialQueries<'a, A>
-    for KDT<'a, A>
-{
+impl<'a, A: Copy> SpatialQueries<'a, A> for KDT<'a, A> {
     fn dim(&self) -> usize {
         self.dim
     }
@@ -425,7 +419,7 @@ impl<'a, A: Copy> SpatialQueries<'a, A>
     }
 }
 
-impl <'a, A: Float + Into<f64>> KNNRegressor<'a, A> for KDT<'a, A> {}
+impl<'a, A: Float + Into<f64>> KNNRegressor<'a, A> for KDT<'a, A> {}
 
 #[cfg(test)]
 mod tests {
@@ -569,5 +563,4 @@ mod tests {
             assert!((d1 - d2).abs() < 1e-10);
         }
     }
-
 }

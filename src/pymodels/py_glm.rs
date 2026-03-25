@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+use super::numpy_faer::{PyArr, PyArrRef, PyFaerMat, PyFaerRef};
 /// Linear Regression Interop with Python
 use crate::linear::{
     glm::{
@@ -7,7 +8,6 @@ use crate::linear::{
     },
     lr::LinearModel,
 };
-use super::numpy_faer::{PyArrRef, PyArr, PyFaerRef, PyFaerMat};
 use pyo3::prelude::*;
 
 #[pyclass(subclass)]
@@ -50,11 +50,7 @@ impl PyGLM {
         }
     }
 
-    pub fn set_coeffs_and_bias(
-        &mut self,
-        coeffs: PyArrRef,
-        bias: f64,
-    ) -> PyResult<()> {
+    pub fn set_coeffs_and_bias(&mut self, coeffs: PyArrRef, bias: f64) -> PyResult<()> {
         Ok(self.glm.set_coeffs_and_bias(coeffs.0, bias))
     }
 
@@ -64,8 +60,8 @@ impl PyGLM {
         X: PyFaerRef,
     ) -> PyResult<Bound<'py, PyFaerMat>> {
         match self.glm.predict(X.0) {
-            Ok(result) => Bound::new(py, PyFaerMat(result))
-            , Err(e) => Err(e.into()),
+            Ok(result) => Bound::new(py, PyFaerMat(result)),
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -81,8 +77,8 @@ impl PyGLM {
             self.glm.glm_predict(X.0)
         };
         match prediction {
-            Ok(result) => Bound::new(py, PyFaerMat(result))
-            , Err(e) => Err(e.into()),
+            Ok(result) => Bound::new(py, PyFaerMat(result)),
+            Err(e) => Err(e.into()),
         }
     }
 

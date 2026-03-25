@@ -59,7 +59,7 @@ fn normalize_string(inputs: &[Series], kwargs: NormalizeKwargs) -> PolarsResult<
 
 #[derive(serde::Deserialize)]
 struct MapWordsKwargs {
-    mapping: ahash::HashMap<String, String>,
+    mapping: foldhash::HashMap<String, String>,
 }
 
 #[polars_expr(output_type=String)]

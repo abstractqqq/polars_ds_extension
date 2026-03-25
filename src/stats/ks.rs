@@ -6,7 +6,6 @@ use pyo3_polars::derive::polars_expr;
 
 #[inline(always)]
 fn binary_search_right(arr: &[OrderedFloat<f64>], t: &OrderedFloat<f64>) -> usize {
-    
     let mut left = 0;
     let mut right = arr.len();
 
@@ -27,7 +26,6 @@ fn binary_search_right(arr: &[OrderedFloat<f64>], t: &OrderedFloat<f64>) -> usiz
 /// https://en.wikipedia.org/wiki/Kolmogorov%E2%80%93Smirnov_test
 #[inline]
 fn ks_2samp(v1: &[f64], v2: &[f64], alpha: f64) -> (f64, f64) {
-
     let n1: f64 = v1.len() as f64;
     let n2: f64 = v2.len() as f64;
 
@@ -40,7 +38,7 @@ fn ks_2samp(v1: &[f64], v2: &[f64], alpha: f64) -> (f64, f64) {
         .iter()
         .chain(v2.iter())
         .map(|x| {
-            let a= binary_search_right(v1, x) as f64 / n1;
+            let a = binary_search_right(v1, x) as f64 / n1;
             let b = binary_search_right(v2, x) as f64 / n2;
             (a - b).abs()
         })

@@ -9,9 +9,11 @@ pub fn trapz(y: &[f64], x: &[f64]) -> f64 {
         y[0] * x[0] * -0.5 // y[0] * (-x[0]) * 0.5
     } else {
         // y[1..] + y[..y.len() - 1] dot with x[1..] - x[..x.len() - 1]
-        y.windows(2).zip(x.windows(2)).map(
-            |(yw, xw)| (yw[1] + yw[0]) * (xw[1] - xw[0])
-        ).sum::<f64>() * 0.5
+        y.windows(2)
+            .zip(x.windows(2))
+            .map(|(yw, xw)| (yw[1] + yw[0]) * (xw[1] - xw[0]))
+            .sum::<f64>()
+            * 0.5
     }
 }
 

@@ -11,7 +11,7 @@ use rand_distr::{Alphanumeric, Binomial, Distribution, Exp, Exp1, Normal, Standa
 fn rng_from_seed(seed: Option<u64>) -> StdRng {
     match seed {
         Some(s) => StdRng::seed_from_u64(s),
-        _ => StdRng::from_os_rng()
+        _ => StdRng::from_os_rng(),
     }
 }
 
@@ -35,9 +35,7 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
             let out = Int32Chunked::from_iter_values("".into(), (&mut rng).sample_iter(r).take(n));
             Ok(out.into_series())
         }
-        , Err(e) => Err(PolarsError::ComputeError(
-            e.to_string().into(),
-        ))
+        Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
     }
 }
 
@@ -108,17 +106,13 @@ fn pl_random(inputs: &[Series]) -> PolarsResult<Series> {
 
     match Uniform::new(low, high) {
         Ok(mut r) => {
-            let out = 
+            let out =
                 Float64Chunked::from_iter_values("".into(), (&mut r).sample_iter(rng).take(len));
 
             Ok(out.into_series())
         }
-        , Err(e) => Err(PolarsError::ComputeError(
-            e.to_string().into(),
-        ))
+        Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
     }
-
-
 }
 
 // Perturb and Jitter respect float type. Unlike others which default to f64
@@ -139,13 +133,13 @@ fn pl_perturb(inputs: &[Series]) -> PolarsResult<Series> {
                 Ok(r) => {
                     let ca = reference.f32().unwrap();
                     // Have to use _generic here to avoid the Copy trait
-                    let out: Float32Chunked =
-                        ca.apply_nonnull_values_generic(DataType::Float32, |x| x + r.sample(&mut rng));
+                    let out: Float32Chunked = ca
+                        .apply_nonnull_values_generic(DataType::Float32, |x| {
+                            x + r.sample(&mut rng)
+                        });
                     Ok(out.into_series())
                 }
-                , Err(e) => Err(PolarsError::ComputeError(
-                    e.to_string().into(),
-                ))
+                Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
             }
         }
         DataType::Float64 => {
@@ -153,13 +147,13 @@ fn pl_perturb(inputs: &[Series]) -> PolarsResult<Series> {
                 Ok(r) => {
                     let ca = reference.f64().unwrap();
                     // Have to use _generic here to avoid the Copy trait
-                    let out: Float64Chunked =
-                        ca.apply_nonnull_values_generic(DataType::Float64, |x| x + r.sample(&mut rng));
+                    let out: Float64Chunked = ca
+                        .apply_nonnull_values_generic(DataType::Float64, |x| {
+                            x + r.sample(&mut rng)
+                        });
                     Ok(out.into_series())
                 }
-                , Err(e) => Err(PolarsError::ComputeError(
-                    e.to_string().into(),
-                ))
+                Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
             }
         }
         _ => Err(PolarsError::ComputeError(
@@ -253,14 +247,14 @@ fn pl_rand_str(inputs: &[Series]) -> PolarsResult<Series> {
     match Uniform::new_inclusive(min_size, max_size) {
         Ok(r) => {
             let sample = (0..len).map(|_| {
-            let length = rng.sample(r);
+                let length = rng.sample(r);
                 Alphanumeric.sample_string(&mut rng, length)
             });
             let out = StringChunked::from_iter_values("".into(), sample);
             Ok(out.into_series())
         }
-        , _ => Err(PolarsError::ComputeError(
+        _ => Err(PolarsError::ComputeError(
             "Input column must be floats.".into(),
-        ))
+        )),
     }
 }

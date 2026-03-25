@@ -35,7 +35,6 @@ impl<T: RealField + Float> LR<T> {
     }
 
     pub fn set_coeffs_and_bias(&mut self, coeffs: &[T], bias: T) {
-
         self.add_bias = bias.abs() > T::epsilon();
         if self.add_bias {
             self.coefficients = Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
@@ -204,9 +203,11 @@ pub fn faer_solve_lr_rcond<T: RealField + Float>(
     // xtx + diagonal of lambda. If has bias, don't add to the last diagonal.
     if lambda > T::zero() && n1 >= 1 {
         unsafe {
-            xtx.get_mut_unchecked(0..n1, 0..n1).diagonal_mut().for_each_mut(
-                |d| {*d += lambda;}
-            );
+            xtx.get_mut_unchecked(0..n1, 0..n1)
+                .diagonal_mut()
+                .for_each_mut(|d| {
+                    *d += lambda;
+                });
         }
     }
     // need work here
@@ -216,23 +217,21 @@ pub fn faer_solve_lr_rcond<T: RealField + Float>(
             let singular_values = s.iter().copied().map(T::sqrt).collect::<Vec<_>>();
             let n = singular_values.len();
             let max_singular_value = singular_values[0]; // at least 1.
-            // singular_values.iter().copied().fold(T::min_value(), T::max);
+                                                         // singular_values.iter().copied().fold(T::min_value(), T::max);
             let threshold = rcond * max_singular_value;
             // Safe, because i <= n
             let mut s_inv = Mat::<T>::zeros(n, n);
             unsafe {
                 for (i, v) in s.iter().copied().enumerate() {
-                    *s_inv.get_mut_unchecked(i, i) = if v >= threshold { v.recip() } else { T::zero() };
+                    *s_inv.get_mut_unchecked(i, i) =
+                        if v >= threshold { v.recip() } else { T::zero() };
                 }
             }
             let weights = svd.V() * s_inv * svd.U().transpose() * xt * y;
             Ok((weights, singular_values))
-
         }
-        , _ => Err("SVD failed.".to_string())
-
+        _ => Err("SVD failed.".to_string()),
     }
-
 }
 
 /// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
@@ -245,16 +244,17 @@ pub fn faer_solve_lr<T: RealField + Float>(
     add_bias: bool,
     how: LRSolverMethods,
 ) -> Mat<T> {
-
     let n1 = x.ncols().abs_diff(add_bias as usize);
     let xt = x.transpose();
     let mut xtx = xt * x;
     // xtx + diagonal of lambda. If has bias, don't add to the last diagonal.
     if lambda > T::zero() && n1 >= 1 {
         unsafe {
-            xtx.get_mut_unchecked(0..n1, 0..n1).diagonal_mut().for_each_mut(
-                |d| {*d += lambda;}
-            );
+            xtx.get_mut_unchecked(0..n1, 0..n1)
+                .diagonal_mut()
+                .for_each_mut(|d| {
+                    *d += lambda;
+                });
         }
     }
 
@@ -323,7 +323,6 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
     max_iter: usize,
     positive: bool,
 ) -> Mat<T> {
-
     // Replace this in the future? L-BFGS can do this too. Too much math that I cannot remember.
 
     let m = T::from(x.nrows()).unwrap();
@@ -356,9 +355,8 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
             let xtx_j = unsafe { xtx.get_unchecked(j..j + 1, ..) };
 
             // Xi^t(y - X-i Beta-i)
-            let main_update = unsafe {
-                *xty.get_unchecked(j, 0) - *(xtx_j * &beta).get_unchecked(0, 0)
-            };
+            let main_update =
+                unsafe { *xty.get_unchecked(j, 0) - *(xtx_j * &beta).get_unchecked(0, 0) };
 
             // update beta(j, 0).
             let after = if positive && main_update < T::zero() {
