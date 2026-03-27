@@ -438,7 +438,7 @@ def split_by_ratio(
         It may be either a polars.DataFrame or a polars.LazyFrame.
 
     split_ratio : float | List[float] | Dict[str, float]
-       - **Float**: The ratio for the first subset (default: "train"), with the remainder assigned
+        - **Float**: The ratio for the first subset (default: "train"), with the remainder assigned
         to the second subset (default: "test").
         - **List of floats**: Each float represents the ratio for a subset, and the list must sum to 1.
         Subsets are named "split_0", "split_1", etc.

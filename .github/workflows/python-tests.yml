@@ -75,5 +75,10 @@ jobs:
           jupyter execute examples/eda.ipynb
           jupyter execute examples/sample_and_split.ipynb
 
+      - name: Test Doc Builds
+        run: | 
+          pip install -r docs/requirements-docs.txt
+          mkdocs build
+
       - name: Test Pytests
         run: pytest tests/test_*

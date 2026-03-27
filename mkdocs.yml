@@ -9,16 +9,17 @@ nav:
 - Pipeline: pipeline.md
 - ML Metrics/Loss: metrics.md
 - Linear Regression as Polars Expr: expr_linear.md
-- Numerical Functions: num.md
-- Statistics: stats.md
-- String Related: string.md
-- Itertools for Polars Lists: expr_iter.md
+- Spline Smoothing Expr: expr_spline.md
+- Numerical Functions Expr: num.md
+- KNN as Polars Expr: expr_knn.md
+- Statistics Expr: stats.md
+- String Functions Expr: string.md
+- Itertools Expr: expr_iter.md
 - Sample and Split: sample_and_split.md
 - Linear Models: linear_models.md
-- Spatial Models: spatial.md
-- KNN as Polars Expr: expr_knn.md
 - Time Series Features: ts_features.md
 - Compatibility with Arrays: compat.md
+- Expression Expander: expander.md
 - Miscellaneous: polars_ds.md
 
 theme:
