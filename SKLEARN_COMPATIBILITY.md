@@ -23,23 +23,22 @@ I think there is a lack of spirit in exploring new APIs that actually faciliates
 It is possible, though not recommended. If there is a transform that you really want, please open a feature request. Thank you! You can find the dataset used in the example in ../examples/ folder on github.
 
 ```python
-
+from typing import Optional
 import polars_ds.pipeline as pds_pipe
+import polars.selectors as cs
 from sklearn.pipeline import Pipeline
 from sklearn.base import BaseEstimator, TransformerMixin
 
 class CustomPDSTransformer(BaseEstimator, TransformerMixin):
 
     def __init__(self):
-        self.pipe = None
+        self.pipe: Optional[pds_pipe.Pipeline] = None
 
-    def fit(self, df, y=None):
+    def fit(self, df: pl.DataFrame, y: Optional[pl.Series] = None) -> "CustomPDSTransformer":
         # specify all the rules for the transform here
         bp = (
             pds_pipe.Blueprint(df, name = "example", target = "approved", lowercase=True) 
-            .filter( 
-                "city_category is not null" # or equivalently, you can do: pl.col("city_category").is_not_null()
-            )
+            .filter(pl.col("city_category").is_not_null())
             .select(cs.numeric() | cs.by_name(["gender", "employer_category1", "city_category", "test_col"]))
             .linear_impute(features = ["var1", "existing_emi"], target = "loan_period") 
             .impute(["existing_emi"], method = "median")

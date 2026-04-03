@@ -16,7 +16,7 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
 
     let n = df.height();
     if n <= 1 {
-        return Ok(Series::from_vec(name.clone(), vec![f64::NAN]));
+        return Ok(Series::new(name.clone(), &[f64::NAN]));
     }
 
     let n_pairs = ((n * (n - 1)) >> 1) as i64;
@@ -58,10 +58,11 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
     tied_xy += (consecutive_xy_ties * (consecutive_xy_ties - 1)) >> 1;
 
     let mut swaps: usize = 0;
-    let mut xx = x.to_vec();
+    // let mut xx = x.to_vec(); // x values are not needed for swap counting after initial sorting and tie counting
     let mut yy = y.to_vec();
-    let mut x_copy = x.to_vec();
-    let mut y_copy = y.to_vec();
+    // let mut x_copy = x.to_vec(); // x values are not needed for swap counting after initial sorting and tie counting
+    // let mut y_copy = y.to_vec(); // Redundant allocation; the buffer initialized below is sufficient
+    let mut y_copy = vec![0u32; n];
     let mut seg_size: usize = 1;
     while seg_size < n {
         let mut offset: usize = 0;
@@ -76,22 +77,22 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
                 if i < i_end {
                     if j < j_end {
                         if yy[i] <= yy[j] {
-                            x_copy[copy_loc] = xx[i];
+                            // x_copy[copy_loc] = xx[i];
                             y_copy[copy_loc] = yy[i];
                             i += 1;
                         } else {
-                            x_copy[copy_loc] = xx[j];
+                            // x_copy[copy_loc] = xx[j];
                             y_copy[copy_loc] = yy[j];
                             j += 1;
                             swaps += i_end - i;
                         }
                     } else {
-                        x_copy[copy_loc] = xx[i];
+                        // x_copy[copy_loc] = xx[i];
                         y_copy[copy_loc] = yy[i];
                         i += 1;
                     }
                 } else {
-                    x_copy[copy_loc] = xx[j];
+                    // x_copy[copy_loc] = xx[j];
                     y_copy[copy_loc] = yy[j];
                     j += 1;
                 }
@@ -99,7 +100,7 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
             }
             offset += seg_size << 1; // multiply by 2
         }
-        std::mem::swap(&mut xx, &mut x_copy);
+        // std::mem::swap(&mut xx, &mut x_copy);
         std::mem::swap(&mut yy, &mut y_copy);
         seg_size <<= 1;
     }
@@ -122,5 +123,5 @@ pub fn pl_kendall_tau(inputs: &[Series]) -> PolarsResult<Series> {
     // Prevent overflow
     let denom = (((n_pairs - tied_x) as f64) * ((n_pairs - tied_y) as f64)).sqrt();
     let out = nc_m_nd as f64 / denom;
-    Ok(Series::from_vec(name.clone(), vec![out]))
+    Ok(Series::new(name.clone(), &[out]))
 }

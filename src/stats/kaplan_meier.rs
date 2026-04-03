@@ -25,7 +25,7 @@ fn pl_kaplan_meier(inputs: &[Series]) -> PolarsResult<Series> {
         ));
     }
 
-    let df = df!("status"=>inputs[0].clone(), "time_exit"=>inputs[1].clone())?;
+    let df = df!("status"=>&inputs[0], "time_exit"=>&inputs[1])?;
     let table = df
         .lazy()
         .group_by(["time_exit"])

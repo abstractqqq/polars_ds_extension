@@ -264,10 +264,8 @@ def ks_2samp(
     """
     y1, y2 = to_expr(var1), to_expr(var2)
     if is_binary:
-        z1 = y2.filter(y1 == 1)
-        z2 = y2.filter(y1 == 0)
-        z1 = z1.filter(z1.is_finite()).sort()
-        z2 = z2.filter(z2.is_finite()).sort()
+        z1 = y2.filter((y1 == 1) & y2.is_finite()).sort()
+        z2 = y2.filter((y1 == 0) & y2.is_finite()).sort()
     else:
         z1 = y1.filter(y1.is_finite()).sort()
         z2 = y2.filter(y2.is_finite()).sort()

@@ -32,14 +32,12 @@ fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
 
     for i in 1..n_cols {
         let name = i.to_string();
-        let name = name.as_str();
         let n_sum = format!("{}_sum", i);
-        let n_sum = n_sum.as_str();
         let n_var = format!("{}_var", i);
-        let n_var = n_var.as_str();
-        step_one.push(col(name).sum().alias(n_sum));
-        step_one.push(col(name).var(0).alias(n_var));
-        let p1: Expr = (col(n_sum).cast(DataType::Float64) / col("cnt").cast(DataType::Float64)
+        
+        step_one.push(col(&name).sum().alias(&n_sum));
+        step_one.push(col(name).var(0).alias(&n_var));
+        let p1: Expr = (col(&n_sum).cast(DataType::Float64) / col("cnt").cast(DataType::Float64)
             - (col(n_sum).sum().cast(DataType::Float64)
                 / col("cnt").sum().cast(DataType::Float64)))
         .pow(2);
@@ -75,7 +73,7 @@ fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
     let scale = df_in_class / df_btw_class;
 
     let mut fstats = columns_to_vec::<Float64Type>(reference.take_columns(), IndexOrder::C)?;
-    fstats.iter_mut().for_each(|v| *v = *v * scale);
+    fstats.iter_mut().for_each(|v| *v *= scale);
 
     let out_p: Vec<f64> = fstats
         .iter()
