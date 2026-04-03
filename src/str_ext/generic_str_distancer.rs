@@ -34,12 +34,28 @@ macro_rules! StdBatchedStrDistanceImpl {
     };
 }
 
+macro_rules! StdBatchedBytesDistanceImpl {
+    ($batch_struct: ty) => {
+        impl StdBatchedStrDistancer for $batch_struct {
+            fn distance(&self, s: &str) -> u32 {
+                self.distance(s.as_bytes().iter().copied()) as u32
+            }
+
+            fn normalized_similarity(&self, s: &str) -> f64 {
+                self.normalized_similarity(s.as_bytes().iter().copied())
+            }
+        }
+    };
+}
+
 StdBatchedStrDistanceImpl!(lcs_seq::BatchComparator<char>);
 StdBatchedStrDistanceImpl!(osa::BatchComparator<char>);
 StdBatchedStrDistanceImpl!(levenshtein::BatchComparator<char>);
 StdBatchedStrDistanceImpl!(damerau_levenshtein::BatchComparator<char>);
 StdBatchedStrDistanceImpl!(jaro::BatchComparator<char>);
 
+StdBatchedBytesDistanceImpl!(levenshtein::BatchComparator<u8>);
+StdBatchedBytesDistanceImpl!(damerau_levenshtein::BatchComparator<u8>);
 // -------------------------------------------------------------------------------------
 
 pub fn generic_batched_distance<T>(batched: T, ca: &StringChunked, parallel: bool) -> Series
