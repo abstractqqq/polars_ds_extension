@@ -4,21 +4,6 @@ use ordered_float::OrderedFloat;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
-#[inline(always)]
-fn binary_search_right(arr: &[OrderedFloat<f64>], t: &OrderedFloat<f64>) -> usize {
-    let mut left = 0;
-    let mut right = arr.len();
-
-    while left < right {
-        let mid = left + ((right - left) >> 1);
-        match arr[mid].cmp(t) {
-            std::cmp::Ordering::Greater => right = mid,
-            _ => left = mid + 1,
-        }
-    }
-    left
-}
-
 /// Currently only supports two-sided. Won't be too hard to do add one-sided? I hope.
 /// Reference:
 /// https://github.com/scipy/scipy/blob/v1.11.3/scipy/stats/_stats_py.py#L8644-L8875
@@ -30,22 +15,34 @@ fn ks_2samp(v1: &[f64], v2: &[f64], alpha: f64) -> (f64, f64) {
     let n2: f64 = v2.len() as f64;
 
     let v1 = unsafe { std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(v1) };
-
     let v2 = unsafe { std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(v2) };
 
-    // Follow SciPy's trick to compute the difference between two CDFs
-    let stats = v1
-        .iter()
-        .chain(v2.iter())
-        .map(|x| {
-            let a = binary_search_right(v1, x) as f64 / n1;
-            let b = binary_search_right(v2, x) as f64 / n2;
-            (a - b).abs()
-        })
-        .reduce(f64::max)
-        .unwrap_or(f64::NAN);
+    let mut i = 0;
+    let mut j = 0;
+    let mut stats = 0.0f64;
+    // Use a two pointer approach to avoid lots of binary searches
+    while i < v1.len() || j < v2.len() {
+        let val = if i < v1.len() && j < v2.len() {
+            v1[i].min(v2[j])
+        } else if i < v1.len() {
+            v1[i]
+        } else {
+            v2[j]
+        };
 
-    // This differs from SciPy, since I am assuming we are doing two-sided test
+        // Advance indices to find the number of elements <= val in each sample
+        while i < v1.len() && v1[i] <= val {
+            i += 1;
+        }
+        while j < v2.len() && v2[j] <= val {
+            j += 1;
+        }
+
+        let diff = (i as f64 / n1 - j as f64 / n2).abs();
+        if diff > stats {
+            stats = diff;
+        }
+    }
 
     let c_alpha = (-0.5 * (alpha / 2.0).ln()).abs();
     let p_estimate = (c_alpha * (n1 + n2) / (n1 * n2)).sqrt();

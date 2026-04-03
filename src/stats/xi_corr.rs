@@ -41,7 +41,7 @@ pub fn pl_xi_corr_w_p(inputs: &[Series]) -> PolarsResult<Series> {
         // Two sided
         normal::sf_unchecked(sqrt_n * c.abs() / (0.4f64).sqrt(), 0., 1.0) * 2.0
     };
-    let p = Series::from_vec("pvalue".into(), vec![p]);
+    let p = Series::new("pvalue".into(), &[p]);
     let out = StructChunked::from_series("xi_corr".into(), 1, [&corr, &p].into_iter())?;
     Ok(out.into_series())
 }

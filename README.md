@@ -84,7 +84,7 @@ df.select(
             ["x1", "x2", "x3"] +
             polynomial_features(["x1", "x2", "x3"], degree = 2, interaction_only=True)
         )
-        , target = "target"
+        , target = pl.col("target")
         , add_bias = False
     ).alias("result")
 ).unnest("result")
@@ -142,9 +142,9 @@ df = pl.DataFrame({
 df.select(
     x = pl.col('x').cast(pl.Array(inner=pl.Float64, shape=3))
     , y = pl.col('y').cast(pl.Array(inner=pl.Float64, shape=3))
-).select(
+).lazy().select(
     pds.arr_sql2_dist('x', 'y')
-)
+).collect()
 
 shape: (2, 1)
 ┌───────┐
@@ -215,9 +215,7 @@ from polars_ds.pipeline import Pipeline, Blueprint
 
 bp = (
     Blueprint(df, name = "example", target = "approved", lowercase=True) # You can optionally 
-    .filter( 
-        "city_category is not null" # or equivalently, you can do: pl.col("city_category").is_not_null()
-    )
+    .filter(pl.col("city_category").is_not_null())
     .linear_impute(features = ["var1", "existing_emi"], target = "loan_period") 
     .impute(["existing_emi"], method = "median")
     .append_expr( # generate some features
@@ -225,7 +223,7 @@ bp = (
         pl.col("loan_amount").log1p().alias("loan_amount_log1p"),
         pl.col("loan_amount").clip(lower_bound = 0, upper_bound = 1000).alias("loan_amount_clipped"),
         pl.col("loan_amount").sqrt().alias("loan_amount_sqrt"),
-        pl.col("loan_amount").shift(-1).alias("loan_amount_lag_1") # any kind of lag transform
+        pl.col("loan_amount").shift(-1).alias("loan_amount_lead_1") # shift(-1) is a lead transform
     )
     .scale( # target is numerical, but will be excluded automatically because bp is initialzied with a target
         cs.numeric().exclude(["var1", "existing_emi_log1p"]), method = "standard"

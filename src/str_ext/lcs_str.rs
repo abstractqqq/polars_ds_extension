@@ -74,8 +74,8 @@ pub fn lcs_substr_extract(s1: &str, s2: &str) -> String {
                 dp_curr[j] = 0;
             }
         }
-        // After processing the current row, copy its contents to `dp_prev`
-        dp_prev.copy_from_slice(&dp_curr);
+        // After processing the current row, swap to reuse buffers
+        std::mem::swap(&mut dp_prev, &mut dp_curr);
     }
 
     // If `max_len` is 0, it means no common substring was found.
