@@ -41,7 +41,6 @@ unicode-normalization = "0.1.24" # same as polars
 foldhash = "0.2.0"
 
 [profile.release]
-debug = false
 codegen-units = 1
-strip = "symbols" 
+strip = true
 lto = "fat"

@@ -1,6 +1,6 @@
 use polars::{
     prelude::{
-        arity::binary_elementwise_values, DataType, Float64Chunked, Series, StringChunked,
+        arity::{binary_elementwise_values, unary_elementwise_values}, DataType, Float64Chunked, Series, StringChunked,
         UInt32Chunked,
     },
     series::IntoSeries,
@@ -68,13 +68,13 @@ where
         let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
             let s1 = ca.slice(offset as i64, len);
             let out: UInt32Chunked =
-                s1.apply_nonnull_values_generic(DataType::UInt32, |s| batched.distance(s));
+                unary_elementwise_values(&s1, |s| batched.distance(s));
             out.downcast_iter().cloned().collect::<Vec<_>>()
         });
         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
         UInt32Chunked::from_chunk_iter(ca.name().clone(), chunks.into_iter().flatten())
     } else {
-        ca.apply_nonnull_values_generic(DataType::UInt32, |s| batched.distance(s))
+        unary_elementwise_values(ca, |s| batched.distance(s))
     };
     out.into_series()
 }
@@ -88,25 +88,26 @@ where
         let splits = split_offsets(ca.len(), n_threads);
         let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
             let s1 = ca.slice(offset as i64, len);
-            let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| {
-                batched.normalized_similarity(s)
-            });
+            let out: Float64Chunked = unary_elementwise_values(&s1, |s| batched.normalized_similarity(s));
             out.downcast_iter().cloned().collect::<Vec<_>>()
         });
         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
         Float64Chunked::from_chunk_iter(ca.name().clone(), chunks.into_iter().flatten())
     } else {
-        ca.apply_nonnull_values_generic(DataType::Float64, |s| batched.normalized_similarity(s))
+        unary_elementwise_values(ca, |s| batched.normalized_similarity(s))
     };
     out.into_series()
 }
 
-pub fn generic_binary_distance(
-    func: fn(&str, &str) -> u32,
+pub fn generic_binary_distance<F>(
+    func: F,
     ca1: &StringChunked,
     ca2: &StringChunked,
     parallel: bool,
-) -> Series {
+) -> Series 
+where
+    F: Fn(&str, &str) -> u32 + Copy + Send + Sync,
+{
     let out: UInt32Chunked = if parallel {
         let n_threads = POOL.current_num_threads();
         let splits = split_offsets(ca1.len(), n_threads);
@@ -124,12 +125,15 @@ pub fn generic_binary_distance(
     out.into_series()
 }
 
-pub fn generic_binary_sim(
-    func: fn(&str, &str) -> f64,
+pub fn generic_binary_sim<F>(
+    func: F,
     ca1: &StringChunked,
     ca2: &StringChunked,
     parallel: bool,
-) -> Series {
+) -> Series 
+where
+    F: Fn(&str, &str) -> f64 + Copy + Send + Sync,
+{
     let out: Float64Chunked = if parallel {
         let n_threads = POOL.current_num_threads();
         let splits = split_offsets(ca1.len(), n_threads);
