@@ -137,79 +137,79 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
         node_idx
     }
 
-    pub fn add_unchecked(&mut self, leaf: Leaf<'a, f64, A>, _depth: usize) {
-        self.recursive_add(self.root, leaf, 0);
-    }
+    // pub fn add_unchecked(&mut self, leaf: Leaf<'a, f64, A>, _depth: usize) {
+    //     self.recursive_add(self.root, leaf, 0);
+    // }
 
-    fn recursive_add(&mut self, node_idx: u32, leaf: Leaf<'a, f64, A>, depth: usize) {
-        let mut node = std::mem::replace(&mut self.nodes[node_idx as usize], Node::Leaf { data: Vec::new(), bounds: Vec::new() });
+    // fn recursive_add(&mut self, node_idx: u32, leaf: Leaf<'a, f64, A>, depth: usize) {
+    //     let mut node = std::mem::replace(&mut self.nodes[node_idx as usize], Node::Leaf { data: Vec::new(), bounds: Vec::new() });
         
-        match &mut node {
-            Node::Leaf { data, bounds } => {
-                // Update bounds
-                for i in 0..self.dim {
-                    let v = leaf.row_vec[i];
-                    if v < bounds[i] { bounds[i] = v; }
-                    if v > bounds[i + self.dim] { bounds[i + self.dim] = v; }
-                }
-                data.push(leaf);
+    //     match &mut node {
+    //         Node::Leaf { data, bounds } => {
+    //             // Update bounds
+    //             for i in 0..self.dim {
+    //                 let v = leaf.row_vec[i];
+    //                 if v < bounds[i] { bounds[i] = v; }
+    //                 if v > bounds[i + self.dim] { bounds[i + self.dim] = v; }
+    //             }
+    //             data.push(leaf);
 
-                if data.len() > self.capacity {
-                    let axis = depth % self.dim;
-                    // MIDPOINT split
-                    let midpoint = bounds[axis] + (bounds[axis + self.dim] - bounds[axis]) * 0.5;
+    //             if data.len() > self.capacity {
+    //                 let axis = depth % self.dim;
+    //                 // MIDPOINT split
+    //                 let midpoint = bounds[axis] + (bounds[axis + self.dim] - bounds[axis]) * 0.5;
                     
-                    let mut left_v = Vec::new();
-                    let mut right_v = Vec::new();
+    //                 let mut left_v = Vec::new();
+    //                 let mut right_v = Vec::new();
                     
-                    for item in data.drain(..) {
-                        if item.row_vec[axis] < midpoint { left_v.push(item); }
-                        else { right_v.push(item); }
-                    }
+    //                 for item in data.drain(..) {
+    //                     if item.row_vec[axis] < midpoint { left_v.push(item); }
+    //                     else { right_v.push(item); }
+    //                 }
 
-                    if left_v.is_empty() || right_v.is_empty() {
-                        *data = if left_v.is_empty() { right_v } else { left_v };
-                        self.nodes[node_idx as usize] = node;
-                    } else {
-                        let l_bounds = Self::find_bounds(&left_v, self.dim);
-                        let r_bounds = Self::find_bounds(&right_v, self.dim);
+    //                 if left_v.is_empty() || right_v.is_empty() {
+    //                     *data = if left_v.is_empty() { right_v } else { left_v };
+    //                     self.nodes[node_idx as usize] = node;
+    //                 } else {
+    //                     let l_bounds = Self::find_bounds(&left_v, self.dim);
+    //                     let r_bounds = Self::find_bounds(&right_v, self.dim);
                         
-                        let left_idx = self.nodes.len() as u32;
-                        self.nodes.push(Node::Leaf { data: left_v, bounds: l_bounds });
+    //                     let left_idx = self.nodes.len() as u32;
+    //                     self.nodes.push(Node::Leaf { data: left_v, bounds: l_bounds });
                         
-                        let right_idx = self.nodes.len() as u32;
-                        self.nodes.push(Node::Leaf { data: right_v, bounds: r_bounds });
+    //                     let right_idx = self.nodes.len() as u32;
+    //                     self.nodes.push(Node::Leaf { data: right_v, bounds: r_bounds });
 
-                        self.nodes[node_idx as usize] = Node::Internal {
-                            split_axis: axis,
-                            split_value: midpoint,
-                            left: left_idx,
-                            right: right_idx,
-                            bounds: bounds.clone(),
-                        };
-                    }
-                } else {
-                    self.nodes[node_idx as usize] = node;
-                }
-            }
-            Node::Internal { split_axis, split_value, left, right, bounds } => {
-                let axis = *split_axis;
-                let val = *split_value;
-                let l_idx = *left;
-                let r_idx = *right;
+    //                     self.nodes[node_idx as usize] = Node::Internal {
+    //                         split_axis: axis,
+    //                         split_value: midpoint,
+    //                         left: left_idx,
+    //                         right: right_idx,
+    //                         bounds: bounds.clone(),
+    //                     };
+    //                 }
+    //             } else {
+    //                 self.nodes[node_idx as usize] = node;
+    //             }
+    //         }
+    //         Node::Internal { split_axis, split_value, left, right, bounds } => {
+    //             let axis = *split_axis;
+    //             let val = *split_value;
+    //             let l_idx = *left;
+    //             let r_idx = *right;
 
-                for i in 0..self.dim {
-                    let v = leaf.row_vec[i];
-                    if v < bounds[i] { bounds[i] = v; }
-                    if v > bounds[i + self.dim] { bounds[i + self.dim] = v; }
-                }
+    //             for i in 0..self.dim {
+    //                 let v = leaf.row_vec[i];
+    //                 if v < bounds[i] { bounds[i] = v; }
+    //                 if v > bounds[i + self.dim] { bounds[i + self.dim] = v; }
+    //             }
                 
-                let target = if leaf.row_vec[axis] < val { l_idx } else { r_idx };
-                self.nodes[node_idx as usize] = node;
-                self.recursive_add(target, leaf, depth + 1);
-            }
-        }
-    }
+    //             let target = if leaf.row_vec[axis] < val { l_idx } else { r_idx };
+    //             self.nodes[node_idx as usize] = node;
+    //             self.recursive_add(target, leaf, depth + 1);
+    //         }
+    //     }
+    // }
 
     #[inline(always)]
     fn update_top_k(&self, data: &[Leaf<'a, f64, A>], top_k: &mut Vec<NB<f64, A>>, k: usize, point: &[f64], max_dist_bound: f64) {
