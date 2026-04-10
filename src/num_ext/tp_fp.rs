@@ -58,10 +58,8 @@ fn tp_fp_frame(
         ])
         .sort(["threshold"], Default::default())
         .with_columns([
-            (lit(n) - col("cnt").cum_sum(false) + col("cnt")).alias("predicted_positive"),
-            (lit(positive_count) - col("pos_cnt_at_threshold").cum_sum(false))
-                .shift_and_fill(1, positive_count)
-                .alias("tp"),
+            col("cnt").cum_sum(true).alias("predicted_positive"),
+            col("pos_cnt_at_threshold").cum_sum(true).alias("tp"),
         ])
         .select([
             col("threshold").append(lit(f64::INFINITY), true),
@@ -77,11 +75,12 @@ fn tp_fp_frame(
             // col("predicted_positive")
             // col("pos_cnt_at_threshold"),
     if as_ratio {
+        let negative_count = n - positive_count;
         Ok(temp.select([
             col("threshold"),
-            (col("tp").cast(DataType::Float64) / col("tp").first().cast(DataType::Float64))
+            (col("tp").cast(DataType::Float64) / lit(positive_count as f64))
                 .alias("tpr"),
-            (col("fp").cast(DataType::Float64) / col("fp").first().cast(DataType::Float64))
+            (col("fp").cast(DataType::Float64) / lit(negative_count as f64))
                 .alias("fpr"),
             col("precision"),
         ]))
