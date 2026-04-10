@@ -87,6 +87,7 @@ fn d_levenshtein_sim_bytes(s1: &str, s2: &str) -> f64 {
 fn pl_levenshtein(inputs: &[Series], context: CallerContext, kwargs: StrDistKwargs) -> PolarsResult<Series> {
     let ca1 = inputs[0].str()?;
     let ca2 = inputs[1].str()?;
+
     let as_bytes = kwargs.as_bytes;
     let parallel = kwargs.parallel;
     let can_parallel = parallel && !context.parallel();

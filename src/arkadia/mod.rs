@@ -13,12 +13,13 @@
 /// E.g.
 /// within_count returns a u32 as opposed to usize because that can help me skip a type conversion when used with Polars.
 pub mod kdt;
+pub mod kdt2;
 // pub mod ball_tree;
-pub mod leaf;
+pub mod leaf; // Keep leaf module as it's used by KDT2
 pub mod neighbor;
 pub mod utils;
 
-pub use kdt::KDT;
+pub use kdt2::KDT; // Change this to use the new kdt2 implementation
 // pub use ball_tree::BallTree;
 use crate::utils::{l1_distance, linf_distance, squared_l2_distance};
 pub use leaf::{KdLeaf, Leaf};
@@ -49,6 +50,7 @@ impl TryFrom<String> for KNNDist {
 }
 
 impl KNNDist {
+    #[inline(always)]
     pub fn dist(&self, v1: &[f64], v2: &[f64]) -> f64 {
         match self {
             KNNDist::L1 => l1_distance(v1, v2),
@@ -56,6 +58,51 @@ impl KNNDist {
             KNNDist::SQL2 => squared_l2_distance(v1, v2),
             KNNDist::LINF => linf_distance(v1, v2),
         }
+    }
+}
+
+pub trait Metric: Send + Sync + Copy {
+    fn dist(&self, v1: &[f64], v2: &[f64]) -> f64;
+    fn dist_to_box(&self, bounds: &[f64], point: &[f64]) -> f64;
+}
+
+impl Metric for KNNDist {
+    #[inline(always)]
+    fn dist(&self, v1: &[f64], v2: &[f64]) -> f64 {
+        self.dist(v1, v2)
+    }
+
+    #[inline(always)]
+    fn dist_to_box(&self, bounds: &[f64], point: &[f64]) -> f64 {
+        let dim = point.len();
+        let mut dist = 0f64;
+        match self {
+            KNNDist::L1 => {
+                for i in 0..dim {
+                    if point[i] > bounds[i + dim] { dist += point[i] - bounds[i + dim]; }
+                    else if point[i] < bounds[i] { dist += bounds[i] - point[i]; }
+                }
+            }
+            KNNDist::SQL2 | KNNDist::L2 => {
+                for i in 0..dim {
+                    if point[i] > bounds[i + dim] {
+                        let d = point[i] - bounds[i + dim];
+                        dist += d * d;
+                    } else if point[i] < bounds[i] {
+                        let d = bounds[i] - point[i];
+                        dist += d * d;
+                    }
+                }
+                if let KNNDist::L2 = self { dist = dist.sqrt(); }
+            }
+            KNNDist::LINF => {
+                for i in 0..dim {
+                    if point[i] > bounds[i + dim] { dist = dist.max(point[i] - bounds[i + dim]); }
+                    else if point[i] < bounds[i] { dist = dist.max(bounds[i] - point[i]); }
+                }
+            }
+        }
+        dist
     }
 }
 
@@ -81,6 +128,7 @@ impl KNNMethod {
     }
 }
 
+// The SpatialQueries trait is kept for compatibility with KNNRegressor, but KDT2 does not implement it directly.
 /// K Dimensional Tree Queries. Should be the same for ball trees, etc.
 pub trait SpatialQueries<'a, A> {
     fn dim(&self) -> usize;

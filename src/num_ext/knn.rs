@@ -3,7 +3,7 @@
 use crate::{
     arkadia::{
         utils::{slice_to_empty_leaves, slice_to_leaves},
-        KNNDist, KNNMethod, KNNRegressor, Leaf, SpatialQueries, KDT,
+        KNNDist, KNNMethod, Leaf, Metric, KDT,
     },
     utils::{list_u32_output, series_to_slice, split_offsets, IndexOrder},
 };
@@ -108,11 +108,9 @@ fn pl_knn_avg(
     let ncols = inputs[2..].len();
     let data = series_to_slice::<Float64Type>(&inputs[2..], IndexOrder::C)?;
     let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, &null_mask);
-
-    let tree = match KNNDist::try_from(kwargs.metric) {
-        Ok(d) => Ok(KDT::from_leaves_unchecked(&mut leaves, d)),
-        Err(e) => Err(PolarsError::ComputeError(e.into())),
-    }?;
+    
+    let dist = KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into()))?;
+    let tree = KDT::from_leaves(&mut leaves, dist).map_err(|e| PolarsError::ComputeError(e.into()))?;
 
     let ca = if can_parallel {
         let n_threads = POOL.current_num_threads();
@@ -144,19 +142,17 @@ fn pl_knn_avg(
 /// Always do k + 1 because this operation is in-dataframe, and this means
 /// that the point itself is always a neighbor to itself.
 /// Eval mask determines which values will be evaluated. Some can be skipped (Null will be returned) if user desires
-pub fn knn_ptwise<'a, Kdt>(
-    tree: Kdt,
+pub fn knn_ptwise<'a, M: Metric>(
+    tree: &KDT<'a, u32, M>,
     eval_mask: Vec<bool>,
     data: &'a [f64],
     k: usize,
     can_parallel: bool,
     max_bound: f64,
     epsilon: f64,
-) -> ListChunked
-where
-    Kdt: SpatialQueries<'a, u32> + std::marker::Sync,
-{
-    let ncols = tree.dim();
+) -> ListChunked 
+where M: Sync {
+    let ncols = tree.dim;
     let nrows = data.len() / ncols;
     if can_parallel {
         let n_threads = POOL.current_num_threads();
@@ -220,12 +216,12 @@ fn pl_dist_from_kth_nb(
     let can_parallel = kwargs.parallel && !context.parallel();
     let ncols = inputs.len();
     let data = series_to_slice::<Float64Type>(inputs, IndexOrder::C)?;
-    match KNNDist::try_from(kwargs.metric) {
+    match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
         Ok(d) => {
             let mut leaves: Vec<Leaf<f64, ()>> =
                 data.chunks_exact(ncols).map(|sl| ((), sl).into()).collect();
             // let mut leaves = row_major_slice_to_leaves(&data, ncols, id, null_mask);
-            let tree = KDT::from_leaves_unchecked(&mut leaves, d);
+            let tree = KDT::from_leaves(&mut leaves, d).map_err(|e| PolarsError::ComputeError(e.into()))?;
             let nrows = data.len() / ncols;
             let ca = if can_parallel {
                 let n_threads = POOL.current_num_threads();
@@ -265,7 +261,7 @@ fn pl_dist_from_kth_nb(
             };
             Ok(ca.into_series())
         }
-        Err(e) => Err(PolarsError::ComputeError(e.into())),
+        Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
     }
 }
 
@@ -303,12 +299,12 @@ fn pl_knn_ptwise(
     let ncols = inputs[inputs_offset..].len();
     let data = series_to_slice::<Float64Type>(&inputs[inputs_offset..], IndexOrder::C)?;
 
-    match KNNDist::try_from(kwargs.metric) {
+    match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
         Ok(d) => {
             let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, keep_mask);
-            let tree = KDT::from_leaves_unchecked(&mut leaves, d);
+            let tree = KDT::from_leaves(&mut leaves, d).map_err(|e| PolarsError::ComputeError(e.into()))?;
             Ok(knn_ptwise(
-                tree,
+                &tree,
                 eval_mask,
                 &data,
                 k,
@@ -318,23 +314,21 @@ fn pl_knn_ptwise(
             )
             .into_series())
         }
-        Err(e) => Err(PolarsError::ComputeError(e.into())),
+        Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
     }
 }
 
-pub fn knn_ptwise_w_dist<'a, Kdt>(
-    tree: Kdt,
+pub fn knn_ptwise_w_dist<'a, M: Metric>(
+    tree: &KDT<'a, u32, M>,
     eval_mask: Vec<bool>,
     data: &'a [f64],
     k: usize,
     can_parallel: bool,
     max_bound: f64,
     epsilon: f64,
-) -> (ListChunked, ListChunked)
-where
-    Kdt: SpatialQueries<'a, u32> + std::marker::Sync,
-{
-    let ncols = tree.dim();
+) -> (ListChunked, ListChunked) 
+where M: Sync {
+    let ncols = tree.dim;
     let nrows = data.len() / ncols;
     if can_parallel {
         POOL.install(|| {
@@ -468,12 +462,12 @@ fn pl_knn_ptwise_w_dist(
 
     let ncols = inputs[inputs_offset..].len();
     let data = series_to_slice::<Float64Type>(&inputs[inputs_offset..], IndexOrder::C)?;
-    let (ca_nb, ca_dist) = match KNNDist::try_from(kwargs.metric) {
+    let (ca_nb, ca_dist) = match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
         Ok(d) => {
             let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, null_mask);
-            let tree = KDT::from_leaves_unchecked(&mut leaves, d);
+            let tree = KDT::from_leaves(&mut leaves, d).map_err(|e| PolarsError::ComputeError(e.into()))?;
             Ok(knn_ptwise_w_dist(
-                tree,
+                &tree,
                 eval_mask,
                 &data,
                 k,
@@ -482,7 +476,7 @@ fn pl_knn_ptwise_w_dist(
                 kwargs.epsilon,
             ))
         }
-        Err(e) => Err(PolarsError::ComputeError(e.into())),
+        Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
     }?;
 
     let out = StructChunked::from_series(
@@ -493,17 +487,17 @@ fn pl_knn_ptwise_w_dist(
     Ok(out.into_series())
 }
 
-pub fn query_radius_ptwise<'a, Kdt>(
-    tree: Kdt,
+pub fn query_radius_ptwise<'a, M: Metric>(
+    tree: &KDT<'a, u32, M>,
     data: &'a [f64],
     r: f64,
     can_parallel: bool,
     sort: bool,
 ) -> ListChunked
 where
-    Kdt: SpatialQueries<'a, u32> + std::marker::Sync,
+    M: std::marker::Sync,
 {
-    let ncols = tree.dim();
+    let ncols = tree.dim;
     let nrows = data.len() / ncols;
     if can_parallel {
         let n_threads = POOL.current_num_threads();
@@ -566,28 +560,28 @@ fn pl_query_radius_ptwise(
     let ncols = inputs[1..].len();
     let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
     // Building output
-    match KNNDist::try_from(kwargs.metric) {
+    match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
         Ok(d) => {
             let mut leaves = slice_to_leaves(&data, ncols, id);
-            let tree = KDT::from_leaves_unchecked(&mut leaves, d);
-            Ok(query_radius_ptwise(tree, &data, radius, can_parallel, sort).into_series())
+            let tree = KDT::from_leaves(&mut leaves, d).map_err(|e| PolarsError::ComputeError(e.into()))?;
+            Ok(query_radius_ptwise(&tree, &data, radius, can_parallel, sort).into_series())
         }
-        Err(e) => Err(PolarsError::ComputeError(e.into())),
+        Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
     }
 }
 
 #[inline]
-pub fn query_nb_cnt<'a, Kdt>(
-    tree: Kdt,
+pub fn query_nb_cnt<'a, M: Metric>(
+    tree: &KDT<'a, (), M>,
     data: &'a [f64],
     r: f64,
     can_parallel: bool,
 ) -> UInt32Chunked
 where
-    Kdt: SpatialQueries<'a, ()> + std::marker::Sync,
+    M: std::marker::Sync,
 {
     // as_slice.unwrap() is safe because when we create the matrices, we specified C order.
-    let ncols = tree.dim();
+    let ncols = tree.dim;
     let nrows = data.len() / ncols;
     if can_parallel {
         let splits = split_offsets(nrows, POOL.current_num_threads());
@@ -614,16 +608,16 @@ where
 }
 
 #[inline]
-pub fn query_nb_cnt_w_radius<'a, Kdt>(
-    tree: Kdt,
+pub fn query_nb_cnt_w_radius<'a, M: Metric>(
+    tree: &KDT<'a, (), M>,
     data: &'a [f64],
     radius: &Float64Chunked,
     can_parallel: bool,
 ) -> UInt32Chunked
 where
-    Kdt: SpatialQueries<'a, ()> + std::marker::Sync,
+    M: std::marker::Sync,
 {
-    let ncols = tree.dim();
+    let ncols = tree.dim;
     let nrows = data.len() / ncols;
     if can_parallel {
         let radius = radius.to_vec();
@@ -671,26 +665,26 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
 
     if radius.len() == 1 {
         let r = radius.get(0).unwrap();
-        match KNNDist::try_from(kwargs.metric) {
+        match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
             Ok(d) => {
                 let mut leaves = slice_to_empty_leaves(&data, ncols);
-                let tree = KDT::from_leaves_unchecked(&mut leaves, d);
-                Ok(query_nb_cnt(tree, &data, r, can_parallel)
+                let tree = KDT::from_leaves(&mut leaves, d).map_err(|e| PolarsError::ComputeError(e.into()))?;
+                Ok(query_nb_cnt(&tree, &data, r, can_parallel)
                     .with_name("cnt".into())
                     .into_series())
             }
-            Err(e) => Err(PolarsError::ComputeError(e.into())),
+            Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
         }
     } else if radius.len() == nrows {
-        match KNNDist::try_from(kwargs.metric) {
+        match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
             Ok(d) => {
                 let mut leaves = slice_to_empty_leaves(&data, ncols);
-                let tree = KDT::from_leaves_unchecked(&mut leaves, d);
-                Ok(query_nb_cnt_w_radius(tree, &data, radius, can_parallel)
+                let tree = KDT::from_leaves(&mut leaves, d).map_err(|e| PolarsError::ComputeError(e.into()))?;
+                Ok(query_nb_cnt_w_radius(&tree, &data, radius, can_parallel)
                     .with_name("cnt".into())
                     .into_series())
             }
-            Err(e) => Err(PolarsError::ComputeError(e.into())),
+            Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
         }
     } else {
         Err(PolarsError::ShapeMismatch(
