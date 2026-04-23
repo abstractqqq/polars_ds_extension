@@ -137,6 +137,55 @@ def test_cond_indep_and_transfer():
 
 #     assert np.isclose(ans_statistic, test_statistic, rtol=1e-5)
 
+@pytest.mark.parametrize(
+    "data, expected",
+    [
+        # Test with mixed positive and negative integers
+        ([1, -12, 2, -22, 3, 0], [2, 2, 1, 0, 0, 0, 0, 0, 0]),
+        # Test with small floats and scientific notation
+        ([0.001, 0.00025, 0.0312, 400.0, -0.5], [1, 1, 1, 1, 1, 0, 0, 0, 0]),
+        # Test with large integers
+        ([10**10, 2 * 10**15, 999], [1, 1, 0, 0, 0, 0, 0, 0, 1]),
+        # Test with range (from old test_first_digit_cnt)
+        (list(range(24)), [11, 5, 1, 1, 1, 1, 1, 1, 1]),
+        # Test with non-finite values (from old test_first_digit_cnt)
+        (
+            [1.0, 2.0, 3.0, 4.0, float("nan"), float("inf"), None],
+            [1, 1, 1, 1, 0, 0, 0, 0, 0],
+        ),
+    ],
+)
+def test_benford(data, expected):
+    df = pl.DataFrame({"a": data})
+    result = df.select(pds.query_first_digit_cnt("a")).item().to_list()
+    assert result == expected
+
+def test_benford_2():
+    # Use a fixed seed for reproducibility
+    rng = np.random.default_rng(42)
+
+    def manual_first_digit_counts(arr):
+        counts = [0] * 10
+        for x in arr:
+            if x == 0 or (isinstance(x, (float, np.floating)) and not np.isfinite(x)):
+                continue
+            # Scientific notation 'e' format always puts the first non-zero digit at index 0.
+            # e.g., 0.0312 -> 3.120000e-02, 120 -> 1.200000e+02
+            s = format(abs(x), "e")
+            digit = int(s[0])
+            if 1 <= digit <= 9:
+                counts[digit] += 1
+        return counts[1:]
+
+    # Random floats across various scales (large and very small)
+    floats = np.concatenate([rng.uniform(-1e6, 1e6, size=500), rng.uniform(1e-10, 1e-2, size=500)])
+    res_floats = pl.DataFrame({"a": floats}).select(pds.query_first_digit_cnt("a")).item().to_list()
+    assert res_floats == manual_first_digit_counts(floats)
+
+    # Random integers
+    ints = rng.integers(-100000, 100000, size=1000)
+    res_ints = pl.DataFrame({"a": ints}).select(pds.query_first_digit_cnt("a")).item().to_list()
+    assert res_ints == manual_first_digit_counts(ints)
 
 def test_bicor():
     df = pds.frame(size=2_000).select(
@@ -338,28 +387,6 @@ def test_mann_whitney_u(df):
     assert np.isclose(res_pvalue, answer.pvalue)
 
 
-@pytest.mark.parametrize(
-    "df, res",
-    [
-        (
-            pl.DataFrame({"a": list(range(24))}),
-            [11, 5, 1, 1, 1, 1, 1, 1, 1],
-        ),
-        (
-            pl.DataFrame({"a": [1.0, 2.0, 3.0, 4.0, float("nan"), float("inf"), None]}),
-            [1, 1, 1, 1, 0, 0, 0, 0, 0],  # NaN, Inf, None are ignored
-        ),
-    ],
-)
-def test_first_digit_cnt(df, res):
-    assert_frame_equal(
-        df.select(pds.query_first_digit_cnt("a").explode().cast(pl.UInt32)),
-        pl.DataFrame({"a": pl.Series(values=res, dtype=pl.UInt32)}),
-    )
-    assert_frame_equal(
-        df.lazy().select(pds.query_first_digit_cnt("a").explode().cast(pl.UInt32)).collect(),
-        pl.DataFrame({"a": pl.Series(values=res, dtype=pl.UInt32)}),
-    )
 
 
 @pytest.mark.parametrize(

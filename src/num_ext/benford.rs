@@ -1,108 +1,88 @@
 use crate::utils::list_u32_output;
-use num::Integer;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
-fn first_digit<T: Integer + Copy>(u: T) -> T {
-    // Does the compiler know how to optimize this?
-    let ten = (0..10).fold(T::zero(), |acc: T, _| acc + T::one());
-    let mut v = u;
-    let mut d = T::zero();
-    while v != T::zero() {
-        d = v % ten;
-        v = v / ten;
-    }
-    d
+/// Optimized first digit for integers using only division.
+/// For primitives, using a literal 10 allows the compiler to optimize division
+/// into multiplication by a magic constant.
+macro_rules! impl_benford_int {
+    ($ss:expr, $out:expr) => {
+        for mut v in $ss.into_no_null_iter() {
+            if v == 0 { continue; }
+            while v >= 10 {
+                v /= 10;
+            }
+            $out[v as usize] += 1;
+        }
+    };
+    ($ss:expr, $out:expr, signed) => {
+        for x in $ss.into_no_null_iter() {
+            let mut v = x.unsigned_abs();
+            if v == 0 { continue; }
+            while v >= 10 {
+                v /= 10;
+            }
+            $out[v as usize] += 1;
+        }
+    };
 }
 
 #[polars_expr(output_type_func=list_u32_output)]
 fn pl_benford_law(inputs: &[Series]) -> PolarsResult<Series> {
-    let mut out = [0; 10];
+    let mut out = [0u32; 10];
     let s = &inputs[0];
     match s.dtype() {
         DataType::UInt8 => {
             let ss = s.u8().unwrap();
-            for x in ss.into_no_null_iter() {
-                let d = first_digit(x);
-                out[d as usize] += 1;
-            }
+            impl_benford_int!(ss, out);
         }
         DataType::UInt16 => {
             let ss = s.u16().unwrap();
-            for x in ss.into_no_null_iter() {
-                let d = first_digit(x);
-                out[d as usize] += 1;
-            }
+            impl_benford_int!(ss, out);
         }
         DataType::UInt32 => {
             let ss = s.u32().unwrap();
-            for x in ss.into_no_null_iter() {
-                let d = first_digit(x);
-                out[d as usize] += 1;
-            }
+            impl_benford_int!(ss, out);
         }
         DataType::UInt64 => {
             let ss = s.u64().unwrap();
-            for x in ss.into_no_null_iter() {
-                let d = first_digit(x);
-                out[d as usize] += 1;
-            }
+            impl_benford_int!(ss, out);
         }
         DataType::Int8 => {
             let ss = s.i8().unwrap();
-            for x in ss.into_no_null_iter() {
-                let d = first_digit(x); // could be negative
-                out[d.abs() as usize] += 1;
-            }
+            impl_benford_int!(ss, out, signed);
         }
         DataType::Int16 => {
             let ss = s.i16().unwrap();
-            for x in ss.into_no_null_iter() {
-                let d = first_digit(x); // could be negative
-                out[d.abs() as usize] += 1;
-            }
+            impl_benford_int!(ss, out, signed);
         }
         DataType::Int32 => {
             let ss = s.i32().unwrap();
-            for x in ss.into_no_null_iter() {
-                let d = first_digit(x); // could be negative
-                out[d.abs() as usize] += 1;
-            }
+            impl_benford_int!(ss, out, signed);
         }
         DataType::Int64 => {
             let ss = s.i64().unwrap();
-            for x in ss.into_no_null_iter() {
-                let d = first_digit(x); // could be negative
-                out[d.abs() as usize] += 1;
-            }
+            impl_benford_int!(ss, out, signed);
         }
         DataType::Float32 => {
             let ss = s.f32().unwrap();
             for x in ss.into_no_null_iter() {
-                if x.is_finite() {
-                    let x_char = x
-                        .abs()
-                        .to_string()
-                        .chars()
-                        .find(|c| *c != '0' && *c != '.')
-                        .unwrap_or('0');
-                    let idx = x_char.to_digit(10).unwrap() as usize;
-                    out[idx] += 1;
+                if x.is_finite() && x != 0.0 {
+                    let abs_x = x.abs() as f64;
+                    let log10 = abs_x.log10().floor();
+                    let d = (abs_x / 10.0_f64.powf(log10)).floor() as usize;
+                    out[d.min(9)] += 1;
                 }
             }
         }
         DataType::Float64 => {
             let ss = s.f64().unwrap();
             for x in ss.into_no_null_iter() {
-                if x.is_finite() {
-                    let x_char = x
-                        .abs()
-                        .to_string()
-                        .chars()
-                        .find(|c| *c != '0' && *c != '.')
-                        .unwrap_or('0');
-                    let idx = x_char.to_digit(10).unwrap() as usize;
-                    out[idx] += 1;
+                if x.is_finite() && x != 0.0 {
+                    let abs_x = x.abs();
+                    let log10 = abs_x.log10().floor();
+                    let d = (abs_x / 10.0_f64.powf(log10)).floor() as usize;
+                    out[d.min(9)] += 1;
                 }
             }
         }

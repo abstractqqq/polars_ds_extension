@@ -312,6 +312,7 @@ fn pl_binary_confusion_matrix(inputs: &[Series]) -> PolarsResult<Series> {
     let confusion = binary_confusion_matrix(combined_series);
     let tn = Float64Chunked::from_vec("tn".into(), vec![confusion[0] as f64]);
     let tn = Column::Series(tn.into_series().into());
+    let n = tn.len();
 
     let fp = Float64Chunked::from_vec("fp".into(), vec![confusion[1] as f64]);
     let fp = Column::Series(fp.into_series().into());

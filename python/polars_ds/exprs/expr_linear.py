@@ -178,7 +178,10 @@ def lin_reg(
                 null_policy=null_policy,
             )
         else:
-            cols = [lr_formula(t).alias(f"target_{i}") for i, t in enumerate(target)]
+            cols = [
+                lr_formula(t).alias(f"target_{i}").cast(pl.Float64) 
+                for i, t in enumerate(target)
+            ]
             multi_target_lr_kwargs = {
                 "bias": add_bias,
                 "null_policy": null_policy,
@@ -223,9 +226,12 @@ def lin_reg(
         }
 
         if weighted:
-            cols = [lr_formula(weights).cast(pl.Float64).rechunk(), lr_formula(target)]
+            cols = [
+                lr_formula(weights).cast(pl.Float64).rechunk(), 
+                lr_formula(target).cast(pl.Float64)
+            ]
         else:
-            cols = [lr_formula(target)]
+            cols = [lr_formula(target).cast(pl.Float64)]
 
         cols.extend(lr_formula(z) for z in x)
 
@@ -309,7 +315,7 @@ def logistic_reg(
         "tol": abs(tol),
         "max_iter": max_iter,
     }
-    cols = [lr_formula(target)]
+    cols = [lr_formula(target).cast(pl.Float64)]
     cols.extend(lr_formula(z) for z in x)
     if return_pred:
         return pl_plugin(
@@ -361,7 +367,7 @@ def lin_reg_w_rcond(
         columns.
     """
 
-    cols = [lr_formula(target)]
+    cols = [lr_formula(target).cast(pl.Float64)]
     cols.extend(lr_formula(z) for z in x)
     lr_kwargs = {
         "bias": add_bias,
@@ -420,7 +426,7 @@ def recursive_lin_reg(
     if start_with < 1:
         raise ValueError("You must start with >= 1 rows for recursive linear regression.")
 
-    cols = [lr_formula(target)]
+    cols = [lr_formula(target).cast(pl.Float64)]
     features = [lr_formula(z) for z in x]
     if len(features) > start_with:
         warnings.warn(
@@ -486,7 +492,7 @@ def rolling_lin_reg(
     if window_size < 2:
         raise ValueError("`window_size` must be >= 2.")
 
-    cols = [lr_formula(target)]
+    cols = [lr_formula(target).cast(pl.Float64)]
     features = [lr_formula(z) for z in x]
     if len(features) > window_size:
         raise ValueError("# features > window size. Linear regression is not well-defined.")
@@ -565,7 +571,7 @@ def lin_reg_report(
         "std_err": std_err.lower(),
     }
 
-    t = lr_formula(target)
+    t = lr_formula(target).cast(pl.Float64)
     if weights is None:
         cols = [t.var(), t]
         cols.extend(lr_formula(z) for z in x)
