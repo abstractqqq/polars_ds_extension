@@ -24,7 +24,7 @@ faer-traits = { git = "https://codeberg.org/sarah-quinones/faer", rev = "8377404
 argmin-math = {git = "https://github.com/abstractqqq/argmin.git", branch = "main", default-features = false, features = ["faer_v0_custom"]}
 argmin = {git = "https://github.com/abstractqqq/argmin.git", branch = "main"}
 # Numerical
-rand = "0.9" # same as polars
+rand = "0.9.3" # same as polars
 rand_distr = "0.5" # same as polars
 num = "*"
 ordered-float = "4.2.0"
