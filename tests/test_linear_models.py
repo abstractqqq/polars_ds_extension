@@ -5,6 +5,7 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from polars_ds.linear_models import OnlineLR, ElasticNet, LR
 
+
 def test_lr_null_policies_for_np():
     from polars_ds.linear_models import _handle_nans_in_np
 

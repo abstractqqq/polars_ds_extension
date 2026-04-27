@@ -6,6 +6,7 @@ import numpy as np
 import polars_ds as pds
 from polars.testing import assert_frame_equal, assert_series_equal
 
+
 def test_random_functions_in_streaming():
     df = pl.DataFrame({"x": list(range(0, 50))}).lazy()
 
@@ -137,6 +138,7 @@ def test_cond_indep_and_transfer():
 
 #     assert np.isclose(ans_statistic, test_statistic, rtol=1e-5)
 
+
 @pytest.mark.parametrize(
     "data, expected",
     [
@@ -159,6 +161,7 @@ def test_benford(data, expected):
     df = pl.DataFrame({"a": data})
     result = df.select(pds.query_first_digit_cnt("a")).item().to_list()
     assert result == expected
+
 
 def test_benford_2():
     # Use a fixed seed for reproducibility
@@ -186,6 +189,7 @@ def test_benford_2():
     ints = rng.integers(-100000, 100000, size=1000)
     res_ints = pl.DataFrame({"a": ints}).select(pds.query_first_digit_cnt("a")).item().to_list()
     assert res_ints == manual_first_digit_counts(ints)
+
 
 def test_bicor():
     df = pds.frame(size=2_000).select(
@@ -385,8 +389,6 @@ def test_mann_whitney_u(df):
     answer = mannwhitneyu(df["x1"].to_numpy(), df["x2"].to_numpy())
     assert np.isclose(res_statistic, answer.statistic)
     assert np.isclose(res_pvalue, answer.pvalue)
-
-
 
 
 @pytest.mark.parametrize(

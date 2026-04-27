@@ -43,7 +43,7 @@ def filter_by_levenshtein(
     other: str | pl.Expr,
     bound: int,
     parallel: bool = False,
-    as_bytes: bool = False
+    as_bytes: bool = False,
 ) -> pl.Expr:
     """
     Returns whether the Levenshtein distance between self and other is <= bound. This is
@@ -65,11 +65,7 @@ def filter_by_levenshtein(
         Whether to treat the strings as ASCII characters. This will boost performance but does not
         work on non-ASCII characters.
     """
-    params = {
-        "bound": abs(bound),
-        "parallel": parallel,
-        "as_bytes": as_bytes
-    }
+    params = {"bound": abs(bound), "parallel": parallel, "as_bytes": as_bytes}
     return pl_plugin(
         symbol="pl_levenshtein_filter",
         args=[to_expr(c), to_expr(other)],
@@ -464,7 +460,7 @@ def str_d_leven(
     other: str | pl.Expr,
     parallel: bool = False,
     return_sim: bool = False,
-    as_bytes: bool = False
+    as_bytes: bool = False,
 ) -> pl.Expr:
     """
     Computes the Damerau-Levenshtein distance between this and the other str.
@@ -485,10 +481,7 @@ def str_d_leven(
         Whether to treat the strings as ASCII characters. This will boost performance but does not
         work on non-ASCII characters.
     """
-    params = {
-        "parallel": parallel,
-        "as_bytes": as_bytes
-    }
+    params = {"parallel": parallel, "as_bytes": as_bytes}
     if return_sim:
         return pl_plugin(
             symbol="pl_d_levenshtein_sim",
@@ -531,10 +524,7 @@ def str_leven(
         Whether to treat the strings as ASCII characters. This will boost performance but does not
         work on non-ASCII characters.
     """
-    params = {
-        "parallel": parallel,
-        "as_bytes": as_bytes
-    }
+    params = {"parallel": parallel, "as_bytes": as_bytes}
     if return_sim:
         return pl_plugin(
             symbol="pl_levenshtein_sim",
@@ -736,13 +726,19 @@ def similar_to_vocab(
         If `any`, then will return true if the similarity to any words in the vocab is above
         the threshold.
     as_bytes
-        Only works for Levenshtein distance. Whether to treat the strings as ASCII characters. 
+        Only works for Levenshtein distance. Whether to treat the strings as ASCII characters.
         This will boost performance but does not work on non-ASCII characters.
     """
     if metric == "lv":
-        sims = [str_leven(c, pl.lit(w, dtype=pl.String), as_bytes=as_bytes, return_sim=True) for w in vocab]
+        sims = [
+            str_leven(c, pl.lit(w, dtype=pl.String), as_bytes=as_bytes, return_sim=True)
+            for w in vocab
+        ]
     elif metric == "dlv":
-        sims = [str_d_leven(c, pl.lit(w, dtype=pl.String), as_bytes=as_bytes, return_sim=True) for w in vocab]
+        sims = [
+            str_d_leven(c, pl.lit(w, dtype=pl.String), as_bytes=as_bytes, return_sim=True)
+            for w in vocab
+        ]
     elif metric == "osa":
         sims = [str_osa(c, pl.lit(w, dtype=pl.String), return_sim=True) for w in vocab]
     elif metric == "jw":

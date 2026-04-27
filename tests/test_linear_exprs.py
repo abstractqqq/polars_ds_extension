@@ -4,36 +4,41 @@ import numpy as np
 import pytest
 from polars.testing import assert_frame_equal, assert_series_equal
 
+
 @pytest.mark.parametrize(
     "bias, n",
     [
-        (True, 5), (True, 10),
-        (False, 5), (False, 10),
+        (True, 5),
+        (True, 10),
+        (False, 5),
+        (False, 10),
     ],
 )
-def test_logistic_reg_against_sklearn(bias:bool, n:int):
+def test_logistic_reg_against_sklearn(bias: bool, n: int):
     from sklearn.datasets import make_classification
     from sklearn.linear_model import LogisticRegression
-    
+
     # Due to differences in many optimization parameters, we will use a large test set,
     # and accept some small differences in the output
     # Sklearn defaults to a l2 regularized logistic regression, but there is no way to set l2 regularization
     # factor... So won't test l2.
-    X, y = make_classification(n_samples=10_000, n_features=n, n_redundant=0, 
-                        n_informative=n-1, random_state=1, n_clusters_per_class=1)
+    X, y = make_classification(
+        n_samples=10_000,
+        n_features=n,
+        n_redundant=0,
+        n_informative=n - 1,
+        random_state=1,
+        n_clusters_per_class=1,
+    )
 
-    clf = LogisticRegression(random_state=0, penalty = None, tol = 1e-6, max_iter=400, fit_intercept=bias).fit(X, y)
+    clf = LogisticRegression(
+        random_state=0, penalty=None, tol=1e-6, max_iter=400, fit_intercept=bias
+    ).fit(X, y)
 
     variables = [f"x_{i}" for i in range(n)]
-    df = pl.from_numpy(X, schema=variables).with_columns(y = y)
+    df = pl.from_numpy(X, schema=variables).with_columns(y=y)
     coeffs = df.select(
-        pds.logistic_reg(
-            *variables
-            , target = 'y'
-            , add_bias = bias
-            , max_iter = 400
-            , tol = 1e-6
-        )
+        pds.logistic_reg(*variables, target="y", add_bias=bias, max_iter=400, tol=1e-6)
     ).item(0, 0)
     coeffs = coeffs.to_numpy()
     test_tol = 1e-5
@@ -46,14 +51,9 @@ def test_logistic_reg_against_sklearn(bias:bool, n:int):
     y_pred_sklearn = clf.predict_proba(X)[:, 1]
     pred = df.select(
         pds.logistic_reg(
-            *variables
-            , target = 'y'
-            , add_bias = bias
-            , max_iter = 200
-            , tol = 1e-6
-            , return_pred = True
-        ).alias('pred')
-    )['pred']
+            *variables, target="y", add_bias=bias, max_iter=200, tol=1e-6, return_pred=True
+        ).alias("pred")
+    )["pred"]
     assert np.all((pred.to_numpy() - y_pred_sklearn) < test_tol)
 
 
@@ -412,6 +412,7 @@ def test_lin_reg_with_rcond():
     assert np.all(np.abs(coeffs - np_coeffs) < 1e-10)
     assert np.all(np.abs(svs - np_svs) < 1e-10)
 
+
 def test_lasso_regression():
     # These tests have bigger precision tolerance because of different stopping criterions
 
@@ -532,7 +533,6 @@ def test_positive_lin_reg():
             assert np.isclose(float(pds_result[-1]), reg_nnls.intercept_, atol=1e-4)
 
 
-
 def test_elastic_net_regression():
     # These tests have bigger precision tolerance because of different stopping criterions
 
@@ -619,6 +619,7 @@ def test_recursive_lin_reg():
         # i - 1. E.g. use 3 rows of data to train, the data will be at row 2.
         recursive_result = df_recursive_lr["coeffs"][i - 1].to_numpy()
         assert np.all(np.abs(normal_result - recursive_result) < 1e-5)
+
 
 def test_recursive_ridge():
     # Test against the lstsq method with a fit whenver a new row is in the data

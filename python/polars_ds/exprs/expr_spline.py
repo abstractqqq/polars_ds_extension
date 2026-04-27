@@ -9,7 +9,8 @@ from polars_ds._utils import pl_plugin, to_expr
 
 __all__ = ["smooth_spline"]
 
-def smooth_spline(x: str | pl.Expr, y: str | pl.Expr, lambda_:float) -> pl.Expr:
+
+def smooth_spline(x: str | pl.Expr, y: str | pl.Expr, lambda_: float) -> pl.Expr:
     """
     Fits a smoothing cubic spline f and returns f(x). The user must make sure
     that x is sorted and strictly increasing.

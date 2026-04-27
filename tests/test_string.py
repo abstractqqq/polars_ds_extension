@@ -66,7 +66,6 @@ def test_normalize_whitespace():
     )
 
 
-
 @pytest.mark.parametrize(
     "df, res",
     [
@@ -255,16 +254,14 @@ def test_levenshtein(df, res):
         df.lazy().select(pds.str_leven("a", pl.col("b"))).collect(engine="streaming"), res
     )
 
+
 def test_levenshtein_bytes():
-    df = pds.frame(size = 1_000).with_columns(
-        a = pds.random_str(min_size = 3, max_size = 10, len_ref = "row_num")
-        , b = pds.random_str(min_size = 1, max_size = 10, len_ref = "row_num")
+    df = pds.frame(size=1_000).with_columns(
+        a=pds.random_str(min_size=3, max_size=10, len_ref="row_num"),
+        b=pds.random_str(min_size=1, max_size=10, len_ref="row_num"),
     )
 
-    res = df.select(
-        leven1 = pds.str_leven("a", "b")
-        , leven2 = pds.str_leven("a", "b", as_bytes = True)
-    )
+    res = df.select(leven1=pds.str_leven("a", "b"), leven2=pds.str_leven("a", "b", as_bytes=True))
 
     assert res.select((pl.col("leven1") == pl.col("leven2")).all()).item(0, 0)
 
