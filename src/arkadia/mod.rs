@@ -12,7 +12,6 @@
 /// and it is more convenient to just use strings.
 /// E.g.
 /// within_count returns a u32 as opposed to usize because that can help me skip a type conversion when used with Polars.
-pub mod kdt;
 pub mod kdt2;
 // pub mod ball_tree;
 pub mod leaf; // Keep leaf module as it's used by KDT2
