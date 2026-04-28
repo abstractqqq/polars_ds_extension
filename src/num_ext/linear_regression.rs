@@ -10,7 +10,7 @@ use crate::linear::{
     NullPolicy,
 };
 use crate::utils::{
-    columns_to_vec_with_extra_cap, series_to_slice_with_extra_cap, to_frame, IndexOrder,
+    columns_to_vec_with_extra_cap, series_to_slice_with_extra_cap_unchecked, to_frame, IndexOrder,
 };
 /// Least Squares using Faer and ndarray.
 use core::f64;
@@ -169,7 +169,7 @@ pub fn series_to_mat_for_lr(
         }
         let extra = if add_bias { nrows } else { 0 };
         let mut mat_slice =
-            series_to_slice_with_extra_cap::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
+            series_to_slice_with_extra_cap_unchecked::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
         if add_bias {
             mat_slice.extend(std::iter::repeat(1f64).take(nrows));
         }
@@ -292,7 +292,7 @@ fn series_to_mat_for_multi_lr(
         }
         let extra = if add_bias { nrows } else { 0 };
         let mut mat_slice =
-            series_to_slice_with_extra_cap::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
+            series_to_slice_with_extra_cap_unchecked::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
         if add_bias {
             mat_slice.extend(std::iter::repeat(1f64).take(nrows));
         }

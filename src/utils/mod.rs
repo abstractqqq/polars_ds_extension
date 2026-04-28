@@ -68,6 +68,37 @@ where
             "Seires don't have the same length.".into(),
         ));
     }
+    series_to_slice_inner::<N>(series, ordering, extra_cap)
+}
+
+/// Same as `series_to_slice_with_extra_cap` but skips entry-shape validation
+/// (numeric-dtype check + length-equality check). Trusted internal callers
+/// that have already validated dtype + length should use this; saves a few
+/// hundred nanoseconds per call when invoked in tight group-by loops.
+#[inline(always)]
+pub(crate) fn series_to_slice_with_extra_cap_unchecked<N>(
+    series: &[Series],
+    ordering: IndexOrder,
+    extra_cap: usize,
+) -> PolarsResult<Vec<<N>::Native>>
+where
+    N: PolarsNumericType,
+{
+    if series.is_empty() {
+        return Err(PolarsError::NoData("Data is empty".into()));
+    }
+    series_to_slice_inner::<N>(series, ordering, extra_cap)
+}
+
+#[inline(always)]
+fn series_to_slice_inner<N>(
+    series: &[Series],
+    ordering: IndexOrder,
+    extra_cap: usize,
+) -> PolarsResult<Vec<<N>::Native>>
+where
+    N: PolarsNumericType,
+{
     // Safe because series is not empty
     let height: usize = series[0].len();
     let m = series.len();
