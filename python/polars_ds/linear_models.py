@@ -1,6 +1,6 @@
 """
 Linear models. This module is in very early development and is subject to frequent breaking changes.
-Since the backend is Faer in Rust, better performance might be achieved if your NumPy ndarrays are Fortran-style 
+Since the backend is Faer in Rust, better performance might be achieved if your NumPy ndarrays are Fortran-style
 column major. This currently only supports f64.
 
 This module requires the NumPy package. PDS only requires Polars, but you can get all the optional dependencies by
@@ -63,11 +63,13 @@ def _handle_nulls_in_df(
         except Exception as e:
             raise ValueError(f"Unknown null_policy. Error: {e}")
 
+
 def _sanitize_np(*ndarrays: str):
     """
     Decorator that strictly passes the specified arguments through np.asarray(),
     ignoring all other arguments.
     """
+
     def decorator(func):
         sig = inspect.signature(func)
 
@@ -87,6 +89,7 @@ def _sanitize_np(*ndarrays: str):
             return func(*bound_args.args, **bound_args.kwargs)
 
         return wrapper
+
     return decorator
 
 
@@ -210,18 +213,16 @@ class LR:
         self.feature_names_in_ = list(features)
         return self
 
-    
     def coeffs(self) -> np.ndarray:
         """
         Returns a copy of the coefficients.
         """
         return np.asarray(self._lr.coeffs)
 
-    
     def bias(self) -> float:
         return self._lr.bias
 
-    @_sanitize_np('X', 'y')
+    @_sanitize_np("X", "y")
     def fit(self, X: np.ndarray, y: np.ndarray, null_policy: NullPolicy = "ignore") -> Self:
         """
         Fit the linear regression model on NumPy data.
@@ -299,7 +300,7 @@ class LR:
         self._lr.fit(X, y)
         return self
 
-    @_sanitize_np('X')
+    @_sanitize_np("X")
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
         Returns the prediction of this linear model.
@@ -435,7 +436,6 @@ class ElasticNet:
         self.feature_names_in_ = list(features)
         return self
 
-    
     def coeffs(self) -> np.ndarray:
         """
         Returns a copy of the coefficients.
@@ -445,11 +445,10 @@ class ElasticNet:
     def has_bias(self) -> bool:
         return self._en.has_bias()
 
-    
     def bias(self) -> float:
         return self._en.bias
 
-    @_sanitize_np('X', 'y')
+    @_sanitize_np("X", "y")
     def fit(self, X: np.ndarray, y: np.ndarray, null_policy: NullPolicy = "ignore") -> Self:
         """
         Fit the Elastic Net model on NumPy data.
@@ -508,7 +507,7 @@ class ElasticNet:
         self._en.fit(X, y)
         return self
 
-    @_sanitize_np('X')
+    @_sanitize_np("X")
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
         Returns the prediction of this linear model.
@@ -574,7 +573,7 @@ class OnlineLR:
         self._lr = PyOnlineLR(lambda_, has_bias)
 
     @classmethod
-    @_sanitize_np('inv')
+    @_sanitize_np("inv")
     def from_coeffs_bias_inverse(cls, coeffs: List[float], bias: float, inv: np.ndarray) -> Self:
         """
         Constructs an online linear regression instance from coefficients, inverse. This copies
@@ -610,25 +609,22 @@ class OnlineLR:
             output += "Not fitted yet."
         return output
 
-    
     def coeffs(self) -> np.ndarray:
         """
         Returns a copy of the current coefficients.
         """
         return np.asarray(self._lr.coeffs)
 
-    
     def bias(self) -> float:
         return self._lr.bias
 
-    
     def inv(self) -> np.ndarray:
         """
         Returns a copy of the current inverse matrix (inverse of XtX in a linear regression).
         """
         return np.asarray(self._lr.inv)
 
-    @_sanitize_np('X', 'y')
+    @_sanitize_np("X", "y")
     def fit(self, X: np.ndarray, y: np.ndarray) -> Self:
         """
         Initial Fit for the online linear regression model on NumPy data.
@@ -648,7 +644,7 @@ class OnlineLR:
         self._lr.fit(X, y)
         return self
 
-    @_sanitize_np('X', 'y')
+    @_sanitize_np("X", "y")
     def update(self, X: np.ndarray, y: np.ndarray | float, c: float = 1.0) -> Self:
         """
         Updates the online linear regression model with one row of data. If the row contains np.nan,
@@ -669,14 +665,14 @@ class OnlineLR:
             raise ValueError("You cannot update before the initial fit of the matrix.")
 
         x_2d = X.reshape((1, -1))
-        # Sanitization will do np.asarray(y). This means y at this point is already 
+        # Sanitization will do np.asarray(y). This means y at this point is already
         # an array.
         y_2d = y.reshape((1, 1))
 
         self._lr.update(x_2d, y_2d, c)
         return self
 
-    @_sanitize_np('X')
+    @_sanitize_np("X")
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
         Returns the prediction of this online linear model.
@@ -687,6 +683,7 @@ class OnlineLR:
             Data to predict on, as a matrix
         """
         return np.asarray(self._lr.predict(X))
+
 
 # ------------------------------------------------------------------------------------
 
@@ -826,18 +823,16 @@ class GLM:
         self.feature_names_in_ = list(features)
         return self
 
-    
     def coeffs(self) -> np.ndarray:
         """
         Returns a copy of the coefficients.
         """
         return self._glm.coeffs
 
-    
     def bias(self) -> float:
         return self._glm.bias
 
-    @_sanitize_np('X', 'y')
+    @_sanitize_np("X", "y")
     def fit(self, X: np.ndarray, y: np.ndarray, null_policy: NullPolicy = "ignore") -> Self:
         """
         Fit the GLM model on NumPy data.
@@ -898,7 +893,7 @@ class GLM:
         self._glm.fit(X, y)
         return self
 
-    @_sanitize_np('X')
+    @_sanitize_np("X")
     def predict(self, X: np.ndarray, linear: bool = False) -> np.ndarray:
         """
         Returns the prediction of this linear model.

@@ -17,7 +17,7 @@ __all__ = [
     "recursive_lin_reg",
     "rolling_lin_reg",
     "lin_reg_report",
-    "logistic_reg"
+    "logistic_reg",
 ]
 
 
@@ -121,7 +121,7 @@ def lin_reg(
 
     If add_bias is true, it will be the last coefficient in the output and output will have len(variables) + 1.
 
-    If you only want to do simple linear regression (one predictive x variable and one target) and null policy doesn't 
+    If you only want to do simple linear regression (one predictive x variable and one target) and null policy doesn't
     matter, then `simple_lin_reg` is a faster alternative.
 
     Parameters
@@ -152,7 +152,7 @@ def lin_reg(
     max_iter
         Only used for Non-negative or Elastic net regression. The max iteration for the algorithm.
     null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
-        One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to 
+        One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
         the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
         columns. If this is multi-target, fill will fail if there are nulls in any of the targets.
@@ -179,8 +179,7 @@ def lin_reg(
             )
         else:
             cols = [
-                lr_formula(t).alias(f"target_{i}").cast(pl.Float64) 
-                for i, t in enumerate(target)
+                lr_formula(t).alias(f"target_{i}").cast(pl.Float64) for i, t in enumerate(target)
             ]
             multi_target_lr_kwargs = {
                 "bias": add_bias,
@@ -206,7 +205,6 @@ def lin_reg(
                     pass_name_to_apply=True,
                 ).alias("coeffs")
     else:
-
         if not isinstance(max_iter, int):
             raise TypeError("Input `max_iter` must be a positive int.")
         if max_iter <= 0:
@@ -227,8 +225,8 @@ def lin_reg(
 
         if weighted:
             cols = [
-                lr_formula(weights).cast(pl.Float64).rechunk(), 
-                lr_formula(target).cast(pl.Float64)
+                lr_formula(weights).cast(pl.Float64).rechunk(),
+                lr_formula(target).cast(pl.Float64),
             ]
         else:
             cols = [lr_formula(target).cast(pl.Float64)]
@@ -267,10 +265,10 @@ def logistic_reg(
     Fits a logistic regression and returns the coefficients. This uses the L-BFGS algorithm as the solver.
     This does a data copy internally.
 
-    Only supports binary target and the target must be 0s and 1s and the user must ensure this. Otherwise, 
+    Only supports binary target and the target must be 0s and 1s and the user must ensure this. Otherwise,
     the output will be nonsensical.
 
-    If add_bias is true and return_pred is False, the bias term will be the last coefficient in the output 
+    If add_bias is true and return_pred is False, the bias term will be the last coefficient in the output
     and output will have len(variables) + 1.
 
     Note: This is meant to be a quick logistic regression check and will not persist the model. You have to
@@ -298,7 +296,7 @@ def logistic_reg(
     max_iter
         Max iter for the algorithm.
     return_pred
-        If true, this will return a column of predicted probabilities. If false, this will return 
+        If true, this will return a column of predicted probabilities. If false, this will return
         the coefficients.
     """
     if not isinstance(max_iter, int):
@@ -311,7 +309,7 @@ def logistic_reg(
         "null_policy": null_policy,
         "l1_reg": l1_reg,
         "l2_reg": l2_reg,
-        "solver": '',
+        "solver": "",
         "tol": abs(tol),
         "max_iter": max_iter,
     }
@@ -331,6 +329,7 @@ def logistic_reg(
             kwargs=lr_kwargs,
             pass_name_to_apply=True,
         ).alias("__coeffs__")
+
 
 def lin_reg_w_rcond(
     *x: str | pl.Expr,
@@ -483,7 +482,7 @@ def rolling_lin_reg(
         if there are nulls in the windows, the window must have at least `min_valid_rows` valid rows in order to
         produce a result. Otherwise, null will be returned.
     null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
-        One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to 
+        One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: For
         rolling linear regression, null-fill only works when target doesn't have nulls, and WILL NOT drop rows where the
         target is null.
@@ -548,7 +547,7 @@ def lin_reg_report(
     add_bias
         Whether to add a bias term. If bias is added, it is always the last feature.
     null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
-        One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to 
+        One of options shown here, but you can also pass in any numeric string. E.g you may pass '1.25' to
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
         the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
         columns.

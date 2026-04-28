@@ -26,13 +26,12 @@ fn psi_with_bps_helper(s: &[f64], bp: &[f64]) -> Vec<u32> {
     let bp = unsafe { std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(bp) };
 
     let mut c = vec![0u32; bp.len()];
-    for x in s {
-        let i = match bp.binary_search(x) {
-            Ok(j) => j,
-            Err(k) => k,
-        };
-        c[i] += 1;
-    }
+    s.iter().for_each(|x| {
+        match bp.binary_search(x) {
+            Ok(j) => {c[j] += 1;},
+            Err(k) => {c[k] += 1;},
+        }
+    });
     c
 }
 

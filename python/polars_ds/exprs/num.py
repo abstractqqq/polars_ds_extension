@@ -560,16 +560,13 @@ def psi(
 
     vc = (
         valid_ref.qcut(n_bins, left_closed=False, allow_duplicates=True, include_breaks=True)
-        .struct.rename_fields(
-            ["brk", "category"]
-        )  # Use "breakpoints" in the future. Skip this rename. After polars v1
-        .struct.field("brk")
+        .struct.field("breakpoint")
         .value_counts()
         .sort()
     )
 
     # breakpoints learned from ref
-    brk = vc.struct.field("brk")  # .cast(pl.Float64)
+    brk = vc.struct.field("breakpoint")  # .cast(pl.Float64)
     # counts of points in the buckets
     cnt_ref = vc.struct.field("count")  # .cast(pl.UInt32)
     psi_report = pl_plugin(
