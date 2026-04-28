@@ -622,7 +622,11 @@ fn pl_lin_reg_report_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Se
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
     // index 0 is y_var, 1 is target y. Skip
-    let binding = inputs[0].cast(&DataType::Float32)?;
+    let binding = if inputs[0].dtype() == &DataType::Float32 {
+        inputs[0].clone()
+    } else {
+        inputs[0].cast(&DataType::Float32)?
+    };
     let y_var = binding.f32().unwrap();
     let y_var = y_var.get(0).unwrap_or(f32::NAN);
     let mut name_builder = StringChunkedBuilder::new(
@@ -776,10 +780,19 @@ fn pl_wls_report_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
-    let binding = inputs[0].cast(&DataType::Float32)?;
+    // weights at inputs[0] needs cont_slice downstream → require single chunk.
+    let binding = if inputs[0].dtype() == &DataType::Float32 && inputs[0].n_chunks() == 1 {
+        inputs[0].clone()
+    } else {
+        inputs[0].cast(&DataType::Float32)?
+    };
     let weights = binding.f32().unwrap();
     let weights = weights.cont_slice().unwrap();
-    let binding2 = inputs[1].cast(&DataType::Float32)?;
+    let binding2 = if inputs[1].dtype() == &DataType::Float32 {
+        inputs[1].clone()
+    } else {
+        inputs[1].cast(&DataType::Float32)?
+    };
     let y_var = binding2.f32().unwrap();
     let y_var = y_var.get(0).unwrap_or(f32::NAN);
     // index 0 is weights, 1 is y_var, 2 is target y. Skip them
