@@ -396,26 +396,24 @@ fn pl_lr_multi_f32(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Ser
         )),
     }?;
 
-    let df_out = DataFrame::new(
-        y_names
-            .into_iter()
-            .enumerate()
-            .map(|(i, y)| {
-                let mut builder: ListPrimitiveChunkedBuilder<Float32Type> =
-                    ListPrimitiveChunkedBuilder::new(
-                        y.clone(),
-                        1,
-                        coeffs.nrows(),
-                        DataType::Float32,
-                    );
-                builder.append_slice(coeffs.col_as_slice(i));
-                let out = builder.finish();
-                out.into_column()
-            })
-            .collect::<Vec<_>>(),
-    )?;
+    let columns: Vec<Column> = y_names
+        .into_iter()
+        .enumerate()
+        .map(|(i, y)| {
+            let mut builder: ListPrimitiveChunkedBuilder<Float32Type> =
+                ListPrimitiveChunkedBuilder::new(
+                    y.clone(),
+                    1,
+                    coeffs.nrows(),
+                    DataType::Float32,
+                );
+            builder.append_slice(coeffs.col_as_slice(i));
+            builder.finish().into_column()
+        })
+        .collect();
 
-    Ok(df_out.into_struct("coeffs".into()).into_series())
+    let ca = StructChunked::from_columns("coeffs".into(), 1, &columns)?;
+    Ok(ca.into_series())
 }
 
 // Strictly speaking, this output type is not correct.
@@ -449,7 +447,7 @@ fn pl_lr_multi_pred_f32(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResul
     let pred = x * &coeffs;
     let resid = y - &pred;
 
-    let mut s = Vec::with_capacity(y_names.len() * 2);
+    let mut s: Vec<Column> = Vec::with_capacity(y_names.len() * 2);
     for (i, y) in y_names.into_iter().enumerate() {
         let pred_name = format!("{}_pred", y);
         let resid_name = format!("{}_resid", y);
@@ -458,8 +456,8 @@ fn pl_lr_multi_pred_f32(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResul
         s.push(p.into_column());
         s.push(r.into_column());
     }
-    let df_out = DataFrame::new(s)?;
-    Ok(df_out.into_struct("all_preds".into()).into_series())
+    let ca = StructChunked::from_columns("all_preds".into(), nrows, &s)?;
+    Ok(ca.into_series())
 }
 
 #[polars_expr(output_type_func=coeff_singular_values_output)]
