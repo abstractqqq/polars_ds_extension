@@ -9,7 +9,9 @@ use crate::linear::{
     online_lr::lr_online_solvers::{faer_recursive_lr, faer_rolling_lr, faer_rolling_skipping_lr},
     NullPolicy,
 };
-use crate::utils::{columns_to_vec, to_frame, IndexOrder};
+use crate::utils::{
+    columns_to_vec_with_extra_cap, series_to_slice_with_extra_cap, to_frame, IndexOrder,
+};
 /// Least Squares using Faer and ndarray.
 use core::f64;
 use faer::{
@@ -153,13 +155,31 @@ pub fn series_to_mat_for_lr(
     let y_has_null = inputs[0].has_nulls();
     let has_null = inputs[1..].iter().any(|s| s.has_nulls()) | y_has_null;
 
+    // Fast path: no nulls anywhere. Skip the DataFrame round-trip and go
+    // straight from &[Series] to a flat column-major buffer.
+    if !has_null {
+        let nrows = inputs[0].len();
+        if nrows == 0 {
+            return Err(PolarsError::ComputeError("Empty data".into()));
+        }
+        if nrows < n_features {
+            return Err(PolarsError::ComputeError(
+                "#Data < #features. No conclusive result.".into(),
+            ));
+        }
+        let extra = if add_bias { nrows } else { 0 };
+        let mut mat_slice =
+            series_to_slice_with_extra_cap::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
+        if add_bias {
+            mat_slice.extend(std::iter::repeat(1f64).take(nrows));
+        }
+        let mask = BooleanChunked::from_slice("".into(), &[true]);
+        return Ok((mat_slice, nrows, n_features, mask));
+    }
+
     let mut df = to_frame(inputs)?;
     if df.is_empty() {
         return Err(PolarsError::ComputeError("Empty data".into()));
-    }
-    // Add a constant column if add_bias
-    if add_bias {
-        df = df.lazy().with_column(lit(1f64)).collect()?;
     }
 
     // In mask, true means not null.
@@ -237,8 +257,16 @@ pub fn series_to_mat_for_lr(
             "#Data < #features. No conclusive result.".into(),
         ))
     } else {
-        let vec = columns_to_vec::<Float64Type>(df.take_columns(), IndexOrder::Fortran)?;
-        Ok((vec, nrows, n_features, mask))
+        let extra = if add_bias { nrows } else { 0 };
+        let mut mat_slice = columns_to_vec_with_extra_cap::<Float64Type>(
+            df.take_columns(),
+            IndexOrder::Fortran,
+            extra,
+        )?;
+        if add_bias {
+            mat_slice.extend(std::iter::repeat(1f64).take(nrows));
+        }
+        Ok((mat_slice, nrows, n_features, mask))
     }
 }
 
@@ -256,7 +284,22 @@ fn series_to_mat_for_multi_lr(
     let n_features = (inputs.len() + add_bias as usize).abs_diff(last_target_idx);
     let has_null = inputs[last_target_idx..].iter().any(|s| s.has_nulls()) | y_has_null;
 
-    let mut df = if has_null {
+    // Fast path: no nulls anywhere. Skip the DataFrame round-trip.
+    if !has_null {
+        let nrows = inputs[0].len();
+        if nrows == 0 {
+            return Err(PolarsError::ComputeError("Empty data".into()));
+        }
+        let extra = if add_bias { nrows } else { 0 };
+        let mut mat_slice =
+            series_to_slice_with_extra_cap::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
+        if add_bias {
+            mat_slice.extend(std::iter::repeat(1f64).take(nrows));
+        }
+        return Ok((mat_slice, nrows, n_features));
+    }
+
+    let df = if has_null {
         match null_policy {
             NullPolicy::RAISE => Err(PolarsError::ComputeError("Nulls found in data".into())),
 
@@ -290,16 +333,20 @@ fn series_to_mat_for_multi_lr(
         DataFrame::new(inputs.iter().map(|s| s.clone().into_column()).collect())
     }?;
 
-    if add_bias {
-        df = df.lazy().with_column(lit(1f64)).collect()?;
-    }
-
     let nrows = df.height();
     if df.is_empty() {
         Err(PolarsError::ComputeError("Empty data".into()))
     } else {
-        let vec = columns_to_vec::<Float64Type>(df.take_columns(), IndexOrder::Fortran)?;
-        Ok((vec, nrows, n_features))
+        let extra = if add_bias { nrows } else { 0 };
+        let mut mat_slice = columns_to_vec_with_extra_cap::<Float64Type>(
+            df.take_columns(),
+            IndexOrder::Fortran,
+            extra,
+        )?;
+        if add_bias {
+            mat_slice.extend(std::iter::repeat(1f64).take(nrows));
+        }
+        Ok((mat_slice, nrows, n_features))
     }
 }
 

@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 use crate::linear::{lr::LinearModel, LinalgErrors};
+use crate::utils::parallelism::PARALLEL_MATMUL_THRESHOLD;
 use faer::{
     linalg::solvers::{DenseSolveCore, Solve},
     mat::Mat,
@@ -317,24 +318,15 @@ pub fn woodbury_step<T: RealField + Float>(
                                           // right = left.transpose() by the fact that if A is symmetric, invertible, A-1 is also symmetric
     let z = (c + *(new_x * &u).get(0, 0)).recip();
     // Update the information matrix's inverse. Page 56 of the gatech reference
-    faer::linalg::matmul::matmul(
-        inverse,
-        faer::Accum::Add,
-        &u,
-        &u.transpose(),
-        z.neg(),
-        Par::rayon(0), //
-    ); // inv is updated
+    let par = if u.nrows() * u.ncols() < PARALLEL_MATMUL_THRESHOLD {
+        faer::Par::Seq
+    } else {
+        faer::Par::rayon(0)
+    };
+    faer::linalg::matmul::matmul(inverse, faer::Accum::Add, &u, &u.transpose(), z.neg(), par); // inv is updated
 
     // Difference from estimate using prior weights vs. actual next y
     let y_diff = new_y - (new_x * &weights);
     // Update weights. Page 56, after 'Then',.. in gatech reference
-    faer::linalg::matmul::matmul(
-        weights,
-        faer::Accum::Add,
-        u,
-        y_diff,
-        z,
-        Par::rayon(0), //
-    ); // weights are updated
+    faer::linalg::matmul::matmul(weights, faer::Accum::Add, u, y_diff, z, par); // weights are updated
 }
