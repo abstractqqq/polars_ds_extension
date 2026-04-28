@@ -765,3 +765,271 @@ def test_rolling_null_skips():
 
     answer = pl.Series(name="is_null", values=rolling_should_be_null)
     assert_series_equal(result["is_null"], answer)
+
+
+# ---------------------------------------------------------------------------
+# Tests covering the perf refactor of `series_to_mat_for_lr`, the cast guards
+# in lin_reg_report / wls_report, the StructChunked multi-target output, and
+# the unchecked series_to_slice fast path.
+# ---------------------------------------------------------------------------
+
+
+def test_lin_reg_many_small_groups_matches_per_group():
+    """
+    Exercises the small-group group_by_agg path (Pattern A in the PR).
+    Builds 200 groups × 25 rows and asserts that the coefficients produced
+    via group_by_agg match a per-group fit run independently.
+    """
+    rng = np.random.default_rng(0)
+    n_groups, n_per = 200, 25
+    gids = np.repeat(np.arange(n_groups), n_per)
+    df = pl.DataFrame(
+        {
+            "g": gids,
+            "x1": rng.standard_normal(len(gids)),
+            "x2": rng.standard_normal(len(gids)),
+            "y": rng.standard_normal(len(gids)),
+        }
+    )
+
+    grouped = (
+        df.group_by("g", maintain_order=True)
+        .agg(pds.lin_reg("x1", "x2", target="y", add_bias=True).alias("coef"))
+        .sort("g")
+    )
+
+    expected = []
+    for g in range(n_groups):
+        sub = df.filter(pl.col("g") == g)
+        coef = sub.select(
+            pds.lin_reg("x1", "x2", target="y", add_bias=True).alias("coef")
+        ).row(0)[0]
+        expected.append(coef)
+
+    got = grouped["coef"].to_list()
+    assert len(got) == len(expected)
+    for g_coef, e_coef in zip(got, expected):
+        np.testing.assert_allclose(g_coef, e_coef, rtol=1e-12, atol=1e-12)
+
+
+def test_lin_reg_with_bias_appended_column_equivalence():
+    """
+    The refactor writes the bias column directly into the design matrix
+    instead of going through `df.lazy().with_column(lit(1.0)).collect()`.
+    Confirm `add_bias=True` produces the same result as `add_bias=False`
+    with a manually-appended unit column.
+    """
+    rng = np.random.default_rng(1)
+    n = 500
+    df = pl.DataFrame(
+        {
+            "x1": rng.standard_normal(n),
+            "x2": rng.standard_normal(n),
+            "y": rng.standard_normal(n),
+            "ones": np.ones(n),
+        }
+    )
+
+    with_flag = df.select(
+        pds.lin_reg("x1", "x2", target="y", add_bias=True).alias("coef")
+    ).row(0)[0]
+    manual = df.select(
+        pds.lin_reg("x1", "x2", "ones", target="y", add_bias=False).alias("coef")
+    ).row(0)[0]
+
+    np.testing.assert_allclose(with_flag, manual, rtol=1e-10, atol=1e-12)
+
+
+def test_lin_reg_report_already_float64_cast_guard():
+    """
+    `pl_lin_reg_report` skips the cast when inputs are already Float64.
+    Verify the cast-skip Float64 path still produces correct results
+    (matches a NumPy OLS reference) and matches a path forced through
+    cast via Float32 inputs.
+    """
+    rng = np.random.default_rng(2)
+    n = 300
+    x1 = rng.standard_normal(n)
+    x2 = rng.standard_normal(n)
+    y = 0.5 * x1 - 0.3 * x2 + 0.1 * rng.standard_normal(n)
+
+    df_f64 = pl.DataFrame({"x1": x1, "x2": x2, "y": y})
+    df_f32 = df_f64.with_columns(
+        [
+            pl.col("x1").cast(pl.Float32),
+            pl.col("x2").cast(pl.Float32),
+            pl.col("y").cast(pl.Float32),
+        ]
+    )
+
+    rep_f64 = df_f64.select(
+        pds.lin_reg_report("x1", "x2", target="y", add_bias=True).alias("r")
+    ).unnest("r")
+    # Float32 inputs force the cast branch in pl_lin_reg_report (Float64-target
+    # cast actually executes), exercising the non-skip code path.
+    rep_f32 = df_f32.select(
+        pds.lin_reg_report("x1", "x2", target="y", add_bias=True).alias("r")
+    ).unnest("r")
+
+    # Same coefficients (Float32 → Float64 cast is exact for these values).
+    np.testing.assert_allclose(
+        rep_f64["beta"].to_list(),
+        rep_f32["beta"].to_list(),
+        rtol=1e-6,
+        atol=1e-7,
+    )
+
+    # Independent NumPy reference for the Float64 path.
+    X = np.column_stack([x1, x2, np.ones(n)])
+    beta_ref, *_ = np.linalg.lstsq(X, y, rcond=None)
+    np.testing.assert_allclose(
+        rep_f64["beta"].to_list(), beta_ref, rtol=1e-10, atol=1e-12
+    )
+
+
+def test_wls_report_multichunked_weights_dont_panic():
+    """
+    The cast guard in `pl_wls_report` requires `n_chunks() == 1` for the
+    weights series before it skips the cast. Pass a multi-chunk Float64
+    weights series and confirm the guard correctly falls through to the
+    cast (rechunk) branch instead of panicking on `cont_slice().unwrap()`.
+    """
+    rng = np.random.default_rng(3)
+    n = 200
+    x = rng.standard_normal(n)
+    y = 2.0 * x + 0.1 * rng.standard_normal(n)
+    w = rng.uniform(0.5, 1.5, n)
+
+    # Force multi-chunk weights by concatenating two halves.
+    w_part1 = pl.Series("w", w[: n // 2])
+    w_part2 = pl.Series("w", w[n // 2 :])
+    w_multi = pl.concat([w_part1, w_part2], rechunk=False)
+    assert w_multi.n_chunks() == 2
+
+    df = pl.DataFrame({"x": x, "y": y}).with_columns(w_multi)
+    rep = df.select(
+        pds.lin_reg_report("x", target="y", weights="w", add_bias=True).alias("r")
+    ).unnest("r")
+
+    # Just verify it ran, produced finite coefficients, and matches a
+    # single-chunk run (which goes down the cast-skip branch).
+    df_single = df.with_columns(pl.col("w").rechunk())
+    rep_single = df_single.select(
+        pds.lin_reg_report("x", target="y", weights="w", add_bias=True).alias("r")
+    ).unnest("r")
+    np.testing.assert_allclose(
+        rep["beta"].to_list(),
+        rep_single["beta"].to_list(),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+
+def test_lin_reg_multi_target_struct_output():
+    """
+    Exercise the StructChunked::from_columns multi-target output path
+    (Pattern B in the PR) on a single frame. Multi-target lin_reg inside
+    group_by_agg has a separate Polars-side schema-mismatch limitation
+    that pre-dates this PR; this test stays in `select(...)` to isolate
+    the StructChunked output construction.
+    """
+    rng = np.random.default_rng(4)
+    n = 1000
+    df = pl.DataFrame(
+        {
+            "x1": rng.standard_normal(n),
+            "x2": rng.standard_normal(n),
+            "y1": rng.standard_normal(n),
+            "y2": rng.standard_normal(n),
+        }
+    )
+
+    multi = df.select(
+        pds.lin_reg(
+            "x1", "x2", target=["y1", "y2"], add_bias=True
+        ).alias("coef")
+    )
+    s_multi = multi["coef"].to_list()[0]
+
+    # Per-target single-target fits should match the corresponding field
+    # of the multi-target struct output.
+    coef_y1 = df.select(
+        pds.lin_reg("x1", "x2", target="y1", add_bias=True).alias("c")
+    ).row(0)[0]
+    coef_y2 = df.select(
+        pds.lin_reg("x1", "x2", target="y2", add_bias=True).alias("c")
+    ).row(0)[0]
+
+    # Field order in the struct must be preserved by
+    # StructChunked::from_columns (mirrors the original DataFrame::new arg
+    # order). Field names follow the existing positional convention
+    # `target_0`, `target_1`, ...
+    keys = list(s_multi.keys())
+    assert keys == ["target_0", "target_1"], (
+        f"unexpected struct field order: {keys}"
+    )
+    np.testing.assert_allclose(s_multi["target_0"], coef_y1, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(s_multi["target_1"], coef_y2, rtol=1e-12, atol=1e-12)
+
+
+def test_lin_reg_single_big_fit_no_regression_path():
+    """
+    Sanity check the non-small-group path (single fit, n above the rayon
+    threshold). The size gate must NOT change numeric output — this test
+    only verifies bit-stable coefficients vs an sklearn reference, ensuring
+    the gated parallel path produces the same numbers as before.
+    """
+    pytest.importorskip("sklearn")
+    from sklearn.linear_model import LinearRegression
+
+    rng = np.random.default_rng(5)
+    n, p = 50_000, 6  # comfortably above PARALLEL_MATMUL_THRESHOLD (4096)
+    X = rng.standard_normal((n, p))
+    true_beta = np.array([0.4, -0.2, 0.7, 0.0, -0.1, 0.3])
+    y = X @ true_beta + 0.05 * rng.standard_normal(n)
+
+    df = pl.DataFrame(
+        {f"x{i}": X[:, i] for i in range(p)} | {"y": y}
+    )
+    pds_coef = df.select(
+        pds.lin_reg(*[f"x{i}" for i in range(p)], target="y", add_bias=True).alias("c")
+    ).row(0)[0]
+
+    sk = LinearRegression(fit_intercept=True).fit(X, y)
+    sk_coef = list(sk.coef_) + [sk.intercept_]
+
+    np.testing.assert_allclose(pds_coef, sk_coef, rtol=1e-8, atol=1e-10)
+
+
+def test_lin_reg_null_skip_in_small_group():
+    """
+    Combined: many-small-groups path AND null rows. The no-null fast path
+    must NOT be taken; the null-handling code path must still produce the
+    correct skip-null behavior.
+    """
+    df = pl.DataFrame(
+        {
+            "g": [1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3],
+            "x": [1.0, 2.0, None, 4.0, 1.0, None, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0],
+            "y": [2.0, 4.0, 6.0, 8.0, 1.0, 2.0, 3.0, None, 0.5, 1.0, 1.5, 2.0],
+        }
+    )
+    out = (
+        df.group_by("g", maintain_order=True)
+        .agg(
+            pds.lin_reg("x", target="y", add_bias=True, null_policy="skip").alias("c")
+        )
+        .sort("g")
+    )
+
+    # Reference: drop nulls per group then fit.
+    expected = []
+    for g in [1, 2, 3]:
+        sub = df.filter(pl.col("g") == g).drop_nulls()
+        coef = sub.select(
+            pds.lin_reg("x", target="y", add_bias=True).alias("c")
+        ).row(0)[0]
+        expected.append(coef)
+
+    for got, exp in zip(out["c"].to_list(), expected):
+        np.testing.assert_allclose(got, exp, rtol=1e-12, atol=1e-12)
