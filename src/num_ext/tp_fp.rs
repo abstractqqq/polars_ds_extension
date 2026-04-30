@@ -104,7 +104,6 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
     }
 
     let mut frame = tp_fp_frame(predicted, actual, positive_count, true)?.collect()?;
-    frame.rechunk_mut();
 
     let tpr = frame.drop_in_place("tpr").unwrap();
     let fpr = frame.drop_in_place("fpr").unwrap();
@@ -227,7 +226,6 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
     let mut frame = tp_fp_frame(predicted, actual, positive_cnt, true)?
         .select([col("tpr"), col("fpr")])
         .collect()?;
-    frame.rechunk_mut();
 
     let tpr = frame.drop_in_place("tpr").unwrap();
     let fpr = frame.drop_in_place("fpr").unwrap();
