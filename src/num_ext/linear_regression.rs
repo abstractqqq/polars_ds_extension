@@ -9,7 +9,9 @@ use crate::linear::{
     online_lr::lr_online_solvers::{faer_recursive_lr, faer_rolling_lr, faer_rolling_skipping_lr},
     NullPolicy,
 };
-use crate::utils::{columns_to_vec, to_frame, IndexOrder};
+use crate::utils::{
+    columns_to_vec_with_extra_cap, series_to_slice_with_extra_cap_unchecked, to_frame, IndexOrder,
+};
 /// Least Squares using Faer and ndarray.
 use core::f64;
 use faer::{
@@ -153,13 +155,31 @@ pub fn series_to_mat_for_lr(
     let y_has_null = inputs[0].has_nulls();
     let has_null = inputs[1..].iter().any(|s| s.has_nulls()) | y_has_null;
 
+    // Fast path: no nulls anywhere. Skip the DataFrame round-trip and go
+    // straight from &[Series] to a flat column-major buffer.
+    if !has_null {
+        let nrows = inputs[0].len();
+        if nrows == 0 {
+            return Err(PolarsError::ComputeError("Empty data".into()));
+        }
+        if nrows < n_features {
+            return Err(PolarsError::ComputeError(
+                "#Data < #features. No conclusive result.".into(),
+            ));
+        }
+        let extra = if add_bias { nrows } else { 0 };
+        let mut mat_slice =
+            series_to_slice_with_extra_cap_unchecked::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
+        if add_bias {
+            mat_slice.extend(std::iter::repeat(1f64).take(nrows));
+        }
+        let mask = BooleanChunked::from_slice("".into(), &[true]);
+        return Ok((mat_slice, nrows, n_features, mask));
+    }
+
     let mut df = to_frame(inputs)?;
     if df.is_empty() {
         return Err(PolarsError::ComputeError("Empty data".into()));
-    }
-    // Add a constant column if add_bias
-    if add_bias {
-        df = df.lazy().with_column(lit(1f64)).collect()?;
     }
 
     // In mask, true means not null.
@@ -237,8 +257,16 @@ pub fn series_to_mat_for_lr(
             "#Data < #features. No conclusive result.".into(),
         ))
     } else {
-        let vec = columns_to_vec::<Float64Type>(df.take_columns(), IndexOrder::Fortran)?;
-        Ok((vec, nrows, n_features, mask))
+        let extra = if add_bias { nrows } else { 0 };
+        let mut mat_slice = columns_to_vec_with_extra_cap::<Float64Type>(
+            df.take_columns(),
+            IndexOrder::Fortran,
+            extra,
+        )?;
+        if add_bias {
+            mat_slice.extend(std::iter::repeat(1f64).take(nrows));
+        }
+        Ok((mat_slice, nrows, n_features, mask))
     }
 }
 
@@ -256,7 +284,22 @@ fn series_to_mat_for_multi_lr(
     let n_features = (inputs.len() + add_bias as usize).abs_diff(last_target_idx);
     let has_null = inputs[last_target_idx..].iter().any(|s| s.has_nulls()) | y_has_null;
 
-    let mut df = if has_null {
+    // Fast path: no nulls anywhere. Skip the DataFrame round-trip.
+    if !has_null {
+        let nrows = inputs[0].len();
+        if nrows == 0 {
+            return Err(PolarsError::ComputeError("Empty data".into()));
+        }
+        let extra = if add_bias { nrows } else { 0 };
+        let mut mat_slice =
+            series_to_slice_with_extra_cap_unchecked::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
+        if add_bias {
+            mat_slice.extend(std::iter::repeat(1f64).take(nrows));
+        }
+        return Ok((mat_slice, nrows, n_features));
+    }
+
+    let df = if has_null {
         match null_policy {
             NullPolicy::RAISE => Err(PolarsError::ComputeError("Nulls found in data".into())),
 
@@ -290,16 +333,20 @@ fn series_to_mat_for_multi_lr(
         DataFrame::new(inputs.iter().map(|s| s.clone().into_column()).collect())
     }?;
 
-    if add_bias {
-        df = df.lazy().with_column(lit(1f64)).collect()?;
-    }
-
     let nrows = df.height();
     if df.is_empty() {
         Err(PolarsError::ComputeError("Empty data".into()))
     } else {
-        let vec = columns_to_vec::<Float64Type>(df.take_columns(), IndexOrder::Fortran)?;
-        Ok((vec, nrows, n_features))
+        let extra = if add_bias { nrows } else { 0 };
+        let mut mat_slice = columns_to_vec_with_extra_cap::<Float64Type>(
+            df.take_columns(),
+            IndexOrder::Fortran,
+            extra,
+        )?;
+        if add_bias {
+            mat_slice.extend(std::iter::repeat(1f64).take(nrows));
+        }
+        Ok((mat_slice, nrows, n_features))
     }
 }
 
@@ -415,26 +462,24 @@ fn pl_lr_multi(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Series>
         )),
     }?;
 
-    let df_out = DataFrame::new(
-        y_names
-            .into_iter()
-            .enumerate()
-            .map(|(i, y)| {
-                let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                    ListPrimitiveChunkedBuilder::new(
-                        y.clone(),
-                        1,
-                        coeffs.nrows(),
-                        DataType::Float64,
-                    );
-                builder.append_slice(coeffs.col_as_slice(i));
-                let out = builder.finish();
-                out.into_column()
-            })
-            .collect::<Vec<_>>(),
-    )?;
+    let columns: Vec<Column> = y_names
+        .into_iter()
+        .enumerate()
+        .map(|(i, y)| {
+            let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
+                ListPrimitiveChunkedBuilder::new(
+                    y.clone(),
+                    1,
+                    coeffs.nrows(),
+                    DataType::Float64,
+                );
+            builder.append_slice(coeffs.col_as_slice(i));
+            builder.finish().into_column()
+        })
+        .collect();
 
-    Ok(df_out.into_struct("coeffs".into()).into_series())
+    let ca = StructChunked::from_columns("coeffs".into(), 1, &columns)?;
+    Ok(ca.into_series())
 }
 
 // Strictly speaking, this output type is not correct.
@@ -473,8 +518,7 @@ fn pl_lr_multi_pred(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Se
     let pred = x * &coeffs;
     let resid = y - &pred;
 
-    // can be faster if I pass unsafe owned vec, e.g. Float64Chunked::from_vec
-    let mut s = Vec::with_capacity(y_names.len() * 2);
+    let mut s: Vec<Column> = Vec::with_capacity(y_names.len() * 2);
     for (i, y) in y_names.into_iter().enumerate() {
         let pred_name = format!("{}_pred", y);
         let resid_name = format!("{}_resid", y);
@@ -483,8 +527,8 @@ fn pl_lr_multi_pred(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Se
         s.push(p.into_column());
         s.push(r.into_column());
     }
-    let df_out = DataFrame::new(s)?;
-    Ok(df_out.into_struct("all_preds".into()).into_series())
+    let ca = StructChunked::from_columns("all_preds".into(), nrows, &s)?;
+    Ok(ca.into_series())
 }
 
 #[polars_expr(output_type_func=coeff_singular_values_output)]
@@ -646,7 +690,11 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
     // index 0 is y_var, 1 is target y. Skip
-    let binding = inputs[0].cast(&DataType::Float64)?;
+    let binding = if inputs[0].dtype() == &DataType::Float64 {
+        inputs[0].clone()
+    } else {
+        inputs[0].cast(&DataType::Float64)?
+    };
     let y_var = binding.f64().unwrap();
     let y_var = y_var.get(0).unwrap_or(f64::NAN);
     let mut name_builder = StringChunkedBuilder::new(
@@ -801,10 +849,19 @@ fn pl_wls_report(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
-    let binding = inputs[0].cast(&DataType::Float64)?;
+    // weights at inputs[0] needs cont_slice downstream → require single chunk.
+    let binding = if inputs[0].dtype() == &DataType::Float64 && inputs[0].n_chunks() == 1 {
+        inputs[0].clone()
+    } else {
+        inputs[0].cast(&DataType::Float64)?
+    };
     let weights = binding.f64().unwrap();
     let weights = weights.cont_slice().unwrap();
-    let binding2 = inputs[1].cast(&DataType::Float64)?;
+    let binding2 = if inputs[1].dtype() == &DataType::Float64 {
+        inputs[1].clone()
+    } else {
+        inputs[1].cast(&DataType::Float64)?
+    };
     let y_var = binding2.f64().unwrap();
     let y_var = y_var.get(0).unwrap_or(f64::NAN);
     // index 0 is weights, 1 is y_var, 2 is target y. Skip them

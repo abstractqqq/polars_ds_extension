@@ -1,6 +1,7 @@
 pub mod lr_solvers;
 
 use super::LinalgErrors;
+use crate::utils::parallelism::PARALLEL_MATMUL_THRESHOLD;
 use faer::{Mat, MatRef, Par};
 use faer_traits::RealField;
 use num::Float;
@@ -156,13 +157,18 @@ pub trait LinearModel<T: RealField + Float> {
             let mut pred = Mat::full(X.nrows(), 1, value);
             // Result is 0 if no bias, result is [bias] (ncols x 1) if has bias.
             // result = result + 1.0 * (X * coeffs)
+            let par = if X.nrows() * X.ncols() < PARALLEL_MATMUL_THRESHOLD {
+                Par::Seq
+            } else {
+                Par::rayon(0)
+            };
             faer::linalg::matmul::matmul(
                 pred.as_mut(),
                 faer::Accum::Add,
                 X,
                 self.coefficients(),
                 T::one(),
-                Par::rayon(0),
+                par,
             );
             Ok(pred)
         }

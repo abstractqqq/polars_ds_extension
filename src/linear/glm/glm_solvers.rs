@@ -7,6 +7,7 @@ use crate::linear::{
     lr::{lr_solvers::faer_weighted_lr, LRSolverMethods, LinearModel},
     LinalgErrors,
 };
+use crate::utils::parallelism::PARALLEL_MATMUL_THRESHOLD;
 use faer::{diag::DiagRef, mat::Mat, MatRef, Par};
 use faer_traits::RealField;
 use itertools::Itertools;
@@ -310,13 +311,18 @@ pub fn faer_irls<T: RealField + Float>(
             );
 
             // Update Eta (eta = X @ new_beta)
+            let par = if X.nrows() * X.ncols() < PARALLEL_MATMUL_THRESHOLD {
+                Par::Seq
+            } else {
+                Par::rayon(0)
+            };
             faer::linalg::matmul::matmul(
                 eta.as_mut(),
                 faer::Accum::Replace,
                 X,
                 beta_new.as_ref(),
                 T::one(),
-                Par::rayon(0),
+                par,
             );
 
             // Update mu: mu = g^-1(eta)

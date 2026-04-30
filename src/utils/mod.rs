@@ -1,3 +1,4 @@
+use crate::utils::parallelism::SMALL_INPUT_THRESHOLD;
 use itertools::Itertools;
 // use cfavml::safe_trait_distance_ops::DistanceOps;
 use num::Float;
@@ -15,6 +16,8 @@ use pyo3_polars::export::{
     },
     polars_plan::plans::FieldsMapper,
 };
+
+pub(crate) mod parallelism;
 
 pub enum IndexOrder {
     C,
@@ -37,6 +40,21 @@ pub fn series_to_slice<N>(series: &[Series], ordering: IndexOrder) -> PolarsResu
 where
     N: PolarsNumericType,
 {
+    series_to_slice_with_extra_cap::<N>(series, ordering, 0)
+}
+
+/// Same as `series_to_slice` but reserves an extra `extra_cap` slots in the
+/// returned `Vec`. Used by callers that will append additional values
+/// (e.g. an `add_bias` ones column) to avoid a reallocation.
+#[inline(always)]
+pub fn series_to_slice_with_extra_cap<N>(
+    series: &[Series],
+    ordering: IndexOrder,
+    extra_cap: usize,
+) -> PolarsResult<Vec<<N>::Native>>
+where
+    N: PolarsNumericType,
+{
     if series.is_empty() {
         return Err(PolarsError::NoData("Data is empty".into()));
     }
@@ -50,67 +68,125 @@ where
             "Seires don't have the same length.".into(),
         ));
     }
+    series_to_slice_inner::<N>(series, ordering, extra_cap)
+}
+
+/// Same as `series_to_slice_with_extra_cap` but skips entry-shape validation
+/// (numeric-dtype check + length-equality check). Trusted internal callers
+/// that have already validated dtype + length should use this; saves a few
+/// hundred nanoseconds per call when invoked in tight group-by loops.
+#[inline(always)]
+pub(crate) fn series_to_slice_with_extra_cap_unchecked<N>(
+    series: &[Series],
+    ordering: IndexOrder,
+    extra_cap: usize,
+) -> PolarsResult<Vec<<N>::Native>>
+where
+    N: PolarsNumericType,
+{
+    if series.is_empty() {
+        return Err(PolarsError::NoData("Data is empty".into()));
+    }
+    series_to_slice_inner::<N>(series, ordering, extra_cap)
+}
+
+#[inline(always)]
+fn series_to_slice_inner<N>(
+    series: &[Series],
+    ordering: IndexOrder,
+    extra_cap: usize,
+) -> PolarsResult<Vec<<N>::Native>>
+where
+    N: PolarsNumericType,
+{
     // Safe because series is not empty
     let height: usize = series[0].len();
     let m = series.len();
-    let mut membuf = Vec::with_capacity(height * m);
+    let target_dtype = N::get_static_dtype();
+
+    // Fast path: Fortran (column-major) layout, every Series already has the
+    // target dtype, is single-chunk and has no nulls. Skip cast / none_to_nan
+    // / unpack / rayon scope and just extend the buffer from each contiguous
+    // Arrow slice.
+    if matches!(ordering, IndexOrder::Fortran)
+        && series.iter().all(|s| {
+            s.dtype() == &target_dtype && s.null_count() == 0 && s.n_chunks() == 1
+        })
+    {
+        let mut membuf = Vec::with_capacity(height * m + extra_cap);
+        for s in series {
+            let ca = s.unpack::<N>()?;
+            let slice = ca.cont_slice().expect("single chunk + no nulls verified above");
+            membuf.extend_from_slice(slice);
+        }
+        return Ok(membuf);
+    }
+
+    let mut membuf = Vec::with_capacity(height * m + extra_cap);
     let ptr = membuf.as_ptr() as usize;
 
-    POOL.install(|| {
-        series.par_iter().enumerate().try_for_each(|(col_idx, s)| {
-            let s = s.cast(&N::get_static_dtype())?;
-            let s = match s.dtype() {
-                DataType::Float32 => {
-                    let ca = s.f32().unwrap();
-                    ca.none_to_nan().into_series()
-                }
-                DataType::Float64 => {
-                    let ca = s.f64().unwrap();
-                    ca.none_to_nan().into_series()
-                }
+    // Reusable closure body; ptr is sent across threads via the usize-cast Send dance.
+    let fill_col = |(col_idx, s): (usize, &Series)| -> PolarsResult<()> {
+        // Skip cast when dtype already matches.
+        let s = if s.dtype() != &target_dtype {
+            s.cast(&target_dtype)?
+        } else {
+            s.clone()
+        };
+        // Only convert null -> NaN when there are nulls to convert.
+        let s = if s.null_count() > 0 {
+            match s.dtype() {
+                DataType::Float32 => s.f32().unwrap().none_to_nan().into_series(),
+                DataType::Float64 => s.f64().unwrap().none_to_nan().into_series(),
                 _ => s,
-            };
-            polars_ensure!(
-                s.null_count() == 0,
-                ComputeError: "creation of ndarray with null values is not supported"
-            );
-            let ca = s.unpack::<N>()?;
-
-            let mut chunk_offset = 0;
-            for arr in ca.downcast_iter() {
-                let vals = arr.values();
-                // Depending on the desired order, we add items to the buffer.
-                // SAFETY:
-                // We get parallel access to the vector by offsetting index access accordingly.
-                // For C-order, we only operate on every num-col-th element, starting from the
-                // column index. For Fortran-order we only operate on n contiguous elements,
-                // offset by n * the column index.
-                match ordering {
-                    IndexOrder::C => unsafe {
-                        let num_cols = series.len();
-                        let mut offset =
-                            (ptr as *mut N::Native).add(col_idx + chunk_offset * num_cols);
-                        for v in vals.iter() {
-                            *offset = *v;
-                            offset = offset.add(num_cols);
-                        }
-                    },
-                    IndexOrder::Fortran => unsafe {
-                        let offset_ptr =
-                            (ptr as *mut N::Native).add(col_idx * height + chunk_offset);
-                        // SAFETY:
-                        // this is uninitialized memory, so we must never read from this data
-                        // copy_from_slice does not read
-                        let buf = std::slice::from_raw_parts_mut(offset_ptr, vals.len());
-                        buf.copy_from_slice(vals)
-                    },
-                }
-                chunk_offset += vals.len();
             }
+        } else {
+            s
+        };
+        polars_ensure!(
+            s.null_count() == 0,
+            ComputeError: "creation of ndarray with null values is not supported"
+        );
+        let ca = s.unpack::<N>()?;
 
-            Ok(())
-        })
-    })?;
+        let mut chunk_offset = 0;
+        for arr in ca.downcast_iter() {
+            let vals = arr.values();
+            // Depending on the desired order, we add items to the buffer.
+            // SAFETY:
+            // We get parallel access to the vector by offsetting index access accordingly.
+            // For C-order, we only operate on every num-col-th element, starting from the
+            // column index. For Fortran-order we only operate on n contiguous elements,
+            // offset by n * the column index.
+            match ordering {
+                IndexOrder::C => unsafe {
+                    let num_cols = series.len();
+                    let mut offset = (ptr as *mut N::Native).add(col_idx + chunk_offset * num_cols);
+                    for v in vals.iter() {
+                        *offset = *v;
+                        offset = offset.add(num_cols);
+                    }
+                },
+                IndexOrder::Fortran => unsafe {
+                    let offset_ptr = (ptr as *mut N::Native).add(col_idx * height + chunk_offset);
+                    // SAFETY:
+                    // this is uninitialized memory, so we must never read from this data
+                    // copy_from_slice does not read
+                    let buf = std::slice::from_raw_parts_mut(offset_ptr, vals.len());
+                    buf.copy_from_slice(vals)
+                },
+            }
+            chunk_offset += vals.len();
+        }
+        Ok(())
+    };
+
+    // Skip rayon spawn overhead for small inputs.
+    if height * m < SMALL_INPUT_THRESHOLD {
+        series.iter().enumerate().try_for_each(fill_col)?;
+    } else {
+        POOL.install(|| series.par_iter().enumerate().try_for_each(fill_col))?;
+    }
 
     // SAFETY:
     // we have written all data, so we can now safely set length
@@ -128,12 +204,25 @@ pub fn columns_to_vec<N>(
 where
     N: PolarsNumericType,
 {
+    columns_to_vec_with_extra_cap::<N>(columns, ordering, 0)
+}
+
+/// Same as `columns_to_vec` but reserves `extra_cap` extra slots in the
+/// returned `Vec`. Used by callers that append additional values afterwards.
+pub fn columns_to_vec_with_extra_cap<N>(
+    columns: Vec<Column>,
+    ordering: IndexOrder,
+    extra_cap: usize,
+) -> PolarsResult<Vec<<N>::Native>>
+where
+    N: PolarsNumericType,
+{
     let v = columns
         .into_iter()
         .map(|s| s.as_materialized_series().clone())
         .collect::<Vec<_>>();
 
-    series_to_slice::<N>(&v, ordering)
+    series_to_slice_with_extra_cap::<N>(&v, ordering, extra_cap)
 }
 
 #[inline(always)]
