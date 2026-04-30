@@ -1,4 +1,5 @@
 """Tier-1 rolling LR bench: production path (post-promotion of T1.4)."""
+
 from __future__ import annotations
 
 import pytest
@@ -13,7 +14,9 @@ def test_rolling_lr_prod(benchmark, rolling_lr_df):
     def run():
         return df.select(
             pds.rolling_lin_reg(
-                "x1", "x2", "x3",
+                "x1",
+                "x2",
+                "x3",
                 target="y",
                 add_bias=False,
                 window_size=30,

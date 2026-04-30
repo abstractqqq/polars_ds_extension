@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import polars as pl
 import polars.selectors as cs
-from typing import List, Dict, Literal
+from typing import List, Dict
 
 # Internal dependencies
 from polars_ds.typing import (

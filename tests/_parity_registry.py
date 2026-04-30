@@ -3,6 +3,7 @@ Standalone REGISTRY + @register decorator for the parity oracle.
 Lives in its own module so case files and the oracle CLI share the same
 dict instance regardless of script-vs-module import path.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,9 +30,11 @@ def register(name: str, *, fixtures: list[str], rtol: float = 0.0, atol: float =
     paths whose partition order is non-deterministic and produces sub-ULP
     differences (e.g. par_bridge → split_offsets refactors of float sums).
     """
+
     def deco(fn: Callable) -> Callable:
         REGISTRY[name] = ParityCase(
             name=name, fixtures=fixtures, build_call=fn, rtol=rtol, atol=atol
         )
         return fn
+
     return deco

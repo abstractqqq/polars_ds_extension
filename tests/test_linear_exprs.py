@@ -359,16 +359,16 @@ def test_f32_lin_reg_against_sklearn():
 
         # ---- Predictions (return_pred=True), single target ----
         pred_result = df.select(
-            pds.lin_reg("x1", "x2", "x3", target="y", add_bias=True, return_pred=True).alias("lr_pred")
+            pds.lin_reg("x1", "x2", "x3", target="y", add_bias=True, return_pred=True).alias(
+                "lr_pred"
+            )
         ).unnest("lr_pred")
         pds_preds = pred_result["pred"].to_numpy()
         sklearn_preds = reg.predict(x)
         assert np.all(np.abs(pds_preds - sklearn_preds) < 1e-3)
 
         # ---- Multi-target coefficients ----
-        df2 = df.with_columns(
-            y2=pl.col("x1") + pl.col("x2") * 0.3 - pl.col("x3") * 0.1
-        )
+        df2 = df.with_columns(y2=pl.col("x1") + pl.col("x2") * 0.3 - pl.col("x3") * 0.1)
         multi_result = df2.select(
             pds.lin_reg("x1", "x2", "x3", target=["y", "y2"], add_bias=True).alias("coef")
         )
@@ -411,16 +411,17 @@ def test_pl_lr_multi_pred_correctness():
     rng = np.random.default_rng(42)
     n = 1000
     X = rng.standard_normal((n, 5))
-    true_betas = np.array([
-        [0.5, -0.2, 0.1, 0.3, -0.4],
-        [0.1, 0.6, -0.3, 0.0, 0.2],
-        [-0.2, 0.0, 0.7, -0.1, 0.3],
-    ])
+    true_betas = np.array(
+        [
+            [0.5, -0.2, 0.1, 0.3, -0.4],
+            [0.1, 0.6, -0.3, 0.0, 0.2],
+            [-0.2, 0.0, 0.7, -0.1, 0.3],
+        ]
+    )
     Y = X @ true_betas.T + 0.01 * rng.standard_normal((n, 3))
 
     df = pl.DataFrame(
-        {f"x{i + 1}": X[:, i] for i in range(5)}
-        | {"y1": Y[:, 0], "y2": Y[:, 1], "y3": Y[:, 2]}
+        {f"x{i + 1}": X[:, i] for i in range(5)} | {"y1": Y[:, 0], "y2": Y[:, 1], "y3": Y[:, 2]}
     )
 
     features = [f"x{i + 1}" for i in range(5)]
@@ -944,9 +945,9 @@ def test_lin_reg_many_small_groups_matches_per_group():
     expected = []
     for g in range(n_groups):
         sub = df.filter(pl.col("g") == g)
-        coef = sub.select(
-            pds.lin_reg("x1", "x2", target="y", add_bias=True).alias("coef")
-        ).row(0)[0]
+        coef = sub.select(pds.lin_reg("x1", "x2", target="y", add_bias=True).alias("coef")).row(0)[
+            0
+        ]
         expected.append(coef)
 
     got = grouped["coef"].to_list()
@@ -973,9 +974,9 @@ def test_lin_reg_with_bias_appended_column_equivalence():
         }
     )
 
-    with_flag = df.select(
-        pds.lin_reg("x1", "x2", target="y", add_bias=True).alias("coef")
-    ).row(0)[0]
+    with_flag = df.select(pds.lin_reg("x1", "x2", target="y", add_bias=True).alias("coef")).row(0)[
+        0
+    ]
     manual = df.select(
         pds.lin_reg("x1", "x2", "ones", target="y", add_bias=False).alias("coef")
     ).row(0)[0]
@@ -1025,9 +1026,7 @@ def test_lin_reg_report_already_float64_cast_guard():
     # Independent NumPy reference for the Float64 path.
     X = np.column_stack([x1, x2, np.ones(n)])
     beta_ref, *_ = np.linalg.lstsq(X, y, rcond=None)
-    np.testing.assert_allclose(
-        rep_f64["beta"].to_list(), beta_ref, rtol=1e-10, atol=1e-12
-    )
+    np.testing.assert_allclose(rep_f64["beta"].to_list(), beta_ref, rtol=1e-10, atol=1e-12)
 
 
 def test_wls_report_multichunked_weights_dont_panic():
@@ -1087,30 +1086,20 @@ def test_lin_reg_multi_target_struct_output():
         }
     )
 
-    multi = df.select(
-        pds.lin_reg(
-            "x1", "x2", target=["y1", "y2"], add_bias=True
-        ).alias("coef")
-    )
+    multi = df.select(pds.lin_reg("x1", "x2", target=["y1", "y2"], add_bias=True).alias("coef"))
     s_multi = multi["coef"].to_list()[0]
 
     # Per-target single-target fits should match the corresponding field
     # of the multi-target struct output.
-    coef_y1 = df.select(
-        pds.lin_reg("x1", "x2", target="y1", add_bias=True).alias("c")
-    ).row(0)[0]
-    coef_y2 = df.select(
-        pds.lin_reg("x1", "x2", target="y2", add_bias=True).alias("c")
-    ).row(0)[0]
+    coef_y1 = df.select(pds.lin_reg("x1", "x2", target="y1", add_bias=True).alias("c")).row(0)[0]
+    coef_y2 = df.select(pds.lin_reg("x1", "x2", target="y2", add_bias=True).alias("c")).row(0)[0]
 
     # Field order in the struct must be preserved by
     # StructChunked::from_columns (mirrors the original DataFrame::new arg
     # order). Field names follow the existing positional convention
     # `target_0`, `target_1`, ...
     keys = list(s_multi.keys())
-    assert keys == ["target_0", "target_1"], (
-        f"unexpected struct field order: {keys}"
-    )
+    assert keys == ["target_0", "target_1"], f"unexpected struct field order: {keys}"
     np.testing.assert_allclose(s_multi["target_0"], coef_y1, rtol=1e-12, atol=1e-12)
     np.testing.assert_allclose(s_multi["target_1"], coef_y2, rtol=1e-12, atol=1e-12)
 
@@ -1131,9 +1120,7 @@ def test_lin_reg_single_big_fit_no_regression_path():
     true_beta = np.array([0.4, -0.2, 0.7, 0.0, -0.1, 0.3])
     y = X @ true_beta + 0.05 * rng.standard_normal(n)
 
-    df = pl.DataFrame(
-        {f"x{i}": X[:, i] for i in range(p)} | {"y": y}
-    )
+    df = pl.DataFrame({f"x{i}": X[:, i] for i in range(p)} | {"y": y})
     pds_coef = df.select(
         pds.lin_reg(*[f"x{i}" for i in range(p)], target="y", add_bias=True).alias("c")
     ).row(0)[0]
@@ -1159,9 +1146,7 @@ def test_lin_reg_null_skip_in_small_group():
     )
     out = (
         df.group_by("g", maintain_order=True)
-        .agg(
-            pds.lin_reg("x", target="y", add_bias=True, null_policy="skip").alias("c")
-        )
+        .agg(pds.lin_reg("x", target="y", add_bias=True, null_policy="skip").alias("c"))
         .sort("g")
     )
 
@@ -1169,9 +1154,7 @@ def test_lin_reg_null_skip_in_small_group():
     expected = []
     for g in [1, 2, 3]:
         sub = df.filter(pl.col("g") == g).drop_nulls()
-        coef = sub.select(
-            pds.lin_reg("x", target="y", add_bias=True).alias("c")
-        ).row(0)[0]
+        coef = sub.select(pds.lin_reg("x", target="y", add_bias=True).alias("c")).row(0)[0]
         expected.append(coef)
 
     for got, exp in zip(out["c"].to_list(), expected):

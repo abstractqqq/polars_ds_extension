@@ -3,6 +3,7 @@ Fixture builder for polars-ds parity oracle.
 Run: python tests/fixtures/_build.py
 SEED = 42
 """
+
 from pathlib import Path
 import numpy as np
 import polars as pl
@@ -153,9 +154,7 @@ def main() -> None:
     for i, chunk in enumerate(chunks):
         chunk.write_parquet(OUT / f"medium_multichunk_p{i}.parquet")
     combined = pl.concat(chunks, rechunk=False)
-    print(
-        f"  medium_multichunk_p0..p3    {combined.shape}  n_chunks={combined['x1'].n_chunks()}"
-    )
+    print(f"  medium_multichunk_p0..p3    {combined.shape}  n_chunks={combined['x1'].n_chunks()}")
 
     df = build_medium_with_nulls()
     df.write_parquet(OUT / "medium_with_nulls.parquet")

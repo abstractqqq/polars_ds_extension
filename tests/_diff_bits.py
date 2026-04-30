@@ -16,6 +16,7 @@ import polars as pl
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _fmt_float64(val: float) -> str:
     bits = np.array([val], dtype=np.float64).view(np.uint64)[0]
     return f"{val!r} (0x{bits:016x})"
@@ -44,15 +45,11 @@ def _assert_series(
 
     # Length
     if len(old) != len(new):
-        raise AssertionError(
-            f"[{tag}] length mismatch: old={len(old)}, new={len(new)}"
-        )
+        raise AssertionError(f"[{tag}] length mismatch: old={len(old)}, new={len(new)}")
 
     # Dtype
     if old.dtype != new.dtype:
-        raise AssertionError(
-            f"[{tag}] dtype mismatch: old={old.dtype}, new={new.dtype}"
-        )
+        raise AssertionError(f"[{tag}] dtype mismatch: old={old.dtype}, new={new.dtype}")
 
     # Null mask
     old_null = old.is_null()
@@ -62,8 +59,7 @@ def _assert_series(
         n_diff = len(ne)
         first = int(ne[0])
         raise AssertionError(
-            f"[{tag}] null-mask differs at {n_diff} position(s); "
-            f"first at row {first}"
+            f"[{tag}] null-mask differs at {n_diff} position(s); first at row {first}"
         )
 
     dtype = old.dtype
@@ -177,14 +173,13 @@ def _assert_series(
 
     # Fallback
     if not old.series_equal(new, null_equal=True):
-        raise AssertionError(
-            f"[{tag}] Series differ (dtype={dtype}, fallback series_equal check)"
-        )
+        raise AssertionError(f"[{tag}] Series differ (dtype={dtype}, fallback series_equal check)")
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def assert_byte_equal(
     old: pl.Series | pl.DataFrame,
@@ -215,8 +210,7 @@ def assert_byte_equal(
             )
         if list(old.dtypes) != list(new.dtypes):
             raise AssertionError(
-                f"[{tag}] dtypes differ: "
-                f"old={list(old.dtypes)}, new={list(new.dtypes)}"
+                f"[{tag}] dtypes differ: old={list(old.dtypes)}, new={list(new.dtypes)}"
             )
         for col in old.schema.keys():
             col_ctx = f"{context}.{col}" if context else col

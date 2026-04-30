@@ -45,7 +45,6 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -55,8 +54,8 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import polars as pl
-from polars.plugins import register_plugin_function
+import polars as pl  # noqa: E402  (must come after sys.path mutation above)
+from polars.plugins import register_plugin_function  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # .so location
@@ -82,6 +81,7 @@ from tests._parity_registry import ParityCase, REGISTRY, register  # noqa: E402,
 # ---------------------------------------------------------------------------
 # Dispatch helpers
 # ---------------------------------------------------------------------------
+
 
 def _call(symbol: str, df: pl.DataFrame, build_call: Callable) -> pl.DataFrame:
     """Call a single plugin symbol and return the resulting DataFrame."""
@@ -113,9 +113,11 @@ def run_one(
             old = _call(case.name, df, case.build_call)
             new = _call(f"{case.name}_new_expr", df, case.build_call)
             assert_byte_equal(
-                old, new,
+                old,
+                new,
                 context=f"{case.name}/{fix_name}",
-                rtol=case.rtol, atol=case.atol,
+                rtol=case.rtol,
+                atol=case.atol,
             )
             results.append((fix_name, True, ""))
         except AssertionError as e:
@@ -124,15 +126,18 @@ def run_one(
             results.append((fix_name, False, f"EXCEPTION: {type(e).__name__}: {e}"))
     return results
 
+
 # ---------------------------------------------------------------------------
 # Auto-discover ParityCase modules under tests/parity_cases/
 # Each Phase B/C/... agent drops a self-contained registration file there
 # (e.g. tests/parity_cases/pl_query_radius_ptwise.py) — no edits to this file.
 # ---------------------------------------------------------------------------
 
+
 def _autoload_cases() -> None:
     import importlib
     import pkgutil
+
     try:
         import tests.parity_cases as _cases_pkg
     except ImportError:
@@ -140,16 +145,16 @@ def _autoload_cases() -> None:
     for _finder, mod_name, _is_pkg in pkgutil.iter_modules(_cases_pkg.__path__):
         importlib.import_module(f"tests.parity_cases.{mod_name}")
 
+
 _autoload_cases()
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
-    p = argparse.ArgumentParser(
-        description="Polars-DS parity oracle: old vs new Rust impls."
-    )
+    p = argparse.ArgumentParser(description="Polars-DS parity oracle: old vs new Rust impls.")
     p.add_argument("fns", nargs="*", help="Names of registered cases to run (default: all).")
     p.add_argument("--list", action="store_true", help="List registered cases and exit.")
     p.add_argument(

@@ -459,9 +459,7 @@ def test_psi_report_struct():
     # Verify expected field names exist (order-independent)
     expected_fields = {"<=", "baseline_pct", "actual_pct", "psi_bin"}
     actual_fields = set(report.columns)
-    assert expected_fields <= actual_fields, (
-        f"Missing fields: {expected_fields - actual_fields}"
-    )
+    assert expected_fields <= actual_fields, f"Missing fields: {expected_fields - actual_fields}"
 
     # Struct should have n_bins rows (one per bin)
     assert report.shape[0] == 10, f"Expected 10 rows, got {report.shape[0]}"

@@ -1,7 +1,7 @@
 """Tier-1 KNN bench: production path (post-promotion)."""
+
 from __future__ import annotations
 
-import polars as pl
 import pytest
 import polars_ds as pds
 
@@ -17,8 +17,16 @@ def test_radius_ptwise_prod(benchmark, knn_radius_df):
     def run():
         return df.select(
             pds.query_radius_ptwise(
-                "x1", "x2", "x3", "x4", "x5",
-                index="idx", r=_R, dist="sql2", parallel=False, sort=True,
+                "x1",
+                "x2",
+                "x3",
+                "x4",
+                "x5",
+                index="idx",
+                r=_R,
+                dist="sql2",
+                parallel=False,
+                sort=True,
             ).alias("nbrs")
         )
 
@@ -31,7 +39,13 @@ def test_nb_cnt_prod(benchmark, knn_radius_df):
     def run():
         return df.select(
             pds.query_nb_cnt(
-                "x1", "x2", "x3", "x4", "x5",
-                r=_R, dist="sql2", parallel=True,
+                "x1",
+                "x2",
+                "x3",
+                "x4",
+                "x5",
+                r=_R,
+                dist="sql2",
+                parallel=True,
             ).alias("cnt")
         )

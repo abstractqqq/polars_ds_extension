@@ -1,4 +1,5 @@
 """Tier-1 entropies bench: production path (post Tier 1.3 revert + Tier 2-6 promotions)."""
+
 from __future__ import annotations
 
 import polars as pl
@@ -28,8 +29,9 @@ def test_approx_entropy_prod(benchmark, entropy_series):
 
     @benchmark
     def run():
-        return df.select(pl_plugin(symbol="pl_approximate_entropy",
-                                   args=args, kwargs=kwargs, **extra))
+        return df.select(
+            pl_plugin(symbol="pl_approximate_entropy", args=args, kwargs=kwargs, **extra)
+        )
 
 
 @pytest.mark.benchmark(group="t1_3_sample_entropy")
@@ -38,5 +40,4 @@ def test_sample_entropy_prod(benchmark, entropy_series):
 
     @benchmark
     def run():
-        return df.select(pl_plugin(symbol="pl_sample_entropy",
-                                   args=args, kwargs=kwargs, **extra))
+        return df.select(pl_plugin(symbol="pl_sample_entropy", args=args, kwargs=kwargs, **extra))

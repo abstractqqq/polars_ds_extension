@@ -14,6 +14,7 @@ are no nulls.
 For null-safety regression (inputs WITH nulls), see:
   tests/test_many.py::test_radius_ptwise_with_nulls_no_panic
 """
+
 from __future__ import annotations
 import polars as pl
 from tests.parity_oracle import register

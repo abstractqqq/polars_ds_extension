@@ -47,6 +47,7 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
 # Fixture 1 — GLM IRLS group_by workload
 # ---------------------------------------------------------------------------
 
+
 def make_glm_irls_df() -> pl.DataFrame:
     """
     group_by GLM (IRLS, Binomial) workload.
@@ -94,6 +95,7 @@ make_glm_irls_df.__doc__ = make_glm_irls_df.__doc__.format(  # type: ignore[unio
 # Fixture 2 — KNN radius query workload
 # ---------------------------------------------------------------------------
 
+
 def make_knn_radius_df() -> pl.DataFrame:
     """
     KNN radius query workload.
@@ -124,6 +126,7 @@ def make_knn_radius_df() -> pl.DataFrame:
 # Fixture 3 — Entropy / ts-features single-series workload
 # ---------------------------------------------------------------------------
 
+
 def make_entropy_series() -> pl.Series:
     """
     Single 1,000,000-row standard-normal f64 Series named "ts".
@@ -139,6 +142,7 @@ def make_entropy_series() -> pl.Series:
 # Fixture 4 — Rolling LR with leading-null prefix
 # ---------------------------------------------------------------------------
 
+
 def make_rolling_lr_df() -> pl.DataFrame:
     """
     Rolling LR workload with a leading-null prefix.
@@ -152,7 +156,6 @@ def make_rolling_lr_df() -> pl.DataFrame:
     rng = _rng()
     n_null = 100_000
     n_data = 400_000
-    n_total = n_null + n_data
 
     x = rng.standard_normal((n_data, 3))
     noise = 0.01 * rng.standard_normal(n_data)

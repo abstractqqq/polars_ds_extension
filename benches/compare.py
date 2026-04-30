@@ -8,6 +8,7 @@ Exit codes:
     0  no regressions
     1  one or more regression flags set
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,6 +23,7 @@ import numpy as np
 # ---------------------------------------------------------------------------
 # Core stats helpers
 # ---------------------------------------------------------------------------
+
 
 def _bootstrap_ci(
     baseline_data: list[float],
@@ -53,6 +55,7 @@ def _bootstrap_ci(
 # Data loading
 # ---------------------------------------------------------------------------
 
+
 def load_benchmarks(path: Path) -> dict[str, dict[str, Any]]:
     """Return {name: benchmark_entry} from a pytest-benchmark JSON file."""
     data = json.loads(path.read_text())
@@ -66,6 +69,7 @@ def load_benchmarks(path: Path) -> dict[str, dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Comparison logic
 # ---------------------------------------------------------------------------
+
 
 def compare(
     baseline_path: Path,
@@ -143,6 +147,7 @@ def compare(
 # Markdown rendering
 # ---------------------------------------------------------------------------
 
+
 def _fmt_ms(v: float) -> str:
     return f"{v:.3f}"
 
@@ -192,9 +197,9 @@ def render_markdown(rows: list[dict[str, Any]]) -> str:
 # Self-test
 # ---------------------------------------------------------------------------
 
+
 def _self_test() -> None:
     import tempfile
-    import os
 
     # Build minimal pytest-benchmark-shaped JSON
     def _make_json(times_a: list[float], times_b: list[float]) -> dict:
@@ -243,10 +248,14 @@ def _self_test() -> None:
     fast_row = next(r for r in rows if r["name"] == "bench_fast")
     slow_row = next(r for r in rows if r["name"] == "bench_slow")
 
-    assert fast_row["delta_pct"] < -5.0, f"bench_fast should show improvement: {fast_row['delta_pct']:.1f}%"
+    assert fast_row["delta_pct"] < -5.0, (
+        f"bench_fast should show improvement: {fast_row['delta_pct']:.1f}%"
+    )
     assert fast_row["flag"] == "improved", f"Expected 'improved', got {fast_row['flag']!r}"
 
-    assert slow_row["delta_pct"] > 5.0, f"bench_slow should show regression: {slow_row['delta_pct']:.1f}%"
+    assert slow_row["delta_pct"] > 5.0, (
+        f"bench_slow should show regression: {slow_row['delta_pct']:.1f}%"
+    )
     assert slow_row["flag"] == "REGRESSION", f"Expected 'REGRESSION', got {slow_row['flag']!r}"
 
     assert any_regression is True, "any_regression should be True"
@@ -267,13 +276,16 @@ def _self_test() -> None:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Compare two pytest-benchmark JSON outputs and produce a Markdown report."
     )
     parser.add_argument("baseline", type=Path, help="Baseline JSON file")
     parser.add_argument("head", type=Path, help="HEAD JSON file")
-    parser.add_argument("--output", type=Path, default=None, help="Write Markdown to this file (default: stdout)")
+    parser.add_argument(
+        "--output", type=Path, default=None, help="Write Markdown to this file (default: stdout)"
+    )
     parser.add_argument(
         "--regression-threshold",
         type=float,
