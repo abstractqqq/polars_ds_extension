@@ -92,3 +92,24 @@ docs/_build/
 # Polars Extension
 .so
 .dll
+
+# Sync-conflict copies (Apple iCloud / Dropbox etc) — local artifacts
+* 2.rs
+* 3.rs
+* 4.rs
+* 5.rs
+
+# OpenWolf project context (local context tooling)
+.wolf/
+
+# Local Claude Code session data
+.claude/
+
+# Local .cargo overlays
+.cargo/
+
+# Bench results (regeneratable)
+benches/results/
+
+# Build artifacts
+target/

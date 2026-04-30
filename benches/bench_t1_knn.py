@@ -1,61 +1,37 @@
-"""Tier-1 KNN bench: T1.2 builder capacities + B4 null-safe."""
+"""Tier-1 KNN bench: production path (post-promotion)."""
 from __future__ import annotations
 
 import polars as pl
 import pytest
+import polars_ds as pds
 
-from polars_ds._utils import pl_plugin
+
+_R = 0.01  # tuned: ~25 expected neighbors per query in 5D uniform [0,1)^5
 
 
-@pytest.mark.benchmark(group="t1_2_knn_radius_ptwise_serial")
-def test_radius_ptwise_old_serial(benchmark, knn_radius_df):
+@pytest.mark.benchmark(group="t1_2_knn_radius_ptwise")
+def test_radius_ptwise_prod(benchmark, knn_radius_df):
     df = knn_radius_df
-    feats = [pl.col(f"x{i}") for i in range(1, 6)]
-    args_old = [pl.col("idx").cast(pl.UInt32), *feats]
-    kwargs = {"r": 0.3, "metric": "sql2", "parallel": False, "sort": True}
 
     @benchmark
     def run():
-        return df.select(pl_plugin(symbol="pl_query_radius_ptwise",
-                                   args=args_old, kwargs=kwargs,
-                                   changes_length=False))
+        return df.select(
+            pds.query_radius_ptwise(
+                "x1", "x2", "x3", "x4", "x5",
+                index="idx", r=_R, dist="sql2", parallel=False, sort=True,
+            ).alias("nbrs")
+        )
 
 
-@pytest.mark.benchmark(group="t1_2_knn_radius_ptwise_serial")
-def test_radius_ptwise_new_serial(benchmark, knn_radius_df):
+@pytest.mark.benchmark(group="t1_2_knn_nb_cnt")
+def test_nb_cnt_prod(benchmark, knn_radius_df):
     df = knn_radius_df
-    feats = [pl.col(f"x{i}") for i in range(1, 6)]
-    args_new = [pl.col("idx").cast(pl.UInt32), *feats]
-    kwargs = {"r": 0.3, "metric": "sql2", "parallel": False, "sort": True}
 
     @benchmark
     def run():
-        return df.select(pl_plugin(symbol="pl_query_radius_ptwise_new_expr",
-                                   args=args_new, kwargs=kwargs,
-                                   changes_length=False))
-
-
-@pytest.mark.benchmark(group="t1_2_knn_nb_cnt_parallel")
-def test_nb_cnt_old_parallel(benchmark, knn_radius_df):
-    df = knn_radius_df
-    feats = [pl.col(f"x{i}") for i in range(1, 6)]
-    args = [pl.lit(0.3, dtype=pl.Float64), *feats]
-    kwargs = {"k": 0, "metric": "sql2", "parallel": True}
-
-    @benchmark
-    def run():
-        return df.select(pl_plugin(symbol="pl_nb_cnt", args=args,
-                                   kwargs=kwargs, changes_length=False))
-
-
-@pytest.mark.benchmark(group="t1_2_knn_nb_cnt_parallel")
-def test_nb_cnt_new_parallel(benchmark, knn_radius_df):
-    df = knn_radius_df
-    feats = [pl.col(f"x{i}") for i in range(1, 6)]
-    args = [pl.lit(0.3, dtype=pl.Float64), *feats]
-    kwargs = {"k": 0, "metric": "sql2", "parallel": True}
-
-    @benchmark
-    def run():
-        return df.select(pl_plugin(symbol="pl_nb_cnt_new_expr", args=args,
-                                   kwargs=kwargs, changes_length=False))
+        return df.select(
+            pds.query_nb_cnt(
+                "x1", "x2", "x3", "x4", "x5",
+                r=_R, dist="sql2", parallel=True,
+            ).alias("cnt")
+        )

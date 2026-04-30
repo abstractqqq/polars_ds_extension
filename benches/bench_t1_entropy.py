@@ -1,4 +1,4 @@
-"""Tier-1 entropies bench: T1.3 par_bridge → split_offsets."""
+"""Tier-1 entropies bench: production path (post Tier 1.3 revert + Tier 2-6 promotions)."""
 from __future__ import annotations
 
 import polars as pl
@@ -23,7 +23,7 @@ def _build_args(ts: pl.Series, *, m: int = 2, ratio: float = 0.2):
 
 
 @pytest.mark.benchmark(group="t1_3_approximate_entropy")
-def test_approx_entropy_old(benchmark, entropy_series):
+def test_approx_entropy_prod(benchmark, entropy_series):
     df, args, kwargs, extra = _build_args(entropy_series)
 
     @benchmark
@@ -32,31 +32,11 @@ def test_approx_entropy_old(benchmark, entropy_series):
                                    args=args, kwargs=kwargs, **extra))
 
 
-@pytest.mark.benchmark(group="t1_3_approximate_entropy")
-def test_approx_entropy_new(benchmark, entropy_series):
-    df, args, kwargs, extra = _build_args(entropy_series)
-
-    @benchmark
-    def run():
-        return df.select(pl_plugin(symbol="pl_approximate_entropy_new_expr",
-                                   args=args, kwargs=kwargs, **extra))
-
-
 @pytest.mark.benchmark(group="t1_3_sample_entropy")
-def test_sample_entropy_old(benchmark, entropy_series):
+def test_sample_entropy_prod(benchmark, entropy_series):
     df, args, kwargs, extra = _build_args(entropy_series)
 
     @benchmark
     def run():
         return df.select(pl_plugin(symbol="pl_sample_entropy",
-                                   args=args, kwargs=kwargs, **extra))
-
-
-@pytest.mark.benchmark(group="t1_3_sample_entropy")
-def test_sample_entropy_new(benchmark, entropy_series):
-    df, args, kwargs, extra = _build_args(entropy_series)
-
-    @benchmark
-    def run():
-        return df.select(pl_plugin(symbol="pl_sample_entropy_new_expr",
                                    args=args, kwargs=kwargs, **extra))
