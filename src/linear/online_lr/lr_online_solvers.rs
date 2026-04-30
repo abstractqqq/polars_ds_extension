@@ -215,9 +215,7 @@ pub fn faer_rolling_lr<T: RealField + Float>(
 /// This will return all coefficients for rows >= n.
 /// If # of non-null rows in the window is < m, a Matrix with size (0, 0) will be returned.
 /// This supports Normal or Ridge regression
-///
-/// Original O(n * leading_nulls) startup — kept for parity testing.
-pub fn faer_rolling_skipping_lr_old<T: RealField + Float>(
+pub fn faer_rolling_skipping_lr<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
     n: usize,
@@ -288,110 +286,6 @@ pub fn faer_rolling_skipping_lr_old<T: RealField + Float>(
 
         let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
         let next_y = y.get(j..j + 1, ..); // 1 by 1
-        if is_finite[j] {
-            non_null_cnt_in_window += 1;
-            online_lr.update_unchecked(next_x, next_y, T::one());
-        }
-
-        if non_null_cnt_in_window >= m {
-            coefficients.push(online_lr.fitted_values().to_owned());
-        } else {
-            coefficients.push(Mat::with_capacity(0, 0));
-        }
-    }
-    coefficients
-}
-
-/// Alias for the production callers — dispatches to the original implementation.
-#[inline(always)]
-pub fn faer_rolling_skipping_lr<T: RealField + Float>(
-    x: MatRef<T>,
-    y: MatRef<T>,
-    n: usize,
-    m: usize,
-    lambda: T,
-) -> Vec<Mat<T>> {
-    faer_rolling_skipping_lr_old(x, y, n, m, lambda)
-}
-
-/// Optimised variant: O(1) per startup-phase shift instead of O(window_size).
-///
-/// The original code re-scanned the full `[left..right]` window on every shift to
-/// recount `non_null_cnt_in_window`.  Because each shift moves exactly one element
-/// out (index `left`) and one in (index `right - 1`), the count can be maintained
-/// with two O(1) increments instead.
-pub fn faer_rolling_skipping_lr_new<T: RealField + Float>(
-    x: MatRef<T>,
-    y: MatRef<T>,
-    n: usize,
-    m: usize,
-    lambda: T,
-) -> Vec<Mat<T>> {
-    let xn = x.nrows();
-    let ncols = x.ncols();
-    let mut coefficients = Vec::with_capacity(xn - n + 1);
-
-    let is_finite = x
-        .row_iter()
-        .zip(y.row_iter())
-        .map(|(xr, yr)| xr.is_all_finite() && yr.is_all_finite())
-        .collect::<Vec<_>>();
-
-    let mut online_lr = OnlineLR::new(lambda, false);
-    let mut x_slice: Vec<T> = Vec::with_capacity(n * ncols);
-    let mut y_slice: Vec<T> = Vec::with_capacity(n);
-
-    let mut left = 0usize;
-    let mut right = n;
-
-    // One-time initial count for the first window [0..n).
-    let mut non_null_cnt_in_window: usize = is_finite[..n].iter().filter(|&&f| f).count();
-
-    loop {
-        if non_null_cnt_in_window >= m {
-            // Rebuild x_slice / y_slice for the full initial fit.
-            x_slice.clear();
-            y_slice.clear();
-            for i in left..right {
-                if is_finite[i] {
-                    x_slice.extend(x.get(i, ..).iter());
-                    y_slice.push(*y.get(i, 0));
-                }
-            }
-            let x0 = MatRef::from_row_major_slice(&x_slice, y_slice.len(), ncols);
-            let y0 = MatRef::from_column_major_slice(&y_slice, y_slice.len(), 1);
-            online_lr.fit_unchecked(x0, y0);
-            coefficients.push(online_lr.fitted_values().to_owned());
-            break;
-        } else {
-            coefficients.push(Mat::with_capacity(0, 0));
-            // O(1) incremental counter update instead of full rescan.
-            non_null_cnt_in_window -= is_finite[left] as usize;
-            left += 1;
-            right += 1;
-            if right > xn {
-                // Exhausted all windows without finding enough finite rows.
-                return coefficients;
-            }
-            non_null_cnt_in_window += is_finite[right - 1] as usize;
-        }
-    }
-
-    if right >= xn {
-        return coefficients;
-    }
-
-    // right < xn: incremental Woodbury updates (same as _old).
-    for j in right..xn {
-        let remove_x = x.get(j - n..j - n + 1, ..);
-        let remove_y = y.get(j - n..j - n + 1, ..);
-        if is_finite[j - n] {
-            non_null_cnt_in_window -= 1;
-            online_lr.update_unchecked(remove_x, remove_y, T::one().neg());
-        }
-
-        let next_x = x.get(j..j + 1, ..);
-        let next_y = y.get(j..j + 1, ..);
         if is_finite[j] {
             non_null_cnt_in_window += 1;
             online_lr.update_unchecked(next_x, next_y, T::one());
