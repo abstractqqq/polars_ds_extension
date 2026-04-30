@@ -342,8 +342,9 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
         .map(|c| c.squared_norm_l2() + m * l2_reg)
         .collect::<Vec<_>>();
 
-    let xty = x.transpose() * y;
-    let xtx = x.transpose() * x;
+    let xt = x.transpose();
+    let xty = xt * y;
+    let xtx = xt * x;
 
     // Random selection often leads to faster convergence?
     for _ in 0..max_iter {
@@ -404,8 +405,9 @@ pub fn faer_nn_lr<T: RealField + Float>(
     max_iter: usize,
 ) -> Mat<T> {
     // x: nrows x ncols
-    let xtx: Mat<T> = x.transpose() * x;
-    let xty: Mat<T> = x.transpose() * y;
+    let xt = x.transpose();
+    let xtx: Mat<T> = xt * x;
+    let xty: Mat<T> = xt * y;
 
     let mut beta: Mat<T> = Mat::zeros(x.ncols(), 1);
     let mut mu = Scale(T::one().neg()) * &xty;

@@ -816,29 +816,21 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
     let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
     let nrows = data.len() / ncols;
 
+    let dist = KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into()))?;
+
     if radius.len() == 1 {
         let r = radius.get(0).unwrap();
-        match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
-            Ok(d) => {
-                let mut leaves = slice_to_empty_leaves(&data, ncols);
-                let tree = KDT::from_leaves(&mut leaves, d).map_err(|e| PolarsError::ComputeError(e.into()))?;
-                Ok(query_nb_cnt(&tree, &data, r, can_parallel)
-                    .with_name("cnt".into())
-                    .into_series())
-            }
-            Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
-        }
+        let mut leaves = slice_to_empty_leaves(&data, ncols);
+        let tree = KDT::from_leaves(&mut leaves, dist).map_err(|e| PolarsError::ComputeError(e.into()))?;
+        Ok(query_nb_cnt(&tree, &data, r, can_parallel)
+            .with_name("cnt".into())
+            .into_series())
     } else if radius.len() == nrows {
-        match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
-            Ok(d) => {
-                let mut leaves = slice_to_empty_leaves(&data, ncols);
-                let tree = KDT::from_leaves(&mut leaves, d).map_err(|e| PolarsError::ComputeError(e.into()))?;
-                Ok(query_nb_cnt_w_radius(&tree, &data, radius, can_parallel)
-                    .with_name("cnt".into())
-                    .into_series())
-            }
-            Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
-        }
+        let mut leaves = slice_to_empty_leaves(&data, ncols);
+        let tree = KDT::from_leaves(&mut leaves, dist).map_err(|e| PolarsError::ComputeError(e.into()))?;
+        Ok(query_nb_cnt_w_radius(&tree, &data, radius, can_parallel)
+            .with_name("cnt".into())
+            .into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),
