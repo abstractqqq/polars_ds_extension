@@ -262,7 +262,7 @@ pub fn faer_irls<T: RealField + Float>(
 
     // let epsilon = T::from(1e-8).unwrap();
     // Initialized mu based on variance
-    let point_5 = T::one() / (T::one() + T::one());
+    let point_5 = T::from(0.5).unwrap();
     let mut mu = match variance {
         VarianceFunction::Binomial => y
             .col(0)
