@@ -139,16 +139,19 @@ fn series_to_mat_for_lr_f32(
                 Ok((df, mask))
             }
             NullPolicy::FILL(x) => {
-                let filled = inputs[1..]
-                    .iter()
-                    .map(|s| {
-                        pl::col(s.name().clone())
-                            .cast(DataType::Float32)
-                            .fill_null(lit(x))
-                    })
-                    .collect::<Vec<_>>();
-
-                df = df.lazy().with_columns(filled).collect()?;
+                df = df
+                    .lazy()
+                    .with_columns(
+                        inputs[1..]
+                            .iter()
+                            .map(|s| {
+                                pl::col(s.name().clone())
+                                    .cast(DataType::Float32)
+                                    .fill_null(lit(x))
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                    .collect()?;
 
                 if y_has_null {
                     df = df.filter(&init_mask).unwrap();
@@ -160,16 +163,19 @@ fn series_to_mat_for_lr_f32(
                 }
             }
             NullPolicy::FILL_WINDOW(x) => {
-                let filled = inputs[1..]
-                    .iter()
-                    .map(|s| {
-                        pl::col(s.name().clone())
-                            .cast(DataType::Float32)
-                            .fill_null(lit(x))
-                    })
-                    .collect::<Vec<_>>();
-
-                df = df.lazy().with_columns(filled).collect()?;
+                df = df
+                    .lazy()
+                    .with_columns(
+                        inputs[1..]
+                            .iter()
+                            .map(|s| {
+                                pl::col(s.name().clone())
+                                    .cast(DataType::Float32)
+                                    .fill_null(lit(x))
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                    .collect()?;
 
                 if y_has_null {
                     // Unlike fill, this doesn't drop y's nulls
@@ -245,16 +251,18 @@ fn series_to_mat_for_multi_lr_f32(
                         "Filling null doesn't work for multi-target lstsq when there are nulls in any of the targets.".into(),
                     ))
                 } else {
-                    let filled = inputs[last_target_idx..]
-                        .iter()
-                        .map(|s| {
-                            pl::col(s.name().clone())
-                                .cast(DataType::Float32)
-                                .fill_null(lit(x))
-                        })
-                        .collect::<Vec<_>>();
-
-                    df.lazy().with_columns(filled).collect()
+                    df.lazy()
+                        .with_columns(
+                            inputs[last_target_idx..]
+                                .iter()
+                                .map(|s| {
+                                    pl::col(s.name().clone())
+                                        .cast(DataType::Float32)
+                                        .fill_null(lit(x))
+                                })
+                                .collect::<Vec<_>>(),
+                        )
+                        .collect()
                 }
             }
             _ => Err(PolarsError::ComputeError(
@@ -369,10 +377,6 @@ fn pl_lr_multi_f32(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Ser
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
-    let y_names = inputs[..last_target_idx]
-        .iter()
-        .map(|s| s.name())
-        .collect::<Vec<_>>();
     let (mat_slice, nrows, nfeats) =
         series_to_mat_for_multi_lr_f32(inputs, last_target_idx, add_bias, null_policy)?;
 
@@ -393,10 +397,11 @@ fn pl_lr_multi_f32(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Ser
         )),
     }?;
 
-    let columns: Vec<Column> = y_names
-        .into_iter()
+    let columns: Vec<Column> = inputs[..last_target_idx]
+        .iter()
         .enumerate()
-        .map(|(i, y)| {
+        .map(|(i, s)| {
+            let y = s.name();
             let mut builder: ListPrimitiveChunkedBuilder<Float32Type> =
                 ListPrimitiveChunkedBuilder::new(
                     y.clone(),
@@ -422,10 +427,6 @@ fn pl_lr_multi_pred_f32(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResul
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
-    let y_names = inputs[..last_target_idx]
-        .iter()
-        .map(|s| s.name())
-        .collect::<Vec<_>>();
     let (mat_slice, nrows, nfeats) =
         series_to_mat_for_multi_lr_f32(inputs, last_target_idx, add_bias, null_policy)?;
 
@@ -444,8 +445,9 @@ fn pl_lr_multi_pred_f32(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResul
     let pred = x * &coeffs;
     let resid = y - &pred;
 
-    let mut s: Vec<Column> = Vec::with_capacity(y_names.len() * 2);
-    for (i, y) in y_names.into_iter().enumerate() {
+    let mut s: Vec<Column> = Vec::with_capacity(last_target_idx * 2);
+    for (i, series) in inputs[..last_target_idx].iter().enumerate() {
+        let y = series.name();
         let pred_name = format!("{}_pred", y);
         let resid_name = format!("{}_resid", y);
         let p = Float32Chunked::from_slice(pred_name.into(), pred.col_as_slice(i));
