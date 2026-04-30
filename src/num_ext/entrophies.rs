@@ -14,16 +14,15 @@ use pyo3_polars::export::polars_core::{
 // https://en.wikipedia.org/wiki/Sample_entropy
 // https://en.wikipedia.org/wiki/Approximate_entropy
 
-// ---------------------------------------------------------------------------
-// pl_approximate_entropy — old (par_bridge) + new (split_offsets) variants
-// ---------------------------------------------------------------------------
-
-fn pl_approximate_entropy_old(
+#[polars_expr(output_type=Float64)]
+fn pl_approximate_entropy(
     inputs: &[Series],
+    context: CallerContext,
     kwargs: KDTKwargs,
-    can_parallel: bool,
 ) -> PolarsResult<Series> {
     // inputs[0] is radius, the rest are the shifted columns
+    // Set up radius. r is a scalar and set up at Python side.
+
     let radius = inputs[0].f64()?;
     if radius.len() != 1 {
         return Err(PolarsError::ComputeError("Radius must be a scalar.".into()));
@@ -37,6 +36,7 @@ fn pl_approximate_entropy_old(
     if (nrows < ncols) || (r <= 0.) || (!r.is_finite()) {
         return Ok(Series::from_vec(name.clone(), vec![f64::NAN]));
     }
+    let can_parallel = kwargs.parallel && !context.parallel();
 
     // Step 3, 4, 5 in wiki
 
@@ -101,120 +101,14 @@ fn pl_approximate_entropy_old(
     Ok(Series::from_vec(name.clone(), vec![(phi_m1 - phi_m).abs()]))
 }
 
-fn pl_approximate_entropy_new(
-    inputs: &[Series],
-    kwargs: KDTKwargs,
-    can_parallel: bool,
-) -> PolarsResult<Series> {
-    let radius = inputs[0].f64()?;
-    if radius.len() != 1 {
-        return Err(PolarsError::ComputeError("Radius must be a scalar.".into()));
-    }
-    let r = radius.get(0).unwrap();
-    let name = inputs[1].name();
-    let ncols = inputs[1..].len();
-    let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
-    let nrows = data.len() / ncols;
-
-    if (nrows < ncols) || (r <= 0.) || (!r.is_finite()) {
-        return Ok(Series::from_vec(name.clone(), vec![f64::NAN]));
-    }
-
-    let ncols_minus_1 = ncols.abs_diff(1);
-    let mut leaves = data
-        .chunks_exact(ncols)
-        .map(|sl| ((), &sl[..ncols_minus_1]).into())
-        .collect::<Vec<_>>();
-
-    let tree = KDT::from_leaves(
-        &mut leaves, KNNDist::LINF
-    ).map_err(|e| PolarsError::ComputeError(e.into()))?;
-
-    let nrows_recip = (nrows as f64).recip();
-    let phi_m = if can_parallel {
-        let n_threads = POOL.current_num_threads();
-        let splits = split_offsets(nrows, n_threads);
-        let partial_sums = splits.into_par_iter().map(|(offset, len)| {
-            (offset..offset + len).fold(0f64, |acc, i| {
-                let sl = &data[i * ncols..(i + 1) * ncols];
-                acc + (tree.within_count(&sl[..ncols_minus_1], r).unwrap_or(0) as f64 * nrows_recip).ln()
-            })
-        });
-        POOL.install(|| partial_sums.sum::<f64>()) * nrows_recip
-    } else {
-        data.chunks_exact(ncols).fold(0f64, |acc, sl| {
-            acc + (tree.within_count(&sl[..ncols_minus_1], r).unwrap_or(0) as f64 * nrows_recip)
-                .ln()
-        }) * nrows_recip
-    };
-
-    let nrows_minus_1 = nrows.abs_diff(1);
-
-    drop(tree);
-
-    let mut leaves2 = data
-        .chunks_exact(ncols)
-        .take(nrows_minus_1)
-        .map(|sl| ((), sl).into())
-        .collect::<Vec<_>>();
-
-    let tree = KDT::from_leaves(
-        &mut leaves2, KNNDist::LINF
-    ).map_err(|e| PolarsError::ComputeError(e.into()))?;
-
-    let nrows_minus_1_recip = 1.0 / (nrows_minus_1 as f64);
-    let phi_m1 = if can_parallel {
-        let n_threads = POOL.current_num_threads();
-        let splits = split_offsets(nrows_minus_1, n_threads);
-        let partial_sums = splits.into_par_iter().map(|(offset, len)| {
-            (offset..offset + len).fold(0f64, |acc, i| {
-                let sl = &data[i * ncols..(i + 1) * ncols];
-                acc + (tree.within_count(sl, r).unwrap_or(0) as f64 * nrows_minus_1_recip).ln()
-            })
-        });
-        POOL.install(|| partial_sums.sum::<f64>()) * nrows_minus_1_recip
-    } else {
-        data.chunks_exact(ncols)
-            .take(nrows_minus_1)
-            .fold(0f64, |acc, sl| {
-                acc + (tree.within_count(sl, r).unwrap_or(0) as f64 * nrows_minus_1_recip).ln()
-            })
-            * nrows_minus_1_recip
-    };
-
-    Ok(Series::from_vec(name.clone(), vec![(phi_m1 - phi_m).abs()]))
-}
-
 #[polars_expr(output_type=Float64)]
-fn pl_approximate_entropy(
+fn pl_sample_entropy(
     inputs: &[Series],
     context: CallerContext,
     kwargs: KDTKwargs,
-) -> PolarsResult<Series> {
-    let can_parallel = kwargs.parallel && !context.parallel();
-    pl_approximate_entropy_old(inputs, kwargs, can_parallel)
-}
-
-#[polars_expr(output_type=Float64)]
-fn pl_approximate_entropy_new_expr(
-    inputs: &[Series],
-    context: CallerContext,
-    kwargs: KDTKwargs,
-) -> PolarsResult<Series> {
-    let can_parallel = kwargs.parallel && !context.parallel();
-    pl_approximate_entropy_new(inputs, kwargs, can_parallel)
-}
-
-// ---------------------------------------------------------------------------
-// pl_sample_entropy — old (par_bridge) + new (split_offsets) variants
-// ---------------------------------------------------------------------------
-
-fn pl_sample_entropy_old(
-    inputs: &[Series],
-    kwargs: KDTKwargs,
-    can_parallel: bool,
 ) -> PolarsResult<Series> {
     // inputs[0] is radius, the rest are the shifted columns
+    // Set up radius. r is a scalar and set up at Python side.
     let radius = inputs[0].f64()?;
     if radius.len() != 1 {
         return Err(PolarsError::ComputeError("Radius must be a scalar.".into()));
@@ -229,13 +123,18 @@ fn pl_sample_entropy_old(
     if (nrows < ncols) || (r <= 0.) || (!r.is_finite()) {
         return Ok(Series::from_vec(name.clone(), vec![f64::NAN]));
     }
+    let parallel = kwargs.parallel;
+    let can_parallel = parallel && !context.parallel();
     let ncols_minus_1 = ncols.abs_diff(1);
+
+    // let data_1_view = data.slice(s![..nrows, ..ncols_minus_1]);
 
     let mut leaves = data
         .chunks_exact(ncols)
         .map(|sl| ((), &sl[..ncols_minus_1]).into())
         .collect::<Vec<_>>();
 
+    // let mut leaves = matrix_to_empty_leaves(&data_1_view);
     let tree = KDT::from_leaves(
         &mut leaves, KNNDist::LINF
     ).map_err(|e| PolarsError::ComputeError(e.into()))?;
@@ -280,106 +179,6 @@ fn pl_sample_entropy_old(
     };
     // Output
     Ok(Series::from_vec(name.clone(), vec![(b / a).ln()]))
-}
-
-fn pl_sample_entropy_new(
-    inputs: &[Series],
-    kwargs: KDTKwargs,
-    can_parallel: bool,
-) -> PolarsResult<Series> {
-    let radius = inputs[0].f64()?;
-    if radius.len() != 1 {
-        return Err(PolarsError::ComputeError("Radius must be a scalar.".into()));
-    }
-
-    let r = radius.get(0).unwrap_or(-1f64);
-    let name = inputs[1].name();
-    let ncols = inputs[1..].len();
-    let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
-    let nrows = data.len() / ncols;
-
-    if (nrows < ncols) || (r <= 0.) || (!r.is_finite()) {
-        return Ok(Series::from_vec(name.clone(), vec![f64::NAN]));
-    }
-    let ncols_minus_1 = ncols.abs_diff(1);
-
-    let mut leaves = data
-        .chunks_exact(ncols)
-        .map(|sl| ((), &sl[..ncols_minus_1]).into())
-        .collect::<Vec<_>>();
-
-    let tree = KDT::from_leaves(
-        &mut leaves, KNNDist::LINF
-    ).map_err(|e| PolarsError::ComputeError(e.into()))?;
-
-    let b = if can_parallel {
-        let n_threads = POOL.current_num_threads();
-        let splits = split_offsets(nrows, n_threads);
-        let partial_sums = splits.into_par_iter().map(|(offset, len)| {
-            (offset..offset + len).map(|i| {
-                let sl = &data[i * ncols..(i + 1) * ncols];
-                tree.within_count(&sl[..ncols_minus_1], r).unwrap_or(0)
-            }).sum::<u32>()
-        });
-        POOL.install(|| partial_sums.sum::<u32>()) as f64 - nrows as f64
-    } else {
-        data.chunks_exact(ncols).fold(0u32, |acc, sl| {
-            acc + tree.within_count(&sl[..ncols_minus_1], r).unwrap_or(0)
-        }) as f64
-            - nrows as f64
-    };
-
-    drop(tree);
-
-    let nrows_minus_1 = nrows.abs_diff(1);
-    let mut leaves2 = data
-        .chunks_exact(ncols)
-        .take(nrows_minus_1)
-        .map(|sl| ((), sl).into())
-        .collect::<Vec<_>>();
-
-    let tree = KDT::from_leaves(
-        &mut leaves2, KNNDist::LINF
-    ).map_err(|e| PolarsError::ComputeError(e.into()))?;
-
-    let a = if can_parallel {
-        let n_threads = POOL.current_num_threads();
-        let splits = split_offsets(nrows_minus_1, n_threads);
-        let partial_sums = splits.into_par_iter().map(|(offset, len)| {
-            (offset..offset + len).map(|i| {
-                let sl = &data[i * ncols..(i + 1) * ncols];
-                tree.within_count(sl, r).unwrap_or(0)
-            }).sum::<u32>()
-        });
-        POOL.install(|| partial_sums.sum::<u32>()) as f64 - nrows_minus_1 as f64
-    } else {
-        data.chunks_exact(ncols)
-            .take(nrows_minus_1)
-            .fold(0u32, |acc, sl| acc + tree.within_count(sl, r).unwrap_or(0)) as f64
-            - nrows_minus_1 as f64
-    };
-
-    Ok(Series::from_vec(name.clone(), vec![(b / a).ln()]))
-}
-
-#[polars_expr(output_type=Float64)]
-fn pl_sample_entropy(
-    inputs: &[Series],
-    context: CallerContext,
-    kwargs: KDTKwargs,
-) -> PolarsResult<Series> {
-    let can_parallel = kwargs.parallel && !context.parallel();
-    pl_sample_entropy_old(inputs, kwargs, can_parallel)
-}
-
-#[polars_expr(output_type=Float64)]
-fn pl_sample_entropy_new_expr(
-    inputs: &[Series],
-    context: CallerContext,
-    kwargs: KDTKwargs,
-) -> PolarsResult<Series> {
-    let can_parallel = kwargs.parallel && !context.parallel();
-    pl_sample_entropy_new(inputs, kwargs, can_parallel)
 }
 
 /// Comptues the logd part of the KNN entropy
@@ -457,7 +256,7 @@ fn pl_knn_entropy(
     } else if metric_str == "inf" {
         let cd = 1.0;
         let tree = KDT::from_leaves(
-            &mut leaves,
+            &mut leaves, 
             KNNDist::LINF
         ).map_err(|e| PolarsError::ComputeError(e.into()))?;
         (cd, _knn_entropy_helper(tree, &data, k, can_parallel))
