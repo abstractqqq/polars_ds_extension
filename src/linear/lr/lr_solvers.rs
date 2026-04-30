@@ -258,16 +258,17 @@ pub fn faer_solve_lr<T: RealField + Float>(
         }
     }
 
+    let xty = xt * y;
     match how {
         LRSolverMethods::SVD => match xtx.thin_svd() {
-            Ok(svd) => svd.solve(xt * y),
-            _ => xtx.col_piv_qr().solve(xt * y),
+            Ok(svd) => svd.solve(xty.clone()),
+            _ => xtx.col_piv_qr().solve(xty),
         },
         LRSolverMethods::Choleskey => match xtx.llt(Side::Lower) {
-            Ok(llt) => llt.solve(xt * y),
-            _ => xtx.col_piv_qr().solve(xt * y),
+            Ok(llt) => llt.solve(xty.clone()),
+            _ => xtx.col_piv_qr().solve(xty),
         },
-        LRSolverMethods::QR => xtx.col_piv_qr().solve(xt * y),
+        LRSolverMethods::QR => xtx.col_piv_qr().solve(xty),
     }
 }
 
