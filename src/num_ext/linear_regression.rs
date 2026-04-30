@@ -152,8 +152,11 @@ fn build_mat_no_null_f64(
 ) -> PolarsResult<(Vec<f64>, usize, usize, BooleanChunked)> {
     let nrows = inputs[0].len();
     let extra = if add_bias { nrows } else { 0 };
-    let mut mat_slice =
-        series_to_slice_with_extra_cap_unchecked::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
+    let mut mat_slice = series_to_slice_with_extra_cap_unchecked::<Float64Type>(
+        inputs,
+        IndexOrder::Fortran,
+        extra,
+    )?;
     if add_bias {
         mat_slice.extend(std::iter::repeat(1f64).take(nrows));
     }
@@ -474,12 +477,7 @@ fn pl_lr_multi(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Series>
         .map(|(i, s)| {
             let y = s.name();
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                ListPrimitiveChunkedBuilder::new(
-                    y.clone(),
-                    1,
-                    coeffs.nrows(),
-                    DataType::Float64,
-                );
+                ListPrimitiveChunkedBuilder::new(y.clone(), 1, coeffs.nrows(), DataType::Float64);
             builder.append_slice(coeffs.col_as_slice(i));
             builder.finish().into_column()
         })
@@ -790,17 +788,18 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series
 
             // Single pass: t_values, p_values, ci_lower, ci_upper
             let t_alpha = crate::stats_utils::beta::student_t_ppf(0.975, dof);
-            let (t_values, p_values, ci_lower, ci_upper): (Vec<_>, Vec<_>, Vec<_>, Vec<_>) =
-                betas.iter().zip(std_err.iter())
-                    .map(|(b, se)| {
-                        let t = b / se;
-                        let p = match crate::stats_utils::beta::student_t_sf(t.abs(), dof) {
-                            Ok(p) => 2.0 * p,
-                            Err(_) => f64::NAN,
-                        };
-                        (t, p, b - t_alpha * se, b + t_alpha * se)
-                    })
-                    .multiunzip();
+            let (t_values, p_values, ci_lower, ci_upper): (Vec<_>, Vec<_>, Vec<_>, Vec<_>) = betas
+                .iter()
+                .zip(std_err.iter())
+                .map(|(b, se)| {
+                    let t = b / se;
+                    let p = match crate::stats_utils::beta::student_t_sf(t.abs(), dof) {
+                        Ok(p) => 2.0 * p,
+                        Err(_) => f64::NAN,
+                    };
+                    (t, p, b - t_alpha * se, b + t_alpha * se)
+                })
+                .multiunzip();
 
             // Finalize
             let names_ca = name_builder.finish();
@@ -912,17 +911,18 @@ fn pl_wls_report(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
                 .collect_vec();
             // Single pass: t_values, p_values, ci_lower, ci_upper
             let t_alpha = crate::stats_utils::beta::student_t_ppf(0.975, dof);
-            let (t_values, p_values, ci_lower, ci_upper): (Vec<_>, Vec<_>, Vec<_>, Vec<_>) =
-                betas.iter().zip(std_err.iter())
-                    .map(|(b, se)| {
-                        let t = b / se;
-                        let p = match crate::stats_utils::beta::student_t_sf(t.abs(), dof) {
-                            Ok(p) => 2.0 * p,
-                            Err(_) => f64::NAN,
-                        };
-                        (t, p, b - t_alpha * se, b + t_alpha * se)
-                    })
-                    .multiunzip();
+            let (t_values, p_values, ci_lower, ci_upper): (Vec<_>, Vec<_>, Vec<_>, Vec<_>) = betas
+                .iter()
+                .zip(std_err.iter())
+                .map(|(b, se)| {
+                    let t = b / se;
+                    let p = match crate::stats_utils::beta::student_t_sf(t.abs(), dof) {
+                        Ok(p) => 2.0 * p,
+                        Err(_) => f64::NAN,
+                    };
+                    (t, p, b - t_alpha * se, b + t_alpha * se)
+                })
+                .multiunzip();
             // Finalize
             let names_ca = name_builder.finish();
             let names_series = names_ca.into_series();

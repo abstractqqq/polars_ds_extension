@@ -112,14 +112,16 @@ where
     // / unpack / rayon scope and just extend the buffer from each contiguous
     // Arrow slice.
     if matches!(ordering, IndexOrder::Fortran)
-        && series.iter().all(|s| {
-            s.dtype() == &target_dtype && s.null_count() == 0 && s.n_chunks() == 1
-        })
+        && series
+            .iter()
+            .all(|s| s.dtype() == &target_dtype && s.null_count() == 0 && s.n_chunks() == 1)
     {
         let mut membuf = Vec::with_capacity(height * m + extra_cap);
         for s in series {
             let ca = s.unpack::<N>()?;
-            let slice = ca.cont_slice().expect("single chunk + no nulls verified above");
+            let slice = ca
+                .cont_slice()
+                .expect("single chunk + no nulls verified above");
             membuf.extend_from_slice(slice);
         }
         return Ok(membuf);

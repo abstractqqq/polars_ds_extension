@@ -78,10 +78,8 @@ fn tp_fp_frame(
         let negative_count = n - positive_count;
         Ok(temp.select([
             col("threshold"),
-            (col("tp").cast(DataType::Float64) / lit(positive_count as f64))
-                .alias("tpr"),
-            (col("fp").cast(DataType::Float64) / lit(negative_count as f64))
-                .alias("fpr"),
+            (col("tp").cast(DataType::Float64) / lit(positive_count as f64)).alias("tpr"),
+            (col("fp").cast(DataType::Float64) / lit(negative_count as f64)).alias("fpr"),
             col("precision"),
         ]))
     } else {
