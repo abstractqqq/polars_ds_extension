@@ -137,22 +137,24 @@ where
         // actually need to cast or fill nulls.
         let owned;
         let s_ref: &Series = if s.dtype() != &target_dtype || nc > 0 {
-            let casted = if s.dtype() != &target_dtype {
-                s.cast(&target_dtype)?
+            // Cast only when the dtype actually differs; otherwise reuse `s` directly
+            // (avoiding a clone) and only allocate when we need none_to_nan below.
+            let casted: std::borrow::Cow<Series> = if s.dtype() != &target_dtype {
+                std::borrow::Cow::Owned(s.cast(&target_dtype)?)
             } else {
-                s.clone()
+                std::borrow::Cow::Borrowed(s)
             };
             // Only convert null -> NaN when there are nulls to convert.
             if nc > 0 {
                 let nan_filled = match casted.dtype() {
                     DataType::Float32 => casted.f32().unwrap().none_to_nan().into_series(),
                     DataType::Float64 => casted.f64().unwrap().none_to_nan().into_series(),
-                    _ => casted,
+                    _ => casted.into_owned(),
                 };
                 owned = nan_filled;
                 &owned
             } else {
-                owned = casted;
+                owned = casted.into_owned();
                 &owned
             }
         } else {
