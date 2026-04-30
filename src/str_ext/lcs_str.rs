@@ -86,7 +86,9 @@ pub fn lcs_substr_extract(s1: &str, s2: &str) -> String {
     // Extract the longest common substring from `longer_chars`
     // using the calculated `max_len` and `end_index_in_longer_chars`.
     // The starting index is derived by subtracting `max_len` and adding 1.
-    let start_index_in_longer_chars = end_index_in_longer_chars - max_len + 1;
+    // Reorder to + then - to avoid usize underflow in debug builds when
+    // max_len == end_index_in_longer_chars + 1 (i.e. substring starts at index 0).
+    let start_index_in_longer_chars = end_index_in_longer_chars + 1 - max_len;
     longer_chars[start_index_in_longer_chars..=end_index_in_longer_chars]
         .iter()
         .collect::<String>()

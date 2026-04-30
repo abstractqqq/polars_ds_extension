@@ -7,8 +7,9 @@ use serde::Deserialize;
 // https://github.com/scipy/scipy/blob/v1.14.1/scipy/optimize/_pava/pava_pybind.cpp
 // https://www.jstatsoft.org/article/view/v102c01
 
-// The code here has to be compiled in --release
-// Otherwise, a mysterious error will occur. Thank you compiler!
+// Previously this required --release because of a usize underflow at the
+// final iteration of the back-fill loop (`f = t - 1` when t == 0). Now
+// guarded with a `k > 0` check so debug builds work too.
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct IsotonicRegKwargs {
@@ -65,6 +66,11 @@ fn isotonic_regression(x: &mut [f64], w: &mut [f64], r: &mut [usize]) {
         let xk = x[k];
         for i in t..=f {
             x[i] = xk;
+        }
+        if k == 0 {
+            // Last iteration; `f = t - 1` would underflow in usize when t == 0
+            // and is unused after the loop exits, so skip the decrement.
+            break;
         }
         f = t - 1;
     }
