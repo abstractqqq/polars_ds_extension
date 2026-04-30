@@ -715,8 +715,10 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series
             let xtx = x.transpose() * &x;
             let xtx_qr = xtx.col_piv_qr();
             let xtx_inv = xtx_qr.inverse();
-            let xtx_inv_xt = &xtx_inv * x.transpose();
-            let coeffs = &xtx_inv_xt * y;
+            // coeffs = (X^T X)^-1 X^T y. Compute X^T y first to avoid
+            // materialising the (p, n) hat factor just to get coefficients.
+            let xty = x.transpose() * y;
+            let coeffs = &xtx_inv * &xty;
             let betas = coeffs.col_as_slice(0);
             // Degree of Freedom
             let dof = nrows as f64 - nfeats as f64;
@@ -730,6 +732,7 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series
             let adj_r2 = 1.0 - ratio * ((nrows - 1) as f64 / (dof - 1.0));
 
             // std err
+            // xtx_inv_xt is the (p, n) hat factor, only needed for HC* SEs.
             let std_err = match se_type {
                 StandardError::SE => {
                     // total residue, sum of squares
@@ -738,35 +741,44 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series
                         .map(|i| (mse * xtx_inv.get(i, i)).sqrt())
                         .collect_vec()
                 }
-                StandardError::HC0 | StandardError::HC1 => {
-                    let temp_diag = res.get(.., 0).as_diagonal();
-                    let diag = temp_diag * temp_diag;
-                    let var_hc = &xtx_inv_xt * diag * xtx_inv_xt.transpose();
-                    let factor = if se_type == StandardError::HC1 {
-                        (nrows as f64) / ((nrows - nfeats) as f64)
-                    } else {
-                        1f64
-                    };
-                    (0..nfeats)
-                        .map(|i| (var_hc.get(i, i) * factor).sqrt())
-                        .collect_vec()
-                }
-                StandardError::HC2 | StandardError::HC3 => {
-                    let temp_diag = res.get(.., 0).as_diagonal();
-                    let temp_diag_scalers = Col::from_fn(nrows, |i| {
-                        let d = x.get_r(i) * xtx_inv_xt.get(.., i);
-                        if se_type == StandardError::HC3 {
-                            1f64 / (1f64 - d).powi(2)
-                        } else {
-                            1f64 / (1f64 - d)
+                StandardError::HC0
+                | StandardError::HC1
+                | StandardError::HC2
+                | StandardError::HC3 => {
+                    // Compute the (p, n) hat factor only for HC* paths.
+                    let xtx_inv_xt = &xtx_inv * x.transpose();
+                    match se_type {
+                        StandardError::HC0 | StandardError::HC1 => {
+                            let temp_diag = res.get(.., 0).as_diagonal();
+                            let diag = temp_diag * temp_diag;
+                            let var_hc = &xtx_inv_xt * diag * xtx_inv_xt.transpose();
+                            let factor = if se_type == StandardError::HC1 {
+                                (nrows as f64) / ((nrows - nfeats) as f64)
+                            } else {
+                                1f64
+                            };
+                            (0..nfeats)
+                                .map(|i| (var_hc.get(i, i) * factor).sqrt())
+                                .collect_vec()
                         }
-                    });
-                    let diag_scalers = temp_diag_scalers.as_diagonal();
-                    // (diagonal residue squared matrix) * (1 / (1 -h_ii)) or * (1 / (1 -h_ii)^2)
-                    let diag = temp_diag * temp_diag * diag_scalers;
-
-                    let var_hc = &xtx_inv_xt * diag * xtx_inv_xt.transpose();
-                    (0..nfeats).map(|i| (var_hc.get(i, i)).sqrt()).collect_vec()
+                        StandardError::HC2 | StandardError::HC3 => {
+                            let temp_diag = res.get(.., 0).as_diagonal();
+                            let temp_diag_scalers = Col::from_fn(nrows, |i| {
+                                let d = x.get_r(i) * xtx_inv_xt.get(.., i);
+                                if se_type == StandardError::HC3 {
+                                    1f64 / (1f64 - d).powi(2)
+                                } else {
+                                    1f64 / (1f64 - d)
+                                }
+                            });
+                            let diag_scalers = temp_diag_scalers.as_diagonal();
+                            // (diagonal residue squared matrix) * (1 / (1 -h_ii)) or * (1 / (1 -h_ii)^2)
+                            let diag = temp_diag * temp_diag * diag_scalers;
+                            let var_hc = &xtx_inv_xt * diag * xtx_inv_xt.transpose();
+                            (0..nfeats).map(|i| (var_hc.get(i, i)).sqrt()).collect_vec()
+                        }
+                        _ => unreachable!(),
+                    }
                 }
             };
 
