@@ -694,13 +694,12 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
     // index 0 is y_var, 1 is target y. Skip
-    let binding = if inputs[0].dtype() == &DataType::Float64 {
-        inputs[0].clone()
-    } else {
-        inputs[0].cast(&DataType::Float64)?
-    };
-    let y_var = binding.f64().unwrap();
-    let y_var = y_var.get(0).unwrap_or(f64::NAN);
+    // Read single scalar without cloning the whole Series.
+    let y_var: f64 = inputs[0]
+        .get(0)
+        .ok()
+        .and_then(|av| av.try_extract::<f64>().ok())
+        .unwrap_or(f64::NAN);
     let mut name_builder = StringChunkedBuilder::new(
         "features".into(),
         inputs.len().abs_diff(2) + (add_bias) as usize,
@@ -858,13 +857,12 @@ fn pl_wls_report(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
     };
     let weights = binding.f64().unwrap();
     let weights = weights.cont_slice().unwrap();
-    let binding2 = if inputs[1].dtype() == &DataType::Float64 {
-        inputs[1].clone()
-    } else {
-        inputs[1].cast(&DataType::Float64)?
-    };
-    let y_var = binding2.f64().unwrap();
-    let y_var = y_var.get(0).unwrap_or(f64::NAN);
+    // Read single scalar without cloning the whole Series.
+    let y_var: f64 = inputs[1]
+        .get(0)
+        .ok()
+        .and_then(|av| av.try_extract::<f64>().ok())
+        .unwrap_or(f64::NAN);
     // index 0 is weights, 1 is y_var, 2 is target y. Skip them
     let mut name_builder = StringChunkedBuilder::new(
         "features".into(),
