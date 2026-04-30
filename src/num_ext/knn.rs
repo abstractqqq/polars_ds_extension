@@ -524,65 +524,6 @@ where
         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
         ListChunked::from_chunk_iter("".into(), chunks.into_iter().flatten())
     } else {
-        // BUG (old): passes data.len() (= nrows*ncols) instead of nrows.
-        let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
-            "".into(),
-            data.len(),
-            16,
-            DataType::UInt32,
-        );
-
-        for p in data.chunks_exact(ncols) {
-            // C order (row major) makes sure rows are contiguous
-            if let Some(v) = tree.within(p, r, sort) {
-                builder.append_values_iter(v.into_iter().map(|nb| nb.to_item()));
-            } else {
-                builder.append_null();
-            }
-        }
-        builder.finish()
-    }
-}
-
-/// Fixed variant: serial-path builder allocated with `nrows` (correct row count).
-pub fn query_radius_ptwise_fixed<'a, M: Metric>(
-    tree: &KDT<'a, u32, M>,
-    data: &'a [f64],
-    r: f64,
-    can_parallel: bool,
-    sort: bool,
-) -> ListChunked
-where
-    M: std::marker::Sync,
-{
-    let ncols = tree.dim;
-    let nrows = data.len() / ncols;
-    if can_parallel {
-        let n_threads = POOL.current_num_threads();
-        let splits = split_offsets(nrows, n_threads);
-        let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-            let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
-                "".into(),
-                len,
-                16,
-                DataType::UInt32,
-            );
-
-            let subslice = &data[offset * ncols..(offset + len) * ncols];
-            for p in subslice.chunks_exact(ncols) {
-                if let Some(v) = tree.within(p, r, sort) {
-                    builder.append_values_iter(v.into_iter().map(|nb| nb.to_item()));
-                } else {
-                    builder.append_null();
-                }
-            }
-            let ca = builder.finish();
-            ca.downcast_iter().cloned().collect::<Vec<_>>()
-        });
-        let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-        ListChunked::from_chunk_iter("".into(), chunks.into_iter().flatten())
-    } else {
-        // FIX: use nrows, not data.len()
         let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
             "".into(),
             nrows,
@@ -602,7 +543,8 @@ where
     }
 }
 
-fn pl_query_radius_ptwise_old(
+#[polars_expr(output_type_func=list_u32_output)]
+fn pl_query_radius_ptwise(
     inputs: &[Series],
     context: CallerContext,
     kwargs: KDTRadiusKwargs,
@@ -624,50 +566,6 @@ fn pl_query_radius_ptwise_old(
         }
         Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
     }
-}
-
-fn pl_query_radius_ptwise_new(
-    inputs: &[Series],
-    context: CallerContext,
-    kwargs: KDTRadiusKwargs,
-) -> PolarsResult<Series> {
-    let can_parallel = kwargs.parallel && !context.parallel();
-    let radius = kwargs.r;
-    let sort = kwargs.sort;
-
-    let id = inputs[0].u32()?;
-    let id = id.cont_slice()?;
-
-    let ncols = inputs[1..].len();
-    let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
-    match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
-        Ok(d) => {
-            let mut leaves = slice_to_leaves(&data, ncols, id);
-            let tree = KDT::from_leaves(&mut leaves, d).map_err(|e| PolarsError::ComputeError(e.into()))?;
-            Ok(query_radius_ptwise_fixed(&tree, &data, radius, can_parallel, sort).into_series())
-        }
-        Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
-    }
-}
-
-// Production entry point — stays on _old until parity verified.
-#[polars_expr(output_type_func=list_u32_output)]
-fn pl_query_radius_ptwise(
-    inputs: &[Series],
-    context: CallerContext,
-    kwargs: KDTRadiusKwargs,
-) -> PolarsResult<Series> {
-    pl_query_radius_ptwise_old(inputs, context, kwargs)
-}
-
-// Parity probe — NEW NEW NEW
-#[polars_expr(output_type_func=list_u32_output)]
-fn pl_query_radius_ptwise_new_expr(
-    inputs: &[Series],
-    context: CallerContext,
-    kwargs: KDTRadiusKwargs,
-) -> PolarsResult<Series> {
-    pl_query_radius_ptwise_new(inputs, context, kwargs)
 }
 
 /// Reference-old path for the null-safe parity case.
@@ -693,8 +591,7 @@ fn pl_query_radius_ptwise_null_safe_ref(
             let mut leaves = slice_to_leaves(&data, ncols, id);
             let tree = KDT::from_leaves(&mut leaves, d)
                 .map_err(|e| PolarsError::ComputeError(e.into()))?;
-            // Use the capacity-fixed helper so serial/parallel behaviour matches _new_expr
-            Ok(query_radius_ptwise_fixed(&tree, &data, radius, can_parallel, sort).into_series())
+            Ok(query_radius_ptwise(&tree, &data, radius, can_parallel, sort).into_series())
         }
         Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
     }
@@ -837,51 +734,11 @@ pub fn query_nb_cnt<'a, M: Metric>(
 where
     M: std::marker::Sync,
 {
-    // as_slice.unwrap() is safe because when we create the matrices, we specified C order.
     let ncols = tree.dim;
     let nrows = data.len() / ncols;
     if can_parallel {
         let splits = split_offsets(nrows, POOL.current_num_threads());
         let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-            // BUG (old): each thread allocates `nrows` instead of `len`.
-            let mut builder: PrimitiveChunkedBuilder<UInt32Type> =
-                PrimitiveChunkedBuilder::new("".into(), nrows);
-
-            let subslice = &data[offset * ncols..(offset + len) * ncols];
-            for row in subslice.chunks_exact(ncols) {
-                builder.append_option(tree.within_count(row, r));
-            }
-            let ca = builder.finish();
-            ca.downcast_iter().cloned().collect::<Vec<_>>()
-        });
-        let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
-        UInt32Chunked::from_chunk_iter("cnt".into(), chunks.into_iter().flatten())
-    } else {
-        UInt32Chunked::from_iter_options(
-            "cnt".into(),
-            data.chunks_exact(ncols)
-                .map(|row| tree.within_count(row, r)),
-        )
-    }
-}
-
-/// Fixed variant: each parallel thread allocates `len` (its share), not `nrows`.
-#[inline]
-pub fn query_nb_cnt_fixed<'a, M: Metric>(
-    tree: &KDT<'a, (), M>,
-    data: &'a [f64],
-    r: f64,
-    can_parallel: bool,
-) -> UInt32Chunked
-where
-    M: std::marker::Sync,
-{
-    let ncols = tree.dim;
-    let nrows = data.len() / ncols;
-    if can_parallel {
-        let splits = split_offsets(nrows, POOL.current_num_threads());
-        let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
-            // FIX: allocate len, not nrows
             let mut builder: PrimitiveChunkedBuilder<UInt32Type> =
                 PrimitiveChunkedBuilder::new("".into(), len);
 
@@ -948,11 +805,10 @@ where
     }
 }
 
-fn pl_nb_cnt_old(
-    inputs: &[Series],
-    context: CallerContext,
-    kwargs: KDTKwargs,
-) -> PolarsResult<Series> {
+/// For every point in this dataframe, find the number of neighbors within radius r
+/// The point itself is always considered as a neighbor to itself.
+#[polars_expr(output_type=UInt32)]
+fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> PolarsResult<Series> {
     let radius = inputs[0].f64()?;
     let can_parallel = kwargs.parallel && !context.parallel();
 
@@ -988,64 +844,4 @@ fn pl_nb_cnt_old(
             "Inputs must have the same length or one of them must be a scalar.".into(),
         ))
     }
-}
-
-fn pl_nb_cnt_new(
-    inputs: &[Series],
-    context: CallerContext,
-    kwargs: KDTKwargs,
-) -> PolarsResult<Series> {
-    let radius = inputs[0].f64()?;
-    let can_parallel = kwargs.parallel && !context.parallel();
-
-    let ncols = inputs[1..].len();
-    let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
-    let nrows = data.len() / ncols;
-
-    if radius.len() == 1 {
-        let r = radius.get(0).unwrap();
-        match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
-            Ok(d) => {
-                let mut leaves = slice_to_empty_leaves(&data, ncols);
-                let tree = KDT::from_leaves(&mut leaves, d).map_err(|e| PolarsError::ComputeError(e.into()))?;
-                Ok(query_nb_cnt_fixed(&tree, &data, r, can_parallel)
-                    .with_name("cnt".into())
-                    .into_series())
-            }
-            Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
-        }
-    } else if radius.len() == nrows {
-        match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
-            Ok(d) => {
-                let mut leaves = slice_to_empty_leaves(&data, ncols);
-                let tree = KDT::from_leaves(&mut leaves, d).map_err(|e| PolarsError::ComputeError(e.into()))?;
-                Ok(query_nb_cnt_w_radius(&tree, &data, radius, can_parallel)
-                    .with_name("cnt".into())
-                    .into_series())
-            }
-            Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
-        }
-    } else {
-        Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
-        ))
-    }
-}
-
-/// For every point in this dataframe, find the number of neighbors within radius r
-/// The point itself is always considered as a neighbor to itself.
-// Production entry point — stays on _old until parity verified.
-#[polars_expr(output_type=UInt32)]
-fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> PolarsResult<Series> {
-    pl_nb_cnt_old(inputs, context, kwargs)
-}
-
-// Parity probe — NEW NEW NEW
-#[polars_expr(output_type=UInt32)]
-fn pl_nb_cnt_new_expr(
-    inputs: &[Series],
-    context: CallerContext,
-    kwargs: KDTKwargs,
-) -> PolarsResult<Series> {
-    pl_nb_cnt_new(inputs, context, kwargs)
 }
