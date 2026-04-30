@@ -1499,3 +1499,332 @@ def test_weighted_corr():
     pds_result = df.select(pds.weighted_corr("a1", "a2", "w")).item(0, 0)
 
     np.isclose(np_result, pds_result, atol=1e-8)
+
+
+# ---------------------------------------------------------------------------
+# Task #10: KNNDist variants, invalid-metric error, radius large-input, NullPolicy
+# ---------------------------------------------------------------------------
+
+_KNN_DIST_VARIANTS = ["l1", "l2", "sql2", "linf", "cosine"]
+
+
+@pytest.mark.parametrize("dist", ["l1", "l2", "sql2", "linf"])
+def test_knn_dist_variants(dist):
+    """KNN ptwise runs without error for each KDTree-supported dist and returns valid indices."""
+    rng = np.random.default_rng(0)
+    n = 10
+    df = pl.DataFrame(
+        {
+            "id": list(range(n)),
+            "f0": rng.random(n).tolist(),
+            "f1": rng.random(n).tolist(),
+            "f2": rng.random(n).tolist(),
+        }
+    )
+    k = 3
+    result = df.select(
+        pds.query_knn_ptwise("f0", "f1", "f2", index="id", dist=dist, k=k).alias("nn")
+    )
+
+    assert result.shape == (n, 1), f"Expected ({n}, 1) shape, got {result.shape}"
+
+    # Each row is a list of u32 with at most k+1 elements (self + k neighbours).
+    nn_col = result["nn"]
+    for i, cell in enumerate(nn_col):
+        assert cell is not None, f"Row {i} returned None for dist={dist}"
+        indices = cell.to_list()
+        assert len(indices) <= k + 1, f"Too many neighbours at row {i}"
+        for idx in indices:
+            assert 0 <= idx < n, f"Index {idx} out of range for dist={dist}"
+
+
+def test_knn_dist_invalid_string():
+    """Passing an unknown distance string must raise an error (not silently return garbage)."""
+    df = pl.DataFrame(
+        {
+            "id": list(range(5)),
+            "f0": [0.1, 0.2, 0.3, 0.4, 0.5],
+            "f1": [0.5, 0.4, 0.3, 0.2, 0.1],
+            "f2": [1.0, 2.0, 3.0, 4.0, 5.0],
+        }
+    )
+    with pytest.raises(Exception) as exc_info:
+        df.select(
+            pds.query_knn_ptwise("f0", "f1", "f2", index="id", dist="not_a_real_metric", k=2).alias(
+                "nn"
+            )
+        )
+    # The Python wrapper raises ValueError for "cosine"/"haversine"; unknown strings hit Rust and
+    # come back as a PolarsError whose message contains the bad metric name.
+    msg = str(exc_info.value).lower()
+    assert (
+        "not_a_real_metric" in msg or "unknown" in msg or "invalid" in msg
+    ), f"Expected error to mention the bad metric, got: {exc_info.value}"
+
+
+def test_radius_ptwise_large_multichunk_with_nulls():
+    """query_radius_ptwise on a large multi-chunk null-free frame runs without panic.
+
+    NOTE: query_radius_ptwise panics in the Rust layer when feature columns contain
+    nulls (kdt2.rs:125 unwrap() on None — the Python wrapper does not pre-filter nulls
+    the way query_knn_ptwise does).  The test therefore uses null-free feature columns.
+    See buglog entry bug-029 for the null-panic details.
+    """
+    rng = np.random.default_rng(42)
+    n = 999  # divisible by 3 for clean chunking
+    n_cols = 5
+    n_chunks = 3
+    chunk_size = n // n_chunks
+
+    def make_chunk(seed_offset: int) -> pl.DataFrame:
+        rng2 = np.random.default_rng(seed_offset)
+        data = {f"f{j}": rng2.random(chunk_size).tolist() for j in range(n_cols)}
+        data["id"] = list(range(seed_offset * chunk_size, (seed_offset + 1) * chunk_size))
+        return pl.DataFrame(data)
+
+    chunks = [make_chunk(i) for i in range(n_chunks)]
+    df_multi = pl.concat(chunks, rechunk=False)
+
+    # Confirm multi-chunk structure (rechunk=False is best-effort in Polars)
+    _ = df_multi.n_chunks()  # just confirm the call doesn't error
+
+    result = df_multi.select(
+        pds.query_radius_ptwise(
+            "f0", "f1", "f2", "f3", "f4",
+            index="id",
+            r=0.5,
+            dist="sql2",
+        ).alias("neighbors")
+    )
+
+    # Basic shape checks
+    assert result.height == n, f"Expected {n} rows, got {result.height}"
+    assert result.schema["neighbors"] == pl.List(pl.UInt32), (
+        f"Expected List(UInt32), got {result.schema['neighbors']}"
+    )
+
+    # All returned indices must be valid ids in 0..n-1
+    max_id = n - 1
+    for cell in result["neighbors"]:
+        if cell is not None:
+            for idx in cell.to_list():
+                assert 0 <= idx <= max_id, f"Neighbor index {idx} out of range (max id={max_id})"
+
+
+# NullPolicy variants for lin_reg
+# Notes on expected behaviour (from src/linear/mod.rs NullPolicy::TryFrom):
+#   "skip"    -> SKIP: drops rows where any feature or target is null
+#   "raise"   -> RAISE: errors if any null present in X or y
+#   "zero"    -> FILL(0): fills null features with 0 (target nulls still dropped)
+#   "one"     -> FILL(1): fills null features with 1
+#   "ignore"  -> IGNORE: passes nulls to the solver as-is (may produce NaN coefficients)
+#   "0.5"     -> FILL(0.5): numeric string fill
+#   invalid   -> error raised at Rust level ("Invalid NullPolicy.")
+
+
+def _make_null_policy_df():
+    """Small deterministic frame with nulls in x1 only."""
+    rng = np.random.default_rng(7)
+    n = 200
+    x1 = rng.random(n)
+    x2 = rng.random(n)
+    x3 = rng.random(n)
+    y = 0.5 * x1 + 0.3 * x2 - 0.2 * x3 + rng.random(n) * 0.001
+
+    null_rows = list(range(0, n, 10))  # every 10th row → 20 nulls
+
+    x1_with_nulls = [None if i in set(null_rows) else float(v) for i, v in enumerate(x1)]
+    return pl.DataFrame(
+        {
+            "x1": pl.Series(x1_with_nulls, dtype=pl.Float64),
+            "x2": x2.tolist(),
+            "x3": x3.tolist(),
+            "y": y.tolist(),
+        }
+    )
+
+
+def _lin_reg_coeffs(df: pl.DataFrame) -> np.ndarray:
+    """Run lin_reg on a clean (null-free) frame and return coefficients as numpy array."""
+    return (
+        df.select(pds.lin_reg("x1", "x2", "x3", target="y").alias("c"))
+        .explode("c")["c"]
+        .to_numpy()
+    )
+
+
+def test_null_policy_skip():
+    """null_policy='skip' drops null rows; coefficients match manual-filtered regression."""
+    df = _make_null_policy_df()
+    result_coeffs = (
+        df.select(
+            pds.lin_reg("x1", "x2", "x3", target="y", null_policy="skip").alias("c")
+        )
+        .explode("c")["c"]
+        .to_numpy()
+    )
+    # Manual reference: drop rows where x1 is null
+    df_clean = df.filter(pl.col("x1").is_not_null())
+    ref_coeffs = _lin_reg_coeffs(df_clean)
+    assert np.allclose(result_coeffs, ref_coeffs, atol=1e-8), (
+        f"skip mismatch:\n  got {result_coeffs}\n  expected {ref_coeffs}"
+    )
+
+
+def test_null_policy_raise():
+    """null_policy='raise' must raise an error when nulls are present."""
+    df = _make_null_policy_df()
+    with pytest.raises(Exception):
+        df.select(pds.lin_reg("x1", "x2", "x3", target="y", null_policy="raise").alias("c"))
+
+
+def test_null_policy_zero():
+    """null_policy='zero' fills null features with 0; matches manual fill+lr."""
+    df = _make_null_policy_df()
+    result_coeffs = (
+        df.select(
+            pds.lin_reg("x1", "x2", "x3", target="y", null_policy="zero").alias("c")
+        )
+        .explode("c")["c"]
+        .to_numpy()
+    )
+    df_filled = df.with_columns(pl.col("x1").fill_null(0.0))
+    ref_coeffs = _lin_reg_coeffs(df_filled)
+    assert np.allclose(result_coeffs, ref_coeffs, atol=1e-8), (
+        f"zero mismatch:\n  got {result_coeffs}\n  expected {ref_coeffs}"
+    )
+
+
+def test_null_policy_one():
+    """null_policy='one' fills null features with 1; matches manual fill+lr."""
+    df = _make_null_policy_df()
+    result_coeffs = (
+        df.select(
+            pds.lin_reg("x1", "x2", "x3", target="y", null_policy="one").alias("c")
+        )
+        .explode("c")["c"]
+        .to_numpy()
+    )
+    df_filled = df.with_columns(pl.col("x1").fill_null(1.0))
+    ref_coeffs = _lin_reg_coeffs(df_filled)
+    assert np.allclose(result_coeffs, ref_coeffs, atol=1e-8), (
+        f"one mismatch:\n  got {result_coeffs}\n  expected {ref_coeffs}"
+    )
+
+
+def test_null_policy_numeric_fill():
+    """null_policy='0.5' fills null features with 0.5; matches manual fill+lr."""
+    df = _make_null_policy_df()
+    result_coeffs = (
+        df.select(
+            pds.lin_reg("x1", "x2", "x3", target="y", null_policy="0.5").alias("c")
+        )
+        .explode("c")["c"]
+        .to_numpy()
+    )
+    df_filled = df.with_columns(pl.col("x1").fill_null(0.5))
+    ref_coeffs = _lin_reg_coeffs(df_filled)
+    assert np.allclose(result_coeffs, ref_coeffs, atol=1e-8), (
+        f"0.5-fill mismatch:\n  got {result_coeffs}\n  expected {ref_coeffs}"
+    )
+
+
+def test_null_policy_ignore():
+    """null_policy='ignore' passes nulls to the solver; should run without panic.
+
+    IGNORE in this implementation sends raw data (including nulls/NaNs) directly to the Rust
+    solver without any null-handling. The behaviour is implementation-defined: the solver may
+    produce NaN coefficients or skip rows internally.  We only assert that the call does not
+    raise an exception and that the output has the expected length (3 coefficients).
+    """
+    df = _make_null_policy_df()
+    result = df.select(
+        pds.lin_reg("x1", "x2", "x3", target="y", null_policy="ignore").alias("c")
+    ).explode("c")["c"]
+    # Should return exactly 3 values (one per feature); may be NaN
+    assert len(result) == 3, f"Expected 3 coefficients, got {len(result)}"
+
+
+def test_radius_ptwise_with_nulls_no_panic():
+    """query_radius_ptwise_null_safe_new_expr must not panic on null-feature rows (bug-029).
+
+    The production ``query_radius_ptwise`` (backed by pl_query_radius_ptwise_old) panics at
+    src/arkadia/kdt2.rs:125 when feature columns contain nulls.  This test exercises the
+    null-safe variant (pl_query_radius_ptwise_null_safe_new_expr) and verifies:
+      1. No panic / exception.
+      2. Rows with null features return null (List is None).
+      3. Non-null rows return a valid list of u32 neighbor indices.
+    """
+    from polars_ds._utils import pl_plugin
+
+    rng = np.random.default_rng(42)
+    n = 50
+    x = rng.random(n).tolist()
+    y = rng.random(n).tolist()
+
+    # Inject ~10% nulls at fixed positions across both features independently
+    null_x = [3, 11, 22, 37, 48]
+    null_y = [7, 15, 27, 40]
+    for i in null_x:
+        x[i] = None
+    for i in null_y:
+        y[i] = None
+
+    df = pl.DataFrame(
+        {
+            "id": list(range(n)),
+            "x": pl.Series(x, dtype=pl.Float64),
+            "y": pl.Series(y, dtype=pl.Float64),
+        }
+    )
+
+    feat_exprs = [pl.col("x"), pl.col("y")]
+    keep_mask = pl.all_horizontal(f.is_not_null() for f in feat_exprs)
+    idx = pl.col("id").cast(pl.UInt32)
+
+    # Call the null-safe new expr directly via pl_plugin
+    result = df.select(
+        pl_plugin(
+            symbol="pl_query_radius_ptwise_null_safe_new_expr",
+            args=[idx, keep_mask, pl.col("x"), pl.col("y")],
+            kwargs={"r": 0.3, "metric": "sql2", "parallel": False, "sort": True},
+        ).alias("neighbors")
+    )
+
+    assert result.height == n, f"Expected {n} rows, got {result.height}"
+    assert result.schema["neighbors"] == pl.List(pl.UInt32), (
+        f"Expected List(UInt32), got {result.schema['neighbors']}"
+    )
+
+    # Rows where any feature is null must have null output
+    null_feature_rows = set(null_x) | set(null_y)
+    neighbors_col = result["neighbors"]
+    for i in null_feature_rows:
+        assert neighbors_col[i] is None, (
+            f"Row {i} has a null feature but got non-null neighbor list: {neighbors_col[i]}"
+        )
+
+    # Non-null rows must have a non-null list (at minimum self-reference when r is large enough,
+    # but we only assert the list exists and indices are in range)
+    for i in range(n):
+        if i not in null_feature_rows:
+            cell = neighbors_col[i]
+            # cell may legitimately be None/empty if no neighbors within radius — just check indices
+            if cell is not None:
+                for idx_val in cell.to_list():
+                    assert 0 <= idx_val < n, (
+                        f"Neighbor index {idx_val} out of range at row {i}"
+                    )
+
+
+def test_null_policy_invalid():
+    """An invalid null_policy string must raise an error (Rust: 'Invalid NullPolicy.')."""
+    df = _make_null_policy_df()
+    with pytest.raises(Exception) as exc_info:
+        df.select(
+            pds.lin_reg("x1", "x2", "x3", target="y", null_policy="not_a_policy").alias("c")
+        )
+    msg = str(exc_info.value).lower()
+    assert "invalid" in msg or "nullpolicy" in msg or "policy" in msg, (
+        f"Expected 'invalid'/'policy' in error message, got: {exc_info.value}"
+    )

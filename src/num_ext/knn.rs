@@ -670,6 +670,46 @@ fn pl_query_radius_ptwise_new_expr(
     pl_query_radius_ptwise_new(inputs, context, kwargs)
 }
 
+/// Reference-old path for the null-safe parity case.
+/// Input layout: [idx_u32, keep_mask_bool, *feats_f64]
+/// The keep_mask is IGNORED — uses old (non-null-safe) logic for parity on null-free data.
+/// On null-free inputs this must produce bit-identical output to pl_query_radius_ptwise_null_safe_new_expr.
+fn pl_query_radius_ptwise_null_safe_ref(
+    inputs: &[Series],
+    context: CallerContext,
+    kwargs: KDTRadiusKwargs,
+) -> PolarsResult<Series> {
+    let can_parallel = kwargs.parallel && !context.parallel();
+    let radius = kwargs.r;
+    let sort = kwargs.sort;
+
+    let id = inputs[0].u32()?;
+    let id = id.cont_slice()?;
+    // inputs[1] is keep_mask — skip it
+    let ncols = inputs[2..].len();
+    let data = series_to_slice::<Float64Type>(&inputs[2..], IndexOrder::C)?;
+    match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
+        Ok(d) => {
+            let mut leaves = slice_to_leaves(&data, ncols, id);
+            let tree = KDT::from_leaves(&mut leaves, d)
+                .map_err(|e| PolarsError::ComputeError(e.into()))?;
+            // Use the capacity-fixed helper so serial/parallel behaviour matches _new_expr
+            Ok(query_radius_ptwise_fixed(&tree, &data, radius, can_parallel, sort).into_series())
+        }
+        Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
+    }
+}
+
+// Parity "old" entry — accepts null-safe input layout so oracle can compare apples-to-apples.
+#[polars_expr(output_type_func=list_u32_output)]
+fn pl_query_radius_ptwise_null_safe(
+    inputs: &[Series],
+    context: CallerContext,
+    kwargs: KDTRadiusKwargs,
+) -> PolarsResult<Series> {
+    pl_query_radius_ptwise_null_safe_ref(inputs, context, kwargs)
+}
+
 /// Null-safe radius search.
 /// All feature rows where any column is null are excluded from the kd-tree
 /// (they can never be neighbors) and return null when queried.

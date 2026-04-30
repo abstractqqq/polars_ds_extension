@@ -524,6 +524,43 @@ def query_radius_ptwise(
     )
 
 
+def _query_radius_ptwise_null_safe(
+    *features: str | pl.Expr,
+    index: str | pl.Expr,
+    r: float,
+    dist: Distance = "sql2",
+    sort: bool = True,
+    parallel: bool = False,
+) -> pl.Expr:
+    """Null-safe variant of query_radius_ptwise (parity probe / bug-029 fix).
+
+    Rows where any feature column is null are excluded from the kd-tree and
+    return null in the output list.  Uses the corrected serial-path builder
+    size (bug-030 capacity fix is also included).
+
+    This function is intended for the parity oracle and regression tests.
+    The production symbol ``pl_query_radius_ptwise`` still dispatches to the
+    old (panicky) path until full parity is confirmed.
+    """
+    if r <= 0.0:
+        raise ValueError("Input `r` must be > 0.")
+    if dist in ("cosine", "h", "haversine"):
+        raise ValueError(f"Distance {dist} doesn't work with current implementation.")
+
+    idx = to_expr(index).cast(pl.UInt32).rechunk()
+    feats: List[pl.Expr] = [to_expr(e) for e in features]
+    keep_mask = pl.all_horizontal(f.is_not_null() for f in feats)
+
+    cols = [idx, keep_mask]
+    cols.extend(feats)
+
+    return pl_plugin(
+        symbol="pl_query_radius_ptwise_null_safe_new_expr",
+        args=cols,
+        kwargs={"r": r, "metric": str(dist).lower(), "parallel": parallel, "sort": sort},
+    )
+
+
 def query_radius_freq_cnt(
     *features: str | pl.Expr,
     index: str | pl.Expr,
