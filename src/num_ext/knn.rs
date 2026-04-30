@@ -19,6 +19,26 @@ use pyo3_polars::{
 };
 use serde::Deserialize;
 
+/// Eval mask for the serial KNN path.
+/// - `All` — every row is evaluated (skip_eval = false).
+/// - `Sparse` — a `BooleanChunked` column gates evaluation; no `Vec<bool>` is allocated.
+///
+/// The parallel path always materialises a `Vec<bool>` for contiguous slice access.
+pub(crate) enum EvalMask<'a> {
+    All,
+    Sparse(&'a BooleanChunked),
+}
+
+impl EvalMask<'_> {
+    #[inline(always)]
+    pub(crate) fn get(&self, i: usize) -> bool {
+        match self {
+            EvalMask::All => true,
+            EvalMask::Sparse(ca) => ca.get(i).unwrap_or(false),
+        }
+    }
+}
+
 pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
     let idx = Field::new("idx".into(), DataType::List(Box::new(DataType::UInt32)));
     let dist = Field::new("dist".into(), DataType::List(Box::new(DataType::Float64)));
@@ -141,16 +161,19 @@ fn pl_knn_avg(
 /// KNN Point-wise
 /// Always do k + 1 because this operation is in-dataframe, and this means
 /// that the point itself is always a neighbor to itself.
-/// Eval mask determines which values will be evaluated. Some can be skipped (Null will be returned) if user desires
-pub fn knn_ptwise<'a, M: Metric>(
+/// Eval mask determines which values will be evaluated. Some can be skipped (Null will be returned) if user desires.
+/// `eval_mask_par` is used only when `can_parallel = true` (requires contiguous `&[bool]` slicing).
+/// `eval_mask_ser` is used only when `can_parallel = false` (no `Vec<bool>` allocation on serial path).
+pub fn knn_ptwise<'a, 'b, M: Metric>(
     tree: &KDT<'a, u32, M>,
-    eval_mask: Vec<bool>,
+    eval_mask_par: Vec<bool>,
+    eval_mask_ser: EvalMask<'b>,
     data: &'a [f64],
     k: usize,
     can_parallel: bool,
     max_bound: f64,
     epsilon: f64,
-) -> ListChunked 
+) -> ListChunked
 where M: Sync {
     let ncols = tree.dim;
     let nrows = data.len() / ncols;
@@ -166,7 +189,7 @@ where M: Sync {
             );
 
             let subslice = &data[offset * ncols..(offset + len) * ncols];
-            let mask = &eval_mask[offset..offset + len];
+            let mask = &eval_mask_par[offset..offset + len];
             for (b, p) in mask.iter().zip(subslice.chunks_exact(ncols)) {
                 if *b {
                     match tree.knn_bounded(k + 1, p, max_bound, epsilon) {
@@ -187,12 +210,12 @@ where M: Sync {
     } else {
         let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
             "knn".into(),
-            eval_mask.len(),
+            nrows,
             k + 1,
             DataType::UInt32,
         );
-        for (b, p) in eval_mask.into_iter().zip(data.chunks_exact(ncols)) {
-            if b {
+        for (i, p) in data.chunks_exact(ncols).enumerate() {
+            if eval_mask_ser.get(i) {
                 match tree.knn_bounded(k + 1, p, max_bound, epsilon) {
                     Some(nbs) => builder.append_values_iter(nbs.into_iter().map(|nb| nb.to_item())),
                     None => builder.append_null(),
@@ -285,16 +308,29 @@ fn pl_knn_ptwise(
     let keep_mask = inputs[1].bool().unwrap();
 
     let mut inputs_offset = 2;
-    let eval_mask = if skip_eval {
-        let eval_mask = inputs[2].bool().unwrap();
-        inputs_offset = 3;
-        eval_mask
-            .iter()
-            .map(|b| b.unwrap_or(false))
-            .collect::<Vec<bool>>()
+    // Parallel path materialises Vec<bool> for contiguous slice access.
+    // Serial path uses BooleanChunked directly via EvalMask — no Vec allocation.
+    let eval_mask_par: Vec<bool>;
+    let eval_mask_ser: EvalMask<'_>;
+    if can_parallel {
+        if skip_eval {
+            let ca = inputs[2].bool().unwrap();
+            inputs_offset = 3;
+            eval_mask_par = ca.iter().map(|b| b.unwrap_or(false)).collect();
+        } else {
+            eval_mask_par = vec![true; nrows];
+        }
+        eval_mask_ser = EvalMask::All; // unused by parallel branch
     } else {
-        vec![true; nrows]
-    };
+        eval_mask_par = Vec::new(); // unused by serial branch
+        if skip_eval {
+            let ca = inputs[2].bool().unwrap();
+            inputs_offset = 3;
+            eval_mask_ser = EvalMask::Sparse(ca);
+        } else {
+            eval_mask_ser = EvalMask::All;
+        }
+    }
 
     let ncols = inputs[inputs_offset..].len();
     let data = series_to_slice::<Float64Type>(&inputs[inputs_offset..], IndexOrder::C)?;
@@ -305,7 +341,8 @@ fn pl_knn_ptwise(
             let tree = KDT::from_leaves(&mut leaves, d).map_err(|e| PolarsError::ComputeError(e.into()))?;
             Ok(knn_ptwise(
                 &tree,
-                eval_mask,
+                eval_mask_par,
+                eval_mask_ser,
                 &data,
                 k,
                 can_parallel,
@@ -318,15 +355,18 @@ fn pl_knn_ptwise(
     }
 }
 
-pub fn knn_ptwise_w_dist<'a, M: Metric>(
+/// `eval_mask_par` is used only when `can_parallel = true` (requires contiguous `&[bool]` slicing).
+/// `eval_mask_ser` is used only when `can_parallel = false` (no `Vec<bool>` allocation on serial path).
+pub fn knn_ptwise_w_dist<'a, 'b, M: Metric>(
     tree: &KDT<'a, u32, M>,
-    eval_mask: Vec<bool>,
+    eval_mask_par: Vec<bool>,
+    eval_mask_ser: EvalMask<'b>,
     data: &'a [f64],
     k: usize,
     can_parallel: bool,
     max_bound: f64,
     epsilon: f64,
-) -> (ListChunked, ListChunked) 
+) -> (ListChunked, ListChunked)
 where M: Sync {
     let ncols = tree.dim;
     let nrows = data.len() / ncols;
@@ -350,7 +390,7 @@ where M: Sync {
                         DataType::Float64,
                     );
                     let subslice = &data[offset * ncols..(offset + len) * ncols];
-                    let mask = &eval_mask[offset..offset + len];
+                    let mask = &eval_mask_par[offset..offset + len];
                     let mut distances: Vec<f64> = Vec::with_capacity(k + 1);
                     let mut neighbors: Vec<u32> = Vec::with_capacity(k + 1);
                     for (b, p) in mask.iter().zip(subslice.chunks_exact(ncols)) {
@@ -405,8 +445,8 @@ where M: Sync {
         );
         let mut distances: Vec<f64> = Vec::with_capacity(k + 1);
         let mut neighbors: Vec<u32> = Vec::with_capacity(k + 1);
-        for (b, p) in eval_mask.into_iter().zip(data.chunks_exact(ncols)) {
-            if b {
+        for (i, p) in data.chunks_exact(ncols).enumerate() {
+            if eval_mask_ser.get(i) {
                 match tree.knn_bounded(k + 1, p, max_bound, epsilon) {
                     Some(nbs) => {
                         distances.clear();
@@ -451,16 +491,29 @@ fn pl_knn_ptwise_w_dist(
     let null_mask = inputs[1].bool().unwrap();
 
     let mut inputs_offset = 2;
-    let eval_mask = if skip_eval {
-        let eval_mask = inputs[2].bool().unwrap();
-        inputs_offset = 3;
-        eval_mask
-            .iter()
-            .map(|b| b.unwrap_or(false))
-            .collect::<Vec<bool>>()
+    // Parallel path materialises Vec<bool> for contiguous slice access.
+    // Serial path uses BooleanChunked directly via EvalMask — no Vec allocation.
+    let eval_mask_par: Vec<bool>;
+    let eval_mask_ser: EvalMask<'_>;
+    if can_parallel {
+        if skip_eval {
+            let ca = inputs[2].bool().unwrap();
+            inputs_offset = 3;
+            eval_mask_par = ca.iter().map(|b| b.unwrap_or(false)).collect();
+        } else {
+            eval_mask_par = vec![true; nrows];
+        }
+        eval_mask_ser = EvalMask::All; // unused by parallel branch
     } else {
-        vec![true; nrows]
-    };
+        eval_mask_par = Vec::new(); // unused by serial branch
+        if skip_eval {
+            let ca = inputs[2].bool().unwrap();
+            inputs_offset = 3;
+            eval_mask_ser = EvalMask::Sparse(ca);
+        } else {
+            eval_mask_ser = EvalMask::All;
+        }
+    }
 
     let ncols = inputs[inputs_offset..].len();
     let data = series_to_slice::<Float64Type>(&inputs[inputs_offset..], IndexOrder::C)?;
@@ -470,7 +523,8 @@ fn pl_knn_ptwise_w_dist(
             let tree = KDT::from_leaves(&mut leaves, d).map_err(|e| PolarsError::ComputeError(e.into()))?;
             Ok(knn_ptwise_w_dist(
                 &tree,
-                eval_mask,
+                eval_mask_par,
+                eval_mask_ser,
                 &data,
                 k,
                 can_parallel,
