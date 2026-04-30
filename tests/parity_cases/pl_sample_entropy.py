@@ -15,12 +15,15 @@ def _build_args(df: pl.DataFrame):
     """Build plugin args/kwargs for pl_sample_entropy / _new_expr.
 
     Mirrors query_sample_entropy(ts, ratio=0.2, m=2, parallel=True).
+    Pick first f64 column as the time series so this works across fixtures.
     """
-    ts = pl.col("x").cast(pl.Float64)
+    f64_cols = [c for c, dt in zip(df.columns, df.dtypes) if dt == pl.Float64]
+    col_name = f64_cols[0] if f64_cols else df.columns[0]
+    ts = pl.col(col_name).cast(pl.Float64)
     ratio = 0.2
     m = 2
 
-    t = df.lazy().select(ts).collect()["x"]
+    t = df.lazy().select(ts).collect()[col_name]
     std_val = t.std(ddof=0)
     r_lit = pl.lit(ratio * std_val, dtype=pl.Float64)
 

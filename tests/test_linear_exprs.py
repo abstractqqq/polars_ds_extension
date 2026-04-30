@@ -309,6 +309,149 @@ def test_f32_lin_reg():
     pds.config.LIN_REG_EXPR_F64 = True
 
 
+def test_f32_lin_reg_against_sklearn():
+    """f32 path (LIN_REG_EXPR_F64=False) produces coefficients close to sklearn OLS."""
+    from sklearn import linear_model
+
+    pds.config.LIN_REG_EXPR_F64 = False
+    try:
+        # Same data construction as test_lin_reg_against_sklearn
+        df = (
+            pds.frame(size=5_000)
+            .select(
+                pds.random(0.0, 1.0).alias("x1"),
+                pds.random(0.0, 1.0).alias("x2"),
+                pds.random(0.0, 1.0).alias("x3"),
+            )
+            .with_columns(
+                y=pl.col("x1") * 0.5
+                + pl.col("x2") * 0.1
+                - pl.col("x3") * 0.15
+                + pds.random() * 0.0001
+            )
+        )
+
+        x = df.select("x1", "x2", "x3").to_numpy()
+        y = df["y"].to_numpy()
+
+        # ---- OLS with bias ----
+        reg = linear_model.LinearRegression(fit_intercept=True)
+        reg.fit(x, y)
+
+        normal_coeffs = df.select(
+            pds.lin_reg("x1", "x2", "x3", target="y", add_bias=True).alias("pred")
+        ).explode("pred")
+        all_coeffs = normal_coeffs["pred"].to_numpy()
+        # f32 path: atol=1e-4 (looser than f64 due to precision loss)
+        assert np.all(np.abs(all_coeffs[:3] - reg.coef_) < 1e-4)
+        assert abs(all_coeffs[-1] - reg.intercept_) < 1e-4
+
+        # ---- Ridge (L2) with bias ----
+        reg_ridge = linear_model.Ridge(alpha=0.1, fit_intercept=True)
+        reg_ridge.fit(x, y)
+
+        ridge_coeffs = df.select(
+            pds.lin_reg("x1", "x2", "x3", target="y", l2_reg=0.1, add_bias=True).alias("pred")
+        ).explode("pred")
+        all_ridge = ridge_coeffs["pred"].to_numpy()
+        assert np.all(np.abs(all_ridge[:3] - reg_ridge.coef_) < 1e-3)
+        assert abs(all_ridge[-1] - reg_ridge.intercept_) < 1e-3
+
+        # ---- Predictions (return_pred=True), single target ----
+        pred_result = df.select(
+            pds.lin_reg("x1", "x2", "x3", target="y", add_bias=True, return_pred=True).alias("lr_pred")
+        ).unnest("lr_pred")
+        pds_preds = pred_result["pred"].to_numpy()
+        sklearn_preds = reg.predict(x)
+        assert np.all(np.abs(pds_preds - sklearn_preds) < 1e-3)
+
+        # ---- Multi-target coefficients ----
+        df2 = df.with_columns(
+            y2=pl.col("x1") + pl.col("x2") * 0.3 - pl.col("x3") * 0.1
+        )
+        multi_result = df2.select(
+            pds.lin_reg("x1", "x2", "x3", target=["y", "y2"], add_bias=True).alias("coef")
+        )
+        multi_struct = multi_result["coef"].to_list()[0]
+        coef_y = np.array(multi_struct["target_0"])
+        coef_y2 = np.array(multi_struct["target_1"])
+
+        # Compare against per-target f32 fits
+        coef_y_single = df2.select(
+            pds.lin_reg("x1", "x2", "x3", target="y", add_bias=True).alias("c")
+        ).row(0)[0]
+        coef_y2_single = df2.select(
+            pds.lin_reg("x1", "x2", "x3", target="y2", add_bias=True).alias("c")
+        ).row(0)[0]
+        # atol=1e-5: f32 accumulates ~1 ULP at scale 1.0 per coefficient; near-zero
+        # bias (y2 intercept ≈ 0) can differ by ~1e-6 between paths.
+        np.testing.assert_allclose(coef_y, coef_y_single, rtol=1e-4, atol=1e-5)
+        np.testing.assert_allclose(coef_y2, coef_y2_single, rtol=1e-4, atol=1e-5)
+
+        # ---- lin_reg_report runs without error and returns finite betas ----
+        report = df.select(
+            pds.lin_reg_report("x1", "x2", "x3", target="y", add_bias=True).alias("r")
+        ).unnest("r")
+        betas = np.array(report["beta"].to_list())
+        assert np.all(np.isfinite(betas)), "lin_reg_report betas should be finite in f32 mode"
+        assert np.all(np.abs(betas[:3] - reg.coef_) < 1e-3)
+    finally:
+        pds.config.LIN_REG_EXPR_F64 = True
+
+
+def test_pl_lr_multi_pred_correctness():
+    """
+    Verify that pl_lr_multi_pred (multi-target return_pred=True) produces
+    predictions identical to the per-target single-target fits.
+
+    The multi-target path uses a shared QR factorization (faer_solve_lr on a
+    stacked Y matrix) so predictions should be bit-exact; we use atol=1e-8 as
+    a safety margin to accommodate any minor intermediate rounding differences.
+    """
+    rng = np.random.default_rng(42)
+    n = 1000
+    X = rng.standard_normal((n, 5))
+    true_betas = np.array([
+        [0.5, -0.2, 0.1, 0.3, -0.4],
+        [0.1, 0.6, -0.3, 0.0, 0.2],
+        [-0.2, 0.0, 0.7, -0.1, 0.3],
+    ])
+    Y = X @ true_betas.T + 0.01 * rng.standard_normal((n, 3))
+
+    df = pl.DataFrame(
+        {f"x{i + 1}": X[:, i] for i in range(5)}
+        | {"y1": Y[:, 0], "y2": Y[:, 1], "y3": Y[:, 2]}
+    )
+
+    features = [f"x{i + 1}" for i in range(5)]
+
+    # Multi-target prediction result: struct with fields
+    # target_0_pred, target_0_resid, target_1_pred, target_1_resid, target_2_pred, target_2_resid
+    multi = df.select(
+        pds.lin_reg(*features, target=["y1", "y2", "y3"], return_pred=True).alias("lr_pred")
+    ).unnest("lr_pred")
+
+    # Per-target predictions from single-target fits
+    for i, target in enumerate(["y1", "y2", "y3"]):
+        single = df.select(
+            pds.lin_reg(*features, target=target, return_pred=True).alias("lr_pred")
+        ).unnest("lr_pred")
+
+        multi_pred = multi[f"target_{i}_pred"].to_numpy()
+        single_pred = single["pred"].to_numpy()
+
+        # Should be very close — atol=1e-8; if exactly equal (shared QR factorization)
+        # the test will pass at the tighter tolerance too. Document: we use 1e-8, not
+        # bit-equality, because multi-target adds one extra matmul step vs. single-target.
+        np.testing.assert_allclose(
+            multi_pred,
+            single_pred,
+            rtol=0,
+            atol=1e-8,
+            err_msg=f"multi-pred for target_{i} ({target}) differs from per-target fit",
+        )
+
+
 def test_lin_reg_skip_null():
     df = pl.DataFrame(
         {

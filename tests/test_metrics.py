@@ -347,3 +347,128 @@ def test_ndcg_score():
 
         sklearn_results = np.array(sklearn_results)
         np.testing.assert_allclose(df_agg["ndcg_score"].to_numpy(), sklearn_results, rtol=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# PSI tests
+# ---------------------------------------------------------------------------
+# Wrapper discovery note:
+#   pl_psi_w_bps is exposed as pds.psi_w_breakpoints(new, baseline, breakpoints).
+#   It always returns a struct report (no scalar-only mode); the caller sums
+#   psi_bin to get the scalar.  Struct fields (in order): "<=", "baseline_pct",
+#   "actual_pct", "psi_bin".
+#
+# Smoothing / clipping:
+#   Both baseline_pct and actual_pct are clipped to a minimum of 0.0001 before
+#   the PSI per-bin computation.  This means identical distributions yield PSI
+#   close to 0 but not exactly 0 unless all bins have equal counts.
+
+
+def _reference_psi(new_arr, baseline_arr, breakpoints):
+    """
+    Independent Python PSI calculation that mirrors the Rust implementation.
+    breakpoints: sorted list of finite floats (NOT including inf).
+    Returns (per_bin_psi, scalar_psi).
+    """
+    bp = list(breakpoints) + [float("inf")]
+
+    def bucket_counts(arr, bp):
+        counts = np.zeros(len(bp), dtype=np.float64)
+        for v in arr:
+            idx = np.searchsorted(bp, v, side="left")
+            # binary_search in Rust: Ok(j)->c[j], Err(k)->c[k].
+            # searchsorted 'left' returns the insertion point k such that
+            # bp[k-1] < v <= bp[k], i.e. the same as Rust's Err(k)/Ok(j).
+            counts[idx] += 1
+        return counts
+
+    baseline_counts = bucket_counts(baseline_arr, bp)
+    new_counts = bucket_counts(new_arr, bp)
+
+    baseline_pct = np.maximum(baseline_counts / baseline_counts.sum(), 0.0001)
+    actual_pct = np.maximum(new_counts / new_counts.sum(), 0.0001)
+    per_bin = (baseline_pct - actual_pct) * np.log(baseline_pct / actual_pct)
+    return per_bin, per_bin.sum()
+
+
+def test_psi_w_breakpoints():
+    """psi_w_breakpoints scalar matches independent Python reference."""
+    rng = np.random.default_rng(42)
+    baseline = rng.normal(loc=0.0, scale=1.0, size=1000)
+    new = rng.normal(loc=0.5, scale=1.2, size=1000)
+
+    # Use quartiles of the baseline as breakpoints (excluding inf).
+    bps = list(np.quantile(baseline, [0.25, 0.50, 0.75]))
+
+    df = pl.DataFrame({"new": new, "baseline": baseline})
+    report = df.select(pds.psi_w_breakpoints("new", "baseline", breakpoints=bps)).unnest(
+        "psi_report"
+    )
+
+    # Scalar PSI from report
+    psi_scalar = report["psi_bin"].sum()
+
+    # Must be finite and positive (different distributions)
+    assert np.isfinite(psi_scalar), "PSI should be finite"
+    assert psi_scalar > 0, "PSI should be > 0 for different distributions"
+
+    # Compare against independent Python reference
+    _, ref_psi = _reference_psi(new, baseline, bps)
+    assert np.isclose(psi_scalar, ref_psi, atol=1e-10), (
+        f"PSI mismatch: got {psi_scalar}, expected {ref_psi}"
+    )
+
+
+def test_psi_w_breakpoints_identical_distributions():
+    """
+    When new == baseline (exactly the same values), PSI should be very close
+    to 0.  It may not be exactly 0 because both baseline_pct and actual_pct
+    are clipped to 0.0001, but for large n all bins will have equal non-zero
+    counts and the clip won't fire, so the result should be 0.0.
+    """
+    rng = np.random.default_rng(7)
+    data = rng.normal(size=1000)
+    bps = list(np.quantile(data, [0.25, 0.50, 0.75]))
+
+    df = pl.DataFrame({"a": data, "b": data})
+    report = df.select(pds.psi_w_breakpoints("a", "b", breakpoints=bps)).unnest("psi_report")
+    psi_scalar = report["psi_bin"].sum()
+
+    assert np.isclose(psi_scalar, 0.0, atol=1e-12), (
+        f"PSI of identical distributions should be ~0, got {psi_scalar}"
+    )
+
+
+def test_psi_report_struct():
+    """
+    psi(..., return_report=True) returns a struct whose per-bin PSI sums to
+    the scalar returned by psi(..., return_report=False).
+    Also verifies that all documented field names are present.
+    """
+    rng = np.random.default_rng(99)
+    baseline = rng.normal(loc=0.0, scale=1.0, size=1000)
+    new = rng.normal(loc=0.3, scale=1.1, size=1000)
+
+    df = pl.DataFrame({"new": new, "baseline": baseline})
+
+    # Struct output path (return_report=True)
+    report = df.select(pds.psi("new", "baseline", n_bins=10, return_report=True)).unnest(
+        "psi_report"
+    )
+
+    # Verify expected field names exist (order-independent)
+    expected_fields = {"<=", "baseline_pct", "actual_pct", "psi_bin"}
+    actual_fields = set(report.columns)
+    assert expected_fields <= actual_fields, (
+        f"Missing fields: {expected_fields - actual_fields}"
+    )
+
+    # Struct should have n_bins rows (one per bin)
+    assert report.shape[0] == 10, f"Expected 10 rows, got {report.shape[0]}"
+
+    # Sum of per-bin PSI must match the scalar path (atol=1e-10)
+    struct_psi = report["psi_bin"].sum()
+    scalar_psi = df.select(pds.psi("new", "baseline", n_bins=10)).item(0, 0)
+    assert np.isclose(struct_psi, scalar_psi, atol=1e-10), (
+        f"Struct sum {struct_psi} != scalar {scalar_psi}"
+    )
