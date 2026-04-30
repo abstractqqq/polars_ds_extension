@@ -58,15 +58,18 @@ where
     if series.is_empty() {
         return Err(PolarsError::NoData("Data is empty".into()));
     }
-    if series.iter().any(|s| !s.dtype().is_numeric()) {
-        return Err(PolarsError::ComputeError(
-            "All columns need to be numeric.".into(),
-        ));
-    }
-    if !series.iter().map(|s| s.len()).all_equal() {
-        return Err(PolarsError::ShapeMismatch(
-            "Seires don't have the same length.".into(),
-        ));
+    let first_len = series[0].len();
+    for s in series.iter() {
+        if !s.dtype().is_numeric() {
+            return Err(PolarsError::ComputeError(
+                "All columns need to be numeric.".into(),
+            ));
+        }
+        if s.len() != first_len {
+            return Err(PolarsError::ShapeMismatch(
+                "Seires don't have the same length.".into(),
+            ));
+        }
     }
     series_to_slice_inner::<N>(series, ordering, extra_cap)
 }
