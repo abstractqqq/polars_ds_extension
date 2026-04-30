@@ -198,21 +198,19 @@ fn pl_trunc(inputs: &[Series]) -> PolarsResult<Series> {
 #[polars_expr(output_type_func=float_output)]
 fn pl_fract(inputs: &[Series]) -> PolarsResult<Series> {
     let s = &inputs[0];
-
-    if s.dtype().is_integer() {
-        Ok(Series::from_vec(s.name().clone(), vec![0f32; s.len()]))
-    } else {
-        if s.dtype() == &DataType::Float64 {
+    match s.dtype() {
+        DataType::Float64 => {
             let ca = s.f64().unwrap();
             Ok(ca.apply_values(f64::fract).into_series())
-        } else if s.dtype() == &DataType::Float32 {
+        }
+        DataType::Float32 => {
             let ca = s.f32().unwrap();
             Ok(ca.apply_values(f32::fract).into_series())
-        } else {
-            Err(PolarsError::ComputeError(
-                "Input column must be numerical.".into(),
-            ))
         }
+        dt if dt.is_integer() => Ok(Series::from_vec(s.name().clone(), vec![0f32; s.len()])),
+        _ => Err(PolarsError::ComputeError(
+            "Input column must be numerical.".into(),
+        )),
     }
 }
 
