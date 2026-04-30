@@ -131,7 +131,6 @@ fn series_to_mat_for_lr_f32(
             }
             NullPolicy::RAISE => Err(PolarsError::ComputeError("Nulls found in data".into())),
             NullPolicy::SKIP => {
-                let init_mask = inputs[0].is_not_null(); //0 always exist
                 let mask = inputs[1..]
                     .iter()
                     .fold(init_mask, |acc, s| acc & s.is_not_null());
