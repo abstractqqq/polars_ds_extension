@@ -15,7 +15,10 @@ use crate::linear::{
         },
         LRMethods,
     },
-    online_lr::lr_online_solvers::{faer_recursive_lr, faer_rolling_lr, faer_rolling_skipping_lr},
+    online_lr::lr_online_solvers::{
+        faer_recursive_lr, faer_rolling_lr, faer_rolling_skipping_lr,
+        faer_rolling_skipping_lr_new,
+    },
     NullPolicy,
 };
 use crate::utils::{
@@ -1048,3 +1051,79 @@ fn pl_rolling_lr_f32(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<Ser
     }
 }
 
+/// Parity-test entry point: same as pl_rolling_lr_f32 but uses faer_rolling_skipping_lr_new.
+#[polars_expr(output_type_func=coeff_pred_output)]
+fn pl_rolling_lr_f32_new_expr(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<Series> {
+    let n = kwargs.n;
+    let add_bias = kwargs.bias;
+
+    let mut null_policy = NullPolicy::try_from(kwargs.null_policy)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+
+    null_policy = match null_policy {
+        NullPolicy::SKIP => NullPolicy::SKIP_WINDOW,
+        NullPolicy::FILL(x) => NullPolicy::FILL_WINDOW(x),
+        _ => null_policy,
+    };
+
+    match series_to_mat_for_lr_f32(inputs, add_bias, null_policy) {
+        Ok((mat_slice, nrows, nfeats, mask)) => {
+            let should_skip = match null_policy {
+                NullPolicy::SKIP_WINDOW | NullPolicy::FILL_WINDOW(_) => (!&mask).any(),
+                _ => false,
+            };
+
+            let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
+            let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
+            let coeffs = if should_skip {
+                faer_rolling_skipping_lr_new(x, y, n, kwargs.min_size, kwargs.lambda as f32)
+            } else {
+                faer_rolling_lr(x, y, n, kwargs.lambda as f32)
+            };
+
+            let mut builder: ListPrimitiveChunkedBuilder<Float32Type> =
+                ListPrimitiveChunkedBuilder::new("coeffs".into(), nrows, nfeats, DataType::Float32);
+            let mut pred_builder: PrimitiveChunkedBuilder<Float32Type> =
+                PrimitiveChunkedBuilder::new("pred".into(), nrows);
+
+            let m = n - 1;
+            for _ in 0..m {
+                builder.append_null();
+                pred_builder.append_null();
+            }
+
+            if should_skip {
+                for (i, coefficients) in coeffs.into_iter().enumerate() {
+                    if coefficients.shape() == (0, 0) {
+                        builder.append_null();
+                        pred_builder.append_null();
+                    } else {
+                        let row = x.get(m + i..m + i + 1, ..);
+                        let pred = *(row * &coefficients).get(0, 0);
+                        let coef = coefficients.col_as_slice(0);
+                        builder.append_slice(coef);
+                        pred_builder.append_value(pred);
+                    }
+                }
+            } else {
+                for (i, coefficients) in coeffs.into_iter().enumerate() {
+                    let row = x.get(m + i..m + i + 1, ..);
+                    let pred = *(row * &coefficients).get(0, 0);
+                    let coef = coefficients.col_as_slice(0);
+                    builder.append_slice(coef);
+                    pred_builder.append_value(pred);
+                }
+            }
+
+            let coef_out = builder.finish();
+            let pred_out = pred_builder.finish();
+            let ca = StructChunked::from_series(
+                "".into(),
+                coef_out.len(),
+                [&coef_out.into_series(), &pred_out.into_series()].into_iter(),
+            )?;
+            Ok(ca.into_series())
+        }
+        Err(e) => Err(e),
+    }
+}

@@ -216,9 +216,111 @@ pub fn faer_rolling_lr<T: RealField + Float>(
 /// If # of non-null rows in the window is < m, a Matrix with size (0, 0) will be returned.
 /// This supports Normal or Ridge regression
 ///
-/// Uses an O(1) incremental counter for the startup scan instead of re-scanning
-/// the full window on every shift.
+/// Original O(n * leading_nulls) startup — kept for parity testing.
+pub fn faer_rolling_skipping_lr_old<T: RealField + Float>(
+    x: MatRef<T>,
+    y: MatRef<T>,
+    n: usize,
+    m: usize,
+    lambda: T,
+) -> Vec<Mat<T>> {
+    let xn = x.nrows();
+    let ncols = x.ncols();
+    // x: size xn x m
+    // y: size xn x 1
+    // n is window size. m is min_window_size after skipping null rows. n >= m > 0.
+    // Vector of matrix of size m x 1
+    let mut coefficients = Vec::with_capacity(xn - n + 1); // xn >= n is checked in Python
+
+    // Initialize the problem.
+    let mut non_null_cnt_in_window = 0;
+    let mut left = 0;
+    let mut right = n;
+    let mut x_slice: Vec<T> = Vec::with_capacity(n * ncols);
+    let mut y_slice: Vec<T> = Vec::with_capacity(n);
+
+    let is_finite = x
+        .row_iter()
+        .zip(y.row_iter())
+        .map(|(xr, yr)| xr.is_all_finite() && yr.is_all_finite())
+        .collect::<Vec<_>>();
+
+    // This will only be used in Polars Expressions, in which case add_bias will directly add to input data
+    let mut online_lr = OnlineLR::new(lambda, false);
+    // Make the first initial fit
+    while right <= xn {
+        // Somewhat redundant here.
+        non_null_cnt_in_window = 0;
+        x_slice.clear();
+        y_slice.clear();
+        for i in left..right {
+            if is_finite[i] {
+                x_slice.extend(x.get(i, ..).iter());
+                y_slice.push(*y.get(i, 0));
+                non_null_cnt_in_window += 1;
+            }
+        }
+        if non_null_cnt_in_window >= m {
+            let x0 = MatRef::from_row_major_slice(&x_slice, y_slice.len(), ncols);
+            let y0 = MatRef::from_column_major_slice(&y_slice, y_slice.len(), 1);
+            online_lr.fit_unchecked(x0, y0);
+            coefficients.push(online_lr.fitted_values().to_owned());
+            break;
+        } else {
+            left += 1;
+            right += 1;
+            coefficients.push(Mat::with_capacity(0, 0));
+        }
+    }
+
+    if right >= xn {
+        return coefficients;
+    }
+
+    // right < xn, the problem must have been initialized (inv and weights are defined.)
+    for j in right..xn {
+        let remove_x = x.get(j - n..j - n + 1, ..);
+        let remove_y = y.get(j - n..j - n + 1, ..);
+        if is_finite[j - n] {
+            non_null_cnt_in_window -= 1; // removed one non-null column
+            online_lr.update_unchecked(remove_x, remove_y, T::one().neg());
+        }
+
+        let next_x = x.get(j..j + 1, ..); // 1 by m, m = # of columns
+        let next_y = y.get(j..j + 1, ..); // 1 by 1
+        if is_finite[j] {
+            non_null_cnt_in_window += 1;
+            online_lr.update_unchecked(next_x, next_y, T::one());
+        }
+
+        if non_null_cnt_in_window >= m {
+            coefficients.push(online_lr.fitted_values().to_owned());
+        } else {
+            coefficients.push(Mat::with_capacity(0, 0));
+        }
+    }
+    coefficients
+}
+
+/// Alias for the production callers — dispatches to the original implementation.
+#[inline(always)]
 pub fn faer_rolling_skipping_lr<T: RealField + Float>(
+    x: MatRef<T>,
+    y: MatRef<T>,
+    n: usize,
+    m: usize,
+    lambda: T,
+) -> Vec<Mat<T>> {
+    faer_rolling_skipping_lr_old(x, y, n, m, lambda)
+}
+
+/// Optimised variant: O(1) per startup-phase shift instead of O(window_size).
+///
+/// The original code re-scanned the full `[left..right]` window on every shift to
+/// recount `non_null_cnt_in_window`.  Because each shift moves exactly one element
+/// out (index `left`) and one in (index `right - 1`), the count can be maintained
+/// with two O(1) increments instead.
+pub fn faer_rolling_skipping_lr_new<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
     n: usize,
@@ -279,7 +381,7 @@ pub fn faer_rolling_skipping_lr<T: RealField + Float>(
         return coefficients;
     }
 
-    // right < xn: incremental Woodbury updates.
+    // right < xn: incremental Woodbury updates (same as _old).
     for j in right..xn {
         let remove_x = x.get(j - n..j - n + 1, ..);
         let remove_y = y.get(j - n..j - n + 1, ..);
