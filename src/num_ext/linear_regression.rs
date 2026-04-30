@@ -219,25 +219,25 @@ pub fn series_to_mat_for_lr(
             Ok((df, mask))
         }
         NullPolicy::FILL(x) => {
-            df = df
-                .lazy()
-                .with_columns(
-                    inputs[1..]
-                        .iter()
-                        .map(|s| {
-                            pl::col(s.name().clone())
-                                .cast(DataType::Float64)
-                                .fill_null(lit(x))
-                        })
-                        .collect::<Vec<_>>(),
-                )
-                .collect()?;
-
+            let lazy = df.lazy().with_columns(
+                inputs[1..]
+                    .iter()
+                    .map(|s| {
+                        pl::col(s.name().clone())
+                            .cast(DataType::Float64)
+                            .fill_null(lit(x))
+                    })
+                    .collect::<Vec<_>>(),
+            );
             if y_has_null {
-                df = df.filter(&init_mask).unwrap();
+                // Fuse fill + row-drop into one lazy plan to avoid an extra collect.
+                df = lazy
+                    .filter(lit(init_mask.clone().into_series()))
+                    .collect()?;
                 Ok((df, init_mask))
             } else {
                 // all filled, no nulls
+                df = lazy.collect()?;
                 let mask = BooleanChunked::from_slice("".into(), &[true]);
                 Ok((df, mask))
             }
