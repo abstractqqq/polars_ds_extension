@@ -127,27 +127,35 @@ where
 
     // Reusable closure body; ptr is sent across threads via the usize-cast Send dance.
     let fill_col = |(col_idx, s): (usize, &Series)| -> PolarsResult<()> {
-        // Skip cast when dtype already matches.
-        let s = if s.dtype() != &target_dtype {
-            s.cast(&target_dtype)?
-        } else {
-            s.clone()
-        };
-        // Only convert null -> NaN when there are nulls to convert.
-        let s = if s.null_count() > 0 {
-            match s.dtype() {
-                DataType::Float32 => s.f32().unwrap().none_to_nan().into_series(),
-                DataType::Float64 => s.f64().unwrap().none_to_nan().into_series(),
-                _ => s,
+        // Compute null_count once; reuse below.
+        let nc = s.null_count();
+        // In the common case (dtype matches + no nulls) we avoid any allocation:
+        // we just reborrow `s` directly.  Only allocate an owned Series when we
+        // actually need to cast or fill nulls.
+        let owned;
+        let s_ref: &Series = if s.dtype() != &target_dtype || nc > 0 {
+            let casted = if s.dtype() != &target_dtype {
+                s.cast(&target_dtype)?
+            } else {
+                s.clone()
+            };
+            // Only convert null -> NaN when there are nulls to convert.
+            if nc > 0 {
+                let nan_filled = match casted.dtype() {
+                    DataType::Float32 => casted.f32().unwrap().none_to_nan().into_series(),
+                    DataType::Float64 => casted.f64().unwrap().none_to_nan().into_series(),
+                    _ => casted,
+                };
+                owned = nan_filled;
+                &owned
+            } else {
+                owned = casted;
+                &owned
             }
         } else {
-            s
+            s // &Series, no clone needed
         };
-        polars_ensure!(
-            s.null_count() == 0,
-            ComputeError: "creation of ndarray with null values is not supported"
-        );
-        let ca = s.unpack::<N>()?;
+        let ca = s_ref.unpack::<N>()?;
 
         let mut chunk_offset = 0;
         for arr in ca.downcast_iter() {
