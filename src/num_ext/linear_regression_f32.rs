@@ -525,7 +525,7 @@ fn pl_lr_pred_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
     let weighted = kwargs.weighted;
     let data_for_matrix = if weighted { &inputs[1..] } else { inputs };
 
-    match series_to_mat_for_lr_f32(data_for_matrix, add_bias, null_policy.clone()) {
+    match series_to_mat_for_lr_f32(data_for_matrix, add_bias, null_policy) {
         Ok((mat_slice, nrows, nfeats, mask)) => {
             let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
             let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
