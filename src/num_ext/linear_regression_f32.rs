@@ -91,7 +91,7 @@ fn series_to_mat_for_lr_f32(
 
     // minus 1 because target is also in inputs. Target is at position 0.
     let y_has_null = inputs[0].has_nulls();
-    let has_null = inputs[1..].iter().any(|s| s.has_nulls()) | y_has_null;
+    let has_null = y_has_null || inputs[1..].iter().any(|s| s.has_nulls());
 
     // Fast path: no nulls anywhere. Skip the DataFrame round-trip.
     if !has_null {
@@ -213,10 +213,8 @@ fn series_to_mat_for_multi_lr_f32(
     add_bias: bool,
     null_policy: NullPolicy<f32>,
 ) -> PolarsResult<(Vec<f32>, usize, usize)> {
-    let y_has_null = inputs[..last_target_idx]
-        .iter()
-        .fold(false, |acc, s| s.has_nulls() | acc);
-    let has_null = inputs[last_target_idx..].iter().any(|s| s.has_nulls()) | y_has_null;
+    let y_has_null = inputs[..last_target_idx].iter().any(|s| s.has_nulls());
+    let has_null = y_has_null || inputs[last_target_idx..].iter().any(|s| s.has_nulls());
     let n_features = (inputs.len() + add_bias as usize).abs_diff(last_target_idx);
 
     // Fast path: no nulls anywhere. Skip the DataFrame round-trip.

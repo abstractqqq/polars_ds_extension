@@ -153,7 +153,7 @@ pub fn series_to_mat_for_lr(
     let n_features = ncols + add_bias as usize;
     // minus 1 because target is also in inputs. Target is at position 0.
     let y_has_null = inputs[0].has_nulls();
-    let has_null = inputs[1..].iter().any(|s| s.has_nulls()) | y_has_null;
+    let has_null = y_has_null || inputs[1..].iter().any(|s| s.has_nulls());
 
     // Fast path: no nulls anywhere. Skip the DataFrame round-trip and go
     // straight from &[Series] to a flat column-major buffer.
@@ -277,12 +277,10 @@ fn series_to_mat_for_multi_lr(
     add_bias: bool,
     null_policy: NullPolicy<f64>,
 ) -> PolarsResult<(Vec<f64>, usize, usize)> {
-    let y_has_null = inputs[..last_target_idx]
-        .iter()
-        .fold(false, |acc, s| s.has_nulls() | acc);
+    let y_has_null = inputs[..last_target_idx].iter().any(|s| s.has_nulls());
 
     let n_features = (inputs.len() + add_bias as usize).abs_diff(last_target_idx);
-    let has_null = inputs[last_target_idx..].iter().any(|s| s.has_nulls()) | y_has_null;
+    let has_null = y_has_null || inputs[last_target_idx..].iter().any(|s| s.has_nulls());
 
     // Fast path: no nulls anywhere. Skip the DataFrame round-trip.
     if !has_null {
