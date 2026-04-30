@@ -43,19 +43,23 @@ impl<T: Float + FromStr> TryFrom<String> for NullPolicy<T> {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        let binding = value.to_lowercase();
-        let test = binding.as_ref();
-        match test {
-            "raise" => Ok(Self::RAISE),
-            "skip" => Ok(Self::SKIP),
-            "zero" => Ok(Self::FILL(T::zero())),
-            "one" => Ok(Self::FILL(T::one())),
-            "ignore" => Ok(Self::IGNORE),
-            "skip_window" => Ok(Self::SKIP_WINDOW),
-            _ => match test.parse::<T>() {
+        if value.eq_ignore_ascii_case("raise") {
+            Ok(Self::RAISE)
+        } else if value.eq_ignore_ascii_case("skip") {
+            Ok(Self::SKIP)
+        } else if value.eq_ignore_ascii_case("zero") {
+            Ok(Self::FILL(T::zero()))
+        } else if value.eq_ignore_ascii_case("one") {
+            Ok(Self::FILL(T::one()))
+        } else if value.eq_ignore_ascii_case("ignore") {
+            Ok(Self::IGNORE)
+        } else if value.eq_ignore_ascii_case("skip_window") {
+            Ok(Self::SKIP_WINDOW)
+        } else {
+            match value.parse::<T>() {
                 Ok(x) => Ok(Self::FILL(x)),
                 Err(_) => Err("Invalid NullPolicy.".into()),
-            },
+            }
         }
     }
 }

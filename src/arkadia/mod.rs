@@ -38,12 +38,16 @@ pub enum KNNDist {
 impl TryFrom<String> for KNNDist {
     type Error = String;
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        match value.to_lowercase().as_ref() {
-            "l1" => Ok(KNNDist::L1),
-            "sql2" => Ok(KNNDist::SQL2),
-            "l2" => Ok(KNNDist::L2),
-            "linf" | "inf" => Ok(KNNDist::LINF),
-            _ => Err(format!("Unknown distance indicator: {}", value)),
+        if value.eq_ignore_ascii_case("l1") {
+            Ok(KNNDist::L1)
+        } else if value.eq_ignore_ascii_case("sql2") {
+            Ok(KNNDist::SQL2)
+        } else if value.eq_ignore_ascii_case("l2") {
+            Ok(KNNDist::L2)
+        } else if value.eq_ignore_ascii_case("linf") || value.eq_ignore_ascii_case("inf") {
+            Ok(KNNDist::LINF)
+        } else {
+            Err(format!("Unknown distance indicator: {}", value))
         }
     }
 }

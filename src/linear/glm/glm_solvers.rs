@@ -48,12 +48,16 @@ impl GLMFamily {
 
 impl From<&str> for GLMFamily {
     fn from(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "gaussian" | "normal" => GLMFamily::Gaussian,
-            "poisson" => GLMFamily::Poisson,
-            "binomial" | "logistic" => GLMFamily::Binomial,
-            "gamma" => GLMFamily::Gamma,
-            _ => GLMFamily::Gaussian, // Default to Gaussian
+        if s.eq_ignore_ascii_case("gaussian") || s.eq_ignore_ascii_case("normal") {
+            GLMFamily::Gaussian
+        } else if s.eq_ignore_ascii_case("poisson") {
+            GLMFamily::Poisson
+        } else if s.eq_ignore_ascii_case("binomial") || s.eq_ignore_ascii_case("logistic") {
+            GLMFamily::Binomial
+        } else if s.eq_ignore_ascii_case("gamma") {
+            GLMFamily::Gamma
+        } else {
+            GLMFamily::Gaussian // Default to Gaussian
         }
     }
 }
