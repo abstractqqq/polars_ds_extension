@@ -141,6 +141,30 @@ impl Into<PlSmallStr> for StandardError {
 
 // -----------------------------------------------------------------------------------------------------
 
+/// No-null fast-path: build the column-major matrix buffer directly from `inputs`
+/// without a DataFrame round-trip. Returns `(mat_slice, nrows, n_features, all-valid mask)`.
+/// Caller is responsible for any nrows/n_features size checks before calling this.
+#[inline(always)]
+fn build_mat_no_null_f64(
+    inputs: &[Series],
+    add_bias: bool,
+    n_features: usize,
+) -> PolarsResult<(Vec<f64>, usize, usize, BooleanChunked)> {
+    let nrows = inputs[0].len();
+    let extra = if add_bias { nrows } else { 0 };
+    let mut mat_slice =
+        series_to_slice_with_extra_cap_unchecked::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
+    if add_bias {
+        mat_slice.extend(std::iter::repeat(1f64).take(nrows));
+    }
+    Ok((
+        mat_slice,
+        nrows,
+        n_features,
+        BooleanChunked::from_slice("".into(), &[true]),
+    ))
+}
+
 /// Returns a vec which is a col major matrix, together with nrows, nfeatures,
 /// and a mask, where true means the row doesn't contain null
 #[inline(always)]
@@ -167,14 +191,7 @@ pub fn series_to_mat_for_lr(
                 "#Data < #features. No conclusive result.".into(),
             ));
         }
-        let extra = if add_bias { nrows } else { 0 };
-        let mut mat_slice =
-            series_to_slice_with_extra_cap_unchecked::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
-        if add_bias {
-            mat_slice.extend(std::iter::repeat(1f64).take(nrows));
-        }
-        let mask = BooleanChunked::from_slice("".into(), &[true]);
-        return Ok((mat_slice, nrows, n_features, mask));
+        return build_mat_no_null_f64(inputs, add_bias, n_features);
     }
 
     let mut df = to_frame(inputs)?;
@@ -293,12 +310,8 @@ fn series_to_mat_for_multi_lr(
         if nrows == 0 {
             return Err(PolarsError::ComputeError("Empty data".into()));
         }
-        let extra = if add_bias { nrows } else { 0 };
-        let mut mat_slice =
-            series_to_slice_with_extra_cap_unchecked::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
-        if add_bias {
-            mat_slice.extend(std::iter::repeat(1f64).take(nrows));
-        }
+        let (mat_slice, nrows, n_features, _) =
+            build_mat_no_null_f64(inputs, add_bias, n_features)?;
         return Ok((mat_slice, nrows, n_features));
     }
 
