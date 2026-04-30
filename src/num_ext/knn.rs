@@ -351,12 +351,14 @@ where M: Sync {
                     );
                     let subslice = &data[offset * ncols..(offset + len) * ncols];
                     let mask = &eval_mask[offset..offset + len];
+                    let mut distances: Vec<f64> = Vec::with_capacity(k + 1);
+                    let mut neighbors: Vec<u32> = Vec::with_capacity(k + 1);
                     for (b, p) in mask.iter().zip(subslice.chunks_exact(ncols)) {
                         if *b {
                             match tree.knn_bounded(k + 1, p, max_bound, epsilon) {
                                 Some(nbs) => {
-                                    let mut distances = Vec::with_capacity(nbs.len());
-                                    let mut neighbors = Vec::with_capacity(nbs.len());
+                                    distances.clear();
+                                    neighbors.clear();
                                     for (d, id) in nbs.into_iter().map(|nb| nb.to_pair()) {
                                         distances.push(d);
                                         neighbors.push(id);
@@ -401,14 +403,14 @@ where M: Sync {
             k + 1,
             DataType::Float64,
         );
+        let mut distances: Vec<f64> = Vec::with_capacity(k + 1);
+        let mut neighbors: Vec<u32> = Vec::with_capacity(k + 1);
         for (b, p) in eval_mask.into_iter().zip(data.chunks_exact(ncols)) {
             if b {
                 match tree.knn_bounded(k + 1, p, max_bound, epsilon) {
                     Some(nbs) => {
-                        // let v = nbs.into_iter().map(|nb| nb.to_item()).collect::<Vec<u32>>();
-                        // builder.append_slice(&v);
-                        let mut distances = Vec::with_capacity(nbs.len());
-                        let mut neighbors = Vec::with_capacity(nbs.len());
+                        distances.clear();
+                        neighbors.clear();
                         for (d, id) in nbs.into_iter().map(|nb| nb.to_pair()) {
                             distances.push(d);
                             neighbors.push(id);
