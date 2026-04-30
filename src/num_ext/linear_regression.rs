@@ -770,34 +770,19 @@ fn pl_lin_reg_report(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series
                 }
             };
 
-            // T values
-            let t_values = betas
-                .iter()
-                .zip(std_err.iter())
-                .map(|(b, se)| b / se)
-                .collect_vec();
-            // P values
-            let p_values = t_values
-                .iter()
-                .map(
-                    |t| match crate::stats_utils::beta::student_t_sf(t.abs(), dof) {
-                        Ok(p) => 2.0 * p,
-                        Err(_) => f64::NAN,
-                    },
-                )
-                .collect_vec();
-
+            // Single pass: t_values, p_values, ci_lower, ci_upper
             let t_alpha = crate::stats_utils::beta::student_t_ppf(0.975, dof);
-            let ci_lower = betas
-                .iter()
-                .zip(std_err.iter())
-                .map(|(b, se)| b - t_alpha * se)
-                .collect_vec();
-            let ci_upper = betas
-                .iter()
-                .zip(std_err.iter())
-                .map(|(b, se)| b + t_alpha * se)
-                .collect_vec();
+            let (t_values, p_values, ci_lower, ci_upper): (Vec<_>, Vec<_>, Vec<_>, Vec<_>) =
+                betas.iter().zip(std_err.iter())
+                    .map(|(b, se)| {
+                        let t = b / se;
+                        let p = match crate::stats_utils::beta::student_t_sf(t.abs(), dof) {
+                            Ok(p) => 2.0 * p,
+                            Err(_) => f64::NAN,
+                        };
+                        (t, p, b - t_alpha * se, b + t_alpha * se)
+                    })
+                    .multiunzip();
 
             // Finalize
             let names_ca = name_builder.finish();
@@ -908,34 +893,19 @@ fn pl_wls_report(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
             let std_err = (0..nfeats)
                 .map(|i| (mse * xtwx_inv.get(i, i)).sqrt())
                 .collect_vec();
-            // T values
-            let t_values = betas
-                .iter()
-                .zip(std_err.iter())
-                .map(|(b, se)| b / se)
-                .collect_vec();
-            // P values
-            let p_values = t_values
-                .iter()
-                .map(
-                    |t| match crate::stats_utils::beta::student_t_sf(t.abs(), dof) {
-                        Ok(p) => 2.0 * p,
-                        Err(_) => f64::NAN,
-                    },
-                )
-                .collect_vec();
-
+            // Single pass: t_values, p_values, ci_lower, ci_upper
             let t_alpha = crate::stats_utils::beta::student_t_ppf(0.975, dof);
-            let ci_lower = betas
-                .iter()
-                .zip(std_err.iter())
-                .map(|(b, se)| b - t_alpha * se)
-                .collect_vec();
-            let ci_upper = betas
-                .iter()
-                .zip(std_err.iter())
-                .map(|(b, se)| b + t_alpha * se)
-                .collect_vec();
+            let (t_values, p_values, ci_lower, ci_upper): (Vec<_>, Vec<_>, Vec<_>, Vec<_>) =
+                betas.iter().zip(std_err.iter())
+                    .map(|(b, se)| {
+                        let t = b / se;
+                        let p = match crate::stats_utils::beta::student_t_sf(t.abs(), dof) {
+                            Ok(p) => 2.0 * p,
+                            Err(_) => f64::NAN,
+                        };
+                        (t, p, b - t_alpha * se, b + t_alpha * se)
+                    })
+                    .multiunzip();
             // Finalize
             let names_ca = name_builder.finish();
             let names_series = names_ca.into_series();
