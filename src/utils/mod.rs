@@ -242,8 +242,14 @@ where
 pub fn to_f64_vec_without_nulls(inputs: &[Series], ordering: IndexOrder) -> PolarsResult<Vec<f64>> {
     let df = DataFrame::from_iter(inputs.iter().map(|s| Column::Series(s.clone().into())));
     let df = df.drop_nulls::<String>(None)?;
-
-    columns_to_vec::<Float64Type>(df.take_columns(), ordering)
+    // After drop_nulls the dtype + length validations in series_to_slice_with_extra_cap
+    // are already guaranteed, so skip the O(ncols) scan and go straight to _unchecked.
+    let materialized: Vec<Series> = df
+        .take_columns()
+        .into_iter()
+        .map(|c| c.as_materialized_series().clone())
+        .collect();
+    series_to_slice_with_extra_cap_unchecked::<Float64Type>(&materialized, ordering, 0)
 }
 
 #[inline(always)]
@@ -253,11 +259,9 @@ pub fn to_f64_vec_fail_on_nulls(inputs: &[Series], ordering: IndexOrder) -> Pola
             "Nulls are found in data and this method doesn't allow nulls.".into(),
         ))
     } else {
-        let columns = inputs
-            .iter()
-            .map(|s| s.clone().into_column())
-            .collect::<Vec<_>>();
-        columns_to_vec::<Float64Type>(columns, ordering)
+        // No-nulls guard above already ensures dtype + length are valid for our
+        // callers; skip the redundant O(ncols) validation scan.
+        series_to_slice_with_extra_cap_unchecked::<Float64Type>(inputs, ordering, 0)
     }
 }
 
