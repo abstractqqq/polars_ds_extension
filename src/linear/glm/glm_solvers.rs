@@ -341,14 +341,13 @@ pub fn faer_irls<T: RealField + Float>(
                 converged = true;
                 break;
             }
-            println!("Max Diff: {:?}", max_diff);
         }
     }
 
-    //
-    if !converged {
-        println!("IRLS algorithm did not converge within maximum iterations");
-    }
+    // //
+    // if !converged {
+    //     println!("IRLS algorithm did not converge within maximum iterations");
+    // }
 
     beta
 }
