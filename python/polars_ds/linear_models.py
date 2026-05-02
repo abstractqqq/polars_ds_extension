@@ -40,12 +40,8 @@ def _handle_nulls_in_df(
     if null_policy == "ignore":
         return df
     elif null_policy == "raise":
-        total_null_count = (
-            df.lazy().select(*features, target).null_count().collect().sum_horizontal()[0]
-        )
-        if total_null_count > 0:
-            raise ValueError("Nulls found in Dataframe.")
-        return df
+        # Return the lazy frame; the check will be performed efficiently after collection in the caller.
+        return df.lazy()
     elif null_policy == "skip":
         return df.drop_nulls(subset=features + [target])
     elif null_policy == "zero":
@@ -293,6 +289,9 @@ class LR:
             .select(*features, target)
             .collect()
         )
+        if null_policy == "raise" and any(df2[c].has_nulls() for c in df2.columns):
+            raise ValueError("Nulls found in Dataframe.")
+
         X = df2.select(features).to_numpy()
         y = df2.select(target).to_numpy()
         self.feature_names_in_.clear()
@@ -500,6 +499,9 @@ class ElasticNet:
             .select(*features, target)
             .collect()
         )
+        if null_policy == "raise" and any(df2[c].has_nulls() for c in df2.columns):
+            raise ValueError("Nulls found in Dataframe.")
+
         X = df2.select(features).to_numpy()
         y = df2.select(target).to_numpy()
         self.feature_names_in_.clear()
@@ -886,6 +888,9 @@ class GLM:
             .select(*features, target)
             .collect()
         )
+        if null_policy == "raise" and any(df2[c].has_nulls() for c in df2.columns):
+            raise ValueError("Nulls found in Dataframe.")
+
         X = df2.select(features).to_numpy()
         y = df2.select(target).to_numpy()
         self.feature_names_in_.clear()
