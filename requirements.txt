@@ -6,3 +6,4 @@ pre-commit
 ipykernel
 numpy
 matplotlib
+jupytext

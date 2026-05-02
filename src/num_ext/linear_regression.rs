@@ -168,8 +168,11 @@ pub fn series_to_mat_for_lr(
             ));
         }
         let extra = if add_bias { nrows } else { 0 };
-        let mut mat_slice =
-            series_to_slice_with_extra_cap_unchecked::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
+        let mut mat_slice = series_to_slice_with_extra_cap_unchecked::<Float64Type>(
+            inputs,
+            IndexOrder::Fortran,
+            extra,
+        )?;
         if add_bias {
             mat_slice.extend(std::iter::repeat(1f64).take(nrows));
         }
@@ -181,74 +184,63 @@ pub fn series_to_mat_for_lr(
     if df.is_empty() {
         return Err(PolarsError::ComputeError("Empty data".into()));
     }
+    // Has null
+    let (df, mask) = match null_policy {
+        // Like ignore, skip_window takes the raw data. The actual skip is done in the underlying function in linalg.
+        NullPolicy::IGNORE | NullPolicy::SKIP_WINDOW => {
+            // false, because it has nulls
+            Ok((df, BooleanChunked::from_slice("".into(), &[false])))
+        }
+        NullPolicy::RAISE => Err(PolarsError::ComputeError("Nulls found in data".into())),
+        NullPolicy::SKIP => {
+            let mask = inputs[1..]
+                .iter()
+                .fold(inputs[0].is_not_null(), |acc, s| acc & s.is_not_null());
 
-    // In mask, true means not null.
-    // let y_name = inputs[0].name();
-    let init_mask = inputs[0].is_not_null();
-    let (df, mask) = if has_null {
-        match null_policy {
-            // Like ignore, skip_window takes the raw data. The actual skip is done in the underlying function in linalg.
-            NullPolicy::IGNORE | NullPolicy::SKIP_WINDOW => {
-                // false, because it has nulls
-                Ok((df, BooleanChunked::from_slice("".into(), &[false])))
-            }
-            NullPolicy::RAISE => Err(PolarsError::ComputeError("Nulls found in data".into())),
-            NullPolicy::SKIP => {
-                let init_mask = inputs[0].is_not_null(); //0 always exist
-                let mask = inputs[1..]
-                    .iter()
-                    .fold(init_mask, |acc, s| acc & s.is_not_null());
+            df = df.filter(&mask).unwrap();
+            Ok((df, mask))
+        }
+        NullPolicy::FILL(x) => {
+            let filled = inputs[1..]
+                .iter()
+                .map(|s| {
+                    pl::col(s.name().clone())
+                        .cast(DataType::Float64)
+                        .fill_null(lit(x))
+                })
+                .collect::<Vec<_>>();
 
+            df = df.lazy().with_columns(filled).collect()?;
+
+            if y_has_null {
+                let mask = inputs[0].is_not_null();
                 df = df.filter(&mask).unwrap();
                 Ok((df, mask))
-            }
-            NullPolicy::FILL(x) => {
-                let filled = inputs[1..]
-                    .iter()
-                    .map(|s| {
-                        pl::col(s.name().clone())
-                            .cast(DataType::Float64)
-                            .fill_null(lit(x))
-                    })
-                    .collect::<Vec<_>>();
-
-                df = df.lazy().with_columns(filled).collect()?;
-
-                if y_has_null {
-                    df = df.filter(&init_mask).unwrap();
-                    Ok((df, init_mask))
-                } else {
-                    // all filled, no nulls
-                    let mask = BooleanChunked::from_slice("".into(), &[true]);
-                    Ok((df, mask))
-                }
-            }
-            NullPolicy::FILL_WINDOW(x) => {
-                let filled = inputs[1..]
-                    .iter()
-                    .map(|s| {
-                        pl::col(s.name().clone())
-                            .cast(DataType::Float64)
-                            .fill_null(lit(x))
-                    })
-                    .collect::<Vec<_>>();
-
-                df = df.lazy().with_columns(filled).collect()?;
-
-                if y_has_null {
-                    // Unlike fill, this doesn't drop y's nulls
-                    Ok((df, BooleanChunked::from_slice("".into(), &[false])))
-                } else {
-                    // no nulls
-                    let mask = BooleanChunked::from_slice("".into(), &[true]);
-                    Ok((df, mask))
-                }
+            } else {
+                // all filled, no nulls
+                Ok((df, BooleanChunked::from_slice("".into(), &[true])))
             }
         }
-    } else {
-        // In this case, the (!mask).any() is never true, which means there is no null.
-        let mask = BooleanChunked::from_slice("".into(), &[true]);
-        Ok((df, mask))
+        NullPolicy::FILL_WINDOW(x) => {
+            let filled = inputs[1..]
+                .iter()
+                .map(|s| {
+                    pl::col(s.name().clone())
+                        .cast(DataType::Float64)
+                        .fill_null(lit(x))
+                })
+                .collect::<Vec<_>>();
+
+            df = df.lazy().with_columns(filled).collect()?;
+
+            if y_has_null {
+                // Unlike fill, this doesn't drop y's nulls
+                Ok((df, BooleanChunked::from_slice("".into(), &[false])))
+            } else {
+                // no nulls
+                Ok((df, BooleanChunked::from_slice("".into(), &[true])))
+            }
+        }
     }?;
 
     let nrows = df.height();
@@ -291,46 +283,45 @@ fn series_to_mat_for_multi_lr(
             return Err(PolarsError::ComputeError("Empty data".into()));
         }
         let extra = if add_bias { nrows } else { 0 };
-        let mut mat_slice =
-            series_to_slice_with_extra_cap_unchecked::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
+        let mut mat_slice = series_to_slice_with_extra_cap_unchecked::<Float64Type>(
+            inputs,
+            IndexOrder::Fortran,
+            extra,
+        )?;
         if add_bias {
             mat_slice.extend(std::iter::repeat(1f64).take(nrows));
         }
         return Ok((mat_slice, nrows, n_features));
     }
 
-    let df = if has_null {
-        match null_policy {
-            NullPolicy::RAISE => Err(PolarsError::ComputeError("Nulls found in data".into())),
+    let df = match null_policy {
+        NullPolicy::RAISE => Err(PolarsError::ComputeError("Nulls found in data".into())),
 
-            NullPolicy::FILL(x) => {
-                let df = DataFrame::new(inputs.iter().map(|s| s.clone().into_column()).collect())?;
-                if y_has_null {
-                    // This is because for predictions, it becomes too complicated when different targets have nulls.
-                    // There will be too many masks we need to keep track of.
-                    // This can be dealt with but I won't implement it for now.
-                    Err(PolarsError::ComputeError(
-                        "Filling null doesn't work for multi-target lstsq when there are nulls in any of the targets.".into(),
-                    ))
-                } else {
-                    let filled = inputs[last_target_idx..]
-                        .iter()
-                        .map(|s| {
-                            pl::col(s.name().clone())
-                                .cast(DataType::Float64)
-                                .fill_null(lit(x))
-                        })
-                        .collect::<Vec<_>>();
+        NullPolicy::FILL(x) => {
+            let df = DataFrame::new(inputs.iter().map(|s| s.clone().into_column()).collect())?;
+            if y_has_null {
+                // This is because for predictions, it becomes too complicated when different targets have nulls.
+                // There will be too many masks we need to keep track of.
+                // This can be dealt with but I won't implement it for now.
+                Err(PolarsError::ComputeError(
+                    "Filling null doesn't work for multi-target lstsq when there are nulls in any of the targets.".into(),
+                ))
+            } else {
+                let filled = inputs[last_target_idx..]
+                    .iter()
+                    .map(|s| {
+                        pl::col(s.name().clone())
+                            .cast(DataType::Float64)
+                            .fill_null(lit(x))
+                    })
+                    .collect::<Vec<_>>();
 
-                    df.lazy().with_columns(filled).collect()
-                }
+                df.lazy().with_columns(filled).collect()
             }
-            _ => Err(PolarsError::ComputeError(
-                "The null policy is not supported by multi-target linear regression.".into(),
-            )),
         }
-    } else {
-        DataFrame::new(inputs.iter().map(|s| s.clone().into_column()).collect())
+        _ => Err(PolarsError::ComputeError(
+            "The null policy is not supported by multi-target linear regression.".into(),
+        )),
     }?;
 
     let nrows = df.height();
@@ -467,12 +458,7 @@ fn pl_lr_multi(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Series>
         .enumerate()
         .map(|(i, y)| {
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                ListPrimitiveChunkedBuilder::new(
-                    y.clone(),
-                    1,
-                    coeffs.nrows(),
-                    DataType::Float64,
-                );
+                ListPrimitiveChunkedBuilder::new(y.clone(), 1, coeffs.nrows(), DataType::Float64);
             builder.append_slice(coeffs.col_as_slice(i));
             builder.finish().into_column()
         })

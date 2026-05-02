@@ -84,7 +84,11 @@ fn d_levenshtein_sim_bytes(s1: &str, s2: &str) -> f64 {
 }
 
 #[polars_expr(output_type=UInt32)]
-fn pl_levenshtein(inputs: &[Series], context: CallerContext, kwargs: StrDistKwargs) -> PolarsResult<Series> {
+fn pl_levenshtein(
+    inputs: &[Series],
+    context: CallerContext,
+    kwargs: StrDistKwargs,
+) -> PolarsResult<Series> {
     let ca1 = inputs[0].str()?;
     let ca2 = inputs[1].str()?;
 
@@ -102,7 +106,12 @@ fn pl_levenshtein(inputs: &[Series], context: CallerContext, kwargs: StrDistKwar
         }
     } else if ca1.len() == ca2.len() {
         if as_bytes {
-            Ok(generic_binary_distance(levenshtein_bytes, ca1, ca2, can_parallel))
+            Ok(generic_binary_distance(
+                levenshtein_bytes,
+                ca1,
+                ca2,
+                can_parallel,
+            ))
         } else {
             Ok(generic_binary_distance(levenshtein, ca1, ca2, can_parallel))
         }
@@ -114,7 +123,11 @@ fn pl_levenshtein(inputs: &[Series], context: CallerContext, kwargs: StrDistKwar
 }
 
 #[polars_expr(output_type=Boolean)]
-fn pl_levenshtein_filter(inputs: &[Series], context: CallerContext, kwargs: StrDistKwargs) -> PolarsResult<Series> {
+fn pl_levenshtein_filter(
+    inputs: &[Series],
+    context: CallerContext,
+    kwargs: StrDistKwargs,
+) -> PolarsResult<Series> {
     let ca1 = inputs[0].str()?;
     let ca2 = inputs[1].str()?;
 
@@ -132,22 +145,22 @@ fn pl_levenshtein_filter(inputs: &[Series], context: CallerContext, kwargs: StrD
                 let out: BooleanChunked = if as_bytes {
                     let batched = levenshtein::BatchComparator::new(r.bytes());
                     s1.apply_nonnull_values_generic(DataType::Boolean, |s| {
-                    batched
-                        .distance_with_args(
-                            s.as_bytes().iter().copied(),
-                            &levenshtein::Args::default().score_cutoff(bound),
-                        )
-                        .is_some()
+                        batched
+                            .distance_with_args(
+                                s.as_bytes().iter().copied(),
+                                &levenshtein::Args::default().score_cutoff(bound),
+                            )
+                            .is_some()
                     })
                 } else {
                     let batched = levenshtein::BatchComparator::new(r.chars());
                     s1.apply_nonnull_values_generic(DataType::Boolean, |s| {
-                    batched
-                        .distance_with_args(
-                            s.chars(),
-                            &levenshtein::Args::default().score_cutoff(bound),
-                        )
-                        .is_some()
+                        batched
+                            .distance_with_args(
+                                s.chars(),
+                                &levenshtein::Args::default().score_cutoff(bound),
+                            )
+                            .is_some()
                     })
                 };
                 out.downcast_iter().cloned().collect::<Vec<_>>()
@@ -176,20 +189,22 @@ fn pl_levenshtein_filter(inputs: &[Series], context: CallerContext, kwargs: StrD
                         .is_some()
                 })
             }
-
         };
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
-        let dist = if as_bytes {levenshtein_within_bound_bytes} else {levenshtein_within_bound};
+        let dist = if as_bytes {
+            levenshtein_within_bound_bytes
+        } else {
+            levenshtein_within_bound
+        };
         let out: BooleanChunked = if parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
             let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
                 let s1 = ca1.slice(offset as i64, len);
                 let s2 = ca2.slice(offset as i64, len);
-                let out: BooleanChunked = binary_elementwise_values(&s1, &s2, |x, y: &str| {
-                    dist(x, y, bound)
-                });
+                let out: BooleanChunked =
+                    binary_elementwise_values(&s1, &s2, |x, y: &str| dist(x, y, bound));
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
@@ -206,7 +221,11 @@ fn pl_levenshtein_filter(inputs: &[Series], context: CallerContext, kwargs: StrD
 }
 
 #[polars_expr(output_type=Float64)]
-fn pl_levenshtein_sim(inputs: &[Series], context: CallerContext, kwargs: StrDistKwargs) -> PolarsResult<Series> {
+fn pl_levenshtein_sim(
+    inputs: &[Series],
+    context: CallerContext,
+    kwargs: StrDistKwargs,
+) -> PolarsResult<Series> {
     let ca1 = inputs[0].str()?;
     let ca2 = inputs[1].str()?;
     let parallel = kwargs.parallel;
@@ -223,7 +242,12 @@ fn pl_levenshtein_sim(inputs: &[Series], context: CallerContext, kwargs: StrDist
         }
     } else if ca1.len() == ca2.len() {
         if as_bytes {
-            Ok(generic_binary_sim(levenshtein_sim_bytes, ca1, ca2, can_parallel))
+            Ok(generic_binary_sim(
+                levenshtein_sim_bytes,
+                ca1,
+                ca2,
+                can_parallel,
+            ))
         } else {
             Ok(generic_binary_sim(levenshtein_sim, ca1, ca2, can_parallel))
         }
@@ -235,7 +259,11 @@ fn pl_levenshtein_sim(inputs: &[Series], context: CallerContext, kwargs: StrDist
 }
 
 #[polars_expr(output_type=UInt32)]
-fn pl_d_levenshtein(inputs: &[Series], context: CallerContext, kwargs: StrDistKwargs) -> PolarsResult<Series> {
+fn pl_d_levenshtein(
+    inputs: &[Series],
+    context: CallerContext,
+    kwargs: StrDistKwargs,
+) -> PolarsResult<Series> {
     let ca1 = inputs[0].str()?;
     let ca2 = inputs[1].str()?;
     let parallel = kwargs.parallel;
@@ -266,7 +294,6 @@ fn pl_d_levenshtein(inputs: &[Series], context: CallerContext, kwargs: StrDistKw
                 can_parallel,
             ))
         }
-
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),
@@ -275,7 +302,11 @@ fn pl_d_levenshtein(inputs: &[Series], context: CallerContext, kwargs: StrDistKw
 }
 
 #[polars_expr(output_type=Float64)]
-fn pl_d_levenshtein_sim(inputs: &[Series], context: CallerContext, kwargs: StrDistKwargs) -> PolarsResult<Series> {
+fn pl_d_levenshtein_sim(
+    inputs: &[Series],
+    context: CallerContext,
+    kwargs: StrDistKwargs,
+) -> PolarsResult<Series> {
     let ca1 = inputs[0].str()?;
     let ca2 = inputs[1].str()?;
     let parallel = kwargs.parallel;

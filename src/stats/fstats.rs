@@ -34,7 +34,7 @@ fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
         let name = i.to_string();
         let n_sum = format!("{}_sum", i);
         let n_var = format!("{}_var", i);
-        
+
         step_one.push(col(&name).sum().alias(&n_sum));
         step_one.push(col(name).var(0).alias(&n_var));
         let p1: Expr = (col(&n_sum).cast(DataType::Float64) / col("cnt").cast(DataType::Float64)

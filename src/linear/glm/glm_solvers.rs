@@ -8,7 +8,7 @@ use crate::linear::{
     LinalgErrors,
 };
 use crate::utils::parallelism::PARALLEL_MATMUL_THRESHOLD;
-use faer::{diag::DiagRef, mat::Mat, MatRef, Par};
+use faer::{mat::Mat, unzip, zip, MatRef, Par};
 use faer_traits::RealField;
 use itertools::Itertools;
 use num::Float;
@@ -290,17 +290,17 @@ pub fn faer_irls<T: RealField + Float>(
             for i in 0..n_samples {
                 let mu_i = mu[i];
                 d_mu[i] = link.deriv(mu_i);
-                weights[i] = (d_mu[i].powi(2) * variance.variance(mu_i)).recip()
-                // .max(epsilon)
+                weights[i] = (d_mu[i].powi(2) * variance.variance(mu_i)).recip();
             }
 
             // Update Response
-            // Reuse eta as Z, the working response
-            // This computation is vectorized
-            // let z = eta + diag_d_mu * (y - mu.as_mat());
-            let diag_d_mu = DiagRef::from_slice(&d_mu);
-            let mu_mat = MatRef::from_column_major_slice(&mu, mu.len(), 1);
-            eta += diag_d_mu * (y - mu_mat); // This is now Z
+            // Eta was X * beta. We update it into Z (working response) in-place.
+            // Z = eta + deriv(mu) * (y - mu)
+            for i in 0..n_samples {
+                let y_i = *y.get_unchecked(i, 0);
+                let eta_i = eta.get_mut_unchecked(i, 0);
+                *eta_i = *eta_i + d_mu[i] * (y_i - mu[i]);
+            }
 
             // Solve weighted least squares
             let beta_new = faer_weighted_lr(
@@ -331,9 +331,11 @@ pub fn faer_irls<T: RealField + Float>(
             }
 
             // Check for convergence
-            // Use L Inf norm. Ignore diff from bias/intercept term???
-            let diff = beta - &beta_new;
-            let max_diff = diff.norm_max();
+            let mut max_diff = T::zero();
+            zip!(beta.col(0), beta_new.col(0)).for_each(|unzip!(b, bn)| {
+                max_diff = max_diff.max((*b - *bn).abs());
+            });
+
             // Update beta
             beta = beta_new;
             // Check convergence

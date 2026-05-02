@@ -19,7 +19,7 @@ pub mod neighbor;
 pub mod utils;
 
 pub use kdt2::KDT; // Change this to use the new kdt2 implementation
-// pub use ball_tree::BallTree;
+                   // pub use ball_tree::BallTree;
 use crate::utils::{l1_distance, linf_distance, squared_l2_distance};
 pub use leaf::{KdLeaf, Leaf};
 pub use neighbor::NB;
@@ -78,8 +78,11 @@ impl Metric for KNNDist {
         match self {
             KNNDist::L1 => {
                 for i in 0..dim {
-                    if point[i] > bounds[i + dim] { dist += point[i] - bounds[i + dim]; }
-                    else if point[i] < bounds[i] { dist += bounds[i] - point[i]; }
+                    if point[i] > bounds[i + dim] {
+                        dist += point[i] - bounds[i + dim];
+                    } else if point[i] < bounds[i] {
+                        dist += bounds[i] - point[i];
+                    }
                 }
             }
             KNNDist::SQL2 | KNNDist::L2 => {
@@ -92,12 +95,17 @@ impl Metric for KNNDist {
                         dist += d * d;
                     }
                 }
-                if let KNNDist::L2 = self { dist = dist.sqrt(); }
+                if let KNNDist::L2 = self {
+                    dist = dist.sqrt();
+                }
             }
             KNNDist::LINF => {
                 for i in 0..dim {
-                    if point[i] > bounds[i + dim] { dist = dist.max(point[i] - bounds[i + dim]); }
-                    else if point[i] < bounds[i] { dist = dist.max(bounds[i] - point[i]); }
+                    if point[i] > bounds[i + dim] {
+                        dist = dist.max(point[i] - bounds[i + dim]);
+                    } else if point[i] < bounds[i] {
+                        dist = dist.max(bounds[i] - point[i]);
+                    }
                 }
             }
         }
