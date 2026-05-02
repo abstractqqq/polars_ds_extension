@@ -31,7 +31,11 @@ impl<'a, A> Node<'a, A> {
     }
 
     fn data_mut(&mut self) -> Option<&mut Vec<Leaf<'a, f64, A>>> {
-        if let Node::Leaf { data, .. } = self { Some(data) } else { None }
+        if let Node::Leaf { data, .. } = self {
+            Some(data)
+        } else {
+            None
+        }
     }
 }
 
@@ -52,7 +56,7 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
     pub fn new_empty(dim: usize, capacity: usize, d: M) -> Self {
         let mut bounds = vec![f64::INFINITY; dim];
         bounds.extend(std::iter::repeat(f64::NEG_INFINITY).take(dim));
-        
+
         let root_node = Node::Leaf {
             data: Vec::with_capacity(capacity),
             bounds,
@@ -73,15 +77,21 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
         for elem in data {
             for i in 0..dim {
                 let val = elem.row_vec[i];
-                if val < bounds[i] { bounds[i] = val; }
-                if val > bounds[i + dim] { bounds[i + dim] = val; }
+                if val < bounds[i] {
+                    bounds[i] = val;
+                }
+                if val > bounds[i + dim] {
+                    bounds[i + dim] = val;
+                }
             }
         }
         bounds
     }
 
     pub fn from_leaves(data: &'a mut [Leaf<'a, f64, A>], d: M) -> Result<Self, String> {
-        if data.is_empty() { return Err("Empty data.".into()); }
+        if data.is_empty() {
+            return Err("Empty data.".into());
+        }
         let dim = data[0].row_vec.len();
         let capacity = suggest_capacity(dim);
         let mut tree = KDT {
@@ -130,7 +140,10 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
         let right = self.build_recursive(&mut data[mid..], depth + 1);
 
         // Update placeholder with actual child indices
-        if let Node::Internal { left: l, right: r, .. } = &mut self.nodes[node_idx as usize] {
+        if let Node::Internal {
+            left: l, right: r, ..
+        } = &mut self.nodes[node_idx as usize]
+        {
             *l = left;
             *r = right;
         }
@@ -143,7 +156,7 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
 
     // fn recursive_add(&mut self, node_idx: u32, leaf: Leaf<'a, f64, A>, depth: usize) {
     //     let mut node = std::mem::replace(&mut self.nodes[node_idx as usize], Node::Leaf { data: Vec::new(), bounds: Vec::new() });
-        
+
     //     match &mut node {
     //         Node::Leaf { data, bounds } => {
     //             // Update bounds
@@ -158,10 +171,10 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
     //                 let axis = depth % self.dim;
     //                 // MIDPOINT split
     //                 let midpoint = bounds[axis] + (bounds[axis + self.dim] - bounds[axis]) * 0.5;
-                    
+
     //                 let mut left_v = Vec::new();
     //                 let mut right_v = Vec::new();
-                    
+
     //                 for item in data.drain(..) {
     //                     if item.row_vec[axis] < midpoint { left_v.push(item); }
     //                     else { right_v.push(item); }
@@ -173,10 +186,10 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
     //                 } else {
     //                     let l_bounds = Self::find_bounds(&left_v, self.dim);
     //                     let r_bounds = Self::find_bounds(&right_v, self.dim);
-                        
+
     //                     let left_idx = self.nodes.len() as u32;
     //                     self.nodes.push(Node::Leaf { data: left_v, bounds: l_bounds });
-                        
+
     //                     let right_idx = self.nodes.len() as u32;
     //                     self.nodes.push(Node::Leaf { data: right_v, bounds: r_bounds });
 
@@ -203,7 +216,7 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
     //                 if v < bounds[i] { bounds[i] = v; }
     //                 if v > bounds[i + self.dim] { bounds[i + self.dim] = v; }
     //             }
-                
+
     //             let target = if leaf.row_vec[axis] < val { l_idx } else { r_idx };
     //             self.nodes[node_idx as usize] = node;
     //             self.recursive_add(target, leaf, depth + 1);
@@ -212,33 +225,66 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
     // }
 
     #[inline(always)]
-    fn update_top_k(&self, data: &[Leaf<'a, f64, A>], top_k: &mut Vec<NB<f64, A>>, k: usize, point: &[f64], max_dist_bound: f64) {
+    fn update_top_k(
+        &self,
+        data: &[Leaf<'a, f64, A>],
+        top_k: &mut Vec<NB<f64, A>>,
+        k: usize,
+        point: &[f64],
+        max_dist_bound: f64,
+    ) {
         for element in data {
             let dist = self.d.dist(element.row_vec, point);
-            let current_max = top_k.last().map(|nb: &NB<f64, A>| nb.dist).unwrap_or(max_dist_bound);
-            
+            let current_max = top_k
+                .last()
+                .map(|nb: &NB<f64, A>| nb.dist)
+                .unwrap_or(max_dist_bound);
+
             if dist <= max_dist_bound && (dist < current_max || top_k.len() < k) {
                 let idx = top_k.partition_point(|s| s.dist <= dist);
-                top_k.insert(idx, NB { dist, item: element.item });
-                if top_k.len() > k { top_k.pop(); }
+                top_k.insert(
+                    idx,
+                    NB {
+                        dist,
+                        item: element.item,
+                    },
+                );
+                if top_k.len() > k {
+                    top_k.pop();
+                }
             }
         }
     }
 
     pub fn knn(&self, k: usize, point: &[f64], epsilon: f64) -> Option<Vec<NB<f64, A>>> {
-        if k == 0 || point.len() != self.dim || point.iter().any(|x| !x.is_finite()) { return None; }
-        
+        if k == 0 || point.len() != self.dim || point.iter().any(|x| !x.is_finite()) {
+            return None;
+        }
+
         let mut top_k = Vec::with_capacity(k + 1);
         let mut stack = Vec::with_capacity(32);
-        let d_root = self.d.dist_to_box(self.nodes[self.root as usize].bounds(), point);
+        let d_root = self
+            .d
+            .dist_to_box(self.nodes[self.root as usize].bounds(), point);
         stack.push((d_root, self.root));
 
         while let Some((d_box, idx)) = stack.pop() {
-            let current_max = top_k.last().map(|nb: &NB<f64, A>| nb.dist).unwrap_or(f64::MAX);
-            if d_box > current_max { continue; }
+            let current_max = top_k
+                .last()
+                .map(|nb: &NB<f64, A>| nb.dist)
+                .unwrap_or(f64::MAX);
+            if d_box > current_max {
+                continue;
+            }
 
             match &self.nodes[idx as usize] {
-                Node::Internal { split_axis, split_value, left, right, .. } => {
+                Node::Internal {
+                    split_axis,
+                    split_value,
+                    left,
+                    right,
+                    ..
+                } => {
                     let (near, far) = if point[*split_axis] < *split_value {
                         (*left, *right)
                     } else {
@@ -276,11 +322,16 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
 
         let mut top_k = Vec::with_capacity(k + 1);
         let mut stack = Vec::with_capacity(32);
-        let d_root = self.d.dist_to_box(self.nodes[self.root as usize].bounds(), point);
+        let d_root = self
+            .d
+            .dist_to_box(self.nodes[self.root as usize].bounds(), point);
         stack.push((d_root, self.root));
 
         while let Some((d_box, idx)) = stack.pop() {
-            let current_max = top_k.last().map(|nb: &NB<f64, A>| nb.dist).unwrap_or(max_dist_bound);
+            let current_max = top_k
+                .last()
+                .map(|nb: &NB<f64, A>| nb.dist)
+                .unwrap_or(max_dist_bound);
             if d_box > current_max {
                 continue;
             }
@@ -372,18 +423,30 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
     }
 
     pub fn within(&self, point: &[f64], radius: f64, sort: bool) -> Option<Vec<NB<f64, A>>> {
-        if radius <= f64::EPSILON || point.iter().any(|x| !x.is_finite()) { return None; }
+        if radius <= f64::EPSILON || point.iter().any(|x| !x.is_finite()) {
+            return None;
+        }
 
         let mut neighbors = Vec::with_capacity(32);
         let mut stack = Vec::with_capacity(32);
-        let d_root = self.d.dist_to_box(self.nodes[self.root as usize].bounds(), point);
+        let d_root = self
+            .d
+            .dist_to_box(self.nodes[self.root as usize].bounds(), point);
         stack.push((d_root, self.root));
 
         while let Some((d_box, idx)) = stack.pop() {
-            if d_box > radius { continue; }
+            if d_box > radius {
+                continue;
+            }
 
             match &self.nodes[idx as usize] {
-                Node::Internal { split_axis, split_value, left, right, .. } => {
+                Node::Internal {
+                    split_axis,
+                    split_value,
+                    left,
+                    right,
+                    ..
+                } => {
                     let (near, far) = if point[*split_axis] < *split_value {
                         (*left, *right)
                     } else {
@@ -391,44 +454,71 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
                     };
 
                     let d_far = self.d.dist_to_box(self.nodes[far as usize].bounds(), point);
-                    if d_far <= radius { stack.push((d_far, far)); }
+                    if d_far <= radius {
+                        stack.push((d_far, far));
+                    }
                     stack.push((d_box, near));
                 }
                 Node::Leaf { data, .. } => {
                     for element in data {
                         let dist = self.d.dist(element.row_vec, point);
                         if dist <= radius {
-                            neighbors.push(NB { dist, item: element.item });
+                            neighbors.push(NB {
+                                dist,
+                                item: element.item,
+                            });
                         }
                     }
                 }
             }
         }
-        if sort { neighbors.sort_unstable(); }
+        if sort {
+            neighbors.sort_unstable();
+        }
         Some(neighbors)
     }
 
     pub fn within_count(&self, point: &[f64], radius: f64) -> Option<u32> {
-        if radius <= f64::EPSILON || point.iter().any(|x| !x.is_finite()) { return None; }
+        if radius <= f64::EPSILON || point.iter().any(|x| !x.is_finite()) {
+            return None;
+        }
 
         let mut count = 0u32;
         let mut stack = Vec::with_capacity(32);
-        let d_root = self.d.dist_to_box(self.nodes[self.root as usize].bounds(), point);
+        let d_root = self
+            .d
+            .dist_to_box(self.nodes[self.root as usize].bounds(), point);
         stack.push((d_root, self.root));
 
         while let Some((d_box, idx)) = stack.pop() {
-            if d_box > radius { continue; }
+            if d_box > radius {
+                continue;
+            }
 
             match &self.nodes[idx as usize] {
-                Node::Internal { split_axis, split_value, left, right, .. } => {
-                    let (near, far) = if point[*split_axis] < *split_value { (*left, *right) } else { (*right, *left) };
+                Node::Internal {
+                    split_axis,
+                    split_value,
+                    left,
+                    right,
+                    ..
+                } => {
+                    let (near, far) = if point[*split_axis] < *split_value {
+                        (*left, *right)
+                    } else {
+                        (*right, *left)
+                    };
                     let d_far = self.d.dist_to_box(self.nodes[far as usize].bounds(), point);
-                    if d_far <= radius { stack.push((d_far, far)); }
+                    if d_far <= radius {
+                        stack.push((d_far, far));
+                    }
                     stack.push((d_box, near));
                 }
                 Node::Leaf { data, .. } => {
                     for element in data {
-                        if self.d.dist(element.row_vec, point) <= radius { count += 1; }
+                        if self.d.dist(element.row_vec, point) <= radius {
+                            count += 1;
+                        }
                     }
                 }
             }

@@ -3,7 +3,8 @@ use crate::linear::{
     lr::{LRSolverMethods, LinearModel},
     LinalgErrors,
 };
-use faer::{linalg::solvers::Solve, mat::Mat, prelude::*, Side};
+use crate::utils::parallelism::PARALLEL_MATMUL_THRESHOLD;
+use faer::{linalg::solvers::Solve, mat::Mat, prelude::*, unzip, zip, Side};
 use faer_traits::RealField;
 use num::Float;
 
@@ -26,12 +27,14 @@ impl<T: RealField + Float> LR<T> {
     }
 
     pub fn from_values(coeffs: &[T], bias: T) -> Self {
-        LR {
+        let mut slf = LR {
             solver: LRSolverMethods::default(),
             lambda: T::zero(),
-            coefficients: faer::mat::Mat::from_fn(coeffs.len(), 1, |i, _| coeffs[i]),
-            add_bias: bias.abs() > T::epsilon(),
-        }
+            coefficients: Mat::new(),
+            add_bias: false,
+        };
+        slf.set_coeffs_and_bias(coeffs, bias);
+        slf
     }
 
     pub fn set_coeffs_and_bias(&mut self, coeffs: &[T], bias: T) {
@@ -92,27 +95,16 @@ impl<T: RealField + Float> ElasticNet<T> {
     }
 
     pub fn from_values(coeffs: &[T], bias: T) -> Self {
-        let add_bias = bias.abs() > T::epsilon();
-        let coefficients = if add_bias {
-            Mat::from_fn(coeffs.len() + 1, 1, |i, _| {
-                if i < coeffs.len() {
-                    coeffs[i]
-                } else {
-                    bias
-                }
-            })
-        } else {
-            ColRef::<T>::from_slice(coeffs).as_mat().to_owned()
-        };
-
-        ElasticNet {
+        let mut slf = ElasticNet {
             l1_reg: T::nan(),
             l2_reg: T::nan(),
-            coefficients: coefficients,
-            add_bias: add_bias,
+            coefficients: Mat::new(),
+            add_bias: false,
             tol: T::from(1e-5).unwrap(),
             max_iter: 2000,
-        }
+        };
+        slf.set_coeffs_and_bias(coeffs, bias);
+        slf
     }
 
     pub fn set_coeffs_and_bias(&mut self, coeffs: &[T], bias: T) {
@@ -187,20 +179,25 @@ impl<T: RealField + Float> LinearModel<T> for ElasticNet<T> {
 // --- The functions ---
 // ---------------------
 
-/// Least square that sets all singular values below threshold to 0.
-/// Returns the coefficients and the singular values
 #[inline(always)]
-pub fn faer_solve_lr_rcond<T: RealField + Float>(
-    x: MatRef<T>,
-    y: MatRef<T>,
-    lambda: T,
-    add_bias: bool,
-    rcond: T,
-) -> Result<(Mat<T>, Vec<T>), String> {
-    let n1 = x.ncols().abs_diff(add_bias as usize);
-    let xt = x.transpose();
-    let mut xtx = xt * x;
+fn get_xtx_with_lambda<T: RealField + Float>(x: MatRef<T>, lambda: T, add_bias: bool) -> Mat<T> {
+    let ncols = x.ncols();
+    let mut xtx = Mat::zeros(ncols, ncols);
+    let par = if x.nrows() * x.ncols() < PARALLEL_MATMUL_THRESHOLD {
+        Par::Seq
+    } else {
+        Par::rayon(0)
+    };
+    faer::linalg::matmul::matmul(
+        xtx.as_mut(),
+        faer::Accum::Replace,
+        x.transpose(),
+        x,
+        T::one(),
+        par,
+    );
     // xtx + diagonal of lambda. If has bias, don't add to the last diagonal.
+    let n1 = ncols.abs_diff(add_bias as usize);
     if lambda > T::zero() && n1 >= 1 {
         unsafe {
             xtx.get_mut_unchecked(0..n1, 0..n1)
@@ -210,6 +207,20 @@ pub fn faer_solve_lr_rcond<T: RealField + Float>(
                 });
         }
     }
+    xtx
+}
+
+/// Least square that sets all singular values below threshold to 0.
+/// Returns the coefficients and the singular values
+#[inline(always)]
+pub fn faer_solve_lr_rcond<T: RealField + Float>(
+    x: MatRef<'_, T>,
+    y: MatRef<T>,
+    lambda: T,
+    add_bias: bool,
+    rcond: T,
+) -> Result<(Mat<T>, Vec<T>), String> {
+    let xtx = get_xtx_with_lambda(x, lambda, add_bias);
     // need work here
     match xtx.thin_svd() {
         Ok(svd) => {
@@ -227,7 +238,7 @@ pub fn faer_solve_lr_rcond<T: RealField + Float>(
                         if v >= threshold { v.recip() } else { T::zero() };
                 }
             }
-            let weights = svd.V() * s_inv * svd.U().transpose() * xt * y;
+            let weights = svd.V() * s_inv * svd.U().transpose() * x.transpose() * y;
             Ok((weights, singular_values))
         }
         _ => Err("SVD failed.".to_string()),
@@ -244,30 +255,33 @@ pub fn faer_solve_lr<T: RealField + Float>(
     add_bias: bool,
     how: LRSolverMethods,
 ) -> Mat<T> {
-    let n1 = x.ncols().abs_diff(add_bias as usize);
-    let xt = x.transpose();
-    let mut xtx = xt * x;
-    // xtx + diagonal of lambda. If has bias, don't add to the last diagonal.
-    if lambda > T::zero() && n1 >= 1 {
-        unsafe {
-            xtx.get_mut_unchecked(0..n1, 0..n1)
-                .diagonal_mut()
-                .for_each_mut(|d| {
-                    *d += lambda;
-                });
-        }
-    }
+    use crate::utils::parallelism::PARALLEL_MATMUL_THRESHOLD;
+    let xtx = get_xtx_with_lambda(x, lambda, add_bias);
+    let mut xty = Mat::zeros(x.ncols(), y.ncols());
+    let par = if x.nrows() * y.ncols() < PARALLEL_MATMUL_THRESHOLD {
+        Par::Seq
+    } else {
+        Par::rayon(0)
+    };
+    faer::linalg::matmul::matmul(
+        xty.as_mut(),
+        faer::Accum::Replace,
+        x.transpose(),
+        y,
+        T::one(),
+        par,
+    );
 
     match how {
         LRSolverMethods::SVD => match xtx.thin_svd() {
-            Ok(svd) => svd.solve(xt * y),
-            _ => xtx.col_piv_qr().solve(xt * y),
+            Ok(svd) => svd.solve(xty),
+            _ => xtx.col_piv_qr().solve(xty),
         },
         LRSolverMethods::Choleskey => match xtx.llt(Side::Lower) {
-            Ok(llt) => llt.solve(xt * y),
-            _ => xtx.col_piv_qr().solve(xt * y),
+            Ok(llt) => llt.solve(xty),
+            _ => xtx.col_piv_qr().solve(xty),
         },
-        LRSolverMethods::QR => xtx.col_piv_qr().solve(xt * y),
+        LRSolverMethods::QR => xtx.col_piv_qr().solve(xty),
     }
 }
 
@@ -334,15 +348,46 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
     let mut beta: Mat<T> = Mat::zeros(ncols, 1);
     let mut converge = false;
 
-    // compute column squared l2 norms.
-    // (In the case of Elastic net, squared l2 norms + l2 regularization factor)
-    let norms = x
-        .col_iter()
-        .map(|c| c.squared_norm_l2() + m * l2_reg)
+    use crate::utils::parallelism::PARALLEL_MATMUL_THRESHOLD;
+
+    let mut xty = Mat::zeros(ncols, 1);
+    let par_xty = if x.nrows() * y.ncols() < PARALLEL_MATMUL_THRESHOLD {
+        Par::Seq
+    } else {
+        Par::rayon(0)
+    };
+    faer::linalg::matmul::matmul(
+        xty.as_mut(),
+        faer::Accum::Replace,
+        x.transpose(),
+        y,
+        T::one(),
+        par_xty,
+    );
+
+    let mut xtx = Mat::zeros(ncols, ncols);
+    let par_xtx = if x.nrows() * x.ncols() < PARALLEL_MATMUL_THRESHOLD {
+        Par::Seq
+    } else {
+        Par::rayon(0)
+    };
+    faer::linalg::matmul::matmul(
+        xtx.as_mut(),
+        faer::Accum::Replace,
+        x.transpose(),
+        x,
+        T::one(),
+        par_xtx,
+    );
+
+    // Compute column squared l2 norms from xtx diagonal
+    let norms = (0..ncols)
+        .map(|j| *unsafe { xtx.get_unchecked(j, j) } + m * l2_reg)
         .collect::<Vec<_>>();
 
-    let xty = x.transpose() * y;
-    let xtx = x.transpose() * x;
+    // Precompute sums for bias update optimization
+    let y_sum = y.col(0).sum();
+    let col_sums = (0..n1).map(|j| x.col(j).sum()).collect::<Vec<_>>();
 
     // Random selection often leads to faster convergence?
     for _ in 0..max_iter {
@@ -352,11 +397,14 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
             // Safe. The index is valid and the value is initialized.
             let before = *unsafe { beta.get_unchecked(j, 0) };
             *unsafe { beta.get_mut_unchecked(j, 0) } = T::zero();
-            let xtx_j = unsafe { xtx.get_unchecked(j..j + 1, ..) };
 
-            // Xi^t(y - X-i Beta-i)
-            let main_update =
-                unsafe { *xty.get_unchecked(j, 0) - *(xtx_j * &beta).get_unchecked(0, 0) };
+            // Compute dot product (X^T X * Beta)_j without allocating a 1x1 matrix.
+            // Since X^T X is symmetric, col(j) is equivalent to row(j) but faster.
+            let mut dot = T::zero();
+            zip!(xtx.col(j), beta.col(0)).for_each(|unzip!(x_val, b_val)| {
+                dot = dot + *x_val * *b_val;
+            });
+            let main_update = unsafe { *xty.get_unchecked(j, 0) - dot };
 
             // update beta(j, 0).
             let after = if positive && main_update < T::zero() {
@@ -370,10 +418,12 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
         // if add_bias, n1 = last index = ncols - 1 = column of bias. If add_bias is False, n = ncols
         // In positive case, there should be no positive constraint on the bias term
         if add_bias {
-            // Safe. The index is valid and the value is initialized.
-            let xx = unsafe { x.get_unchecked(.., 0..n1) };
-            let bb = unsafe { beta.get_unchecked(0..n1, ..) };
-            let ss = (y - xx * bb).as_ref().sum() / m;
+            // Precomputed sum optimization: ss = sum(y - X_no_bias * beta_no_bias) / m
+            let mut dot_sums = T::zero();
+            for j in 0..n1 {
+                dot_sums = dot_sums + *unsafe { beta.get_unchecked(j, 0) } * col_sums[j];
+            }
+            let ss = (y_sum - dot_sums) / m;
             *unsafe { beta.get_mut_unchecked(n1, 0) } = ss;
         }
         // This stopping criterion is not perfect. There is something called a dual gap which
@@ -404,19 +454,32 @@ pub fn faer_nn_lr<T: RealField + Float>(
 ) -> Mat<T> {
     // x: nrows x ncols
     let xtx: Mat<T> = x.transpose() * x;
-    let xty: Mat<T> = x.transpose() * y;
-
     let mut beta: Mat<T> = Mat::zeros(x.ncols(), 1);
-    let mut mu = Scale(T::one().neg()) * &xty;
+    // Initialize mu = -xty in-place to avoid allocation from Scale * Mat
+    use crate::utils::parallelism::PARALLEL_MATMUL_THRESHOLD;
+    let mut mu = Mat::zeros(x.ncols(), 1);
+    let par = if x.nrows() * y.ncols() < PARALLEL_MATMUL_THRESHOLD {
+        Par::Seq
+    } else {
+        Par::rayon(0)
+    };
+    faer::linalg::matmul::matmul(
+        mu.as_mut(),
+        faer::Accum::Add,
+        x.transpose(),
+        y,
+        T::one().neg(),
+        par,
+    );
+
     // safe, all indices are in valid range
     unsafe {
         for _ in 0..max_iter {
-            let hxf: Mat<T> = &xtx * &beta - &xty;
-            let criterion1 = hxf.col(0).iter().all(|c| *c >= -tol);
+            let criterion1 = mu.col(0).iter().all(|c| *c >= -tol);
             let mut criterion2 = true;
             for j in 0..beta.nrows() {
                 if *beta.get_unchecked(j, 0) > T::zero() {
-                    criterion2 &= *hxf.get_unchecked(j, 0) <= tol;
+                    criterion2 &= *mu.get_unchecked(j, 0) <= tol;
                 }
             }
 
@@ -426,14 +489,16 @@ pub fn faer_nn_lr<T: RealField + Float>(
 
             for k in 0..x.ncols() {
                 let beta_k = *beta.get_unchecked(k, 0);
-                let mut x_diff = -beta_k;
                 let mut update = beta_k - *mu.get_unchecked(k, 0) / *xtx.get_unchecked(k, k);
                 if !add_bias || k < x.ncols() - 1 {
                     update = update.max(T::zero());
                 } // No need for max with 0 if this is the bias term
                 *beta.get_mut_unchecked(k, 0) = update;
-                x_diff = x_diff + update;
-                mu = mu + Scale(x_diff) * xtx.get_unchecked(.., k).as_mat();
+                let x_diff = update - beta_k;
+                // This is a vector update (AXPY). zip! performs this in-place,
+                // whereas the + operator allocates a new matrix every time.
+                zip!(mu.as_mut(), xtx.col(k).as_mat())
+                    .for_each(|unzip!(m, x)| *m = *m + x_diff * *x);
             }
         }
     }

@@ -168,8 +168,11 @@ pub fn series_to_mat_for_lr(
             ));
         }
         let extra = if add_bias { nrows } else { 0 };
-        let mut mat_slice =
-            series_to_slice_with_extra_cap_unchecked::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
+        let mut mat_slice = series_to_slice_with_extra_cap_unchecked::<Float64Type>(
+            inputs,
+            IndexOrder::Fortran,
+            extra,
+        )?;
         if add_bias {
             mat_slice.extend(std::iter::repeat(1f64).take(nrows));
         }
@@ -280,8 +283,11 @@ fn series_to_mat_for_multi_lr(
             return Err(PolarsError::ComputeError("Empty data".into()));
         }
         let extra = if add_bias { nrows } else { 0 };
-        let mut mat_slice =
-            series_to_slice_with_extra_cap_unchecked::<Float64Type>(inputs, IndexOrder::Fortran, extra)?;
+        let mut mat_slice = series_to_slice_with_extra_cap_unchecked::<Float64Type>(
+            inputs,
+            IndexOrder::Fortran,
+            extra,
+        )?;
         if add_bias {
             mat_slice.extend(std::iter::repeat(1f64).take(nrows));
         }
@@ -452,12 +458,7 @@ fn pl_lr_multi(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Series>
         .enumerate()
         .map(|(i, y)| {
             let mut builder: ListPrimitiveChunkedBuilder<Float64Type> =
-                ListPrimitiveChunkedBuilder::new(
-                    y.clone(),
-                    1,
-                    coeffs.nrows(),
-                    DataType::Float64,
-                );
+                ListPrimitiveChunkedBuilder::new(y.clone(), 1, coeffs.nrows(), DataType::Float64);
             builder.append_slice(coeffs.col_as_slice(i));
             builder.finish().into_column()
         })

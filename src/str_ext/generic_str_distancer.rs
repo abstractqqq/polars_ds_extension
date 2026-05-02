@@ -1,7 +1,7 @@
 use polars::{
     prelude::{
-        arity::{binary_elementwise_values, unary_elementwise_values}, DataType, Float64Chunked, Series, StringChunked,
-        UInt32Chunked,
+        arity::{binary_elementwise_values, unary_elementwise_values},
+        DataType, Float64Chunked, Series, StringChunked, UInt32Chunked,
     },
     series::IntoSeries,
 };
@@ -67,8 +67,7 @@ where
         let splits = split_offsets(ca.len(), n_threads);
         let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
             let s1 = ca.slice(offset as i64, len);
-            let out: UInt32Chunked =
-                unary_elementwise_values(&s1, |s| batched.distance(s));
+            let out: UInt32Chunked = unary_elementwise_values(&s1, |s| batched.distance(s));
             out.downcast_iter().cloned().collect::<Vec<_>>()
         });
         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
@@ -88,7 +87,8 @@ where
         let splits = split_offsets(ca.len(), n_threads);
         let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
             let s1 = ca.slice(offset as i64, len);
-            let out: Float64Chunked = unary_elementwise_values(&s1, |s| batched.normalized_similarity(s));
+            let out: Float64Chunked =
+                unary_elementwise_values(&s1, |s| batched.normalized_similarity(s));
             out.downcast_iter().cloned().collect::<Vec<_>>()
         });
         let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
@@ -104,7 +104,7 @@ pub fn generic_binary_distance<F>(
     ca1: &StringChunked,
     ca2: &StringChunked,
     parallel: bool,
-) -> Series 
+) -> Series
 where
     F: Fn(&str, &str) -> u32 + Copy + Send + Sync,
 {
@@ -130,7 +130,7 @@ pub fn generic_binary_sim<F>(
     ca1: &StringChunked,
     ca2: &StringChunked,
     parallel: bool,
-) -> Series 
+) -> Series
 where
     F: Fn(&str, &str) -> f64 + Copy + Send + Sync,
 {

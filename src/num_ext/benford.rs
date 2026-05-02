@@ -8,7 +8,9 @@ use pyo3_polars::derive::polars_expr;
 macro_rules! impl_benford_int {
     ($ss:expr, $out:expr) => {
         for mut v in $ss.into_no_null_iter() {
-            if v == 0 { continue; }
+            if v == 0 {
+                continue;
+            }
             while v >= 10 {
                 v /= 10;
             }
@@ -18,7 +20,9 @@ macro_rules! impl_benford_int {
     ($ss:expr, $out:expr, signed) => {
         for x in $ss.into_no_null_iter() {
             let mut v = x.unsigned_abs();
-            if v == 0 { continue; }
+            if v == 0 {
+                continue;
+            }
             while v >= 10 {
                 v /= 10;
             }

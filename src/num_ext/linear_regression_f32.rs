@@ -105,8 +105,11 @@ fn series_to_mat_for_lr_f32(
             ));
         }
         let extra = if add_bias { nrows } else { 0 };
-        let mut mat_slice =
-            series_to_slice_with_extra_cap_unchecked::<Float32Type>(inputs, IndexOrder::Fortran, extra)?;
+        let mut mat_slice = series_to_slice_with_extra_cap_unchecked::<Float32Type>(
+            inputs,
+            IndexOrder::Fortran,
+            extra,
+        )?;
         if add_bias {
             mat_slice.extend(std::iter::repeat(1f32).take(nrows));
         }
@@ -217,8 +220,11 @@ fn series_to_mat_for_multi_lr_f32(
             return Err(PolarsError::ComputeError("Empty data".into()));
         }
         let extra = if add_bias { nrows } else { 0 };
-        let mut mat_slice =
-            series_to_slice_with_extra_cap_unchecked::<Float32Type>(inputs, IndexOrder::Fortran, extra)?;
+        let mut mat_slice = series_to_slice_with_extra_cap_unchecked::<Float32Type>(
+            inputs,
+            IndexOrder::Fortran,
+            extra,
+        )?;
         if add_bias {
             mat_slice.extend(std::iter::repeat(1f32).take(nrows));
         }
@@ -388,12 +394,7 @@ fn pl_lr_multi_f32(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Ser
         .enumerate()
         .map(|(i, y)| {
             let mut builder: ListPrimitiveChunkedBuilder<Float32Type> =
-                ListPrimitiveChunkedBuilder::new(
-                    y.clone(),
-                    1,
-                    coeffs.nrows(),
-                    DataType::Float32,
-                );
+                ListPrimitiveChunkedBuilder::new(y.clone(), 1, coeffs.nrows(), DataType::Float32);
             builder.append_slice(coeffs.col_as_slice(i));
             builder.finish().into_column()
         })
