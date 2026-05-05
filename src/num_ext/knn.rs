@@ -358,12 +358,15 @@ where
                     );
                     let subslice = &data[offset * ncols..(offset + len) * ncols];
                     let mask = &eval_mask[offset..offset + len];
+                    // Reusable scratch buffers; one heap alloc per thread instead of per matched row.
+                    let mut distances: Vec<f64> = Vec::with_capacity(k + 1);
+                    let mut neighbors: Vec<u32> = Vec::with_capacity(k + 1);
                     for (b, p) in mask.iter().zip(subslice.chunks_exact(ncols)) {
                         if *b {
                             match tree.knn_bounded(k + 1, p, max_bound, epsilon) {
                                 Some(nbs) => {
-                                    let mut distances = Vec::with_capacity(nbs.len());
-                                    let mut neighbors = Vec::with_capacity(nbs.len());
+                                    distances.clear();
+                                    neighbors.clear();
                                     for (d, id) in nbs.into_iter().map(|nb| nb.to_pair()) {
                                         distances.push(d);
                                         neighbors.push(id);
@@ -408,14 +411,15 @@ where
             k + 1,
             DataType::Float64,
         );
+        // Reusable scratch buffers hoisted out of the row loop.
+        let mut distances: Vec<f64> = Vec::with_capacity(k + 1);
+        let mut neighbors: Vec<u32> = Vec::with_capacity(k + 1);
         for (b, p) in eval_mask.into_iter().zip(data.chunks_exact(ncols)) {
             if b {
                 match tree.knn_bounded(k + 1, p, max_bound, epsilon) {
                     Some(nbs) => {
-                        // let v = nbs.into_iter().map(|nb| nb.to_item()).collect::<Vec<u32>>();
-                        // builder.append_slice(&v);
-                        let mut distances = Vec::with_capacity(nbs.len());
-                        let mut neighbors = Vec::with_capacity(nbs.len());
+                        distances.clear();
+                        neighbors.clear();
                         for (d, id) in nbs.into_iter().map(|nb| nb.to_pair()) {
                             distances.push(d);
                             neighbors.push(id);
@@ -673,31 +677,22 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
     let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
     let nrows = data.len() / ncols;
 
+    let dist = KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into()))?;
     if radius.len() == 1 {
         let r = radius.get(0).unwrap();
-        match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
-            Ok(d) => {
-                let mut leaves = slice_to_empty_leaves(&data, ncols);
-                let tree = KDT::from_leaves(&mut leaves, d)
-                    .map_err(|e| PolarsError::ComputeError(e.into()))?;
-                Ok(query_nb_cnt(&tree, &data, r, can_parallel)
-                    .with_name("cnt".into())
-                    .into_series())
-            }
-            Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
-        }
+        let mut leaves = slice_to_empty_leaves(&data, ncols);
+        let tree = KDT::from_leaves(&mut leaves, dist)
+            .map_err(|e| PolarsError::ComputeError(e.into()))?;
+        Ok(query_nb_cnt(&tree, &data, r, can_parallel)
+            .with_name("cnt".into())
+            .into_series())
     } else if radius.len() == nrows {
-        match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
-            Ok(d) => {
-                let mut leaves = slice_to_empty_leaves(&data, ncols);
-                let tree = KDT::from_leaves(&mut leaves, d)
-                    .map_err(|e| PolarsError::ComputeError(e.into()))?;
-                Ok(query_nb_cnt_w_radius(&tree, &data, radius, can_parallel)
-                    .with_name("cnt".into())
-                    .into_series())
-            }
-            Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
-        }
+        let mut leaves = slice_to_empty_leaves(&data, ncols);
+        let tree = KDT::from_leaves(&mut leaves, dist)
+            .map_err(|e| PolarsError::ComputeError(e.into()))?;
+        Ok(query_nb_cnt_w_radius(&tree, &data, radius, can_parallel)
+            .with_name("cnt".into())
+            .into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
             "Inputs must have the same length or one of them must be a scalar.".into(),
