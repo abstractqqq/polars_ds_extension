@@ -79,13 +79,24 @@ fn pl_psi_w_bps(inputs: &[Series]) -> PolarsResult<Series> {
     let data2 = inputs[1].f64().unwrap();
     let breakpoints = inputs[2].f64().unwrap();
 
-    let binding = data1.rechunk();
-    let s1 = binding.cont_slice().unwrap();
-    let binding = data2.rechunk();
-    let s2 = binding.cont_slice().unwrap();
-
-    let binding = breakpoints.rechunk();
-    let bp = binding.cont_slice().unwrap();
+    let binding1 = if data1.chunks().len() == 1 {
+        data1.clone()
+    } else {
+        data1.rechunk().into_owned()
+    };
+    let s1 = binding1.cont_slice().unwrap();
+    let binding2 = if data2.chunks().len() == 1 {
+        data2.clone()
+    } else {
+        data2.rechunk().into_owned()
+    };
+    let s2 = binding2.cont_slice().unwrap();
+    let binding_bp = if breakpoints.chunks().len() == 1 {
+        breakpoints.clone()
+    } else {
+        breakpoints.rechunk().into_owned()
+    };
+    let bp = binding_bp.cont_slice().unwrap();
 
     let c1 = psi_with_bps_helper(s1, bp);
     let c2 = psi_with_bps_helper(s2, bp);
@@ -104,12 +115,24 @@ fn pl_psi_report(inputs: &[Series]) -> PolarsResult<Series> {
     // The cnts for the baseline/reference
     let cnt = inputs[2].u32().unwrap();
 
-    let binding = new.rechunk();
-    let data_new = binding.cont_slice().unwrap();
-    let binding = brk.rechunk();
-    let ref_brk = binding.cont_slice().unwrap();
-    let binding = cnt.rechunk();
-    let ref_cnt = binding.cont_slice().unwrap();
+    let binding_new = if new.chunks().len() == 1 {
+        new.clone()
+    } else {
+        new.rechunk().into_owned()
+    };
+    let data_new = binding_new.cont_slice().unwrap();
+    let binding_brk = if brk.chunks().len() == 1 {
+        brk.clone()
+    } else {
+        brk.rechunk().into_owned()
+    };
+    let ref_brk = binding_brk.cont_slice().unwrap();
+    let binding_cnt = if cnt.chunks().len() == 1 {
+        cnt.clone()
+    } else {
+        cnt.rechunk().into_owned()
+    };
+    let ref_cnt = binding_cnt.cont_slice().unwrap();
 
     let new_cnt = psi_with_bps_helper(data_new, ref_brk);
     let psi_report = psi_frame(ref_brk, "<=", ref_cnt, &new_cnt)?.collect()?;
