@@ -1499,3 +1499,148 @@ def test_weighted_corr():
     pds_result = df.select(pds.weighted_corr("a1", "a2", "w")).item(0, 0)
 
     np.isclose(np_result, pds_result, atol=1e-8)
+
+
+# KNNDist variants and NullPolicy parameterized tests
+
+@pytest.mark.parametrize("dist", ["l1", "l2", "sql2", "linf"])
+def test_knn_dist_variants(dist):
+    """KNN ptwise runs without error for each KDTree-supported dist string."""
+    rng = np.random.default_rng(0)
+    n = 10
+    df = pl.DataFrame(
+        {
+            "id": list(range(n)),
+            "f0": rng.random(n).tolist(),
+            "f1": rng.random(n).tolist(),
+            "f2": rng.random(n).tolist(),
+        }
+    )
+    k = 3
+    result = df.select(
+        pds.query_knn_ptwise("f0", "f1", "f2", index="id", dist=dist, k=k).alias("nn")
+    )
+    assert result.shape == (n, 1)
+    for i, cell in enumerate(result["nn"]):
+        assert cell is not None, f"Row {i} returned None for dist={dist}"
+        indices = cell.to_list()
+        assert len(indices) <= k + 1
+        for idx in indices:
+            assert 0 <= idx < n
+
+
+def test_knn_dist_invalid_string():
+    """Unknown distance string must raise (not silently return garbage)."""
+    df = pl.DataFrame(
+        {
+            "id": list(range(5)),
+            "f0": [0.1, 0.2, 0.3, 0.4, 0.5],
+            "f1": [0.5, 0.4, 0.3, 0.2, 0.1],
+            "f2": [1.0, 2.0, 3.0, 4.0, 5.0],
+        }
+    )
+    with pytest.raises(Exception) as exc_info:
+        df.select(
+            pds.query_knn_ptwise(
+                "f0", "f1", "f2", index="id", dist="not_a_real_metric", k=2
+            ).alias("nn")
+        )
+    msg = str(exc_info.value).lower()
+    assert "not_a_real_metric" in msg or "unknown" in msg or "invalid" in msg
+
+
+def _make_null_policy_df():
+    """Small deterministic frame with nulls in x1 only."""
+    rng = np.random.default_rng(7)
+    n = 200
+    x1 = rng.random(n)
+    x2 = rng.random(n)
+    x3 = rng.random(n)
+    y = 0.5 * x1 + 0.3 * x2 - 0.2 * x3 + rng.random(n) * 0.001
+    null_rows = set(range(0, n, 10))
+    x1_with_nulls = [None if i in null_rows else float(v) for i, v in enumerate(x1)]
+    return pl.DataFrame(
+        {
+            "x1": pl.Series(x1_with_nulls, dtype=pl.Float64),
+            "x2": x2.tolist(),
+            "x3": x3.tolist(),
+            "y": y.tolist(),
+        }
+    )
+
+
+def _lin_reg_coeffs(df: pl.DataFrame) -> np.ndarray:
+    return (
+        df.select(pds.lin_reg("x1", "x2", "x3", target="y").alias("c"))
+        .explode("c")["c"]
+        .to_numpy()
+    )
+
+
+def test_null_policy_skip():
+    df = _make_null_policy_df()
+    got = (
+        df.select(pds.lin_reg("x1", "x2", "x3", target="y", null_policy="skip").alias("c"))
+        .explode("c")["c"]
+        .to_numpy()
+    )
+    ref = _lin_reg_coeffs(df.filter(pl.col("x1").is_not_null()))
+    assert np.allclose(got, ref, atol=1e-8)
+
+
+def test_null_policy_raise():
+    df = _make_null_policy_df()
+    with pytest.raises(Exception):
+        df.select(pds.lin_reg("x1", "x2", "x3", target="y", null_policy="raise").alias("c"))
+
+
+def test_null_policy_zero():
+    df = _make_null_policy_df()
+    got = (
+        df.select(pds.lin_reg("x1", "x2", "x3", target="y", null_policy="zero").alias("c"))
+        .explode("c")["c"]
+        .to_numpy()
+    )
+    ref = _lin_reg_coeffs(df.with_columns(pl.col("x1").fill_null(0.0)))
+    assert np.allclose(got, ref, atol=1e-8)
+
+
+def test_null_policy_one():
+    df = _make_null_policy_df()
+    got = (
+        df.select(pds.lin_reg("x1", "x2", "x3", target="y", null_policy="one").alias("c"))
+        .explode("c")["c"]
+        .to_numpy()
+    )
+    ref = _lin_reg_coeffs(df.with_columns(pl.col("x1").fill_null(1.0)))
+    assert np.allclose(got, ref, atol=1e-8)
+
+
+def test_null_policy_numeric_fill():
+    df = _make_null_policy_df()
+    got = (
+        df.select(pds.lin_reg("x1", "x2", "x3", target="y", null_policy="0.5").alias("c"))
+        .explode("c")["c"]
+        .to_numpy()
+    )
+    ref = _lin_reg_coeffs(df.with_columns(pl.col("x1").fill_null(0.5)))
+    assert np.allclose(got, ref, atol=1e-8)
+
+
+def test_null_policy_ignore():
+    """IGNORE passes nulls to the solver; assert no panic and 3 coeffs returned."""
+    df = _make_null_policy_df()
+    result = df.select(
+        pds.lin_reg("x1", "x2", "x3", target="y", null_policy="ignore").alias("c")
+    ).explode("c")["c"]
+    assert len(result) == 3
+
+
+def test_null_policy_invalid():
+    df = _make_null_policy_df()
+    with pytest.raises(Exception) as exc_info:
+        df.select(
+            pds.lin_reg("x1", "x2", "x3", target="y", null_policy="not_a_policy").alias("c")
+        )
+    msg = str(exc_info.value).lower()
+    assert "invalid" in msg or "nullpolicy" in msg or "policy" in msg

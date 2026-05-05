@@ -347,3 +347,80 @@ def test_ndcg_score():
 
         sklearn_results = np.array(sklearn_results)
         np.testing.assert_allclose(df_agg["ndcg_score"].to_numpy(), sklearn_results, rtol=1e-5)
+
+
+# PSI tests
+# pl_psi_w_bps is exposed as pds.psi_w_breakpoints(new, baseline, breakpoints).
+# Always returns a struct report; the caller sums psi_bin to get the scalar.
+# Both baseline_pct and actual_pct are clipped to a minimum of 0.0001 inside
+# the Rust kernel, which is why identical-distribution PSI may not be exactly 0.
+
+def _reference_psi(new_arr, baseline_arr, breakpoints):
+    """Independent Python PSI; returns (per_bin, scalar)."""
+    bp = list(breakpoints) + [float("inf")]
+
+    def bucket_counts(arr, bp):
+        counts = np.zeros(len(bp), dtype=np.float64)
+        for v in arr:
+            idx = np.searchsorted(bp, v, side="left")
+            counts[idx] += 1
+        return counts
+
+    baseline_counts = bucket_counts(baseline_arr, bp)
+    new_counts = bucket_counts(new_arr, bp)
+    baseline_pct = np.maximum(baseline_counts / baseline_counts.sum(), 0.0001)
+    actual_pct = np.maximum(new_counts / new_counts.sum(), 0.0001)
+    per_bin = (baseline_pct - actual_pct) * np.log(baseline_pct / actual_pct)
+    return per_bin, per_bin.sum()
+
+
+def test_psi_w_breakpoints():
+    """psi_w_breakpoints scalar matches independent Python reference."""
+    rng = np.random.default_rng(42)
+    baseline = rng.normal(loc=0.0, scale=1.0, size=1000)
+    new = rng.normal(loc=0.5, scale=1.2, size=1000)
+    bps = list(np.quantile(baseline, [0.25, 0.50, 0.75]))
+
+    df = pl.DataFrame({"new": new, "baseline": baseline})
+    report = df.select(pds.psi_w_breakpoints("new", "baseline", breakpoints=bps)).unnest(
+        "psi_report"
+    )
+    psi_scalar = report["psi_bin"].sum()
+
+    assert np.isfinite(psi_scalar)
+    assert psi_scalar > 0
+
+    _, ref_psi = _reference_psi(new, baseline, bps)
+    assert np.isclose(psi_scalar, ref_psi, atol=1e-10), (
+        f"PSI mismatch: got {psi_scalar}, expected {ref_psi}"
+    )
+
+
+def test_psi_w_breakpoints_identical_distributions():
+    """When new == baseline, PSI should be ~0 (clip floor only fires on empty bins)."""
+    rng = np.random.default_rng(7)
+    data = rng.normal(size=1000)
+    bps = list(np.quantile(data, [0.25, 0.50, 0.75]))
+    df = pl.DataFrame({"a": data, "b": data})
+    report = df.select(pds.psi_w_breakpoints("a", "b", breakpoints=bps)).unnest("psi_report")
+    psi_scalar = report["psi_bin"].sum()
+    assert np.isclose(psi_scalar, 0.0, atol=1e-12)
+
+
+def test_psi_report_struct():
+    """psi(..., return_report=True) struct's per-bin PSI sums to the scalar path."""
+    rng = np.random.default_rng(99)
+    baseline = rng.normal(loc=0.0, scale=1.0, size=1000)
+    new = rng.normal(loc=0.3, scale=1.1, size=1000)
+    df = pl.DataFrame({"new": new, "baseline": baseline})
+
+    report = df.select(pds.psi("new", "baseline", n_bins=10, return_report=True)).unnest(
+        "psi_report"
+    )
+    expected_fields = {"<=", "baseline_pct", "actual_pct", "psi_bin"}
+    assert expected_fields <= set(report.columns)
+    assert report.shape[0] == 10
+
+    struct_psi = report["psi_bin"].sum()
+    scalar_psi = df.select(pds.psi("new", "baseline", n_bins=10)).item(0, 0)
+    assert np.isclose(struct_psi, scalar_psi, atol=1e-10)

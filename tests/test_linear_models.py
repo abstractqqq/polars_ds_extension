@@ -188,3 +188,84 @@ def test_glm():
 
     assert abs(sm_bias - pds_bias) < 1e-6
     np.testing.assert_allclose(sm_coeffs, pds_coeffs, rtol=1e-5)
+
+
+@pytest.mark.parametrize(
+    "family,sm_family_cls,y_gen",
+    [
+        (
+            "gaussian",
+            "Gaussian",
+            lambda X, rng: X @ np.array([1.0, -0.5, 0.3, 0.8]) + rng.randn(X.shape[0]) * 0.1,
+        ),
+        (
+            "binomial",
+            "Binomial",
+            lambda X, rng: rng.binomial(
+                1,
+                1.0 / (1.0 + np.exp(-(X @ np.array([1.0, -0.5, 0.3, 0.8])))),
+            ).astype(float),
+        ),
+        (
+            "poisson",
+            "Poisson",
+            lambda X, rng: rng.poisson(
+                np.exp(np.clip(X @ np.array([0.5, -0.25, 0.15, 0.4]), -2.0, 2.0))
+            ).astype(float),
+        ),
+        (
+            "gamma",
+            "Gamma",
+            lambda X, rng: rng.gamma(
+                shape=2.0,
+                scale=np.exp(np.clip(X @ np.array([0.3, -0.15, 0.09, 0.24]), -2.0, 2.0)) / 2.0,
+            ),
+        ),
+    ],
+)
+def test_glm_family(family, sm_family_cls, y_gen):
+    """All four GLM families produce coefficients close to statsmodels."""
+    import statsmodels.api as sm
+    from polars_ds.linear_models import GLM
+
+    rng = np.random.RandomState(42)
+    n, p = 500, 4
+    X = rng.randn(n, p)
+    y = y_gen(X, rng)
+
+    X_with_const = sm.add_constant(X)
+    sm_family = getattr(sm.families, sm_family_cls)()
+    sm_glm = sm.GLM(y, X_with_const, family=sm_family).fit()
+    sm_bias = sm_glm.params[0]
+    sm_coeffs = sm_glm.params[1:]
+
+    pds_glm = GLM(solver="irls", add_bias=True, family=family, max_iter=200, tol=1e-8)
+    pds_glm.fit(X, y.reshape(-1, 1))
+    pds_coeffs = pds_glm.coeffs()
+    pds_bias = pds_glm.bias()
+
+    np.testing.assert_allclose(
+        pds_coeffs,
+        sm_coeffs,
+        atol=1e-2,
+        err_msg=f"GLM family={family!r}: coefficients differ from statsmodels by more than atol=1e-2",
+    )
+    assert abs(pds_bias - sm_bias) < 1e-2
+
+
+def test_glm_convergence_failure():
+    """GLM with max_iter=1 and tight tol does not crash; returns finite coeffs."""
+    from polars_ds.linear_models import GLM
+
+    rng = np.random.RandomState(0)
+    n, p = 200, 5
+    X = rng.randn(n, p)
+    y = np.exp(np.clip(X @ np.ones(p) * 0.2, -2, 2)) + rng.exponential(0.5, n)
+    y = y.reshape(-1, 1)
+
+    glm = GLM(solver="irls", add_bias=False, family="poisson", max_iter=1, tol=1e-12)
+    glm.fit(X, y)
+
+    coeffs = glm.coeffs()
+    assert coeffs is not None
+    assert np.all(np.isfinite(coeffs))
