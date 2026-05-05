@@ -48,12 +48,16 @@ impl GLMFamily {
 
 impl From<&str> for GLMFamily {
     fn from(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "gaussian" | "normal" => GLMFamily::Gaussian,
-            "poisson" => GLMFamily::Poisson,
-            "binomial" | "logistic" => GLMFamily::Binomial,
-            "gamma" => GLMFamily::Gamma,
-            _ => GLMFamily::Gaussian, // Default to Gaussian
+        if s.eq_ignore_ascii_case("gaussian") || s.eq_ignore_ascii_case("normal") {
+            GLMFamily::Gaussian
+        } else if s.eq_ignore_ascii_case("poisson") {
+            GLMFamily::Poisson
+        } else if s.eq_ignore_ascii_case("binomial") || s.eq_ignore_ascii_case("logistic") {
+            GLMFamily::Binomial
+        } else if s.eq_ignore_ascii_case("gamma") {
+            GLMFamily::Gamma
+        } else {
+            GLMFamily::Gaussian // Default to Gaussian
         }
     }
 }
@@ -258,7 +262,7 @@ pub fn faer_irls<T: RealField + Float>(
 
     // let epsilon = T::from(1e-8).unwrap();
     // Initialized mu based on variance
-    let point_5 = T::one() / (T::one() + T::one());
+    let point_5 = T::from(0.5).unwrap();
     let mut mu = match variance {
         VarianceFunction::Binomial => y
             .col(0)

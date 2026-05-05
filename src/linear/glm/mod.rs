@@ -15,10 +15,12 @@ pub enum GLMSolverMethods {
 
 impl From<&str> for GLMSolverMethods {
     fn from(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "irls" => GLMSolverMethods::IRLS,
-            "lbfgs" => panic!("LBFGS not available"), // lbfgs not available
-            _ => GLMSolverMethods::IRLS,
+        if s.eq_ignore_ascii_case("irls") {
+            GLMSolverMethods::IRLS
+        } else if s.eq_ignore_ascii_case("lbfgs") {
+            panic!("LBFGS not available") // lbfgs not available
+        } else {
+            GLMSolverMethods::IRLS
         }
     }
 }
