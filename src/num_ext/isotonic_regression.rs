@@ -7,9 +7,6 @@ use serde::Deserialize;
 // https://github.com/scipy/scipy/blob/v1.14.1/scipy/optimize/_pava/pava_pybind.cpp
 // https://www.jstatsoft.org/article/view/v102c01
 
-// The code here has to be compiled in --release
-// Otherwise, a mysterious error will occur. Thank you compiler!
-
 #[derive(Deserialize, Debug)]
 pub(crate) struct IsotonicRegKwargs {
     pub(crate) has_weights: bool,
@@ -65,6 +62,10 @@ fn isotonic_regression(x: &mut [f64], w: &mut [f64], r: &mut [usize]) {
         let xk = x[k];
         for i in t..=f {
             x[i] = xk;
+        }
+        // Avoid usize underflow on the final iteration when t == 0; f is unused after the loop.
+        if k == 0 {
+            break;
         }
         f = t - 1;
     }
