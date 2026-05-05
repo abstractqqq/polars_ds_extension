@@ -1106,6 +1106,68 @@ def test_radius_ptwise(df, dist, res):
     assert_frame_equal(test, res)
 
 
+def test_radius_ptwise_null_safe_matches_clean():
+    # On null-free input, the null-safe variant must match the production symbol.
+    df = pl.DataFrame(
+        {
+            "id": [1, 2, 3],
+            "val1": [0.1, 0.2, 5.0],
+            "val2": [0.1, 0.3, 10.0],
+            "val3": [0.1, 0.4, 11.0],
+        }
+    )
+    a = df.select(
+        pds.query_radius_ptwise("val1", "val2", "val3", dist="sql2", r=0.3, index="id")
+    )
+    b = df.select(
+        pds.query_radius_ptwise_null_safe(
+            "val1", "val2", "val3", dist="sql2", r=0.3, index="id"
+        )
+    )
+    assert_frame_equal(a, b)
+
+
+def test_radius_ptwise_null_safe_with_nulls_no_panic():
+    # Production pl_query_radius_ptwise panics when feature columns contain nulls.
+    # The null-safe variant must skip null-feature rows on build and return null
+    # for null-feature query rows. Regression test for bug-029.
+    df = pl.DataFrame(
+        {
+            "id": [1, 2, 3, 4],
+            "val1": [0.1, None, 5.0, 0.2],
+            "val2": [0.1, 0.3, 10.0, None],
+            "val3": [0.1, 0.4, 11.0, 0.3],
+        }
+    )
+    out = df.select(
+        pds.query_radius_ptwise_null_safe(
+            "val1", "val2", "val3", dist="sql2", r=0.3, index="id"
+        ).alias("ids")
+    )
+    # Rows 2 (val1 null) and 4 (val2 null) must produce null in the output list.
+    assert out["ids"][1] is None
+    assert out["ids"][3] is None
+    # Rows 1 and 3 are the only fully-non-null rows; row 1 finds itself, row 3 finds itself.
+    assert out["ids"][0].to_list() == [1]
+    assert out["ids"][2].to_list() == [3]
+
+
+def test_radius_ptwise_null_safe_multichunk_with_nulls():
+    # Same scenario, but inputs have multiple chunks (catches rechunk-assumption bugs).
+    parts = [
+        pl.DataFrame({"id": [1, 2], "v1": [0.1, None], "v2": [0.1, 0.3]}),
+        pl.DataFrame({"id": [3, 4], "v1": [5.0, 0.2], "v2": [10.0, None]}),
+    ]
+    df = pl.concat(parts, rechunk=False)
+    out = df.select(
+        pds.query_radius_ptwise_null_safe("v1", "v2", dist="sql2", r=0.3, index="id").alias(
+            "ids"
+        )
+    )
+    assert out["ids"][1] is None
+    assert out["ids"][3] is None
+
+
 @pytest.mark.parametrize(
     "df, r, dist, res",
     [
