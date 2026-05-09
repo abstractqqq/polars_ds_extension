@@ -580,6 +580,102 @@ fn pl_query_radius_ptwise(
     }
 }
 
+/// Null-safe variant of `query_radius_ptwise`.
+///
+/// Rows where any feature column is null are excluded from the kd-tree
+/// (they can never be neighbors) and return null in the output list.
+pub fn query_radius_ptwise_null_safe<'a, M: Metric>(
+    tree: &KDT<'a, u32, M>,
+    keep_mask: &BooleanChunked,
+    data: &'a [f64],
+    r: f64,
+    can_parallel: bool,
+    sort: bool,
+) -> ListChunked
+where
+    M: std::marker::Sync,
+{
+    let ncols = tree.dim;
+    let nrows = data.len() / ncols;
+    if can_parallel {
+        let n_threads = POOL.current_num_threads();
+        let splits = split_offsets(nrows, n_threads);
+        let mask_vec: Vec<bool> = keep_mask.iter().map(|b| b.unwrap_or(false)).collect();
+        let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+            let mut builder = ListPrimitiveChunkedBuilder::<UInt32Type>::new(
+                "".into(),
+                len,
+                16,
+                DataType::UInt32,
+            );
+            let subslice = &data[offset * ncols..(offset + len) * ncols];
+            let mask = &mask_vec[offset..offset + len];
+            for (b, p) in mask.iter().zip(subslice.chunks_exact(ncols)) {
+                if *b {
+                    if let Some(v) = tree.within(p, r, sort) {
+                        builder.append_values_iter(v.into_iter().map(|nb| nb.to_item()));
+                    } else {
+                        builder.append_null();
+                    }
+                } else {
+                    builder.append_null();
+                }
+            }
+            let ca = builder.finish();
+            ca.downcast_iter().cloned().collect::<Vec<_>>()
+        });
+        let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
+        ListChunked::from_chunk_iter("".into(), chunks.into_iter().flatten())
+    } else {
+        let mut builder =
+            ListPrimitiveChunkedBuilder::<UInt32Type>::new("".into(), nrows, 16, DataType::UInt32);
+        let mask_iter = keep_mask.iter().map(|b| b.unwrap_or(false));
+        for (b, p) in mask_iter.zip(data.chunks_exact(ncols)) {
+            if b {
+                if let Some(v) = tree.within(p, r, sort) {
+                    builder.append_values_iter(v.into_iter().map(|nb| nb.to_item()));
+                } else {
+                    builder.append_null();
+                }
+            } else {
+                builder.append_null();
+            }
+        }
+        builder.finish()
+    }
+}
+
+#[polars_expr(output_type_func=list_u32_output)]
+fn pl_query_radius_ptwise_null_safe(
+    inputs: &[Series],
+    context: CallerContext,
+    kwargs: KDTRadiusKwargs,
+) -> PolarsResult<Series> {
+    let can_parallel = kwargs.parallel && !context.parallel();
+    let radius = kwargs.r;
+    let sort = kwargs.sort;
+
+    let id = inputs[0].u32()?;
+    let id = id.cont_slice()?;
+    // True = row's features are all non-null and should be included in the kd-tree.
+    let keep_mask = inputs[1].bool()?;
+
+    let ncols = inputs[2..].len();
+    let data = series_to_slice::<Float64Type>(&inputs[2..], IndexOrder::C)?;
+    match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
+        Ok(d) => {
+            let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, keep_mask);
+            let tree = KDT::from_leaves(&mut leaves, d)
+                .map_err(|e| PolarsError::ComputeError(e.into()))?;
+            Ok(
+                query_radius_ptwise_null_safe(&tree, keep_mask, &data, radius, can_parallel, sort)
+                    .into_series(),
+            )
+        }
+        Err(e) => Err(PolarsError::ComputeError(e.to_string().into())),
+    }
+}
+
 #[inline]
 pub fn query_nb_cnt<'a, M: Metric>(
     tree: &KDT<'a, (), M>,

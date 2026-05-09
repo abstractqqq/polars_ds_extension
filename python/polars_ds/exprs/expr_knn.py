@@ -16,6 +16,7 @@ __all__ = [
     "query_knn_freq_cnt",
     "query_knn_avg",
     "query_radius_ptwise",
+    "query_radius_ptwise_null_safe",
     "query_radius_freq_cnt",
     "query_nb_cnt",
     "query_dist_from_kth_nb",
@@ -521,6 +522,44 @@ def query_radius_ptwise(
         symbol="pl_query_radius_ptwise",
         args=cols,
         kwargs={"r": r, "metric": metric, "parallel": parallel, "sort": sort},
+    )
+
+
+def query_radius_ptwise_null_safe(
+    *features: str | pl.Expr,
+    index: str | pl.Expr,
+    r: float,
+    dist: Distance = "sql2",
+    sort: bool = True,
+    parallel: bool = False,
+) -> pl.Expr:
+    """
+    Null-safe variant of `query_radius_ptwise`. Rows where any feature column is null are
+    excluded from the kd-tree (they cannot be neighbors) and return null in the output list.
+
+    The non-null-safe `query_radius_ptwise` panics on null feature inputs because the kd-tree
+    builder reads features unchecked; use this variant when nulls cannot be ruled out upstream.
+
+    Parameters mirror `query_radius_ptwise`.
+    """
+    if r <= 0.0:
+        raise ValueError("Input `r` must be > 0.")
+    elif isinstance(r, pl.Expr):
+        raise ValueError("Input `r` must be a scalar now. Expression input is not implemented.")
+
+    if dist in ("cosine", "h", "haversine"):
+        raise ValueError(f"Distance {dist} doesn't work with current implementation.")
+
+    idx = to_expr(index).cast(pl.UInt32).rechunk()
+    feats = [to_expr(e) for e in features]
+    keep_mask = pl.all_horizontal(f.is_not_null() for f in feats)
+
+    cols = [idx, keep_mask]
+    cols.extend(feats)
+    return pl_plugin(
+        symbol="pl_query_radius_ptwise_null_safe",
+        args=cols,
+        kwargs={"r": r, "metric": str(dist).lower(), "parallel": parallel, "sort": sort},
     )
 
 
