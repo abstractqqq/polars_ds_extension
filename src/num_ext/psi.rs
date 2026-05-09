@@ -79,23 +79,11 @@ fn pl_psi_w_bps(inputs: &[Series]) -> PolarsResult<Series> {
     let data2 = inputs[1].f64().unwrap();
     let breakpoints = inputs[2].f64().unwrap();
 
-    let binding1 = if data1.chunks().len() == 1 {
-        data1.clone()
-    } else {
-        data1.rechunk().into_owned()
-    };
+    let binding1 = data1.rechunk();
     let s1 = binding1.cont_slice().unwrap();
-    let binding2 = if data2.chunks().len() == 1 {
-        data2.clone()
-    } else {
-        data2.rechunk().into_owned()
-    };
+    let binding2 = data2.rechunk();
     let s2 = binding2.cont_slice().unwrap();
-    let binding_bp = if breakpoints.chunks().len() == 1 {
-        breakpoints.clone()
-    } else {
-        breakpoints.rechunk().into_owned()
-    };
+    let binding_bp = breakpoints.rechunk();
     let bp = binding_bp.cont_slice().unwrap();
 
     let c1 = psi_with_bps_helper(s1, bp);
