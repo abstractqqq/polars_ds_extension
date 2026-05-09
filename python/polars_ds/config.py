@@ -4,7 +4,7 @@ If true, all linear regression expression will use f64 as the default data type
 in the underlying implementation. If fase, f32 will be used. This only controls
 linear regression expressions.
 
-The memory footprint will be smaller, but it is possible to have slower speed than f64 for 
+The memory footprint will be smaller, but it is possible to have slower speed than f64 for
 multiple reasons:
 1. If input data is already in f64, then using f32 will incur additional casts, slowing
 down the process.

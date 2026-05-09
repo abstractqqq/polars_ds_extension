@@ -1,14 +1,17 @@
 """Linear Regression Related Expressions in Polars."""
 
 from __future__ import annotations
-import polars as pl
+
 import warnings
-from typing import List, Any, Literal
+from typing import Any, List, Literal
+
+import polars as pl
+
+import polars_ds.config as cfg
+from polars_ds._utils import pl_plugin
 
 # Internal dependencies
 from polars_ds.typing import LRSolverMethods, NullPolicy
-from polars_ds._utils import pl_plugin
-import polars_ds.config as cfg
 
 __all__ = [
     "lin_reg",
@@ -160,6 +163,11 @@ def lin_reg(
         If true, this will perform non-negative linear regression. Not used in multi-target case.
     """
 
+    if cfg.LIN_REG_EXPR_F64:
+        dtype = pl.Float64
+    else:
+        dtype = pl.Float32
+
     if isinstance(target, list):
         n_targets = len(target)
         if n_targets == 0:
@@ -178,9 +186,7 @@ def lin_reg(
                 null_policy=null_policy,
             )
         else:
-            cols = [
-                lr_formula(t).alias(f"target_{i}").cast(pl.Float64) for i, t in enumerate(target)
-            ]
+            cols = [lr_formula(t).alias(f"target_{i}").cast(dtype) for i, t in enumerate(target)]
             multi_target_lr_kwargs = {
                 "bias": add_bias,
                 "null_policy": null_policy,
@@ -205,8 +211,6 @@ def lin_reg(
                     pass_name_to_apply=True,
                 ).alias("coeffs")
     else:
-        if not isinstance(max_iter, int):
-            raise TypeError("Input `max_iter` must be a positive int.")
         if max_iter <= 0:
             raise ValueError("Input `max_iter` must be a positive.")
 
@@ -225,11 +229,11 @@ def lin_reg(
 
         if weighted:
             cols = [
-                lr_formula(weights).cast(pl.Float64).rechunk(),
-                lr_formula(target).cast(pl.Float64),
+                lr_formula(weights).cast(dtype).rechunk(),
+                lr_formula(target).cast(dtype),
             ]
         else:
-            cols = [lr_formula(target).cast(pl.Float64)]
+            cols = [lr_formula(target).cast(dtype)]
 
         cols.extend(lr_formula(z) for z in x)
 
@@ -299,8 +303,6 @@ def logistic_reg(
         If true, this will return a column of predicted probabilities. If false, this will return
         the coefficients.
     """
-    if not isinstance(max_iter, int):
-        raise TypeError("Input `max_iter` must be a positive int.")
     if max_iter <= 0:
         raise ValueError("Input `max_iter` must be a positive.")
 
@@ -365,8 +367,12 @@ def lin_reg_w_rcond(
         the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
         columns.
     """
+    if cfg.LIN_REG_EXPR_F64:
+        dtype = pl.Float64
+    else:
+        dtype = pl.Float32
 
-    cols = [lr_formula(target).cast(pl.Float64)]
+    cols = [lr_formula(target).cast(dtype)]
     cols.extend(lr_formula(z) for z in x)
     lr_kwargs = {
         "bias": add_bias,
@@ -422,10 +428,15 @@ def recursive_lin_reg(
         be returned for that row.
     """
 
+    if cfg.LIN_REG_EXPR_F64:
+        dtype = pl.Float64
+    else:
+        dtype = pl.Float32
+
     if start_with < 1:
         raise ValueError("You must start with >= 1 rows for recursive linear regression.")
 
-    cols = [lr_formula(target).cast(pl.Float64)]
+    cols = [lr_formula(target).cast(dtype)]
     features = [lr_formula(z) for z in x]
     if len(features) > start_with:
         warnings.warn(
@@ -488,10 +499,15 @@ def rolling_lin_reg(
         target is null.
     """
 
+    if cfg.LIN_REG_EXPR_F64:
+        dtype = pl.Float64
+    else:
+        dtype = pl.Float32
+
     if window_size < 2:
         raise ValueError("`window_size` must be >= 2.")
 
-    cols = [lr_formula(target).cast(pl.Float64)]
+    cols = [lr_formula(target).cast(dtype)]
     features = [lr_formula(z) for z in x]
     if len(features) > window_size:
         raise ValueError("# features > window size. Linear regression is not well-defined.")
@@ -570,15 +586,19 @@ def lin_reg_report(
         "std_err": std_err.lower(),
     }
 
-    t = lr_formula(target).cast(pl.Float64)
+    if cfg.LIN_REG_EXPR_F64:
+        dtype = pl.Float64
+    else:
+        dtype = pl.Float32
+
+    t = lr_formula(target).cast(dtype)
     if weights is None:
         cols = [t.var(), t]
         cols.extend(lr_formula(z) for z in x)
         symbol = cfg._which_lin_reg("pl_lin_reg_report")
-
     else:
         w = lr_formula(weights)
-        cols = [w.cast(pl.Float64).rechunk(), t.var(), t]
+        cols = [w.cast(dtype).rechunk(), t.var(), t]
         cols.extend(lr_formula(z) for z in x)
         symbol = cfg._which_lin_reg("pl_wls_report")
 
