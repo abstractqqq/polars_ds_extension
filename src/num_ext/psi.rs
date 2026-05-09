@@ -115,23 +115,11 @@ fn pl_psi_report(inputs: &[Series]) -> PolarsResult<Series> {
     // The cnts for the baseline/reference
     let cnt = inputs[2].u32().unwrap();
 
-    let binding_new = if new.chunks().len() == 1 {
-        new.clone()
-    } else {
-        new.rechunk().into_owned()
-    };
+    let binding_new = new.rechunk();
     let data_new = binding_new.cont_slice().unwrap();
-    let binding_brk = if brk.chunks().len() == 1 {
-        brk.clone()
-    } else {
-        brk.rechunk().into_owned()
-    };
+    let binding_brk = brk.rechunk();
     let ref_brk = binding_brk.cont_slice().unwrap();
-    let binding_cnt = if cnt.chunks().len() == 1 {
-        cnt.clone()
-    } else {
-        cnt.rechunk().into_owned()
-    };
+    let binding_cnt = cnt.rechunk();
     let ref_cnt = binding_cnt.cont_slice().unwrap();
 
     let new_cnt = psi_with_bps_helper(data_new, ref_brk);
