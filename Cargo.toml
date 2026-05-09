@@ -1,6 +1,6 @@
 [package]
 name = "polars_ds"
-version = "0.11.2"
+version = "0.11.3"
 edition = "2021"
 
 [lib]
@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 # For dependencies found in polars, keep it the same as polars to minimize duplicates
 # PyO3
 pyo3 = {version = "0.26", features = ["abi3-py39", "extension-module"]}
-pyo3-polars = {version = "0.25", features = ["derive", "lazy"]} 
+pyo3-polars = {version = "0.25", features = ["derive", "lazy"]}
 # Polars
 polars = {version = "0.52", features = ["lazy",
 "diff", "array_count", "abs", "cross_join", "rank", "log",
