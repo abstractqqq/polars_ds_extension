@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-import polars as pl
 import json
 import sys
+from dataclasses import dataclass
+from functools import partial
+from typing import Any, Dict, List, Literal, Tuple
+
+import polars as pl
 import polars.selectors as cs
 from polars._typing import IntoExprColumn
-from functools import partial
-from typing import List, Dict, Any, Literal, Tuple
-from dataclasses import dataclass
+
 from polars_ds._utils import to_expr
 
 if sys.version_info >= (3, 11):
@@ -18,25 +20,26 @@ else:  # 3.10, 3.9, 3.8
     from typing_extensions import Self
 
 # Internal Depenedncies
-from . import transforms as t
-from ._step import (
-    PLContext,
-    ExprStep,
-    SortStep,
-    SQLStep,
-    GroupByAggStep,
-    GroupByDynAggStep,
-    FitStep,
-    PipelineStep,
-    MakeStep,
-    _SERIALIZABLE_STEPS,
-)
 from polars_ds.typing import (
+    EncoderDefaultStrategy,
     PolarsFrame,
+    QuantileMethod,
     SimpleImputeMethod,
     SimpleScaleMethod,
-    QuantileMethod,
-    EncoderDefaultStrategy,
+)
+
+from . import transforms as t
+from ._step import (
+    _SERIALIZABLE_STEPS,
+    ExprStep,
+    FitStep,
+    GroupByAggStep,
+    GroupByDynAggStep,
+    MakeStep,
+    PipelineStep,
+    PLContext,
+    SortStep,
+    SQLStep,
 )
 
 __all__ = ["Pipeline", "Blueprint", "PLContext", "ExprStep"]
@@ -687,8 +690,6 @@ class Blueprint:
 
         Parameters
         ----------
-        df
-            Either a lazy or an eager dataframe
         cols
             A list of strings representing column names.
         unknown_value
@@ -724,10 +725,10 @@ class Blueprint:
             The name of a single column
         ranking
             A list of string representing the ranking of the values
-        unknown_value
-            What to assign to values not present in training dataset. None means null. Must be int.
         default_rank
             Default rank for all null/unseen values
+        drop_cols
+            Whether to drop the original column `col`
         """
         self._steps.append(
             ExprStep(

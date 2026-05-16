@@ -16,14 +16,15 @@ from __future__ import annotations
 
 import functools
 import inspect
-import polars as pl
-import numpy as np
-from typing import List, Tuple, Literal
-from .typing import LRSolverMethods, NullPolicy, PolarsFrame, TypeAlias
-
-from polars_ds._polars_ds import PyLR, PyGLM, PyElasticNet, PyOnlineLR
-
 import sys
+from typing import List, Literal, Tuple
+
+import numpy as np
+import polars as pl
+
+from polars_ds._polars_ds import PyElasticNet, PyGLM, PyLR, PyOnlineLR
+
+from .typing import LRSolverMethods, NullPolicy, PolarsFrame, TypeAlias
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -881,7 +882,8 @@ class GLM:
             fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
             the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
             columns. If target has null, then the row will still be dropped.
-
+        show_report
+            Whether to print out a regression report.
         """
         df2 = (
             _handle_nulls_in_df(df.lazy(), features, target, null_policy)

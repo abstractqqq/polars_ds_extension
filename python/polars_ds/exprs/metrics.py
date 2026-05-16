@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-import polars as pl
 import math
+
+import polars as pl
 
 # Internal dependencies
 from polars_ds._utils import pl_plugin, to_expr
 from polars_ds.typing import MultiAUCStrategy
+
 from .num import add_at
 
 __all__ = [
@@ -121,8 +123,12 @@ def query_hubor_loss(actual: str | pl.Expr, pred: str | pl.Expr, delta: float) -
 
     Parameters
     ----------
+    actual
+        An expression representing the column with actual target.
     pred
-        An expression represeting the column with predicted probability.
+        An expression representing the column with predicted values.
+    delta
+        The threshold at which the loss changes from quadratic to linear.
     """
     a, p = to_expr(actual), to_expr(pred)
     temp = (a - p).abs()
@@ -676,7 +682,7 @@ def query_dcg_score(
     y_true:
         This is often called the `relevance` column. The relevance score represents the
         true relevance/importance of each item.
-    score_col:
+    y_score:
         The name/expr of the column containing the predicted scores used for ranking the items.
     log_base:
         The log base used in the discount factor
@@ -747,7 +753,7 @@ def query_ndcg_score(
     y_true:
         This is often called the `relevance` column. The relevance score represents the
         true relevance/importance of each item.
-    score_col:
+    y_score:
         The name/expr of the column containing the predicted scores used for ranking the items.
     k:
         The number of top items to consider in the NDCG calculation. If None, all items are
