@@ -1,17 +1,20 @@
 """Miscallaneous Numerical Functions and Transforms."""
 
 from __future__ import annotations
+
 import math
+from typing import TYPE_CHECKING, Iterable, List
+
 import polars as pl
-from typing import List, Iterable, TYPE_CHECKING
+
+from polars_ds._utils import pl_plugin, to_expr
 
 # Internal dependencies
 from polars_ds.typing import (
-    DetrendMethod,
-    ConvMode,
     ConvMethod,
+    ConvMode,
+    DetrendMethod,
 )
-from polars_ds._utils import pl_plugin, to_expr
 
 if TYPE_CHECKING:
     from numpy import ndarray
@@ -407,10 +410,10 @@ def pca(
     center: bool = True,
 ) -> pl.Expr:
     """
-    Finds all singular values as well as the principle vectors.
+    Finds all singular values as well as the principal vectors.
 
-    Paramters
-    ---------
+    Parameters
+    ----------
     features
         Feature columns
     center
@@ -437,10 +440,12 @@ def principal_components(
     Transforms the features to get the first k principal components. This returns NaN if the number
     of rows is less than `k`.
 
-    Paramters
-    ---------
+    Parameters
+    ----------
     features
         Feature columns
+    k
+        The number of principal components to return
     center
         Whether to center the data or not. If you want to standard normalize, set this to False,
         and do it for input features by hand.

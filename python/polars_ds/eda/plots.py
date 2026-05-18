@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import polars as pl
-import altair as alt
 from typing import Iterable, List
+
+import altair as alt
+import polars as pl
 from polars._typing import IntoExpr
 
 # Internal dependencies
 import polars_ds.sample_and_split as sa
-from polars_ds import query_r2, principal_components, query_tpr_fpr, integrate_trapz
+from polars_ds import integrate_trapz, principal_components, query_r2, query_tpr_fpr
 
 alt.data_transformers.enable("vegafusion")
 
@@ -466,8 +467,8 @@ def plot_roc_auc(
     **kwargs,
 ) -> alt.Chart:
     """
-    Paramters
-    ---------
+    Parameters
+    ----------
     target
         A column which has the actual binary target information
     pred
@@ -480,6 +481,8 @@ def plot_roc_auc(
         The names for the predictions
     show_auc
         Whether to show the AUC value or not
+    estimator_name
+        The name of the estimator to be shown in the plot
     n_decimals
         Round to n-th decimal digit if show_auc is True
     kwargs

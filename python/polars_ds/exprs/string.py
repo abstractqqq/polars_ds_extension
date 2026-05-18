@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from typing import Dict, List, Literal
+
 import polars as pl
-from typing import List, Literal, Dict
 
 # Internal dependencies
 from polars_ds._utils import pl_plugin, to_expr
@@ -83,8 +84,7 @@ def filter_by_hamming(
 ) -> pl.Expr:
     """
     Returns whether the hamming distance between self and other is <= bound. This is
-    faster than computing hamming distance and then doing a filter. Note this does not pad
-    the strings. If the lengths of the two strings do not match, they will be filtered out.
+    faster than computing hamming distance and then doing a filter.
 
     Parameters
     ----------
@@ -95,6 +95,9 @@ def filter_by_hamming(
         string with all of column c, use pl.lit(your_str)
     bound
         Closed upper bound. If distance <= bound, return true and false otherwise.
+    pad
+        Whether to pad the strings to the same length. If False, and strings have different lengths,
+        they will be filtered out.
     parallel
         Whether to run it in parallel. Note that this is only recommended when this query
         is the only one in execution and when this is not executed in any aggregation / streaming context.
