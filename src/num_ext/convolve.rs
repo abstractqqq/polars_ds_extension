@@ -2,15 +2,14 @@ use crate::utils::dot_product;
 use polars::prelude::*;
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
+    export::polars_core::utils::rayon,
     export::polars_core::utils::rayon::{
-        iter::{IndexedParallelIterator, ParallelIterator},
-        slice::ParallelSlice,
+        iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
+        slice::{ParallelSlice, ParallelSliceMut},
     },
 };
 use realfft::RealFftPlanner;
 use serde::Deserialize;
-
-// Small vec optimizations? Fixed sized allocation for <= 4096?
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct ConvolveKwargs {
@@ -61,84 +60,55 @@ impl TryFrom<String> for ConvMethod {
     }
 }
 
-// fn next_pow_2(n:usize) -> usize {
-//     let mut m:usize = 2;
-//     while m < n {
-//         m <<= 1;
-//     }
-//     m
-// }
-
 #[inline]
-fn valid_fft_convolve(input: &[f64], kernel: &[f64]) -> PolarsResult<Vec<f64>> {
-    let in_shape = input.len();
-
-    // Prepare
-    let mut output_vec = vec![0.; in_shape];
-    output_vec[..in_shape].copy_from_slice(input);
+fn fft_convolve(input: &[f64], kernel: &[f64], mode: ConvMode) -> PolarsResult<Vec<f64>> {
+    let n = input.len();
+    let m = kernel.len();
+    let l = n + m - 1;
+    let p = l.next_power_of_two();
 
     let mut planner: RealFftPlanner<f64> = RealFftPlanner::new();
-    let r2c = planner.plan_fft_forward(in_shape);
-    let c2r = planner.plan_fft_inverse(in_shape);
+    let r2c = planner.plan_fft_forward(p);
+    let c2r = planner.plan_fft_inverse(p);
 
     let mut spec_p = r2c.make_output_vec();
     let mut spec_q = r2c.make_output_vec();
 
-    // Forward FFT on the inputs
-    let _ = r2c.process(&mut output_vec, &mut spec_p);
+    // FFT for input
+    let mut padded_input = vec![0.0; p];
+    padded_input[..n].copy_from_slice(input);
+    let _ = r2c.process(&mut padded_input, &mut spec_p);
 
-    // Write kernel to output_vec, then 0 fill the rest
-    output_vec[..kernel.len()].copy_from_slice(kernel);
-    let n_out = output_vec.len();
-    output_vec[kernel.len()..n_out].fill(0.);
+    // FFT for kernel
+    let mut padded_kernel = vec![0.0; p];
+    padded_kernel[..m].copy_from_slice(kernel);
+    let _ = r2c.process(&mut padded_kernel, &mut spec_q);
 
-    // Now output_vec is the kernel
-    let _ = r2c.process(&mut output_vec, &mut spec_q);
-
-    // After forward FFT, multiply elementwise
+    // Multiply spectrum
     spec_p.iter_mut().zip(spec_q.iter()).for_each(|(x, y)| {
         *x *= y;
     });
+
     // Inverse FFT
+    let mut output_vec = vec![0.0; p];
     let _ = c2r.process(&mut spec_p, &mut output_vec);
 
-    Ok(output_vec)
-}
+    // Normalization and slicing
+    let scale = 1.0 / p as f64;
+    let (skip, take) = match mode {
+        ConvMode::FULL => (0, l),
+        ConvMode::SAME => ((m - 1) / 2, n),
+        ConvMode::LEFT => (0, n),
+        ConvMode::RIGHT => (m - 1, n),
+        ConvMode::VALID => (m - 1, n - m + 1),
+    };
 
-fn fft_convolve(input: &[f64], kernel: &[f64], mode: ConvMode) -> PolarsResult<Vec<f64>> {
-    match mode {
-        ConvMode::FULL => {
-            let t = kernel.len() - 1;
-            let mut padded_input = vec![0.; input.len() + 2 * t];
-            let from_to = t..(t + input.len());
-            padded_input[from_to].copy_from_slice(input);
-            fft_convolve(&padded_input, kernel, ConvMode::VALID)
-        }
-        ConvMode::SAME => {
-            let skip = (kernel.len() - 1) / 2;
-            let out = fft_convolve(input, kernel, ConvMode::FULL)?;
-            Ok(out.into_iter().skip(skip).take(input.len()).collect())
-        }
-        ConvMode::LEFT => {
-            let n = input.len();
-            let mut out = fft_convolve(input, kernel, ConvMode::FULL)?;
-            out.truncate(n);
-            Ok(out)
-        }
-        ConvMode::RIGHT => {
-            let out = fft_convolve(input, kernel, ConvMode::FULL)?;
-            Ok(out.into_iter().skip(kernel.len() - 1).collect())
-        }
-        ConvMode::VALID => {
-            let out = valid_fft_convolve(input, kernel)?;
-            let n = out.len() as f64;
-            Ok(out
-                .into_iter()
-                .skip(kernel.len() - 1)
-                .map(|x| x / n)
-                .collect())
-        }
-    }
+    Ok(output_vec
+        .into_iter()
+        .skip(skip)
+        .take(take)
+        .map(|x| x * scale)
+        .collect())
 }
 
 fn convolve(
@@ -147,45 +117,74 @@ fn convolve(
     mode: ConvMode,
     parallel: bool,
 ) -> PolarsResult<Vec<f64>> {
-    match mode {
-        ConvMode::FULL => {
-            let t = kernel.len() - 1;
-            let mut padded_input = vec![0.; input.len() + 2 * t];
-            let from_to = t..(t + input.len());
-            padded_input[from_to].copy_from_slice(input);
-            convolve(&padded_input, kernel, ConvMode::VALID, parallel)
-        }
-        ConvMode::SAME => {
-            let skip = (kernel.len() - 1) / 2;
-            let out = convolve(input, kernel, ConvMode::FULL, parallel)?;
-            Ok(out.into_iter().skip(skip).take(input.len()).collect())
-        }
-        ConvMode::LEFT => {
-            let n = input.len();
-            let mut out = convolve(input, kernel, ConvMode::FULL, parallel)?;
-            out.truncate(n);
-            Ok(out)
-        }
-        ConvMode::RIGHT => {
-            let out = convolve(input, kernel, ConvMode::FULL, parallel)?;
-            Ok(out.into_iter().skip(kernel.len() - 1).collect())
-        }
-        ConvMode::VALID => {
-            if parallel {
-                let mut out = vec![0f64; input.len() - kernel.len() + 1];
-                input
-                    .par_windows(kernel.len())
-                    .map(|sl| dot_product(kernel, sl))
-                    .collect_into_vec(&mut out);
-                Ok(out)
-            } else {
-                Ok(input
-                    .windows(kernel.len())
-                    .map(|sl| dot_product(kernel, sl))
-                    .collect())
+    let n = input.len();
+    let m = kernel.len();
+
+    let (out_len, skip) = match mode {
+        ConvMode::FULL => (n + m - 1, 0),
+        ConvMode::SAME => (n, (m - 1) / 2),
+        ConvMode::LEFT => (n, 0),
+        ConvMode::RIGHT => (n, m - 1),
+        ConvMode::VALID => (n - m + 1, m - 1),
+    };
+
+    let mut out = vec![0f64; out_len];
+
+    // center region is where j + skip >= m - 1 AND j + skip <= n - 1
+    // j >= m - 1 - skip  (saturating at 0)
+    // j <= n - 1 - skip
+    let left_end = (m - 1).saturating_sub(skip).min(out_len);
+    let right_start = n.saturating_sub(skip).max(left_end).min(out_len);
+
+    // Left edge
+    for j in 0..left_end {
+        let mut sum = 0.0;
+        for k in 0..m {
+            let p_idx = j + skip + k;
+            if p_idx >= m - 1 && p_idx - (m - 1) < n {
+                sum += kernel[k] * input[p_idx - (m - 1)];
             }
         }
+        out[j] = sum;
     }
+
+    // Center
+    if right_start > left_end {
+        let center_out = &mut out[left_end..right_start];
+        let in_start = left_end + skip - (m - 1);
+        let in_end = in_start + center_out.len() + m - 1;
+        let center_in = &input[in_start..in_end];
+
+        if parallel {
+            center_out
+                .par_iter_mut()
+                .zip(center_in.par_windows(m))
+                .for_each(|(o, w)| {
+                    *o = dot_product(kernel, w);
+                });
+        } else {
+            center_out
+                .iter_mut()
+                .zip(center_in.windows(m))
+                .for_each(|(o, w)| {
+                    *o = dot_product(kernel, w);
+                });
+        }
+    }
+
+    // Right edge
+    for j in right_start..out_len {
+        let mut sum = 0.0;
+        for k in 0..m {
+            let p_idx = j + skip + k;
+            if p_idx >= m - 1 && p_idx - (m - 1) < n {
+                sum += kernel[k] * input[p_idx - (m - 1)];
+            }
+        }
+        out[j] = sum;
+    }
+
+    Ok(out)
 }
 
 #[polars_expr(output_type=Float64)]

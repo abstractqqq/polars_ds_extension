@@ -884,7 +884,7 @@ def convolve(
         Please check the reference. One of `same`, `left` (left-aligned same), `right` (right-aligned same),
         `valid` or `full`.
     parallel
-        Only applies when method is `direct`. Whether to compute the convulotion in parallel. Note that this may not
+        Only applies when method is `direct`. Whether to compute the convolution in parallel. Note that this may not
         have the expected performance when you are in group_by or other parallel context already. It is recommended
         to use this in select/with_columns context, when few expressions are being run at the same time.
 
