@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import pytest
-import polars as pl
 import numpy as np
-import polars_ds as pds
+import polars as pl
+import pytest
 from polars.testing import assert_frame_equal, assert_series_equal
+
+import polars_ds as pds
 
 
 def test_random_functions_in_streaming():
@@ -86,8 +87,8 @@ def test_pca():
 
 
 def test_copula_entropy():
-    from numpy.random import multivariate_normal as mnorm
     import copent
+    from numpy.random import multivariate_normal as mnorm
 
     rho = 0.6
     mean1 = [0, 0]
@@ -251,7 +252,7 @@ def test_longest_streak_2(a, value, res):
 
 
 @pytest.mark.parametrize(
-    "df, kernel, res_full, res_valid, res_same",
+    "df, kernel, res_full, res_valid, res_same, res_left, res_right",
     [
         (
             pl.DataFrame({"a": [5, 6, 7, 8, 9]}),
@@ -259,45 +260,71 @@ def test_longest_streak_2(a, value, res):
             pl.DataFrame({"a": pl.Series([5, 6, 2, 2, 2, -8, -9], dtype=pl.Float64)}),
             pl.DataFrame({"a": pl.Series([2, 2, 2], dtype=pl.Float64)}),
             pl.DataFrame({"a": pl.Series([6, 2, 2, 2, -8], dtype=pl.Float64)}),
+            pl.DataFrame({"a": pl.Series([5, 6, 2, 2, 2], dtype=pl.Float64)}),
+            pl.DataFrame({"a": pl.Series([2, 2, 2, -8, -9], dtype=pl.Float64)}),
         ),
     ],
 )
-def test_convolve(df, kernel, res_full, res_valid, res_same):
+def test_convolve(df, kernel, res_full, res_valid, res_same, res_left, res_right):
     res = df.select(pds.convolve("a", kernel, mode="full"))
-
     assert_frame_equal(res, res_full)
 
     res = df.select(pds.convolve("a", kernel, mode="valid"))
-
     assert_frame_equal(res, res_valid)
 
     res = df.select(pds.convolve("a", kernel, mode="same"))
-
     assert_frame_equal(res, res_same)
 
-    res = df.select(pds.convolve("a", kernel, mode="full", parallel=True))
+    res = df.select(pds.convolve("a", kernel, mode="left"))
+    assert_frame_equal(res, res_left)
 
+    res = df.select(pds.convolve("a", kernel, mode="right"))
+    assert_frame_equal(res, res_right)
+
+    res = df.select(pds.convolve("a", kernel, mode="full", parallel=True))
     assert_frame_equal(res, res_full)
 
     res = df.select(pds.convolve("a", kernel, mode="valid", parallel=True))
-
     assert_frame_equal(res, res_valid)
 
     res = df.select(pds.convolve("a", kernel, mode="same", parallel=True))
-
     assert_frame_equal(res, res_same)
 
-    res = df.select(pds.convolve("a", kernel, mode="full", method="fft"))
+    res = df.select(pds.convolve("a", kernel, mode="left", parallel=True))
+    assert_frame_equal(res, res_left)
 
+    res = df.select(pds.convolve("a", kernel, mode="right", parallel=True))
+    assert_frame_equal(res, res_right)
+
+    res = df.select(pds.convolve("a", kernel, mode="full", method="fft"))
     assert_frame_equal(res, res_full)
 
     res = df.select(pds.convolve("a", kernel, mode="valid", method="fft"))
-
     assert_frame_equal(res, res_valid)
 
     res = df.select(pds.convolve("a", kernel, mode="same", method="fft"))
-
     assert_frame_equal(res, res_same)
+
+    res = df.select(pds.convolve("a", kernel, mode="left", method="fft"))
+    assert_frame_equal(res, res_left)
+
+    res = df.select(pds.convolve("a", kernel, mode="right", method="fft"))
+    assert_frame_equal(res, res_right)
+
+    res = df.select(pds.convolve("a", kernel, mode="full", method="fft", parallel=True))
+    assert_frame_equal(res, res_full)
+
+    res = df.select(pds.convolve("a", kernel, mode="valid", method="fft", parallel=True))
+    assert_frame_equal(res, res_valid)
+
+    res = df.select(pds.convolve("a", kernel, mode="same", method="fft", parallel=True))
+    assert_frame_equal(res, res_same)
+
+    res = df.select(pds.convolve("a", kernel, mode="left", method="fft", parallel=True))
+    assert_frame_equal(res, res_left)
+
+    res = df.select(pds.convolve("a", kernel, mode="right", method="fft", parallel=True))
+    assert_frame_equal(res, res_right)
 
 
 @pytest.mark.parametrize(
@@ -690,8 +717,8 @@ def test_lempel_ziv_complexity(df, threshold, res):
 
 
 def test_ks_stats():
-    from scipy.stats import ks_2samp
     import numpy as np
+    from scipy.stats import ks_2samp
 
     a = np.random.random(size=1000)
     b = np.random.random(size=1000)
@@ -1116,13 +1143,9 @@ def test_radius_ptwise_null_safe_matches_clean():
             "val3": [0.1, 0.4, 11.0],
         }
     )
-    a = df.select(
-        pds.query_radius_ptwise("val1", "val2", "val3", dist="sql2", r=0.3, index="id")
-    )
+    a = df.select(pds.query_radius_ptwise("val1", "val2", "val3", dist="sql2", r=0.3, index="id"))
     b = df.select(
-        pds.query_radius_ptwise_null_safe(
-            "val1", "val2", "val3", dist="sql2", r=0.3, index="id"
-        )
+        pds.query_radius_ptwise_null_safe("val1", "val2", "val3", dist="sql2", r=0.3, index="id")
     )
     assert_frame_equal(a, b)
 
@@ -1160,9 +1183,7 @@ def test_radius_ptwise_null_safe_multichunk_with_nulls():
     ]
     df = pl.concat(parts, rechunk=False)
     out = df.select(
-        pds.query_radius_ptwise_null_safe("v1", "v2", dist="sql2", r=0.3, index="id").alias(
-            "ids"
-        )
+        pds.query_radius_ptwise_null_safe("v1", "v2", dist="sql2", r=0.3, index="id").alias("ids")
     )
     assert out["ids"][1] is None
     assert out["ids"][3] is None
@@ -1565,6 +1586,7 @@ def test_weighted_corr():
 
 # KNNDist variants and NullPolicy parameterized tests
 
+
 @pytest.mark.parametrize("dist", ["l1", "l2", "sql2", "linf"])
 def test_knn_dist_variants(dist):
     """KNN ptwise runs without error for each KDTree-supported dist string."""
@@ -1603,9 +1625,9 @@ def test_knn_dist_invalid_string():
     )
     with pytest.raises(Exception) as exc_info:
         df.select(
-            pds.query_knn_ptwise(
-                "f0", "f1", "f2", index="id", dist="not_a_real_metric", k=2
-            ).alias("nn")
+            pds.query_knn_ptwise("f0", "f1", "f2", index="id", dist="not_a_real_metric", k=2).alias(
+                "nn"
+            )
         )
     msg = str(exc_info.value).lower()
     assert "not_a_real_metric" in msg or "unknown" in msg or "invalid" in msg
@@ -1633,9 +1655,7 @@ def _make_null_policy_df():
 
 def _lin_reg_coeffs(df: pl.DataFrame) -> np.ndarray:
     return (
-        df.select(pds.lin_reg("x1", "x2", "x3", target="y").alias("c"))
-        .explode("c")["c"]
-        .to_numpy()
+        df.select(pds.lin_reg("x1", "x2", "x3", target="y").alias("c")).explode("c")["c"].to_numpy()
     )
 
 
@@ -1701,8 +1721,6 @@ def test_null_policy_ignore():
 def test_null_policy_invalid():
     df = _make_null_policy_df()
     with pytest.raises(Exception) as exc_info:
-        df.select(
-            pds.lin_reg("x1", "x2", "x3", target="y", null_policy="not_a_policy").alias("c")
-        )
+        df.select(pds.lin_reg("x1", "x2", "x3", target="y", null_policy="not_a_policy").alias("c"))
     msg = str(exc_info.value).lower()
     assert "invalid" in msg or "nullpolicy" in msg or "policy" in msg
