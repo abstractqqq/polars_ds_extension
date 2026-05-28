@@ -1245,3 +1245,55 @@ def test_singular_x_tol_multi_target_nulls(lin_reg_dtype):
     )["c"].to_list()[0]
     assert s["target_0"] is None
     assert s["target_1"] is None
+
+
+def _scaled_singular_df(n=2000, feats=7, scale=1e3, seed=3):
+    """Collinear (rank-1) design at large scale: Π diag(X'X) overflows f32."""
+    rng = np.random.default_rng(seed)
+    base = rng.standard_normal(n) * scale
+    cols = {f"x{i}": base * (i + 1) for i in range(feats)}  # all collinear
+    cols["y"] = rng.standard_normal(n) * scale
+    return pl.DataFrame(cols), [f"x{i}" for i in range(feats)]
+
+
+def _scaled_full_rank_df(n=2000, feats=7, scale=1e3, seed=4):
+    """Well-conditioned design at large scale (same overflow regime, full rank)."""
+    rng = np.random.default_rng(seed)
+    cols = {f"x{i}": rng.standard_normal(n) * scale for i in range(feats)}
+    xs = [f"x{i}" for i in range(feats)]
+    df = pl.DataFrame(cols).with_columns(y=sum(pl.col(c) for c in xs))
+    return df, xs
+
+
+def test_singular_x_tol_large_scale_singular_nulls(lin_reg_dtype):
+    # Regression: f32 Π diag(X'X) overflowed -> gate silently failed and returned
+    # finite garbage. The log-space metric must now gate this to null.
+    df, xs = _scaled_singular_df()
+    out = df.select(pds.lin_reg(*xs, target="y", add_bias=False).alias("c"))
+    assert out["c"][0] is None
+
+
+def test_singular_x_tol_large_scale_full_rank_not_nulled(lin_reg_dtype):
+    # No false-null on a well-conditioned large-scale design.
+    df, xs = _scaled_full_rank_df()
+    out = df.select(pds.lin_reg(*xs, target="y", add_bias=False).alias("c"))
+    assert out["c"][0] is not None
+
+
+@pytest.mark.parametrize("solver", ["qr", "svd", "choleskey"])
+def test_singular_x_tol_per_solver(lin_reg_dtype, solver):
+    # Gate works regardless of which factorization the solver uses.
+    sing, xs = _scaled_singular_df()
+    assert (
+        sing.select(
+            pds.lin_reg(*xs, target="y", add_bias=False, solver=solver).alias("c")
+        )["c"][0]
+        is None
+    )
+    full, xs2 = _scaled_full_rank_df()
+    assert (
+        full.select(
+            pds.lin_reg(*xs2, target="y", add_bias=False, solver=solver).alias("c")
+        )["c"][0]
+        is not None
+    )

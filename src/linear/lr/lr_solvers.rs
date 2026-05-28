@@ -303,26 +303,24 @@ pub fn faer_solve_lr<T: RealField + Float>(
     solve_xtx_xty(xtx, build_xty(x, y), how)
 }
 
-/// Relative determinant of X'X: |det(X'X)| / Π diag(X'X). Scale-invariant rank
-/// check, ~1.0 for well-conditioned designs and ~0 for (near-)singular ones.
+/// Σ ln(v) (or Σ ln|v|) over an iterator. A zero element yields -inf, which makes
+/// the rank gate fire — no special-casing needed.
 #[inline(always)]
-fn rel_det<T: RealField + Float>(xtx: &Mat<T>) -> T {
-    let det: T = xtx.as_ref().determinant().abs();
-    let dprod = xtx
-        .diagonal()
-        .column_vector()
-        .iter()
-        .copied()
-        .fold(T::one(), |acc, d| acc * d);
-    if dprod > T::zero() {
-        det / dprod
-    } else {
-        T::zero()
-    }
+fn sum_ln<T: RealField + Float>(vals: impl Iterator<Item = T>, abs: bool) -> T {
+    vals.fold(T::zero(), |acc, v| {
+        acc + if abs { v.abs().ln() } else { v.ln() }
+    })
 }
 
 /// Like `faer_solve_lr` but returns `None` when the design is rank-deficient, i.e.
-/// `rel_det(X'X) <= tol`. Builds X'X once and skips the X'y build + solve when gated.
+/// the relative determinant `|det(X'X)| / Π diag(X'X) <= tol`.
+///
+/// The metric is evaluated in log-space — `ln|det| - Σ ln(diag)` — which is
+/// overflow-safe (the raw products overflow in f32 for a handful of large-scale
+/// features) and reuses the factorization the solver already needs: `|det(X'X)|`
+/// comes from the QR R diagonal / SVD singular values / Cholesky L diagonal, so no
+/// separate `determinant()` factorization is performed. Degenerate groups skip the
+/// X'y build and the solve entirely.
 #[inline(always)]
 pub fn faer_solve_lr_gated<T: RealField + Float>(
     x: MatRef<T>,
@@ -333,10 +331,50 @@ pub fn faer_solve_lr_gated<T: RealField + Float>(
     tol: T,
 ) -> Option<Mat<T>> {
     let xtx = get_xtx_with_lambda(x, lambda, add_bias);
-    if rel_det(&xtx) <= tol {
-        return None;
+
+    // Denominator Σ ln(diag(X'X)). A non-positive diagonal means a zero-variance
+    // column -> degenerate design -> gate (also keeps ln() in the real domain).
+    let mut ln_den = T::zero();
+    for d in xtx.diagonal().column_vector().iter().copied() {
+        if d <= T::zero() {
+            return None;
+        }
+        ln_den = ln_den + d.ln();
     }
-    Some(solve_xtx_xty(xtx, build_xty(x, y), how))
+    let ln_tol = tol.ln();
+
+    // ln(rel_det) = ln|det(X'X)| - Σ ln(diag). Gate when rel_det <= tol.
+    match how {
+        LRSolverMethods::QR => {
+            let qr = xtx.col_piv_qr();
+            let ln_det = sum_ln(qr.R().diagonal().column_vector().iter().copied(), true);
+            if ln_det - ln_den <= ln_tol {
+                return None;
+            }
+            Some(qr.solve(build_xty(x, y)))
+        }
+        LRSolverMethods::SVD => {
+            // SVD failure -> treat as rank-deficient.
+            let svd = xtx.thin_svd().ok()?;
+            let ln_det = sum_ln(svd.S().column_vector().iter().copied(), false);
+            if ln_det - ln_den <= ln_tol {
+                return None;
+            }
+            Some(svd.solve(build_xty(x, y)))
+        }
+        LRSolverMethods::Choleskey => match xtx.llt(Side::Lower) {
+            // Not positive-definite -> rank-deficient.
+            Err(_) => None,
+            Ok(llt) => {
+                // det(X'X) = Π L_ii^2  ->  ln|det| = 2 Σ ln(L_ii).
+                let s = sum_ln(llt.L().diagonal().column_vector().iter().copied(), false);
+                if (s + s) - ln_den <= ln_tol {
+                    return None;
+                }
+                Some(llt.solve(build_xty(x, y)))
+            }
+        },
+    }
 }
 
 /// Solves the weighted least square with weights given by the user

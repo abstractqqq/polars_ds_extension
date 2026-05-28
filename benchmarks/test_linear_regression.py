@@ -181,8 +181,9 @@ def test_sklearn_ridge_cholesky_on_df(benchmark, n):
 
 # Gate overhead: the singular_x_tol gate (default 1e-12, on) must not regress vs
 # singular_x_tol=0.0 (gate fully off). Both run on the same well-conditioned data
-# inside an expression so the X'X build + solve dominate; the gate only adds one
-# k x k determinant. Compare the two groups at each size.
+# inside an expression so the X'X build + solve dominate. The gate reuses the
+# solver's own factorization (no separate determinant), so it adds only k logs.
+# Compare the two groups at each size.
 @pytest.mark.parametrize("n", SIZES)
 @pytest.mark.benchmark(group="linreg_singular_gate")
 def test_pds_lin_reg_gate_on(benchmark, n):
