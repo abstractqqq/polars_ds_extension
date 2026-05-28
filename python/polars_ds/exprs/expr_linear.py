@@ -115,6 +115,7 @@ def lin_reg(
     max_iter: int = 200,
     null_policy: NullPolicy = "skip",
     positive: bool = False,
+    singular_x_tol: float = 1e-12,
 ) -> pl.Expr:
     """
     Computes linear regression solution to the equation Ax = y where y is the target (or multiple targets).
@@ -161,6 +162,15 @@ def lin_reg(
         columns. If this is multi-target, fill will fail if there are nulls in any of the targets.
     positive
         If true, this will perform non-negative linear regression. Not used in multi-target case.
+    singular_x_tol
+        Rank-deficiency gate for ordinary/ridge regression (solver in ['svd', 'qr', 'cholesky'];
+        not used for non-negative, lasso or elastic net). Lets degenerate designs (perfectly
+        collinear regressors, near-constant windows) return null instead of an arbitrary min-norm
+        or explosive coefficient vector — useful for per-group fits, e.g.
+        `group_by(...).agg(lin_reg(...))`. The gate fires when the relative determinant
+        `|det(XᵀX)| / Π diag(XᵀX) <= singular_x_tol`, a scale-invariant rank check. The default
+        `1e-12` only catches numerically singular designs; pass `0.0` to disable the gate
+        entirely (restoring the pre-gate behavior of always returning a finite solution).
     """
 
     if cfg.LIN_REG_EXPR_F64:
@@ -184,6 +194,7 @@ def lin_reg(
                 tol=tol,
                 solver=solver,
                 null_policy=null_policy,
+                singular_x_tol=singular_x_tol,
             )
         else:
             cols = [lr_formula(t).alias(f"target_{i}").cast(dtype) for i, t in enumerate(target)]
@@ -193,6 +204,7 @@ def lin_reg(
                 "solver": solver,
                 "last_target_idx": n_targets,
                 "l2_reg": l2_reg,
+                "singular_x_tol": singular_x_tol,
             }
             cols.extend(lr_formula(z) for z in x)
             if return_pred:
@@ -225,6 +237,7 @@ def lin_reg(
             "max_iter": max_iter,
             "weighted": weighted,
             "positive": positive,
+            "singular_x_tol": singular_x_tol,
         }
 
         if weighted:

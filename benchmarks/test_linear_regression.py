@@ -177,3 +177,31 @@ def test_sklearn_ridge_cholesky_on_df(benchmark, n):
     def func():
         reg = Ridge(alpha=0.1, fit_intercept=False, solver="cholesky")
         reg.fit(df[X_VARS], df[Y])
+
+
+# Gate overhead: the singular_x_tol gate (default 1e-12, on) must not regress vs
+# singular_x_tol=0.0 (gate fully off). Both run on the same well-conditioned data
+# inside an expression so the X'X build + solve dominate; the gate only adds one
+# k x k determinant. Compare the two groups at each size.
+@pytest.mark.parametrize("n", SIZES)
+@pytest.mark.benchmark(group="linreg_singular_gate")
+def test_pds_lin_reg_gate_on(benchmark, n):
+    df = DF.sample(n=n, seed=SEED)
+
+    @benchmark
+    def func():
+        df.select(
+            pds.lin_reg(*X_VARS, target="y", add_bias=False, singular_x_tol=1e-12).alias("c")
+        )
+
+
+@pytest.mark.parametrize("n", SIZES)
+@pytest.mark.benchmark(group="linreg_singular_gate")
+def test_pds_lin_reg_gate_off(benchmark, n):
+    df = DF.sample(n=n, seed=SEED)
+
+    @benchmark
+    def func():
+        df.select(
+            pds.lin_reg(*X_VARS, target="y", add_bias=False, singular_x_tol=0.0).alias("c")
+        )

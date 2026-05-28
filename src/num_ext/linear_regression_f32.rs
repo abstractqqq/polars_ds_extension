@@ -6,12 +6,15 @@
 /// Most dtype casting is implicitly handled by the series_to_mat_for_lr function,
 /// but there are some exceptions, mainly from functions with weights. In those cases,
 /// a manual cast need to be used before calling .f64() or .f32() on the series.
-use super::linear_regression::{LRKwargs, MultiLRKwargs, SWWLRKwargs, StandardError};
+use super::linear_regression::{
+    null_coeffs, null_multi_coeffs, null_multi_pred, null_pred_resid, LRKwargs, MultiLRKwargs,
+    SWWLRKwargs, StandardError,
+};
 use crate::linear::{
     lr::{
         lr_solvers::{
-            faer_coordinate_descent, faer_nn_lr, faer_solve_lr, faer_solve_lr_rcond,
-            faer_weighted_lr,
+            faer_coordinate_descent, faer_nn_lr, faer_solve_lr, faer_solve_lr_gated,
+            faer_solve_lr_rcond, faer_weighted_lr,
         },
         LRMethods,
     },
@@ -312,7 +315,27 @@ fn pl_lr_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
                     kwargs.positive,
                 ) {
                     (LRMethods::Normal | LRMethods::L2, false) => {
-                        faer_solve_lr(x, y, kwargs.l2_reg as f32, add_bias, solver)
+                        if kwargs.singular_x_tol > 0.0 {
+                            match faer_solve_lr_gated(
+                                x,
+                                y,
+                                kwargs.l2_reg as f32,
+                                add_bias,
+                                solver,
+                                kwargs.singular_x_tol as f32,
+                            ) {
+                                Some(c) => c,
+                                None => {
+                                    return Ok(null_coeffs::<Float32Type>(
+                                        "coeffs".into(),
+                                        nfeats,
+                                        DataType::Float32,
+                                    ))
+                                }
+                            }
+                        } else {
+                            faer_solve_lr(x, y, kwargs.l2_reg as f32, add_bias, solver)
+                        }
                     }
                     (LRMethods::Normal, true) => faer_nn_lr(x, y, add_bias, kwargs.tol as f32, 200),
                     (LRMethods::L2, true) => faer_coordinate_descent(
@@ -382,12 +405,30 @@ fn pl_lr_multi_f32(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Ser
 
     let coeffs = match LRMethods::from((0., kwargs.l2_reg)) {
         LRMethods::Normal | LRMethods::L2 => {
-            Ok(faer_solve_lr(x, y, kwargs.l2_reg as f32, add_bias, solver))
+            if kwargs.singular_x_tol > 0.0 {
+                match faer_solve_lr_gated(
+                    x,
+                    y,
+                    kwargs.l2_reg as f32,
+                    add_bias,
+                    solver,
+                    kwargs.singular_x_tol as f32,
+                ) {
+                    Some(c) => c,
+                    None => {
+                        return null_multi_coeffs::<Float32Type>(&y_names, nfeats, DataType::Float32)
+                    }
+                }
+            } else {
+                faer_solve_lr(x, y, kwargs.l2_reg as f32, add_bias, solver)
+            }
         }
-        _ => Err(PolarsError::ComputeError(
-            "The method is not supported.".into(),
-        )),
-    }?;
+        _ => {
+            return Err(PolarsError::ComputeError(
+                "The method is not supported.".into(),
+            ))
+        }
+    };
 
     let columns: Vec<Column> = y_names
         .into_iter()
@@ -425,12 +466,28 @@ fn pl_lr_multi_pred_f32(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResul
 
     let coeffs = match LRMethods::from((0., kwargs.l2_reg)) {
         LRMethods::Normal | LRMethods::L2 => {
-            Ok(faer_solve_lr(x, y, kwargs.l2_reg as f32, add_bias, solver))
+            if kwargs.singular_x_tol > 0.0 {
+                match faer_solve_lr_gated(
+                    x,
+                    y,
+                    kwargs.l2_reg as f32,
+                    add_bias,
+                    solver,
+                    kwargs.singular_x_tol as f32,
+                ) {
+                    Some(c) => c,
+                    None => return null_multi_pred::<Float32Type>(&y_names, nrows),
+                }
+            } else {
+                faer_solve_lr(x, y, kwargs.l2_reg as f32, add_bias, solver)
+            }
         }
-        _ => Err(PolarsError::ComputeError(
-            "The method is not supported.".into(),
-        )),
-    }?;
+        _ => {
+            return Err(PolarsError::ComputeError(
+                "The method is not supported.".into(),
+            ))
+        }
+    };
 
     let pred = x * &coeffs;
     let resid = y - &pred;
@@ -531,7 +588,26 @@ fn pl_lr_pred_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
                     kwargs.positive,
                 ) {
                     (LRMethods::Normal | LRMethods::L2, false) => {
-                        faer_solve_lr(x, y, kwargs.l2_reg as f32, add_bias, solver)
+                        if kwargs.singular_x_tol > 0.0 {
+                            match faer_solve_lr_gated(
+                                x,
+                                y,
+                                kwargs.l2_reg as f32,
+                                add_bias,
+                                solver,
+                                kwargs.singular_x_tol as f32,
+                            ) {
+                                Some(c) => c,
+                                None => {
+                                    // Match the success path's output length: mask.len() when
+                                    // nulls were present, else nrows (mask is a [true] dummy).
+                                    let out_len = if (!&mask).any() { mask.len() } else { nrows };
+                                    return null_pred_resid::<Float32Type>(out_len);
+                                }
+                            }
+                        } else {
+                            faer_solve_lr(x, y, kwargs.l2_reg as f32, add_bias, solver)
+                        }
                     }
                     (LRMethods::Normal, true) => {
                         faer_nn_lr(x, y, add_bias, kwargs.tol as f32, 2000)

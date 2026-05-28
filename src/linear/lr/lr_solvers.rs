@@ -249,17 +249,9 @@ pub fn faer_solve_lr_rcond<T: RealField + Float>(
     }
 }
 
-/// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
-/// If lambda is 0, then this is the regular lstsq
+/// Builds X'y as an ncols x y.ncols() matrix, parallelizing the matmul above a threshold.
 #[inline(always)]
-pub fn faer_solve_lr<T: RealField + Float>(
-    x: MatRef<T>,
-    y: MatRef<T>,
-    lambda: T,
-    add_bias: bool,
-    how: LRSolverMethods,
-) -> Mat<T> {
-    let xtx = get_xtx_with_lambda(x, lambda, add_bias);
+fn build_xty<T: RealField + Float>(x: MatRef<T>, y: MatRef<T>) -> Mat<T> {
     let mut xty = Mat::zeros(x.ncols(), y.ncols());
     let par = if x.nrows() * y.ncols() < PARALLEL_MATMUL_THRESHOLD {
         Par::Seq
@@ -274,7 +266,16 @@ pub fn faer_solve_lr<T: RealField + Float>(
         T::one(),
         par,
     );
+    xty
+}
 
+/// Solves (X'X) b = X'y for b using the chosen factorization, falling back to QR.
+#[inline(always)]
+fn solve_xtx_xty<T: RealField + Float>(
+    xtx: Mat<T>,
+    xty: Mat<T>,
+    how: LRSolverMethods,
+) -> Mat<T> {
     match how {
         LRSolverMethods::SVD => match xtx.thin_svd() {
             Ok(svd) => svd.solve(xty),
@@ -286,6 +287,56 @@ pub fn faer_solve_lr<T: RealField + Float>(
         },
         LRSolverMethods::QR => xtx.col_piv_qr().solve(xty),
     }
+}
+
+/// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
+/// If lambda is 0, then this is the regular lstsq
+#[inline(always)]
+pub fn faer_solve_lr<T: RealField + Float>(
+    x: MatRef<T>,
+    y: MatRef<T>,
+    lambda: T,
+    add_bias: bool,
+    how: LRSolverMethods,
+) -> Mat<T> {
+    let xtx = get_xtx_with_lambda(x, lambda, add_bias);
+    solve_xtx_xty(xtx, build_xty(x, y), how)
+}
+
+/// Relative determinant of X'X: |det(X'X)| / Π diag(X'X). Scale-invariant rank
+/// check, ~1.0 for well-conditioned designs and ~0 for (near-)singular ones.
+#[inline(always)]
+fn rel_det<T: RealField + Float>(xtx: &Mat<T>) -> T {
+    let det: T = xtx.as_ref().determinant().abs();
+    let dprod = xtx
+        .diagonal()
+        .column_vector()
+        .iter()
+        .copied()
+        .fold(T::one(), |acc, d| acc * d);
+    if dprod > T::zero() {
+        det / dprod
+    } else {
+        T::zero()
+    }
+}
+
+/// Like `faer_solve_lr` but returns `None` when the design is rank-deficient, i.e.
+/// `rel_det(X'X) <= tol`. Builds X'X once and skips the X'y build + solve when gated.
+#[inline(always)]
+pub fn faer_solve_lr_gated<T: RealField + Float>(
+    x: MatRef<T>,
+    y: MatRef<T>,
+    lambda: T,
+    add_bias: bool,
+    how: LRSolverMethods,
+    tol: T,
+) -> Option<Mat<T>> {
+    let xtx = get_xtx_with_lambda(x, lambda, add_bias);
+    if rel_det(&xtx) <= tol {
+        return None;
+    }
+    Some(solve_xtx_xty(xtx, build_xty(x, y), how))
 }
 
 /// Solves the weighted least square with weights given by the user
