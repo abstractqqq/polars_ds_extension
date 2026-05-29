@@ -234,15 +234,27 @@ pub fn faer_solve_lr_rcond<T: RealField + Float>(
             let max_singular_value = singular_values[0]; // at least 1.
                                                          // singular_values.iter().copied().fold(T::min_value(), T::max);
             let threshold = rcond * max_singular_value;
-            // Safe, because i <= n
-            let mut s_inv = Mat::<T>::zeros(n, n);
+            // Reassociated right-to-left: V * (S^-1 .* (U^T * (X^T y))). Algebraically
+            // identical to V * S^-1 * U^T * X^T * y but avoids the dense n x n S^-1 and
+            // the k x n intermediate of the left-associative form (O(n*k) vs O(n*k^2)).
+            let sinv: Vec<T> = s
+                .iter()
+                .copied()
+                .map(|v| if v >= threshold { v.recip() } else { T::zero() })
+                .collect();
+            let mut z = svd.U().transpose() * build_xty(x, y); // n x yc
+            let yc = z.ncols();
+            // Safe: i < n == z.nrows(), j < yc == z.ncols().
             unsafe {
-                for (i, v) in s.iter().copied().enumerate() {
-                    *s_inv.get_mut_unchecked(i, i) =
-                        if v >= threshold { v.recip() } else { T::zero() };
+                for i in 0..n {
+                    let si = sinv[i];
+                    for j in 0..yc {
+                        let cur = *z.get_mut_unchecked(i, j);
+                        *z.get_mut_unchecked(i, j) = cur * si;
+                    }
                 }
             }
-            let weights = svd.V() * s_inv * svd.U().transpose() * x.transpose() * y;
+            let weights = svd.V() * z;
             Ok((weights, singular_values))
         }
         _ => Err("SVD failed.".to_string()),

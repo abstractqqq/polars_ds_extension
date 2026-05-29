@@ -511,6 +511,48 @@ def test_lin_reg_with_rcond():
     assert np.all(np.abs(svs - np_svs) < 1e-10)
 
 
+def test_lin_reg_with_rcond_truncates_singular_value():
+    # Exercises the v < threshold -> 1/s := 0 truncation branch in
+    # faer_solve_lr_rcond (the well-conditioned test above keeps all singular
+    # values, so it never hits truncation under the reassociated solve).
+    rng = np.random.default_rng(123)
+    n = 2000
+    x1 = rng.standard_normal(n)
+    x2 = x1 + rng.standard_normal(n) * 1e-6  # near-collinear -> one tiny eigenvalue
+    x3 = rng.standard_normal(n)
+    df = pl.DataFrame({"x1": x1, "x2": x2, "x3": x3}).with_columns(
+        y=pl.col("x1") + 0.5 * pl.col("x2") - 0.3 * pl.col("x3")
+    )
+    rcond = 1e-3  # truncates the near-collinear direction, keeps the other two
+
+    res = df.select(
+        pds.lin_reg_w_rcond("x1", "x2", "x3", target="y", rcond=rcond).alias("r")
+    ).unnest("r")
+    coeffs = res["coeffs"][0].to_numpy()
+    svs = res["singular_values"][0].to_numpy()
+
+    # Reference: pds rcond uses XtX eigenvalues; threshold = rcond * sqrt(max eig);
+    # pseudo-inverse zeroing eigenvalues below threshold.
+    X = df.select("x1", "x2", "x3").to_numpy()
+    y = df["y"].to_numpy()
+    xtx = X.T @ X
+    evals, evecs = np.linalg.eigh(xtx)
+    thr = rcond * np.sqrt(evals.max())
+    assert (evals < thr).any(), "test must actually truncate a singular value"
+    pinv = sum(
+        (1.0 / ev) * np.outer(vec, vec)
+        for ev, vec in zip(evals, evecs.T)
+        if ev >= thr
+    )
+    w_ref = pinv @ (X.T @ y)
+
+    assert np.all(np.isfinite(coeffs))
+    np.testing.assert_allclose(coeffs, w_ref, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(
+        np.sort(svs)[::-1], np.sqrt(np.sort(evals))[::-1], rtol=1e-6, atol=1e-6
+    )
+
+
 def test_lasso_regression():
     # These tests have bigger precision tolerance because of different stopping criterions
 
