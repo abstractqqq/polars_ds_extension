@@ -511,6 +511,48 @@ def test_lin_reg_with_rcond():
     assert np.all(np.abs(svs - np_svs) < 1e-10)
 
 
+def test_lin_reg_with_rcond_truncates_singular_value():
+    # Exercises the v < threshold -> 1/s := 0 truncation branch in
+    # faer_solve_lr_rcond (the well-conditioned test above keeps all singular
+    # values, so it never hits truncation under the reassociated solve).
+    rng = np.random.default_rng(123)
+    n = 2000
+    x1 = rng.standard_normal(n)
+    x2 = x1 + rng.standard_normal(n) * 1e-6  # near-collinear -> one tiny eigenvalue
+    x3 = rng.standard_normal(n)
+    df = pl.DataFrame({"x1": x1, "x2": x2, "x3": x3}).with_columns(
+        y=pl.col("x1") + 0.5 * pl.col("x2") - 0.3 * pl.col("x3")
+    )
+    rcond = 1e-3  # truncates the near-collinear direction, keeps the other two
+
+    res = df.select(
+        pds.lin_reg_w_rcond("x1", "x2", "x3", target="y", rcond=rcond).alias("r")
+    ).unnest("r")
+    coeffs = res["coeffs"][0].to_numpy()
+    svs = res["singular_values"][0].to_numpy()
+
+    # Reference: pds rcond uses XtX eigenvalues; threshold = rcond * sqrt(max eig);
+    # pseudo-inverse zeroing eigenvalues below threshold.
+    X = df.select("x1", "x2", "x3").to_numpy()
+    y = df["y"].to_numpy()
+    xtx = X.T @ X
+    evals, evecs = np.linalg.eigh(xtx)
+    thr = rcond * np.sqrt(evals.max())
+    assert (evals < thr).any(), "test must actually truncate a singular value"
+    pinv = sum(
+        (1.0 / ev) * np.outer(vec, vec)
+        for ev, vec in zip(evals, evecs.T)
+        if ev >= thr
+    )
+    w_ref = pinv @ (X.T @ y)
+
+    assert np.all(np.isfinite(coeffs))
+    np.testing.assert_allclose(coeffs, w_ref, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(
+        np.sort(svs)[::-1], np.sqrt(np.sort(evals))[::-1], rtol=1e-6, atol=1e-6
+    )
+
+
 def test_lasso_regression():
     # These tests have bigger precision tolerance because of different stopping criterions
 
@@ -1131,3 +1173,169 @@ def test_lin_reg_null_skip_in_small_group():
 
     for got, exp in zip(out["c"].to_list(), expected):
         np.testing.assert_allclose(got, exp, rtol=1e-12, atol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# singular_x_tol: rank-deficiency gate (issue #461)
+# ---------------------------------------------------------------------------
+
+import polars_ds.config as _pds_cfg
+
+
+@pytest.fixture(params=["f64", "f32"])
+def lin_reg_dtype(request, monkeypatch):
+    """Run each gate test under both the f64 and f32 plugin variants."""
+    monkeypatch.setattr(_pds_cfg, "LIN_REG_EXPR_F64", request.param == "f64")
+    return request.param
+
+
+def _collinear_df(n: int = 64, seed: int = 0) -> pl.DataFrame:
+    """A design whose X'X is exactly singular (x2 = 2*x1)."""
+    rng = np.random.default_rng(seed)
+    x1 = rng.standard_normal(n)
+    return pl.DataFrame(
+        {
+            "x1": x1,
+            "x2": 2.0 * x1,  # perfectly collinear -> rank-deficient X'X
+            "y": rng.standard_normal(n),
+        }
+    )
+
+
+def test_singular_x_tol_nulls_collinear_coeffs(lin_reg_dtype):
+    # Default singular_x_tol (1e-12) gates the singular design to null.
+    df = _collinear_df()
+    out = df.select(pds.lin_reg("x1", "x2", target="y", add_bias=False).alias("coeffs"))
+    assert out["coeffs"][0] is None
+
+
+def test_singular_x_tol_off_returns_finite(lin_reg_dtype):
+    # singular_x_tol=0.0 disables the gate -> finite (min-norm) solution as before.
+    df = _collinear_df()
+    out = df.select(
+        pds.lin_reg("x1", "x2", target="y", add_bias=False, singular_x_tol=0.0).alias("coeffs")
+    )
+    coeffs = out["coeffs"][0]
+    assert coeffs is not None
+    assert len(coeffs.to_list()) == 2
+
+
+def test_singular_x_tol_well_conditioned_unchanged(lin_reg_dtype):
+    # A well-conditioned design must NOT be gated and must match sklearn.
+    pytest.importorskip("sklearn")
+    from sklearn.linear_model import LinearRegression
+
+    rng = np.random.default_rng(7)
+    n = 500
+    df = pl.DataFrame(
+        {
+            "x1": rng.standard_normal(n),
+            "x2": rng.standard_normal(n),
+            "x3": rng.standard_normal(n),
+        }
+    ).with_columns(y=pl.col("x1") - 0.5 * pl.col("x2") + 2.0 * pl.col("x3"))
+
+    coeffs = df.select(
+        pds.lin_reg("x1", "x2", "x3", target="y", add_bias=False).alias("c")
+    )["c"][0]
+    assert coeffs is not None
+
+    X = df.select("x1", "x2", "x3").to_numpy()
+    y = df["y"].to_numpy()
+    ref = LinearRegression(fit_intercept=False).fit(X, y).coef_
+    tol = 1e-4 if lin_reg_dtype == "f32" else 1e-9
+    np.testing.assert_allclose(coeffs.to_list(), ref, rtol=tol, atol=tol)
+
+
+def test_singular_x_tol_group_by_nulls_degenerate_group(lin_reg_dtype):
+    # The use case: one degenerate group nulls, the good group fits.
+    rng = np.random.default_rng(11)
+    n = 40
+    good_x1 = rng.standard_normal(n)
+    bad_x1 = rng.standard_normal(n)
+    df = pl.DataFrame(
+        {
+            "g": ["good"] * n + ["bad"] * n,
+            "x1": np.concatenate([good_x1, bad_x1]),
+            "x2": np.concatenate([rng.standard_normal(n), 2.0 * bad_x1]),  # bad group collinear
+            "y": rng.standard_normal(2 * n),
+        }
+    )
+    res = df.group_by("g", maintain_order=True).agg(
+        pds.lin_reg("x1", "x2", target="y", add_bias=False).alias("c")
+    )
+    cmap = {row[0]: row[1] for row in res.iter_rows()}
+    assert cmap["bad"] is None
+    assert cmap["good"] is not None
+
+
+def test_singular_x_tol_return_pred_nulls(lin_reg_dtype):
+    # return_pred path: a gated group yields all-null pred & resid.
+    df = _collinear_df(n=32)
+    out = df.select(
+        pds.lin_reg("x1", "x2", target="y", add_bias=False, return_pred=True).alias("p")
+    ).unnest("p")
+    assert out["pred"].null_count() == df.height
+    assert out["resid"].null_count() == df.height
+
+
+def test_singular_x_tol_multi_target_nulls(lin_reg_dtype):
+    # multi-target coeffs path: all target fields null on a gated design.
+    df = _collinear_df(n=64).with_columns(y2=pl.col("y") * 0.5 + 1.0)
+    s = df.select(
+        pds.lin_reg("x1", "x2", target=["y", "y2"], add_bias=False).alias("c")
+    )["c"].to_list()[0]
+    assert s["target_0"] is None
+    assert s["target_1"] is None
+
+
+def _scaled_singular_df(n=2000, feats=7, scale=1e3, seed=3):
+    """Collinear (rank-1) design at large scale: Π diag(X'X) overflows f32."""
+    rng = np.random.default_rng(seed)
+    base = rng.standard_normal(n) * scale
+    cols = {f"x{i}": base * (i + 1) for i in range(feats)}  # all collinear
+    cols["y"] = rng.standard_normal(n) * scale
+    return pl.DataFrame(cols), [f"x{i}" for i in range(feats)]
+
+
+def _scaled_full_rank_df(n=2000, feats=7, scale=1e3, seed=4):
+    """Well-conditioned design at large scale (same overflow regime, full rank)."""
+    rng = np.random.default_rng(seed)
+    cols = {f"x{i}": rng.standard_normal(n) * scale for i in range(feats)}
+    xs = [f"x{i}" for i in range(feats)]
+    df = pl.DataFrame(cols).with_columns(y=sum(pl.col(c) for c in xs))
+    return df, xs
+
+
+def test_singular_x_tol_large_scale_singular_nulls(lin_reg_dtype):
+    # Regression: f32 Π diag(X'X) overflowed -> gate silently failed and returned
+    # finite garbage. The log-space metric must now gate this to null.
+    df, xs = _scaled_singular_df()
+    out = df.select(pds.lin_reg(*xs, target="y", add_bias=False).alias("c"))
+    assert out["c"][0] is None
+
+
+def test_singular_x_tol_large_scale_full_rank_not_nulled(lin_reg_dtype):
+    # No false-null on a well-conditioned large-scale design.
+    df, xs = _scaled_full_rank_df()
+    out = df.select(pds.lin_reg(*xs, target="y", add_bias=False).alias("c"))
+    assert out["c"][0] is not None
+
+
+@pytest.mark.parametrize("solver", ["qr", "svd", "choleskey"])
+def test_singular_x_tol_per_solver(lin_reg_dtype, solver):
+    # Gate works regardless of which factorization the solver uses.
+    sing, xs = _scaled_singular_df()
+    assert (
+        sing.select(
+            pds.lin_reg(*xs, target="y", add_bias=False, solver=solver).alias("c")
+        )["c"][0]
+        is None
+    )
+    full, xs2 = _scaled_full_rank_df()
+    assert (
+        full.select(
+            pds.lin_reg(*xs2, target="y", add_bias=False, solver=solver).alias("c")
+        )["c"][0]
+        is not None
+    )

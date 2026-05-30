@@ -234,32 +234,36 @@ pub fn faer_solve_lr_rcond<T: RealField + Float>(
             let max_singular_value = singular_values[0]; // at least 1.
                                                          // singular_values.iter().copied().fold(T::min_value(), T::max);
             let threshold = rcond * max_singular_value;
-            // Safe, because i <= n
-            let mut s_inv = Mat::<T>::zeros(n, n);
+            // Reassociated right-to-left: V * (S^-1 .* (U^T * (X^T y))). Algebraically
+            // identical to V * S^-1 * U^T * X^T * y but avoids the dense n x n S^-1 and
+            // the k x n intermediate of the left-associative form (O(n*k) vs O(n*k^2)).
+            let sinv: Vec<T> = s
+                .iter()
+                .copied()
+                .map(|v| if v >= threshold { v.recip() } else { T::zero() })
+                .collect();
+            let mut z = svd.U().transpose() * build_xty(x, y); // n x yc
+            let yc = z.ncols();
+            // Safe: i < n == z.nrows(), j < yc == z.ncols().
             unsafe {
-                for (i, v) in s.iter().copied().enumerate() {
-                    *s_inv.get_mut_unchecked(i, i) =
-                        if v >= threshold { v.recip() } else { T::zero() };
+                for i in 0..n {
+                    let si = sinv[i];
+                    for j in 0..yc {
+                        let cur = *z.get_mut_unchecked(i, j);
+                        *z.get_mut_unchecked(i, j) = cur * si;
+                    }
                 }
             }
-            let weights = svd.V() * s_inv * svd.U().transpose() * x.transpose() * y;
+            let weights = svd.V() * z;
             Ok((weights, singular_values))
         }
         _ => Err("SVD failed.".to_string()),
     }
 }
 
-/// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
-/// If lambda is 0, then this is the regular lstsq
+/// Builds X'y as an ncols x y.ncols() matrix, parallelizing the matmul above a threshold.
 #[inline(always)]
-pub fn faer_solve_lr<T: RealField + Float>(
-    x: MatRef<T>,
-    y: MatRef<T>,
-    lambda: T,
-    add_bias: bool,
-    how: LRSolverMethods,
-) -> Mat<T> {
-    let xtx = get_xtx_with_lambda(x, lambda, add_bias);
+fn build_xty<T: RealField + Float>(x: MatRef<T>, y: MatRef<T>) -> Mat<T> {
     let mut xty = Mat::zeros(x.ncols(), y.ncols());
     let par = if x.nrows() * y.ncols() < PARALLEL_MATMUL_THRESHOLD {
         Par::Seq
@@ -274,7 +278,16 @@ pub fn faer_solve_lr<T: RealField + Float>(
         T::one(),
         par,
     );
+    xty
+}
 
+/// Solves (X'X) b = X'y for b using the chosen factorization, falling back to QR.
+#[inline(always)]
+fn solve_xtx_xty<T: RealField + Float>(
+    xtx: Mat<T>,
+    xty: Mat<T>,
+    how: LRSolverMethods,
+) -> Mat<T> {
     match how {
         LRSolverMethods::SVD => match xtx.thin_svd() {
             Ok(svd) => svd.solve(xty),
@@ -285,6 +298,94 @@ pub fn faer_solve_lr<T: RealField + Float>(
             _ => xtx.col_piv_qr().solve(xty),
         },
         LRSolverMethods::QR => xtx.col_piv_qr().solve(xty),
+    }
+}
+
+/// Returns the coefficients for lstsq with l2 (Ridge) regularization as a nrows x 1 matrix
+/// If lambda is 0, then this is the regular lstsq
+#[inline(always)]
+pub fn faer_solve_lr<T: RealField + Float>(
+    x: MatRef<T>,
+    y: MatRef<T>,
+    lambda: T,
+    add_bias: bool,
+    how: LRSolverMethods,
+) -> Mat<T> {
+    let xtx = get_xtx_with_lambda(x, lambda, add_bias);
+    solve_xtx_xty(xtx, build_xty(x, y), how)
+}
+
+/// Σ ln(v) (or Σ ln|v|) over an iterator. A zero element yields -inf, which makes
+/// the rank gate fire — no special-casing needed.
+#[inline(always)]
+fn sum_ln<T: RealField + Float>(vals: impl Iterator<Item = T>, abs: bool) -> T {
+    vals.fold(T::zero(), |acc, v| {
+        acc + if abs { v.abs().ln() } else { v.ln() }
+    })
+}
+
+/// Like `faer_solve_lr` but returns `None` when the design is rank-deficient, i.e.
+/// the relative determinant `|det(X'X)| / Π diag(X'X) <= tol`.
+///
+/// The metric is evaluated in log-space — `ln|det| - Σ ln(diag)` — which is
+/// overflow-safe (the raw products overflow in f32 for a handful of large-scale
+/// features) and reuses the factorization the solver already needs: `|det(X'X)|`
+/// comes from the QR R diagonal / SVD singular values / Cholesky L diagonal, so no
+/// separate `determinant()` factorization is performed. Degenerate groups skip the
+/// X'y build and the solve entirely.
+#[inline(always)]
+pub fn faer_solve_lr_gated<T: RealField + Float>(
+    x: MatRef<T>,
+    y: MatRef<T>,
+    lambda: T,
+    add_bias: bool,
+    how: LRSolverMethods,
+    tol: T,
+) -> Option<Mat<T>> {
+    let xtx = get_xtx_with_lambda(x, lambda, add_bias);
+
+    // Denominator Σ ln(diag(X'X)). A non-positive diagonal means a zero-variance
+    // column -> degenerate design -> gate (also keeps ln() in the real domain).
+    let mut ln_den = T::zero();
+    for d in xtx.diagonal().column_vector().iter().copied() {
+        if d <= T::zero() {
+            return None;
+        }
+        ln_den = ln_den + d.ln();
+    }
+    let ln_tol = tol.ln();
+
+    // ln(rel_det) = ln|det(X'X)| - Σ ln(diag). Gate when rel_det <= tol.
+    match how {
+        LRSolverMethods::QR => {
+            let qr = xtx.col_piv_qr();
+            let ln_det = sum_ln(qr.R().diagonal().column_vector().iter().copied(), true);
+            if ln_det - ln_den <= ln_tol {
+                return None;
+            }
+            Some(qr.solve(build_xty(x, y)))
+        }
+        LRSolverMethods::SVD => {
+            // SVD failure -> treat as rank-deficient.
+            let svd = xtx.thin_svd().ok()?;
+            let ln_det = sum_ln(svd.S().column_vector().iter().copied(), false);
+            if ln_det - ln_den <= ln_tol {
+                return None;
+            }
+            Some(svd.solve(build_xty(x, y)))
+        }
+        LRSolverMethods::Choleskey => match xtx.llt(Side::Lower) {
+            // Not positive-definite -> rank-deficient.
+            Err(_) => None,
+            Ok(llt) => {
+                // det(X'X) = Π L_ii^2  ->  ln|det| = 2 Σ ln(L_ii).
+                let s = sum_ln(llt.L().diagonal().column_vector().iter().copied(), false);
+                if (s + s) - ln_den <= ln_tol {
+                    return None;
+                }
+                Some(llt.solve(build_xty(x, y)))
+            }
+        },
     }
 }
 

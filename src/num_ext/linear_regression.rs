@@ -1,8 +1,8 @@
 use crate::linear::{
     lr::{
         lr_solvers::{
-            faer_coordinate_descent, faer_nn_lr, faer_solve_lr, faer_solve_lr_rcond,
-            faer_weighted_lr,
+            faer_coordinate_descent, faer_nn_lr, faer_solve_lr, faer_solve_lr_gated,
+            faer_solve_lr_rcond, faer_weighted_lr,
         },
         LRMethods,
     },
@@ -40,6 +40,8 @@ pub(crate) struct LRKwargs {
     pub(crate) positive: bool,
     #[serde(default)]
     pub(crate) max_iter: usize,
+    #[serde(default)]
+    pub(crate) singular_x_tol: f64,
 }
 
 #[derive(Deserialize, Debug)]
@@ -49,6 +51,8 @@ pub(crate) struct MultiLRKwargs {
     pub(crate) solver: String,
     pub(crate) last_target_idx: usize,
     pub(crate) l2_reg: f64,
+    #[serde(default)]
+    pub(crate) singular_x_tol: f64,
 }
 
 // Sherman-William-Woodbury (Update, online versions) LRKwargs
@@ -342,6 +346,72 @@ fn series_to_mat_for_multi_lr(
 }
 
 // -----------------------------------------------------------------------------------------------------
+// Null outputs for rank-deficient designs (singular_x_tol gate). Generic over the numeric
+// type so the f32 plugin variants reuse them.
+
+/// Single-row list column whose only entry is null.
+pub(crate) fn null_coeffs<T: PolarsNumericType>(
+    name: PlSmallStr,
+    n_features: usize,
+    inner: DataType,
+) -> Series {
+    let mut builder: ListPrimitiveChunkedBuilder<T> =
+        ListPrimitiveChunkedBuilder::new(name, 1, n_features, inner);
+    builder.append_null();
+    builder.finish().into_series()
+}
+
+/// Multi-target analogue of `null_coeffs`: a struct with one null list per target.
+pub(crate) fn null_multi_coeffs<T: PolarsNumericType>(
+    names: &[&PlSmallStr],
+    n_features: usize,
+    inner: DataType,
+) -> PolarsResult<Series> {
+    let columns: Vec<Column> = names
+        .iter()
+        .map(|nm| {
+            let mut builder: ListPrimitiveChunkedBuilder<T> =
+                ListPrimitiveChunkedBuilder::new((*nm).clone(), 1, n_features, inner.clone());
+            builder.append_null();
+            builder.finish().into_column()
+        })
+        .collect();
+    Ok(StructChunked::from_columns("coeffs".into(), 1, &columns)?.into_series())
+}
+
+/// All-null {pred, resid} struct of `n` rows.
+pub(crate) fn null_pred_resid<T: PolarsNumericType>(n: usize) -> PolarsResult<Series> {
+    let mut p_builder: PrimitiveChunkedBuilder<T> = PrimitiveChunkedBuilder::new("pred".into(), n);
+    let mut r_builder: PrimitiveChunkedBuilder<T> = PrimitiveChunkedBuilder::new("resid".into(), n);
+    for _ in 0..n {
+        p_builder.append_null();
+        r_builder.append_null();
+    }
+    let p = p_builder.finish().into_series();
+    let r = r_builder.finish().into_series();
+    Ok(StructChunked::from_series("".into(), n, [&p, &r].into_iter())?.into_series())
+}
+
+/// Multi-target analogue of `null_pred_resid`: 2N all-null columns ({name}_pred/_resid).
+pub(crate) fn null_multi_pred<T: PolarsNumericType>(
+    names: &[&PlSmallStr],
+    nrows: usize,
+) -> PolarsResult<Series> {
+    let mut s: Vec<Column> = Vec::with_capacity(names.len() * 2);
+    for nm in names {
+        let mut p_builder: PrimitiveChunkedBuilder<T> =
+            PrimitiveChunkedBuilder::new(format!("{}_pred", nm).into(), nrows);
+        let mut r_builder: PrimitiveChunkedBuilder<T> =
+            PrimitiveChunkedBuilder::new(format!("{}_resid", nm).into(), nrows);
+        for _ in 0..nrows {
+            p_builder.append_null();
+            r_builder.append_null();
+        }
+        s.push(p_builder.finish().into_column());
+        s.push(r_builder.finish().into_column());
+    }
+    Ok(StructChunked::from_columns("all_preds".into(), nrows, &s)?.into_series())
+}
 
 #[polars_expr(output_type_func=coeff_output)]
 fn pl_lr(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
@@ -376,7 +446,27 @@ fn pl_lr(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
                     kwargs.positive,
                 ) {
                     (LRMethods::Normal | LRMethods::L2, false) => {
-                        faer_solve_lr(x, y, kwargs.l2_reg, add_bias, solver)
+                        if kwargs.singular_x_tol > 0.0 {
+                            match faer_solve_lr_gated(
+                                x,
+                                y,
+                                kwargs.l2_reg,
+                                add_bias,
+                                solver,
+                                kwargs.singular_x_tol,
+                            ) {
+                                Some(c) => c,
+                                None => {
+                                    return Ok(null_coeffs::<Float64Type>(
+                                        "coeffs".into(),
+                                        nfeats,
+                                        DataType::Float64,
+                                    ))
+                                }
+                            }
+                        } else {
+                            faer_solve_lr(x, y, kwargs.l2_reg, add_bias, solver)
+                        }
                     }
                     (LRMethods::Normal, true) => faer_nn_lr(x, y, add_bias, kwargs.tol, max_iter),
                     (LRMethods::L2, true) => faer_coordinate_descent(
@@ -446,12 +536,30 @@ fn pl_lr_multi(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Series>
 
     let coeffs = match LRMethods::from((0., kwargs.l2_reg)) {
         LRMethods::Normal | LRMethods::L2 => {
-            Ok(faer_solve_lr(x, y, kwargs.l2_reg, add_bias, solver))
+            if kwargs.singular_x_tol > 0.0 {
+                match faer_solve_lr_gated(
+                    x,
+                    y,
+                    kwargs.l2_reg,
+                    add_bias,
+                    solver,
+                    kwargs.singular_x_tol,
+                ) {
+                    Some(c) => c,
+                    None => {
+                        return null_multi_coeffs::<Float64Type>(&y_names, nfeats, DataType::Float64)
+                    }
+                }
+            } else {
+                faer_solve_lr(x, y, kwargs.l2_reg, add_bias, solver)
+            }
         }
-        _ => Err(PolarsError::ComputeError(
-            "The method is not supported.".into(),
-        )),
-    }?;
+        _ => {
+            return Err(PolarsError::ComputeError(
+                "The method is not supported.".into(),
+            ))
+        }
+    };
 
     let columns: Vec<Column> = y_names
         .into_iter()
@@ -494,12 +602,28 @@ fn pl_lr_multi_pred(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Se
 
     let coeffs = match LRMethods::from((0., kwargs.l2_reg)) {
         LRMethods::Normal | LRMethods::L2 => {
-            Ok(faer_solve_lr(x, y, kwargs.l2_reg, add_bias, solver))
+            if kwargs.singular_x_tol > 0.0 {
+                match faer_solve_lr_gated(
+                    x,
+                    y,
+                    kwargs.l2_reg,
+                    add_bias,
+                    solver,
+                    kwargs.singular_x_tol,
+                ) {
+                    Some(c) => c,
+                    None => return null_multi_pred::<Float64Type>(&y_names, nrows),
+                }
+            } else {
+                faer_solve_lr(x, y, kwargs.l2_reg, add_bias, solver)
+            }
         }
-        _ => Err(PolarsError::ComputeError(
-            "The method is not supported.".into(),
-        )),
-    }?;
+        _ => {
+            return Err(PolarsError::ComputeError(
+                "The method is not supported.".into(),
+            ))
+        }
+    };
 
     let pred = x * &coeffs;
     let resid = y - &pred;
@@ -601,7 +725,26 @@ fn pl_lr_pred(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
                     kwargs.positive,
                 ) {
                     (LRMethods::Normal | LRMethods::L2, false) => {
-                        faer_solve_lr(x, y, kwargs.l2_reg, add_bias, solver)
+                        if kwargs.singular_x_tol > 0.0 {
+                            match faer_solve_lr_gated(
+                                x,
+                                y,
+                                kwargs.l2_reg,
+                                add_bias,
+                                solver,
+                                kwargs.singular_x_tol,
+                            ) {
+                                Some(c) => c,
+                                None => {
+                                    // Match the success path's output length: mask.len() when
+                                    // nulls were present, else nrows (mask is a [true] dummy).
+                                    let out_len = if (!&mask).any() { mask.len() } else { nrows };
+                                    return null_pred_resid::<Float64Type>(out_len);
+                                }
+                            }
+                        } else {
+                            faer_solve_lr(x, y, kwargs.l2_reg, add_bias, solver)
+                        }
                     }
                     (LRMethods::Normal, true) => faer_nn_lr(x, y, add_bias, kwargs.tol, max_iter),
                     (LRMethods::L2, true) => faer_coordinate_descent(
