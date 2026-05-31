@@ -1,6 +1,6 @@
 [package]
 name = "polars_ds"
-version = "0.11.3"
+version = "0.12.0"
 edition = "2021"
 
 [lib]
