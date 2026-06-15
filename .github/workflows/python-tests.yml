@@ -73,8 +73,13 @@ jobs:
         run: |
           jupyter execute examples/basics.ipynb
           jupyter execute examples/pipeline.ipynb
-          jupyter execute examples/eda.ipynb
           jupyter execute examples/sample_and_split.ipynb
+
+      - name: Test EDA Notebook
+        if: matrix.python-version != '3.14t'
+        run: |
+          pip install "vegafusion[embed]"
+          jupyter execute examples/eda.ipynb
 
       - name: Test Doc Builds
         run: |
