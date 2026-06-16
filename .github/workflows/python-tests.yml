@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RUSTFLAGS: -C debuginfo=0  # Do not produce debug symbols to keep memory usage down
+  RUSTFLAGS: -C debuginfo=0 # Do not produce debug symbols to keep memory usage down
   RUST_BACKTRACE: 1
   PYTHONUTF8: 1
 
@@ -36,7 +36,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ['3.9', '3.12', '3.13', '3.14']
+        python-version: ["3.9", "3.12", "3.13", "3.14", "3.14t"]
         # include:
         #   - os: windows-latest
         #     python-version: '3.13'
@@ -48,6 +48,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
 
       - name: Create virtual environment
         env:
@@ -56,9 +57,14 @@ jobs:
           python -m venv .venv
           echo "$GITHUB_WORKSPACE/.venv/$BIN" >> $GITHUB_PATH
           echo "VIRTUAL_ENV=$GITHUB_WORKSPACE/.venv" >> $GITHUB_ENV
-      
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+
       - name: Install package
-        run: | 
+        run: |
           pip install -r requirements.txt
           maturin develop --release
 
@@ -69,14 +75,19 @@ jobs:
           pip install -r tests/requirements-test.txt
 
       - name: Test Notebooks
-        run: | 
+        run: |
           jupyter execute examples/basics.ipynb
           jupyter execute examples/pipeline.ipynb
-          jupyter execute examples/eda.ipynb
           jupyter execute examples/sample_and_split.ipynb
 
+      - name: Test EDA Notebook
+        if: matrix.python-version != '3.14t'
+        run: |
+          pip install -r tests/requirements-test2.txt
+          jupyter execute examples/eda.ipynb
+
       - name: Test Doc Builds
-        run: | 
+        run: |
           pip install -r docs/requirements-docs.txt
           mkdocs build
 
