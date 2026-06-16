@@ -78,7 +78,7 @@ jobs:
       - name: Test EDA Notebook
         if: matrix.python-version != '3.14t'
         run: |
-          pip install "vegafusion[embed]"
+          pip install -r tests/requirements-test2.txt
           jupyter execute examples/eda.ipynb
 
       - name: Test Doc Builds
