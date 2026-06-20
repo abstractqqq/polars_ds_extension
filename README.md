@@ -11,8 +11,25 @@
   <a href="https://github.com/abstractqqq/polars_ds_extension/blob/main/examples/basics.ipynb">User Guide</a>
   |
   <a href="https://github.com/abstractqqq/polars_ds_extension/blob/main/CONTRIBUTING.md">Want to Contribute?</a>
-<br>
-<b>pip install polars-ds</b>
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/polars-ds/">
+    <img src="https://img.shields.io/pypi/v/polars-ds.svg" alt="PyPI version" />
+  </a>
+  <a href="https://pypi.org/project/polars-ds/">
+    <img src="https://img.shields.io/pypi/status/polars-ds.svg" alt="PyPI status" />
+  </a>
+  <a href="https://pypi.org/project/polars-ds/">
+    <img src="https://img.shields.io/pypi/dm/polars-ds.svg" alt="PyPI downloads" />
+  </a>
+  <a href="https://pypi.org/project/polars-ds/">
+    <img src="https://img.shields.io/pypi/pyversions/polars-ds.svg" alt="Python versions" />
+  </a>
+</p>
+
+<p align="center">
+  <b>pip install polars-ds</b>
 </p>
 
 # PDS (polars_ds)
@@ -327,14 +344,9 @@ Feel free to take a look at our [benchmark notebook](./benchmarks/benchmarks.ipy
 
 Generally speaking, the more expressions you want to evaluate simultaneously, the faster Polars + PDS will be than Pandas + (SciPy / Sklearn / NumPy). The more CPU cores you have on your machine, the bigger the time difference will be in favor of Polars + PDS. 
 
-## HELP WANTED!
-
-1. Documentation writing, testing, documentation, benchmarking, etc.
-
 ## Road Map
 
-1. K-means, K-medoids clustering as expressions and also standalone modules.
-2. Other improvement items. See issues.
+1. All yours. Just let me know, and I will evaluate and get back to you!
 
 # Minimum Polars Support + Streaming Compatibility
 
