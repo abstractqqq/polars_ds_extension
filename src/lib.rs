@@ -12,7 +12,7 @@ mod utils;
 use pyo3::{
     pymodule,
     types::{PyModule, PyModuleMethods},
-    Bound, PyResult, Python,
+    wrap_pyfunction, Bound, PyResult, Python,
 };
 
 #[pymodule]
@@ -22,8 +22,13 @@ fn _polars_ds(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<pymodels::py_lr::PyElasticNet>()?;
     m.add_class::<pymodels::py_lr::PyOnlineLR>()?;
     m.add_class::<pymodels::py_glm::PyGLM>()?;
+    m.add_class::<pymodels::py_mixed::PyMixedModel>()?;
     m.add_class::<pymodels::numpy_faer::PyFaerMat>()?;
     m.add_class::<pymodels::numpy_faer::PyArr>()?;
+    m.add_function(wrap_pyfunction!(
+        pymodels::py_stats::student_t_two_sided_pvalue,
+        m
+    )?)?;
     Ok(())
 }
 
