@@ -269,3 +269,43 @@ def test_glm_convergence_failure():
     coeffs = glm.coeffs()
     assert coeffs is not None
     assert np.all(np.isfinite(coeffs))
+
+
+def test_mixed_model_recovers_fixed_effect():
+    """REML fit basic"""
+    from polars_ds.linear_models import MixedModel
+
+    rng = np.random.RandomState(42)
+    n_groups = 40
+    per_group = 25
+    n = n_groups * per_group
+
+    beta0_true, beta1_true = 1.5, 2.0
+    sigma_g, sigma_e = 1.0, 0.5
+
+    group = np.repeat(np.arange(n_groups), per_group)
+    u = rng.normal(0.0, sigma_g, n_groups)[group]
+    x = rng.normal(0.0, 1.0, n)
+    noise_col = rng.normal(0.0, 1.0, n)
+    e = rng.normal(0.0, sigma_e, n)
+    y = beta0_true + beta1_true * x + u + e
+
+    df = pl.DataFrame({"y": y, "x": x, "noise": noise_col, "group": group})
+
+    mm = MixedModel().fit_df(df, features=["x", "noise"], target="y", group="group")
+    assert mm.is_fit()
+
+    report = mm.report()
+    assert report["effect"].to_list() == ["Intercept", "x", "noise"]
+
+    beta0_hat, beta1_hat, beta_noise_hat = report["estimate"].to_list()
+    assert abs(beta0_hat - beta0_true) < 0.5
+    assert abs(beta1_hat - beta1_true) < 0.2
+
+    p_x = report.filter(pl.col("effect") == "x")["p_value"].item()
+    p_noise = report.filter(pl.col("effect") == "noise")["p_value"].item()
+    assert p_x < 1e-6
+    assert p_noise > 0.05
+
+    assert mm.gamma_ is not None and mm.gamma_ > 0.0
+    assert np.all(mm.dfs_ > 0)
