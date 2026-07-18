@@ -22,7 +22,14 @@ from typing import List, Literal, Tuple
 import numpy as np
 import polars as pl
 
-from polars_ds._polars_ds import PyElasticNet, PyGLM, PyLR, PyOnlineLR
+from polars_ds._polars_ds import (
+    PyElasticNet,
+    PyGLM,
+    PyLR,
+    PyMixedModel,
+    PyOnlineLR,
+    student_t_two_sided_pvalue,
+)
 
 from .typing import LRSolverMethods, NullPolicy, PolarsFrame, TypeAlias
 
@@ -941,3 +948,174 @@ class GLM:
     #         pred = pred + bias
 
     #     return df.with_columns(pred.alias(name))
+
+
+# --------------------------------------------------------------------------------
+
+
+class MixedModel:
+    """
+    A random-intercept linear mixed model, fit via restricted maximum likelihood (REML).
+
+    The form is
+
+        y = X @ beta + Z @ u + e,   u ~ N(0, sigma_g^2 I),   e ~ N(0, sigma_e^2 I)
+
+    where `X` is the fixed-effect design matrix (an intercept column plus the given
+    features) and `Z` is the indicator (dummy) design matrix for `group`, i.e. one
+    random intercept per group level.
+
+    Degrees of freedom for each fixed effect are assigned by containment: effects that
+    are constant within every group level (including the intercept) are tested against
+    the group ("between") stratum, everything else against the residual ("within")
+    stratum. 
+    
+    This implementation mirrors SAS's PROC MIXED for a random-intercept model.
+
+    Examples
+    --------
+    ```python
+    import polars as pl
+    from polars_ds.linear_models import MixedModel
+
+    df = pl.DataFrame(
+        {
+            "y": [...],
+            "x1": [...],
+            "school": [...],
+        }
+    )
+    mm = MixedModel().fit_df(df, features=["x1"], target="y", group="school")
+    print(mm.report())
+    ```
+
+    Wikipedia: https://en.wikipedia.org/wiki/Mixed_model#Definition
+    SAS PROC MIXED: https://go.documentation.sas.com/doc/en/pgmsascdc/9.4_3.4/statug/statug_mixed_syntax01.htm
+    """
+
+    def __init__(self):
+        self.feature_names_in_: List[str] = []
+        self.group_name_in_: str | None = None
+        self._mm = PyMixedModel()
+
+    def is_fit(self) -> bool:
+        return self._mm.is_fit()
+
+    @property
+    def coeffs_(self) -> np.ndarray:
+        return np.asarray(self._mm.coeffs)
+
+    @property
+    def std_errors_(self) -> np.ndarray:
+        return np.asarray(self._mm.std_errors)
+
+    @property
+    def dfs_(self) -> np.ndarray:
+        return np.asarray(self._mm.dfs)
+
+    @property
+    def gamma_(self) -> float:
+        """Variance ratio sigma_g^2 / sigma_e^2 at the REML optimum."""
+        return self._mm.gamma
+
+    @property
+    def resid_variance_(self) -> float:
+        """Residual variance sigma_e^2."""
+        return self._mm.resid_variance
+
+    def __repr__(self) -> str:
+        if not self.is_fit():
+            return "MixedModel (not fitted yet)"
+        return (
+            "MixedModel(Random Intercept, REML)\n"
+            f"Group: {self.group_name_in_}\n"
+            f"Variance ratio (group / residual): {self.gamma_:.6g}\n"
+            f"{self.report()}"
+        )
+
+    def fit_df(
+        self,
+        df: PolarsFrame,
+        features: List[str],
+        target: str,
+        group: str,
+        null_policy: NullPolicy = "skip",
+        max_iter: int = 200,
+        tol: float = 1e-10,
+    ) -> Self:
+        """
+        Fit the random-intercept model on a dataframe.
+
+        Parameters
+        ----------
+        df
+            Frame.
+        features
+            List of strings of fixed-effect column names. Intercept is added.
+        target
+            The target column name.
+        group
+            The column identifying the random-intercept grouping factor.
+        null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
+            One of options shown here.
+        max_iter
+            Max number of iterations used for REML deviance over gamma.
+        tol
+            Convergence tolerance for the search.
+        """
+        df2 = (
+            _handle_nulls_in_df(df.lazy(), features, target, null_policy)
+            .drop_nulls(subset=[group])
+            .select(*features, target, group)
+            .collect()
+        )
+        if null_policy == "raise" and any(df2[c].has_nulls() for c in df2.columns):
+            raise ValueError("Nulls found in Dataframe.")
+
+        y = np.ascontiguousarray(df2.get_column(target).to_numpy().astype(np.float64))
+        n = len(y)
+        X = np.ascontiguousarray(
+            np.column_stack(
+                [np.ones(n)] + [df2.get_column(f).to_numpy().astype(np.float64) for f in features]
+            )
+        )
+
+        codes = np.ascontiguousarray(
+            (df2.get_column(group).to_physical().rank("dense").to_numpy() - 1).astype(np.float64)
+        )
+        n_groups = int(codes.max()) + 1
+
+        between_idx = [0] + [
+            j + 1
+            for j, f in enumerate(features)
+            if df2.n_unique(subset=[group, f]) == df2.n_unique(subset=[group])
+        ]
+
+        self._mm.fit(X, y, codes, n_groups, between_idx, max_iter, tol)
+        self.feature_names_in_ = list(features)
+        self.group_name_in_ = group
+        return self
+
+    def report(self) -> pl.DataFrame:
+        """
+        Returns a Polars dataframe with one row per fixed effect (intercept first),
+        containing the estimate, standard error, containment degrees of freedom,
+        t-value and two-sided p-value.
+        """
+        if not self.is_fit():
+            raise ValueError("Model is not fit yet.")
+
+        t = self.coeffs_ / self.std_errors_
+        pvalues = [
+            student_t_two_sided_pvalue(float(ti), float(dfi)) for ti, dfi in zip(t, self.dfs_)
+        ]
+        return pl.DataFrame(
+            {
+                "effect": ["Intercept"] + self.feature_names_in_,
+                "estimate": self.coeffs_,
+                "std_err": self.std_errors_,
+                "df": self.dfs_,
+                "t": t,
+                "p_value": pvalues,
+            }
+        )
