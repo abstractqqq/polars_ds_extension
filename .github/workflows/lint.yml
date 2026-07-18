@@ -1,0 +1,59 @@
+name: Linting and Formatting
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'python/**'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'python/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  lint-and-format:
+    name: Lint and Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Ruff
+        run: pip install ruff==0.7.1
+
+      - name: Run Ruff checks & format fixes
+        run: |
+          ruff check --fix .
+          ruff format .
+
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy, rustfmt
+
+      - name: Run Cargo Format
+        run: cargo fmt --all
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "style: auto-fix formatting and lint issues"
+
+      - name: Run Cargo Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
