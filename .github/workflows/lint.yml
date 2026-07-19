@@ -7,10 +7,6 @@ on:
     paths:
       - 'src/**'
       - 'python/**'
-  pull_request:
-    paths:
-      - 'src/**'
-      - 'python/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
