@@ -14,6 +14,7 @@ concurrency:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   lint-and-format:
@@ -21,12 +22,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
-          ref: ${{ github.head_ref || github.ref }}
+          ref: ${{ github.ref }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # v5.1.1
         with:
           python-version: '3.11'
 
@@ -39,17 +40,40 @@ jobs:
           ruff format .
 
       - name: Set up Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@1fbea72663f6d4c03efaab13560c8a24cfd2a7cc # v1.9.0
         with:
           components: clippy, rustfmt
 
-      - name: Run Cargo Format
+      - name: Run Cargo Format fixes
         run: cargo fmt --all
 
-      - name: Commit and push changes
-        uses: stefanzweifel/git-auto-commit-action@v5
+      - name: Check for changes
+        id: git-status
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request with fixes
+        if: steps.git-status.outputs.changes == 'true'
+        uses: peter-evans/create-pull-request@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          commit_message: "style: auto-fix formatting and lint issues"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "style: auto-fix formatting and lint issues"
+          title: "style: automatic lint and format fixes"
+          body: |
+            This is an automated pull request containing formatting and linting fixes.
+            Please merge this PR to fix the lint/format issues on `main`.
+          branch: "auto-lint-fixes"
+
+      - name: Fail workflow if changes were detected
+        if: steps.git-status.outputs.changes == 'true'
+        run: |
+          echo "Linting and formatting issues were found. An automated PR has been created/updated with the fixes."
+          exit 1
 
       - name: Run Cargo Clippy
+        if: steps.git-status.outputs.changes == 'false'
         run: cargo clippy --all-targets --all-features -- -D warnings
