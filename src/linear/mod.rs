@@ -5,6 +5,7 @@ use std::str::FromStr;
 pub mod glm;
 pub mod logistic;
 pub mod lr;
+pub mod mixed;
 pub mod online_lr;
 
 pub enum LinalgErrors {
