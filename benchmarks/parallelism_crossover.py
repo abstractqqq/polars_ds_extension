@@ -44,7 +44,6 @@ import statistics
 import time
 from typing import List, Tuple
 
-import numpy as np
 import polars as pl
 import polars_ds as pds
 from polars_ds.linear_models import LR
@@ -184,7 +183,7 @@ if __name__ == "__main__":
     import platform
     import os
 
-    print(f"polars_ds parallelism crossover benchmark")
+    print("polars_ds parallelism crossover benchmark")
     print(f"Python platform : {platform.platform()}")
     print(f"CPU cores (logical): {os.cpu_count()}")
     print(f"Fixed cols per frame : {COLS}")

@@ -49,6 +49,10 @@ line-length = 100
 fix = true
 src = ["python"]
 
+[tool.ruff.lint]
+# Ignore F401 (unused imports) and F403 (wildcard imports) in init files
+per-file-ignores = { "__init__.py" = ["F401", "F403"] }
+
 [tool.ruff.format]
 docstring-code-format = true
 
