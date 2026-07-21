@@ -3,6 +3,7 @@ import polars_ds as pds
 import numpy as np
 import pytest
 from polars.testing import assert_frame_equal, assert_series_equal
+import polars_ds.config as _pds_cfg
 
 
 @pytest.mark.parametrize(
@@ -1178,8 +1179,6 @@ def test_lin_reg_null_skip_in_small_group():
 # ---------------------------------------------------------------------------
 # singular_x_tol: rank-deficiency gate (issue #461)
 # ---------------------------------------------------------------------------
-
-import polars_ds.config as _pds_cfg
 
 
 @pytest.fixture(params=["f64", "f32"])
