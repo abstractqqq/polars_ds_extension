@@ -6,8 +6,8 @@ use pyo3_polars::{
     derive::{polars_expr, CallerContext},
     export::polars_core::{
         error::PolarsError,
+        runtime::RAYON as POOL,
         utils::rayon::prelude::{IntoParallelIterator, ParallelIterator},
-        POOL,
     },
 };
 use rapidfuzz::fuzz::{ratio, RatioBatchComparator};

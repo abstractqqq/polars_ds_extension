@@ -7,8 +7,8 @@ use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
     export::polars_core::{
+        runtime::RAYON as POOL,
         utils::rayon::iter::{IntoParallelIterator, ParallelIterator},
-        POOL,
     },
 };
 

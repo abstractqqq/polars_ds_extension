@@ -4,7 +4,7 @@ use crate::linear::{
     LinalgErrors,
 };
 use crate::utils::parallelism::PARALLEL_MATMUL_THRESHOLD;
-use faer::{linalg::solvers::Solve, mat::Mat, prelude::*, Side, zip, unzip};
+use faer::{linalg::solvers::Solve, mat::Mat, prelude::*, unzip, zip, Side};
 use faer_traits::RealField;
 use num::Float;
 
@@ -180,11 +180,7 @@ impl<T: RealField + Float> LinearModel<T> for ElasticNet<T> {
 // ---------------------
 
 #[inline(always)]
-fn get_xtx_with_lambda<T: RealField + Float>(
-    x: MatRef<T>,
-    lambda: T,
-    add_bias: bool,
-) -> Mat<T> {
+fn get_xtx_with_lambda<T: RealField + Float>(x: MatRef<T>, lambda: T, add_bias: bool) -> Mat<T> {
     let ncols = x.ncols();
     let mut xtx = Mat::zeros(ncols, ncols);
     let par = if x.nrows() * x.ncols() < PARALLEL_MATMUL_THRESHOLD {
@@ -283,11 +279,7 @@ fn build_xty<T: RealField + Float>(x: MatRef<T>, y: MatRef<T>) -> Mat<T> {
 
 /// Solves (X'X) b = X'y for b using the chosen factorization, falling back to QR.
 #[inline(always)]
-fn solve_xtx_xty<T: RealField + Float>(
-    xtx: Mat<T>,
-    xty: Mat<T>,
-    how: LRSolverMethods,
-) -> Mat<T> {
+fn solve_xtx_xty<T: RealField + Float>(xtx: Mat<T>, xty: Mat<T>, how: LRSolverMethods) -> Mat<T> {
     match how {
         LRSolverMethods::SVD => match xtx.thin_svd() {
             Ok(svd) => svd.solve(xty),
@@ -452,7 +444,6 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
     let mut beta: Mat<T> = Mat::zeros(ncols, 1);
     let mut converge = false;
 
-
     let mut xty = Mat::zeros(ncols, 1);
     let par_xty = if x.nrows() * y.ncols() < PARALLEL_MATMUL_THRESHOLD {
         Par::Seq
@@ -490,10 +481,8 @@ pub fn faer_coordinate_descent<T: RealField + Float>(
 
     // Precompute sums for bias update optimization
     let y_sum = y.col(0).sum();
-    let col_sums = (0..n1).map(
-        |j| x.col(j).sum()
-    ).collect::<Vec<_>>();
-    
+    let col_sums = (0..n1).map(|j| x.col(j).sum()).collect::<Vec<_>>();
+
     // Random selection often leads to faster convergence?
     for _ in 0..max_iter {
         let mut max_change = T::zero();
@@ -569,12 +558,12 @@ pub fn faer_nn_lr<T: RealField + Float>(
         Par::rayon(0)
     };
     faer::linalg::matmul::matmul(
-    mu.as_mut(),
+        mu.as_mut(),
         faer::Accum::Replace,
         x.transpose(),
         y,
         T::one().neg(),
-        par
+        par,
     );
 
     // safe, all indices are in valid range
@@ -602,9 +591,8 @@ pub fn faer_nn_lr<T: RealField + Float>(
                 let x_diff = update - beta_k;
                 // This is a vector update (AXPY). zip! performs this in-place,
                 // whereas the + operator allocates a new matrix every time.
-                zip!(mu.as_mut(), xtx.col(k).as_mat()).for_each(
-                    |unzip!(m, x)| *m = *m + x_diff * *x
-                );
+                zip!(mu.as_mut(), xtx.col(k).as_mat())
+                    .for_each(|unzip!(m, x)| *m = *m + x_diff * *x);
             }
         }
     }

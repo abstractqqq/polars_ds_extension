@@ -4,7 +4,7 @@ use crate::num_ext::knn::KDTKwargs;
 use crate::utils::{series_to_slice, split_offsets, IndexOrder};
 use core::f64;
 use polars::prelude::*;
-use polars_core::POOL;
+use polars_core::runtime::RAYON as POOL;
 use pyo3_polars::derive::{polars_expr, CallerContext};
 use pyo3_polars::export::polars_core::{
     error::PolarsError,

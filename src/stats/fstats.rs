@@ -21,7 +21,7 @@ fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
         .collect_vec();
     let n_cols = v.len();
 
-    let df = DataFrame::new(v)?.lazy();
+    let df = DataFrame::new(inputs[0].len(), v)?.lazy();
     // inputs[0] is the group
     // all the rest should numerical
     let mut step_one: Vec<Expr> = Vec::with_capacity(inputs.len() * 2 - 1);
@@ -72,7 +72,7 @@ fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
 
     let scale = df_in_class / df_btw_class;
 
-    let mut fstats = columns_to_vec::<Float64Type>(reference.take_columns(), IndexOrder::C)?;
+    let mut fstats = columns_to_vec::<Float64Type>(reference.into_columns(), IndexOrder::C)?;
     fstats.iter_mut().for_each(|v| *v *= scale);
 
     let out_p: Vec<f64> = fstats

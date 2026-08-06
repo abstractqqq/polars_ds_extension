@@ -3,8 +3,8 @@ use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
     export::polars_core::{
+        runtime::RAYON as POOL,
         utils::rayon::prelude::{IntoParallelIterator, ParallelIterator},
-        POOL,
     },
 };
 use rapidfuzz::distance::hamming;
@@ -37,7 +37,7 @@ fn pl_hamming(inputs: &[Series], context: CallerContext) -> PolarsResult<Series>
             let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
                 let s1 = ca1.slice(offset as i64, len);
                 let out: UInt32Chunked = s1
-                    .into_iter()
+                    .iter()
                     .map(|op_s| {
                         let s = op_s?;
                         match batched.distance(s.chars()) {
@@ -51,7 +51,7 @@ fn pl_hamming(inputs: &[Series], context: CallerContext) -> PolarsResult<Series>
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             UInt32Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
-            ca1.into_iter()
+            ca1.iter()
                 .map(|op_s| {
                     let s = op_s?;
                     match batched.distance(s.chars()) {
@@ -70,8 +70,8 @@ fn pl_hamming(inputs: &[Series], context: CallerContext) -> PolarsResult<Series>
                 let s1 = ca1.slice(offset as i64, len);
                 let s2 = ca2.slice(offset as i64, len);
                 let out: UInt32Chunked = s1
-                    .into_iter()
-                    .zip(s2.into_iter())
+                    .iter()
+                    .zip(s2.iter())
                     .map(|(op_s1, op_s2)| {
                         if let (Some(s1), Some(s2)) = (op_s1, op_s2) {
                             match hamming::distance(s1.chars(), s2.chars()) {
@@ -88,8 +88,8 @@ fn pl_hamming(inputs: &[Series], context: CallerContext) -> PolarsResult<Series>
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             UInt32Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
-            ca1.into_iter()
-                .zip(ca2.into_iter())
+            ca1.iter()
+                .zip(ca2.iter())
                 .map(|(op_s1, op_s2)| {
                     if let (Some(s1), Some(s2)) = (op_s1, op_s2) {
                         match hamming::distance(s1.chars(), s2.chars()) {

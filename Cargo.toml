@@ -1,6 +1,6 @@
 [package]
 name = "polars_ds"
-version = "0.12.0"
+version = "0.12.1"
 edition = "2021"
 
 [lib]
@@ -10,12 +10,12 @@ crate-type = ["cdylib"]
 [dependencies]
 # For dependencies found in polars, keep it the same as polars to minimize duplicates
 # PyO3
-pyo3 = {version = "0.26", features = ["abi3-py39", "extension-module"]}
-pyo3-polars = {version = "0.25", features = ["derive", "lazy"]}
+pyo3 = {version = "0.29", features = ["abi3-py39", "extension-module"]}
+pyo3-polars = {version = "0.28", features = ["derive", "lazy"]}
 # Polars
-polars = {version = "0.52", features = ["lazy",
-"diff", "array_count", "abs", "cross_join", "rank", "log",
-"cum_agg", "round_series", "chunked_ids", "dtype-i128", "performant", "new_streaming"], default-features = false}
+polars = {version = "0.55.2", features = ["lazy",
+"diff", "array_count", "abs", "cross_join", "rank", "log", "object",
+"cum_agg", "round_series", "chunked_ids", "dtype-i128", "performant", "streaming"], default-features = false}
 # Heavy math
 realfft = "*"
 faer = { git = "https://codeberg.org/sarah-quinones/faer", rev = "8377404e78", default-features = false, features = ["nightly", "rayon", "sparse-linalg"]}

@@ -5,10 +5,7 @@ use pyo3_polars::derive::polars_expr;
 #[polars_expr(output_type=UInt32)]
 fn pl_lempel_ziv_complexity(inputs: &[Series]) -> PolarsResult<Series> {
     let bools = inputs[0].bool()?;
-    let bits: Vec<bool> = bools
-        .into_iter()
-        .map(|op_b| op_b.unwrap_or_default())
-        .collect();
+    let bits: Vec<bool> = bools.iter().map(|op_b| op_b.unwrap_or_default()).collect();
 
     let mut ind: usize = 0;
     let mut inc: usize = 1;

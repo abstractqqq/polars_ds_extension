@@ -185,7 +185,7 @@ pub fn series_to_mat_for_lr(
     }
 
     let mut df = to_frame(inputs)?;
-    if df.is_empty() {
+    if df.height() == 0 {
         return Err(PolarsError::ComputeError("Empty data".into()));
     }
     // Has null
@@ -255,7 +255,7 @@ pub fn series_to_mat_for_lr(
     } else {
         let extra = if add_bias { nrows } else { 0 };
         let mut mat_slice = columns_to_vec_with_extra_cap::<Float64Type>(
-            df.take_columns(),
+            df.into_columns(),
             IndexOrder::Fortran,
             extra,
         )?;
@@ -302,7 +302,10 @@ fn series_to_mat_for_multi_lr(
         NullPolicy::RAISE => Err(PolarsError::ComputeError("Nulls found in data".into())),
 
         NullPolicy::FILL(x) => {
-            let df = DataFrame::new(inputs.iter().map(|s| s.clone().into_column()).collect())?;
+            let df = DataFrame::new(
+                inputs[0].len(),
+                inputs.iter().map(|s| s.clone().into_column()).collect(),
+            )?;
             if y_has_null {
                 // This is because for predictions, it becomes too complicated when different targets have nulls.
                 // There will be too many masks we need to keep track of.
@@ -329,12 +332,12 @@ fn series_to_mat_for_multi_lr(
     }?;
 
     let nrows = df.height();
-    if df.is_empty() {
+    if df.height() == 0 {
         Err(PolarsError::ComputeError("Empty data".into()))
     } else {
         let extra = if add_bias { nrows } else { 0 };
         let mut mat_slice = columns_to_vec_with_extra_cap::<Float64Type>(
-            df.take_columns(),
+            df.into_columns(),
             IndexOrder::Fortran,
             extra,
         )?;
@@ -547,7 +550,11 @@ fn pl_lr_multi(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Series>
                 ) {
                     Some(c) => c,
                     None => {
-                        return null_multi_coeffs::<Float64Type>(&y_names, nfeats, DataType::Float64)
+                        return null_multi_coeffs::<Float64Type>(
+                            &y_names,
+                            nfeats,
+                            DataType::Float64,
+                        )
                     }
                 }
             } else {
@@ -786,7 +793,7 @@ fn pl_lr_pred(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
                 let mut r_builder: PrimitiveChunkedBuilder<Float64Type> =
                     PrimitiveChunkedBuilder::new("resid".into(), mask.len());
                 let mut i: usize = 0;
-                for mm in mask.into_no_null_iter() {
+                for mm in mask.iter().flatten() {
                     // mask is always non-null, mm = true means it is not null
                     if mm {
                         p_builder.append_value(pred[i]);
@@ -1141,7 +1148,7 @@ fn pl_recursive_lr(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<Serie
                 // Find the first index where we get n non-nulls.
                 let mut new_n = 0;
                 let mut m = 0;
-                for v in mask.into_no_null_iter() {
+                for v in mask.iter().flatten() {
                     new_n += v as usize;
                     if new_n >= n {
                         break;
@@ -1153,7 +1160,7 @@ fn pl_recursive_lr(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<Serie
                     pred_builder.append_null();
                 }
                 let mut i = 0;
-                for should_keep in mask.into_no_null_iter().skip(m) {
+                for should_keep in mask.iter().flatten().skip(m) {
                     if should_keep {
                         let coefficients = &coeffs[i];
                         let row = x.get(i..i + 1, ..);
