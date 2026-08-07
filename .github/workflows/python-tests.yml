@@ -2,16 +2,12 @@ name: Test Python
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - Cargo.toml
       - Cargo.lock
-      - python/**
-      - src/**
-      - .github/workflows/python-tests.yml
-  push:
-    branches:
-      - main
-    paths:
-      - Cargo.lock
+      - pyproject.toml
+      - rust-toolchain.toml
       - python/**
       - src/**
       - .github/workflows/python-tests.yml
