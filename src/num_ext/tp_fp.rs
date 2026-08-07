@@ -322,7 +322,7 @@ fn pl_binary_confusion_matrix(inputs: &[Series]) -> PolarsResult<Series> {
     let tp = Column::Series(tp.into_series().into());
     // All series have length 1 and no duplicate names
 
-    let df = DataFrame::new(vec![tn, fp, fn_, tp])?;
+    let df = DataFrame::new(n, vec![tn, fp, fn_, tp])?;
 
     let result = df
         .lazy()

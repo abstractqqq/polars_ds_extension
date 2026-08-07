@@ -13,8 +13,8 @@ use polars::prelude::*;
 use pyo3_polars::{
     derive::{polars_expr, CallerContext},
     export::polars_core::{
+        runtime::RAYON as POOL,
         utils::rayon::prelude::{IntoParallelIterator, ParallelIterator},
-        POOL,
     },
 };
 use serde::Deserialize;
@@ -75,7 +75,7 @@ pub fn row_major_slice_to_leaves_filtered<'a, T: Float + 'static, A: Copy>(
     filter: &BooleanChunked,
 ) -> Vec<Leaf<'a, T, A>> {
     filter
-        .into_iter()
+        .iter()
         .zip(values.iter().copied().zip(slice.chunks_exact(row_len)))
         .filter(|(f, _)| f.unwrap_or(false))
         .map(|(_, pair)| pair.into())
@@ -753,7 +753,7 @@ where
         UInt32Chunked::from_iter_options(
             "cnt".into(),
             data.chunks_exact(ncols)
-                .zip(radius.into_iter())
+                .zip(radius.iter())
                 .map(|(row, r)| match r {
                     Some(r) => tree.within_count(row, r),
                     None => None,
@@ -777,15 +777,15 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
     if radius.len() == 1 {
         let r = radius.get(0).unwrap();
         let mut leaves = slice_to_empty_leaves(&data, ncols);
-        let tree = KDT::from_leaves(&mut leaves, dist)
-            .map_err(|e| PolarsError::ComputeError(e.into()))?;
+        let tree =
+            KDT::from_leaves(&mut leaves, dist).map_err(|e| PolarsError::ComputeError(e.into()))?;
         Ok(query_nb_cnt(&tree, &data, r, can_parallel)
             .with_name("cnt".into())
             .into_series())
     } else if radius.len() == nrows {
         let mut leaves = slice_to_empty_leaves(&data, ncols);
-        let tree = KDT::from_leaves(&mut leaves, dist)
-            .map_err(|e| PolarsError::ComputeError(e.into()))?;
+        let tree =
+            KDT::from_leaves(&mut leaves, dist).map_err(|e| PolarsError::ComputeError(e.into()))?;
         Ok(query_nb_cnt_w_radius(&tree, &data, radius, can_parallel)
             .with_name("cnt".into())
             .into_series())

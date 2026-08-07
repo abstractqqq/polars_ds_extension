@@ -5,11 +5,10 @@ permissions:
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "*"
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       # Latest commit to include with the release. If omitted, use the latest commit on the main branch.
@@ -111,7 +110,7 @@ jobs:
           TUNE_CPU=skylake
           FEATURES=+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b,+avx,+avx2,+fma,+bmi1,+bmi2,+lzcnt,+pclmulqdq,+movbe
           CC_FEATURES="-msse3 -mssse3 -msse4.1 -msse4.2 -mpopcnt -mcx16 -mavx -mavx2 -mfma -mbmi -mbmi2 -mlzcnt -mpclmul -mmovbe"
-          
+
           echo "features=$FEATURES" >> $GITHUB_OUTPUT
           echo "tune_cpu=$TUNE_CPU" >> $GITHUB_OUTPUT
           echo "cc_features=$CC_FEATURES" >> $GITHUB_OUTPUT
@@ -197,7 +196,7 @@ jobs:
         with:
           pattern: sdist-*
           merge-multiple: true
-          
+
       - name: Publish to PyPI
         uses: PyO3/maturin-action@3e2bdf6ba6453a61e649744019b8a2d906c7eb38 # v1.51.0
         with:

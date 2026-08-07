@@ -9,12 +9,12 @@ use pyo3::types::PyDict;
 // A lightweight wrapper to hold our zero-copy Faer matrix
 pub struct PyFaerRef<'py>(pub MatRef<'py, f64>);
 
-impl<'py> FromPyObject<'py> for PyFaerRef<'py> {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'py> FromPyObject<'_, 'py> for PyFaerRef<'py> {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'_, 'py, PyAny>) -> PyResult<Self> {
         // 1. Extract the __array_interface__ dictionary
-        let interface = ob
-            .getattr("__array_interface__")?
-            .downcast_into::<PyDict>()?;
+        let interface = ob.getattr("__array_interface__")?.cast_into::<PyDict>()?;
 
         let typestr: String = interface.get_item("typestr")?.unwrap().extract()?;
         if typestr != "<f8" {
@@ -67,12 +67,12 @@ impl<'py> FromPyObject<'py> for PyFaerRef<'py> {
 
 pub struct PyArrRef<'py>(pub &'py [f64]);
 
-impl<'py> FromPyObject<'py> for PyArrRef<'py> {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'py> FromPyObject<'_, 'py> for PyArrRef<'py> {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'_, 'py, PyAny>) -> PyResult<Self> {
         // 1. Extract the __array_interface__ dictionary
-        let interface = ob
-            .getattr("__array_interface__")?
-            .downcast_into::<PyDict>()?;
+        let interface = ob.getattr("__array_interface__")?.cast_into::<PyDict>()?;
 
         // 2. Validate Data Type (ensure it is a 64-bit float)
         let typestr: String = interface.get_item("typestr")?.unwrap().extract()?;

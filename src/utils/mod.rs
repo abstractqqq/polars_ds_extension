@@ -10,8 +10,8 @@ use polars::{
 };
 use pyo3_polars::export::{
     polars_core::{
+        runtime::RAYON as POOL,
         utils::rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
-        POOL,
     },
     polars_plan::plans::FieldsMapper,
 };
@@ -29,7 +29,11 @@ pub enum IndexOrder {
 
 #[inline(always)]
 pub fn to_frame(inputs: &[Series]) -> PolarsResult<DataFrame> {
-    DataFrame::new(inputs.iter().map(|s| s.clone().into_column()).collect())
+    let height = inputs[0].len();
+    DataFrame::new(
+        height,
+        inputs.iter().map(|s| s.clone().into_column()).collect(),
+    )
 }
 
 /// Organizes the series data into a `vec`, which is either C(row major) or Fortran(column major).
@@ -232,10 +236,14 @@ where
 
 #[inline(always)]
 pub fn to_f64_vec_without_nulls(inputs: &[Series], ordering: IndexOrder) -> PolarsResult<Vec<f64>> {
-    let df = DataFrame::from_iter(inputs.iter().map(|s| Column::Series(s.clone().into())));
+    let height = inputs[0].len();
+    let df = DataFrame::new(
+        height,
+        inputs.iter().map(|s| s.clone().into_column()).collect(),
+    )?;
     let df = df.drop_nulls::<String>(None)?;
 
-    columns_to_vec::<Float64Type>(df.take_columns(), ordering)
+    columns_to_vec::<Float64Type>(df.into_columns(), ordering)
 }
 
 #[inline(always)]

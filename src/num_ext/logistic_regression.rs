@@ -78,7 +78,7 @@ fn pl_logistic_pred(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series>
                     PrimitiveChunkedBuilder::new("pred".into(), mask.len());
 
                 let mut i: usize = 0;
-                for mm in mask.into_no_null_iter() {
+                for mm in mask.iter().flatten() {
                     // mask is always non-null, mm = true means it is not null
                     if mm {
                         builder.append_value(pred[i]);

@@ -1,13 +1,13 @@
 use polars::{
     prelude::{
         arity::{binary_elementwise_values, unary_elementwise_values},
-        DataType, Float64Chunked, Series, StringChunked, UInt32Chunked,
+        Float64Chunked, Series, StringChunked, UInt32Chunked,
     },
     series::IntoSeries,
 };
 use pyo3_polars::export::polars_core::{
+    runtime::RAYON as POOL,
     utils::rayon::prelude::{IntoParallelIterator, ParallelIterator},
-    POOL,
 };
 /// Polars Series-wise generic str distancers
 use rapidfuzz::distance::{damerau_levenshtein, jaro, lcs_seq, levenshtein, osa};

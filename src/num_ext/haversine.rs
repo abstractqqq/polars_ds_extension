@@ -17,8 +17,8 @@ where
         let e_lat = y_lat.get(0).unwrap();
         let e_long = y_long.get(0).unwrap();
         let out: ChunkedArray<T> = x_lat
-            .into_iter()
-            .zip(x_long.into_iter())
+            .iter()
+            .zip(x_long.iter())
             .map(|(x_lat, x_long)| {
                 let x_lat = x_lat?;
                 let x_long = x_long?;
@@ -31,10 +31,10 @@ where
         && y_lat.len() == y_long.len()
     {
         let out: ChunkedArray<T> = x_lat
-            .into_iter()
-            .zip(x_long.into_iter())
-            .zip(y_lat.into_iter())
-            .zip(y_long.into_iter())
+            .iter()
+            .zip(x_long.iter())
+            .zip(y_lat.iter())
+            .zip(y_long.iter())
             .map(|(((x_lat, x_long), y_lat), y_long)| {
                 let x_lat = x_lat?;
                 let x_long = x_long?;

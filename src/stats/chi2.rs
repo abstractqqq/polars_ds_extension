@@ -47,8 +47,8 @@ fn _chi2_helper(inputs: &[Series]) -> PolarsResult<(LazyFrame, usize, usize)> {
         .with_column(col("ob").fill_null(0));
 
     // Compute the statistic
-    let frame = df4.with_columns([((col("ob").sum().over([s2_name])
-        * col("ob").sum().over([s1_name]))
+    let frame = df4.with_columns([((col("ob").sum().over([s2_name])?
+        * col("ob").sum().over([s1_name])?)
     .cast(DataType::Float64)
         / col("ob").sum().cast(DataType::Float64))
     .alias("ex")]);

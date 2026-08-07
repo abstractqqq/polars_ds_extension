@@ -34,7 +34,7 @@ where
         T::get_static_dtype(),
     );
 
-    for comb in ca.into_no_null_iter().combinations(k) {
+    for comb in ca.iter().flatten().combinations(k) {
         builder.append_slice(&comb);
     }
 
@@ -53,8 +53,8 @@ where
         T::get_static_dtype(),
     );
 
-    for a in ca1.into_no_null_iter() {
-        for b in ca2.into_no_null_iter() {
+    for a in ca1.iter().flatten() {
+        for b in ca2.iter().flatten() {
             builder.append_slice(&[a, b]);
         }
     }
@@ -67,7 +67,7 @@ fn get_combinations_str(ca: &StringChunked, k: usize) -> Series {
     let mut builder: ListStringChunkedBuilder =
         ListStringChunkedBuilder::new("".into(), count_combinations(ca.len(), k), k);
 
-    for comb in ca.into_no_null_iter().combinations(k) {
+    for comb in ca.iter().flatten().combinations(k) {
         builder.append_values_iter(comb.into_iter());
     }
 
@@ -79,8 +79,8 @@ fn get_product_str(ca1: &StringChunked, ca2: &StringChunked) -> Series {
     let mut builder: ListStringChunkedBuilder =
         ListStringChunkedBuilder::new("".into(), ca1.len() * ca2.len(), 2);
 
-    for a in ca1.into_no_null_iter() {
-        for b in ca2.into_no_null_iter() {
+    for a in ca1.iter().flatten() {
+        for b in ca2.iter().flatten() {
             builder.append_values_iter([a, b].into_iter());
         }
     }
