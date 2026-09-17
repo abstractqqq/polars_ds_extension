@@ -1071,6 +1071,9 @@ fn pl_recursive_lr_f32(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<S
 
 #[polars_expr(output_type_func=coeff_pred_output)] // They share the same output type
 fn pl_rolling_lr_f32(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<Series> {
+    if let Some(half_life) = kwargs.half_life {
+        return super::rolling_ewls::rolling_ewls::<Float32Type>(inputs, &kwargs, half_life);
+    }
     let n = kwargs.n; // Gauranteed n >= 2
     let add_bias = kwargs.bias;
 

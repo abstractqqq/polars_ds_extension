@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import warnings
 from typing import Any, List, Literal
 
@@ -487,14 +488,15 @@ def rolling_lin_reg(
     l2_reg: float = 0.0,
     min_valid_rows: int | None = None,
     null_policy: NullPolicy = "raise",
+    half_life: float | None = None,
 ) -> pl.Expr:
     """
     Using every `window_size` rows of data as feature matrix, and computes least square solutions
     by rolling the window. A prediction for that row will also be included in the output.
-    This uses the famous Sherman-Morrison-Woodbury Formula under the hood.
+    Without exponential weighting, this uses the Sherman-Morrison-Woodbury formula.
+    With `half_life`, it updates weighted cross-products with periodic rebuilding.
 
-    Note: You have to be careful about the order of data when using this in aggregation contexts.
-    Rows with null will not contribute to the update, so appropriate null-filling beforehand needs to be done.
+    Input order is preserved. Sort data before applying the expression in grouped contexts.
 
     Parameters
     ----------
@@ -517,6 +519,53 @@ def rolling_lin_reg(
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: For
         rolling linear regression, null-fill only works when target doesn't have nulls, and WILL NOT drop rows where the
         target is null.
+    half_life
+        Optional positive, finite half-life for exponentially weighted least squares.
+        Measured in original row positions within each group. An observation of age
+        `a` has weight `2 ** (-a / half_life)`. Only the last `window_size` rows,
+        including the current row, contribute. `None` preserves the existing behavior.
+        Exponential weighting currently requires `l2_reg=0` and `null_policy` equal
+        to 'skip' or 'raise'; unsupported combinations raise ValueError.
+
+    Notes
+    -----
+    With exponential weighting, 'skip' excludes a row if any predictor or target is
+    null, NaN or infinite, while retaining its window position and age. 'raise'
+    rejects any such row, including during warm-up. A fit requires at least
+    `min_valid_rows` valid observations and enough independent observations for all
+    coefficients, including the intercept. With `min_valid_rows=None`, the default
+    is the number of predictors (at least one). The first `window_size - 1` rows
+    always have null fields; a smaller minimum does not enable partial windows.
+    Empty inputs return empty outputs, and groups shorter than the window return
+    only null fields. Sorting is the caller's responsibility; each group is independent.
+
+    Output remains a struct with `coeffs` (intercept last) and `pred`. Insufficient or
+    numerically degenerate windows have null fields and can recover in later windows.
+    A missing current target does not prevent prediction when current predictors are
+    valid. Any invalid current predictor makes `pred` null. The prediction uses the
+    current window's coefficients, including the current target when it is valid.
+
+    Both precision variants accumulate and solve EWLS in Float64, preserving the
+    configured input/output precision. As in `lin_reg`, a relative Gram determinant
+    at or below 1e-12 (Float64) or 1e-6 (Float32) is treated as numerically degenerate.
+    Extremely small half-lives can underflow older weights. See `maths/rolling_ewls.md`
+    in the repository for the recurrence, numerical safeguards and complexity.
+
+    Examples
+    --------
+    >>> panel.sort(["asset", "date"]).with_columns(  # doctest: +SKIP
+    ...     rolling_lin_reg(
+    ...         "market_return",
+    ...         target="stock_return",
+    ...         window_size=504,
+    ...         half_life=126.0,
+    ...         min_valid_rows=126,
+    ...         add_bias=True,
+    ...         null_policy="skip",
+    ...     )
+    ...     .over("asset")
+    ...     .alias("fit")
+    ... )
     """
 
     if cfg.LIN_REG_EXPR_F64:
@@ -526,6 +575,18 @@ def rolling_lin_reg(
 
     if window_size < 2:
         raise ValueError("`window_size` must be >= 2.")
+
+    if half_life is not None:
+        if not math.isfinite(half_life) or half_life <= 0:
+            raise ValueError("`half_life` must be positive and finite.")
+        if l2_reg != 0:
+            raise ValueError("Exponentially weighted rolling regression requires `l2_reg=0`.")
+        if null_policy.lower() not in ("skip", "raise"):
+            raise ValueError("EWLS supports only `null_policy='skip'` or 'raise'.")
+        if min_valid_rows is not None and not 1 <= min_valid_rows <= window_size:
+            raise ValueError("EWLS requires 1 <= min_valid_rows <= window_size.")
+        if not x and not add_bias:
+            raise ValueError("EWLS requires a predictor or an intercept.")
 
     cols = [lr_formula(target).cast(dtype)]
     features = [lr_formula(z) for z in x]
@@ -550,6 +611,9 @@ def rolling_lin_reg(
         "lambda": abs(l2_reg),
         "min_size": min_size,
     }
+    if half_life is not None:
+        kwargs["half_life"] = float(half_life)
+        kwargs["min_size"] = max(1, min_size)
     return pl_plugin(
         symbol=cfg._which_lin_reg("pl_rolling_lr"),
         args=cols,
