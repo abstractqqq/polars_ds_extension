@@ -36,8 +36,8 @@ normalization does not change this unregularized solution.
 
 ## Numerical behavior
 
-Both Float32 and Float64 plugin variants accumulate and solve in Float64; input
-quantization and output dtype still follow `LIN_REG_EXPR_F64`. Each solve scales
+Accumulation, solving and output dtype follow `LIN_REG_EXPR_F64`, as in the other
+regression kernels. Each solve scales
 the Gram matrix by the square roots of its diagonal and uses Cholesky
 factorization. This avoids treating a change in predictor units as a change in
 rank. Failed/nonfinite factorizations or coefficients produce null fields.
@@ -50,6 +50,16 @@ degeneracy policy, not an exact symbolic rank test or NumPy's SVD `rcond` rule.
 All predictors, including the optional intercept, count toward the minimum
 number of observations needed for an identifiable fit.
 
+The implementation normalizes weights to the newest valid row $s_t$ in the
+window, using $2^{-(s_t-j)/h}$. This divides every weight by the same positive
+factor $2^{-(t-s_t)/h}$ and preserves the minimizer. Between valid observations,
+the remaining state does not decay into subnormal numbers. When a new valid row
+arrives, the state decays by $2^{-(s_t-s_{t-1})/h}$ before adding that row. An
+expired row $t-W$ is removed with weight $2^{-(s_t-(t-W))/h}$. Both differences
+use original row positions, so gaps retain their full age and window width.
+An empty window clears the state. Relative weights can still underflow when
+valid observations are very far apart compared with the half-life.
+
 Cross-products are rebuilt from the current window every $W$ rows. A downdate
 that loses nearly all of a diagonal or right-hand-side entry also triggers a
 rebuild, as do nonfinite accumulated statistics and a transition from an estimable
@@ -57,7 +67,8 @@ to a numerically degenerate window. A zero decay factor clears the previous stat
 directly, avoiding `0 * inf` after overflow. Persistently degenerate windows with
 finite statistics do not force a full-window rebuild on every row. The state
 continues to update while outputs are null, allowing a later window to recover.
-Large expired outliers are included in regression tests
+The cancellation threshold accounts for machine epsilon and rebuilds earlier
+for Float32. Large expired outliers are included in regression tests
 because subtracting their contributions can otherwise leave roundoff artifacts.
 
 Normal-equation methods square the conditioning of the weighted design;
@@ -80,8 +91,9 @@ target does not prevent prediction from valid current predictors. An invalid
 current predictor yields a null `pred`. Predictions use the current window fit,
 which includes the current target when it is valid.
 
-The independent reference assigns weights by original window position, applies
-the same joint validity mask to X, y and weights, and solves
+The independent reference assigns ages by original window position, applies
+the same joint validity mask to X, y and ages, subtracts the smallest valid age
+before exponentiation to normalize the weights without underflow, and solves
 `numpy.linalg.lstsq(sqrt(w)[:, None] * X, sqrt(w) * y, rcond=None)`.
 Well-conditioned windows are also compared with `lin_reg(weights=...)` after
 filtering all three inputs together. Tests cover both precisions, missingness,

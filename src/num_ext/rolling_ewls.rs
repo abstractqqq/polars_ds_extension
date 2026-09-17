@@ -2,27 +2,30 @@
 
 use super::linear_regression::SWWLRKwargs;
 use crate::linear::online_lr::ewls::faer_rolling_ewls;
+use crate::linear::NullPolicy;
 use crate::utils::{series_to_slice_with_extra_cap, IndexOrder};
 use faer::MatRef;
-use faer_traits::RealField;
+use faer_traits::{math_utils::from_f64, RealField};
 use num::Float;
 use polars::prelude::*;
 
 pub(super) fn rolling_ewls<N>(
     inputs: &[Series],
-    kwargs: &SWWLRKwargs,
+    kwargs: SWWLRKwargs,
     half_life: f64,
 ) -> PolarsResult<Series>
 where
     N: PolarsNumericType,
-    N::Native: RealField + Float + Into<f64>,
+    N::Native: RealField + Float,
 {
     polars_ensure!(half_life.is_finite() && half_life > 0.0,
         ComputeError: "`half_life` must be positive and finite.");
     polars_ensure!(kwargs.lambda == 0.0,
         ComputeError: "Exponentially weighted rolling regression requires `l2_reg=0`.");
-    let skip = kwargs.null_policy.eq_ignore_ascii_case("skip");
-    polars_ensure!(skip || kwargs.null_policy.eq_ignore_ascii_case("raise"),
+    let null_policy = NullPolicy::<f64>::try_from(kwargs.null_policy)
+        .map_err(|e| PolarsError::ComputeError(e.into()))?;
+    let skip = null_policy == NullPolicy::SKIP;
+    polars_ensure!(skip || null_policy == NullPolicy::RAISE,
         ComputeError: "EWLS supports only `null_policy='skip'` or 'raise'.");
     polars_ensure!(kwargs.n >= 2 && kwargs.min_size > 0 && kwargs.min_size <= kwargs.n,
         ComputeError: "EWLS requires window_size >= 2 and 1 <= min_valid_rows <= window_size.");
@@ -43,7 +46,7 @@ where
         .collect::<PolarsResult<_>>()?;
     let extra = if kwargs.bias { nrows } else { 0 };
     let mut data = series_to_slice_with_extra_cap::<N>(&columns, IndexOrder::Fortran, extra)?;
-    data.extend(std::iter::repeat(num::one::<N::Native>()).take(extra));
+    data.extend(std::iter::repeat_n(num::one::<N::Native>(), extra));
     let y = MatRef::from_column_major_slice(&data[..nrows], nrows, 1);
     let x = MatRef::from_column_major_slice(&data[nrows..], nrows, nfeats);
     let valid: Vec<bool> = (0..nrows)
@@ -56,7 +59,15 @@ where
     } else {
         1e-12
     };
-    let fits = faer_rolling_ewls(x, y, &valid, kwargs.n, kwargs.min_size, half_life, rank_tol);
+    let fits = faer_rolling_ewls(
+        x,
+        y,
+        &valid,
+        kwargs.n,
+        kwargs.min_size,
+        half_life,
+        from_f64(rank_tol),
+    );
 
     let capacity = nrows.saturating_sub(kwargs.n - 1) * nfeats;
     let mut coeffs = ListPrimitiveChunkedBuilder::<N>::new("coeffs".into(), nrows, capacity, dtype);
@@ -67,24 +78,10 @@ where
             pred.append_null();
             continue;
         };
-        let converted: Option<Vec<N::Native>> = beta
-            .iter()
-            .map(|&v| num::cast::<f64, N::Native>(v).filter(|c| c.is_finite()))
-            .collect();
-        let Some(converted) = converted else {
-            // A finite f64 solution may overflow the requested f32 output.
-            coeffs.append_null();
-            pred.append_null();
-            continue;
-        };
-        coeffs.append_slice(&converted);
+        coeffs.append_slice(beta.col_as_slice(0));
         let prediction = if x.get(i, ..).is_all_finite() {
-            let value: f64 = beta
-                .iter()
-                .enumerate()
-                .map(|(j, b)| (*x.get(i, j)).into() * b)
-                .sum();
-            num::cast::<f64, N::Native>(value).filter(|v| v.is_finite())
+            let value = *(x.get(i..i + 1, ..) * &beta).get(0, 0);
+            value.is_finite().then_some(value)
         } else {
             None
         };

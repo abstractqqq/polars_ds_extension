@@ -1,5 +1,7 @@
 # Rolling EWLS benchmark
 
+The original tables below were measured at commit `3be355c`. Follow-up measurements after the numerical fixes are recorded separately at the end.
+
 Measured 2026-09-17 on Intel(R) Xeon(R) Platinum 8352V CPU @ 2.10GHz (144 visible logical CPUs, approximately 3.94 TiB RAM).
 Environment: Linux-5.15.0-181-generic-x86_64-with-glibc2.35, Python 3.12.12, Polars 1.44.2, polars-ds 0.12.1 plus this change.
 Built with `maturin develop --release --locked`, the pinned `nightly-2026-04-01` toolchain and `RUSTFLAGS="-C debuginfo=0"`; the repository release profile uses fat LTO and one codegen unit.
@@ -75,3 +77,18 @@ done > scaling.jsonl
 ```
 
 The script emits raw JSON records with timings, peak RSS, valid-fit counts, hardware, software versions, dtype and thread settings.
+
+## Check after the numerical fixes
+
+After normalizing weights across missing stretches and restoring native f32/f64 computation, the following Float64 cases were rerun in the same environment. All figures use three fresh processes; times are medians and RSS is the maximum. All full-window positions produced valid fits.
+
+For 5,000 groups x 1,500 rows, three predictors and 16 threads, each cell shows seconds / peak MiB:
+
+| Window | Complete | Random missing | Block missing |
+| ---: | ---: | ---: | ---: |
+| 252 | 7.905 / 1979 | 9.177 / 1988 | 9.509 / 1989 |
+| 1040 | 3.779 / 1280 | 5.924 / 1289 | 5.452 / 1331 |
+
+Single-group checks with one thread and one/three predictors increased rows from 50,000 to 200,000: time increased by 3.34–4.02x. At 200,000 rows, increasing the window from 252 to 1040 changed time by 0.99x (one predictor) and 0.84x (three). Peak RSS was 96–155 MiB. These 42 runs check scaling after the fixes; the earlier per-window baseline was not rerun.
+
+Reproduce with the commands above, limiting the large panel to `--windows 252 1040 --predictors 3`, and the scaling runs to 50,000 and 200,000 rows.

@@ -24,7 +24,7 @@ def data(n=180, p=3, seed=42):
 
 def reference(df, columns, window, half_life, bias, min_rows, indices=None):
     # Quantize inputs exactly as the selected plugin does, then use independent
-    # Float64 SVD solves. Weights are assigned BEFORE applying the validity mask.
+    # Float64 SVD solves. Ages come from original positions, before masking.
     dtype = np.float64 if cfg.LIN_REG_EXPR_F64 else np.float32
     x = df.select(columns).to_numpy().astype(dtype).astype(np.float64)
     y = df["y"].to_numpy().astype(dtype).astype(np.float64)
@@ -40,7 +40,10 @@ def reference(df, columns, window, half_life, bias, min_rows, indices=None):
         if valid.sum() < max(min_rows, x.shape[1]):
             out[t] = None
             continue
-        w = np.exp2(-np.arange(window - 1, -1, -1, dtype=float) / half_life)[valid]
+        ages = np.arange(window - 1, -1, -1, dtype=float)[valid]
+        # A common positive weight factor does not change least squares. Shift
+        # ages before exponentiation so an entirely tiny window remains usable.
+        w = np.exp2(-(ages - ages.min()) / half_life)
         beta, _, rank, _ = np.linalg.lstsq(
             xx[valid] * np.sqrt(w)[:, None], yy[valid] * np.sqrt(w), rcond=None
         )
@@ -50,7 +53,9 @@ def reference(df, columns, window, half_life, bias, min_rows, indices=None):
 
 def assert_reference(df, result, columns, window, half_life, bias, min_rows, indices=None):
     expected = reference(df, columns, window, half_life, bias, min_rows, indices)
-    rtol, atol = (1e-8, 1e-10) if cfg.LIN_REG_EXPR_F64 else (2e-5, 2e-6)
+    # Native f32 solves use the same relative tolerance as the existing LR tests;
+    # f64 keeps the tighter EWLS accuracy requirement.
+    rtol, atol = (1e-8, 1e-10) if cfg.LIN_REG_EXPR_F64 else (1e-4, 1e-5)
     for t, beta in expected.items():
         got = result["coeffs"][t]
         if beta is None:
@@ -116,7 +121,7 @@ def test_missing_row_keeps_its_age(precision):
     y = np.array([1, 0, 7], dtype=float)
     weights = np.array([1 / 8, 1 / 2, 1.0])  # Ages 3, 1, 0, not 2, 1, 0.
     expected = np.linalg.lstsq(x * np.sqrt(weights)[:, None], y * np.sqrt(weights), rcond=None)[0]
-    np.testing.assert_allclose(result["coeffs"][3], expected, rtol=1e-6)
+    np.testing.assert_allclose(result["coeffs"][3], expected, rtol=1e-6 if precision else 2e-5)
     compressed = np.array([1 / 4, 1 / 2, 1.0])
     wrong = np.linalg.lstsq(x * np.sqrt(compressed)[:, None], y * np.sqrt(compressed), rcond=None)[
         0
@@ -279,6 +284,53 @@ def test_extreme_half_life(precision, half_life):
     df = data(n=60, p=1)
     result = fit(df, ["x0"], window_size=10, half_life=half_life)
     assert_reference(df, result, ["x0"], 10, half_life, False, 1)
+
+
+def test_long_missing_block_preserves_fit_until_expiry(precision):
+    window = 1500
+    df = pl.DataFrame({"x": [1.0] * 3100, "y": [3.0] * window + [None] * window + [6.0] * 100})
+    args = dict(window_size=window, half_life=1.1, null_policy="skip")
+    result = fit(df, ["x"], **args)
+    # Any nonempty window containing only y=3 has slope 3, even when all
+    # unnormalized weights underflow. The last such observation expires at 2999.
+    np.testing.assert_allclose(result["pred"][1499:2999], 3.0, rtol=2e-5)
+    assert result["coeffs"][2999] is None
+    assert result["pred"][2999] is None
+    np.testing.assert_allclose(result["pred"][3000:], 6.0, rtol=2e-5)
+    for t in [2670, 2680, 2684, 2998, 2999, 3000]:
+        fresh = fit(df.slice(t - window + 1, window), ["x"], **args).tail(1)
+        assert_frame_equal(result.slice(t, 1), fresh, rel_tol=2e-5, abs_tol=2e-6)
+
+
+def test_missing_gap_decay_and_expiry(precision):
+    df = data(n=125, p=2).with_columns(
+        pl.when(
+            pl.int_range(pl.len()).is_between(20, 64) | pl.int_range(pl.len()).is_between(78, 102)
+        )
+        .then(None)
+        .otherwise(pl.col("y"))
+        .alias("y")
+    )
+    result = fit(
+        df,
+        ["x0", "x1"],
+        window_size=40,
+        half_life=2.5,
+        min_valid_rows=5,
+        add_bias=True,
+        null_policy="skip",
+    )
+    assert_reference(df, result, ["x0", "x1"], 40, 2.5, True, 5)
+
+
+@pytest.mark.parametrize("null_policy", ["SKIP", "RAISE"])
+def test_null_policy_case_insensitive(precision, null_policy):
+    df = data(n=25, p=1)
+    args = dict(window_size=8, half_life=2)
+    assert_frame_equal(
+        fit(df, ["x0"], null_policy=null_policy, **args),
+        fit(df, ["x0"], null_policy=null_policy.lower(), **args),
+    )
 
 
 @pytest.mark.parametrize("half_life", [1e-10, 0.001])

@@ -545,10 +545,11 @@ def rolling_lin_reg(
     valid. Any invalid current predictor makes `pred` null. The prediction uses the
     current window's coefficients, including the current target when it is valid.
 
-    Both precision variants accumulate and solve EWLS in Float64, preserving the
-    configured input/output precision. As in `lin_reg`, a relative Gram determinant
+    Accumulation, solving and outputs follow `LIN_REG_EXPR_F64`. As in `lin_reg`, a relative Gram determinant
     at or below 1e-12 (Float64) or 1e-6 (Float32) is treated as numerically degenerate.
-    Extremely small half-lives can underflow older weights. See `maths/rolling_ewls.md`
+    Weights are normalized to the newest valid observation to avoid underflow
+    during missing stretches. Extremely small half-lives can still underflow
+    older weights relative to newer valid observations. See `maths/rolling_ewls.md`
     in the repository for the recurrence, numerical safeguards and complexity.
 
     Examples

@@ -1208,7 +1208,7 @@ fn pl_recursive_lr(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<Serie
 #[polars_expr(output_type_func=coeff_pred_output)] // They share the same output type
 fn pl_rolling_lr(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<Series> {
     if let Some(half_life) = kwargs.half_life {
-        return super::rolling_ewls::rolling_ewls::<Float64Type>(inputs, &kwargs, half_life);
+        return super::rolling_ewls::rolling_ewls::<Float64Type>(inputs, kwargs, half_life);
     }
     let n = kwargs.n; // Gauranteed n >= 2
     let add_bias = kwargs.bias;
