@@ -16,6 +16,7 @@ mod logistic_regression;
 mod mutual_info;
 mod pca;
 mod psi;
+mod rolling_ewls;
 mod splines;
 mod subseq_sim;
 mod target_encode;
