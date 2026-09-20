@@ -1,6 +1,6 @@
 [package]
 name = "polars_ds"
-version = "0.13.0"
+version = "0.13.1"
 edition = "2021"
 
 [lib]
@@ -28,6 +28,7 @@ polars = { version = "0.55.2", features = [
     "dtype-i128",
     "performant",
     "streaming",
+    "ewma",
 ], default-features = false }
 # Heavy math
 realfft = "*"
