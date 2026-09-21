@@ -44,8 +44,10 @@ rank. Failed/nonfinite factorizations or coefficients produce null fields.
 
 As in `lin_reg`'s `singular_x_tol` gate, the relative determinant
 $\det(A_t)/\prod_i(A_t)_{ii}$ must exceed a tolerance: $10^{-12}$ for Float64
-output and $10^{-6}$ for Float32 output. The calculation uses the Cholesky
-diagonal in log space and reuses the solve's factorization. This is a numerical
+output and $10^{-6}$ for Float32 output. The one-predictor + intercept `skip`
+path uses a scalar Cholesky solve and evaluates this determinant directly. Other
+paths use the Cholesky diagonal in log space. Both reuse the solve's
+factorization. This is a numerical
 degeneracy policy, not an exact symbolic rank test or NumPy's SVD `rcond` rule.
 All predictors, including the optional intercept, count toward the minimum
 number of observations needed for an identifiable fit.

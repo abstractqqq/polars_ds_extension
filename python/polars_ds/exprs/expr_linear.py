@@ -643,9 +643,10 @@ def rolling_lin_reg_1d(
 ) -> pl.Expr:
     """Exponentially weighted rolling regression for one predictor and an intercept.
 
-    This specialized implementation uses a staged Polars plan inside the plugin
-    and closed-form scalar formulas. Apply ``.over(...)`` to the returned expression
-    for grouped data, after sorting each group into the intended rolling order.
+    This uses the same normalized, periodically rebuilt cross-products as
+    :func:`rolling_lin_reg`, with a scalar solve for the two coefficients.
+    Apply ``.over(...)`` to the returned expression for grouped data, after
+    sorting each group into the intended rolling order.
 
     Rows where either input is null, NaN or infinite are excluded from the fit but
     retain their position and age in the window. The first ``window_size - 1``
@@ -678,7 +679,9 @@ def rolling_lin_reg_1d(
     ...         window_size=504,
     ...         half_life=126.0,
     ...         min_valid_rows=126,
-    ...     ).over("asset").alias("fit")
+    ...     )
+    ...     .over("asset")
+    ...     .alias("fit")
     ... )
     """
     if window_size < 2:

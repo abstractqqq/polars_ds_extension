@@ -113,7 +113,40 @@ impl<T: RealField + Float> CrossProducts<T> {
         cancellation
     }
 
-    fn solve(&self, rank_tol: T) -> Option<Mat<T>> {
+    // Scalar Cholesky for the one-predictor + intercept plugin. Other rolling
+    // regressions retain the general solve, even when they have two coefficients.
+    fn solve_1d(&self, rank_tol: T) -> Option<Mat<T>> {
+        let mut scales = [T::zero(); 2];
+        for (i, scale) in scales.iter_mut().enumerate() {
+            let diagonal = *self.gram.get(i, i);
+            if !diagonal.is_finite() || diagonal <= T::zero() || !self.rhs[i].is_finite() {
+                return None;
+            }
+            *scale = diagonal.sqrt();
+        }
+        let d0 = *self.gram.get(0, 0) / scales[0] / scales[0];
+        let l00 = d0.sqrt();
+        let l10 = (*self.gram.get(1, 0) / scales[1] / scales[0]) / l00;
+        let d1 = *self.gram.get(1, 1) / scales[1] / scales[1];
+        let pivot = d1 - l10 * l10;
+        if !pivot.is_finite() || d0 * pivot <= rank_tol {
+            return None;
+        }
+        let l11 = pivot.sqrt();
+        let z0 = (self.rhs[0] / scales[0]) / l00;
+        let z1 = (self.rhs[1] / scales[1] - l10 * z0) / l11;
+        let b1 = z1 / l11;
+        let coefficients = [(z0 - l10 * b1) / l00 / scales[0], b1 / scales[1]];
+        coefficients
+            .iter()
+            .all(|v| v.is_finite())
+            .then(|| Mat::from_fn(2, 1, |i, _| coefficients[i]))
+    }
+
+    fn solve(&self, rank_tol: T, one_predictor: bool) -> Option<Mat<T>> {
+        if one_predictor {
+            return self.solve_1d(rank_tol);
+        }
         let p = self.rhs.len();
         let mut scales = Vec::with_capacity(p);
         for i in 0..p {
@@ -153,6 +186,7 @@ impl<T: RealField + Float> CrossProducts<T> {
 /// Return one optional coefficient vector per input row, including warm-up nulls.
 /// The plugin validates dimensions and parameters and supplies a joint X/y mask.
 /// Accumulation and solving use the input precision, as in the other LR kernels.
+/// `one_predictor` selects the 1d plugin: one predictor and a trailing intercept.
 pub fn faer_rolling_ewls<T: RealField + Float>(
     x: MatRef<T>,
     y: MatRef<T>,
@@ -161,6 +195,7 @@ pub fn faer_rolling_ewls<T: RealField + Float>(
     min_rows: usize,
     half_life: f64,
     rank_tol: T,
+    one_predictor: bool,
 ) -> Vec<Option<Mat<T>>> {
     let n = x.nrows();
     let mut output = Vec::with_capacity(n);
@@ -223,12 +258,12 @@ pub fn faer_rolling_ewls<T: RealField + Float>(
             previous_fit = false;
             continue;
         }
-        let mut fit = products.solve(rank_tol);
+        let mut fit = products.solve(rank_tol, one_predictor);
         if fit.is_none() && previous_fit && !rebuilt {
             // Check a transition to degeneracy once against fresh statistics.
             // Persistently singular windows do not trigger an O(W) rescan per row.
             products.rebuild(x, y, valid, t + 1 - window..t + 1, anchor, half_life);
-            fit = products.solve(rank_tol);
+            fit = products.solve(rank_tol, one_predictor);
         }
         previous_fit = fit.is_some();
         output.push(fit);
