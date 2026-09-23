@@ -79,15 +79,12 @@ def fit(df, columns, **kwargs):
     return df.select(pds.rolling_lin_reg(*columns, target="y", **kwargs).alias("fit")).unnest("fit")
 
 
-def test_closed_form_1d_matches_plugin(precision):
+def test_one_predictor_grouped_reference(precision):
     parts = []
     for group in range(3):
         part = data(n=90, p=1, seed=group).with_columns(asset=pl.lit(group))
         part = part.with_columns(
-            pl.when(pl.int_range(pl.len()) % 17 == 0)
-            .then(None)
-            .otherwise(pl.col("y"))
-            .alias("y"),
+            pl.when(pl.int_range(pl.len()) % 17 == 0).then(None).otherwise(pl.col("y")).alias("y"),
             pl.when(pl.int_range(pl.len()) % 29 == 0)
             .then(float("nan"))
             .otherwise(pl.col("x0"))
@@ -96,21 +93,11 @@ def test_closed_form_1d_matches_plugin(precision):
         parts.append(part)
     df = pl.concat(parts)
     args = dict(window_size=31, half_life=8.5, min_valid_rows=12)
-    plugin = df.select(
-        pds.rolling_lin_reg(
-            "x0", target="y", add_bias=True, null_policy="skip", **args
-        ).over("asset").alias("fit")
-    ).unnest("fit")
     native = df.select(
         pds.rolling_lin_reg_1d("x0", target="y", **args).over("asset").alias("fit")
     ).unnest("fit")
-    assert_frame_equal(
-        native,
-        plugin,
-        check_dtypes=False,
-        rel_tol=2e-4 if not precision else 1e-8,
-        abs_tol=2e-5 if not precision else 1e-10,
-    )
+    for i, part in enumerate(parts):
+        assert_reference(part, native.slice(i * 90, 90), ["x0"], 31, 8.5, True, 12)
     dtype = pl.Float64 if precision else pl.Float32
     assert native.schema == {"coeffs": pl.List(dtype), "pred": dtype}
 
@@ -121,9 +108,9 @@ def test_one_predictor_ewls_routes_to_closed_form(precision):
     )
     args = dict(window_size=20, half_life=6, min_valid_rows=8)
     routed = df.select(
-        pds.rolling_lin_reg(
-            "x0", target="y", add_bias=True, null_policy="skip", **args
-        ).alias("fit")
+        pds.rolling_lin_reg("x0", target="y", add_bias=True, null_policy="skip", **args).alias(
+            "fit"
+        )
     )
     explicit = df.select(pds.rolling_lin_reg_1d("x0", target="y", **args).alias("fit"))
     assert_frame_equal(routed, explicit, check_exact=True)
@@ -260,9 +247,10 @@ def test_rank_deficiency_and_recovery(precision):
 
 @pytest.mark.parametrize("column", ["x0", "y"])
 @pytest.mark.parametrize("magnitude", [1e4, 1e8, 1e12])
-def test_expiry_and_causality(precision, column, magnitude):
+@pytest.mark.parametrize("null_policy", ["raise", "skip"])
+def test_expiry_and_causality(precision, column, magnitude, null_policy):
     df = data(n=140, p=1)
-    args = dict(window_size=20, half_life=8, add_bias=True)
+    args = dict(window_size=20, half_life=8, add_bias=True, null_policy=null_policy)
     original = fit(df, ["x0"], **args)
     changed = df.with_columns(
         pl.when(pl.int_range(pl.len()) == 0).then(magnitude).otherwise(pl.col(column)).alias(column)
@@ -281,40 +269,44 @@ def test_expiry_and_causality(precision, column, magnitude):
     assert_frame_equal(fit(future, ["x0"], **args).head(90), original.head(90))
 
 
-def test_group_lazy_slice_and_chunks(precision):
+@pytest.mark.parametrize("p", [1, 2])
+def test_group_lazy_slice_and_chunks(precision, p):
+    columns = [f"x{i}" for i in range(p)]
     parts = [
-        data(n=n, p=2, seed=i).with_columns(asset=pl.lit(str(i)))
+        data(n=n, p=p, seed=i).with_columns(asset=pl.lit(str(i)))
         for i, n in enumerate([90, 7, 110])
     ]
     panel = pl.concat(parts, rechunk=False).slice(3)
     assert panel["x0"].n_chunks() > 1
     args = dict(window_size=15, half_life=5, add_bias=True, null_policy="skip")
-    expr = pds.rolling_lin_reg("x0", "x1", target="y", **args).over("asset").alias("fit")
+    expr = pds.rolling_lin_reg(*columns, target="y", **args).over("asset").alias("fit")
     got = panel.with_columns(expr)
     assert_frame_equal(got, panel.rechunk().with_columns(expr))
     assert_frame_equal(got, panel.lazy().with_columns(expr).collect())
     for sub in panel.partition_by("asset", maintain_order=True):
-        expected = fit(sub, ["x0", "x1"], **args)
+        expected = fit(sub, columns, **args)
         actual = got.filter(pl.col("asset") == sub["asset"][0]).select("fit").unnest("fit")
         assert_frame_equal(actual, expected)
     # A sliced input starts its own window history.
-    sliced = data(n=120, p=2).slice(11, 80)
-    assert_reference(sliced, fit(sliced, ["x0", "x1"], **args), ["x0", "x1"], 15, 5, True, 2)
+    sliced = data(n=120, p=p).slice(11, 80)
+    assert_reference(sliced, fit(sliced, columns, **args), columns, 15, 5, True, p)
     # Slicing the output must retain the earlier rows used by the regression.
-    whole = data(n=120, p=2)
-    expr = pds.rolling_lin_reg("x0", "x1", target="y", **args).alias("fit")
+    whole = data(n=120, p=p)
+    expr = pds.rolling_lin_reg(*columns, target="y", **args).alias("fit")
     after = whole.lazy().select(expr).slice(11, 80).collect().unnest("fit")
-    assert_frame_equal(after, fit(whole, ["x0", "x1"], **args).slice(11, 80))
+    assert_frame_equal(after, fit(whole, columns, **args).slice(11, 80))
 
 
-def test_long_history(precision):
-    df = data(n=50_000, p=3)
+@pytest.mark.parametrize("p", [1, 3])
+def test_long_history(precision, p):
+    df = data(n=50_000, p=p)
+    columns = [f"x{i}" for i in range(p)]
     df = df.with_columns(
         pl.when(pl.int_range(pl.len()) % 17 == 0).then(None).otherwise(pl.col("y")).alias("y")
     )
     result = fit(
         df,
-        ["x0", "x1", "x2"],
+        columns,
         window_size=504,
         half_life=126,
         min_valid_rows=126,
@@ -322,7 +314,32 @@ def test_long_history(precision):
         null_policy="skip",
     )
     indices = sorted(set([503, 504, 1007, 1008, 49_999, *range(997, 50_000, 997)]))
-    assert_reference(df, result, ["x0", "x1", "x2"], 504, 126, True, 126, indices)
+    assert_reference(df, result, columns, 504, 126, True, 126, indices)
+
+
+def test_single_predictor_rank_deficiency_and_recovery(precision):
+    df = data(n=180, p=1).with_columns(
+        pl.when(pl.int_range(pl.len()).is_between(40, 119))
+        .then(2.0)
+        .otherwise(pl.col("x0"))
+        .alias("x0")
+    )
+    result = fit(df, ["x0"], window_size=20, half_life=8, add_bias=True, null_policy="skip")
+    assert result["coeffs"][59:120].null_count() == 61
+    assert result["coeffs"][140:].null_count() == 0
+    assert_reference(df, result, ["x0"], 20, 8, True, 2)
+
+
+@pytest.mark.parametrize("above_gate", [False, True])
+def test_one_predictor_rank_gate(precision, above_gate):
+    tolerance = 1e-12 if precision else 1e-6
+    delta = np.sqrt(tolerance * (20 if above_gate else 0.05))
+    x = 1.0 + delta * np.tile([-1.0, 1.0], 40)
+    df = pl.DataFrame({"x": x, "y": 2.0 * x - 0.5})
+    # The relative Gram determinant is approximately delta**2. These windows
+    # are full rank in exact arithmetic; acceptance follows the numeric gate.
+    result = fit(df, ["x"], window_size=32, half_life=1e30, add_bias=True, null_policy="skip")
+    assert result["coeffs"][31:].null_count() == (0 if above_gate else 49)
 
 
 def test_against_weighted_lin_reg(precision):
@@ -365,6 +382,60 @@ def test_long_missing_block_preserves_fit_until_expiry(precision):
     for t in [2670, 2680, 2684, 2998, 2999, 3000]:
         fresh = fit(df.slice(t - window + 1, window), ["x"], **args).tail(1)
         assert_frame_equal(result.slice(t, 1), fresh, rel_tol=2e-5, abs_tol=2e-6)
+
+
+def test_missing_tail_with_intercept_preserves_fit(precision):
+    x = np.tile([-1.0, 1.0], 1550)
+    y = (2 * x + 3).tolist()
+    y[1500:3000] = [None] * 1500
+    df = pl.DataFrame({"x": x, "y": y})
+    result = fit(
+        df,
+        ["x"],
+        window_size=1500,
+        half_life=1.1,
+        min_valid_rows=2,
+        add_bias=True,
+        null_policy="skip",
+    )
+    # All windows retaining at least two valid observations still identify the
+    # same line, even after their unnormalized weights have underflowed.
+    coefficients = result["coeffs"][1499:2998]
+    assert coefficients.null_count() == 0
+    np.testing.assert_allclose(
+        coefficients.list.to_array(2).to_numpy(),
+        np.tile([2.0, 3.0], (1499, 1)),
+        rtol=1e-8 if precision else 1e-4,
+        atol=1e-10 if precision else 1e-5,
+    )
+    assert result["coeffs"][2998] is None
+    assert_reference(
+        df,
+        result,
+        ["x"],
+        1500,
+        1.1,
+        True,
+        2,
+        indices=[1499, 1700, 2500, 2800, 2997, 2998, 2999, 3000, 3001, 3099],
+    )
+
+
+def test_overflowing_prediction_is_null(precision):
+    large = 1e200 if precision else 1e30
+    df = pl.DataFrame({"x": [0.0, 1.0, 0.0, large], "y": [0.0, large, 0.0, None]})
+    result = fit(
+        df,
+        ["x"],
+        window_size=4,
+        half_life=2,
+        min_valid_rows=2,
+        add_bias=True,
+        null_policy="skip",
+    )
+    assert result["coeffs"][-1] is not None
+    assert result["coeffs"][-1].is_finite().all()
+    assert result["pred"][-1] is None
 
 
 def test_missing_gap_decay_and_expiry(precision):

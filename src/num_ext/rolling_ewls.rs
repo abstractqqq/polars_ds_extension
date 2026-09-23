@@ -13,6 +13,7 @@ pub(super) fn rolling_ewls<N>(
     inputs: &[Series],
     kwargs: SWWLRKwargs,
     half_life: f64,
+    one_predictor: bool,
 ) -> PolarsResult<Series>
 where
     N: PolarsNumericType,
@@ -67,6 +68,7 @@ where
         kwargs.min_size,
         half_life,
         from_f64(rank_tol),
+        one_predictor,
     );
 
     let capacity = nrows.saturating_sub(kwargs.n - 1) * nfeats;
@@ -80,7 +82,11 @@ where
         };
         coeffs.append_slice(beta.col_as_slice(0));
         let prediction = if x.get(i, ..).is_all_finite() {
-            let value = *(x.get(i..i + 1, ..) * &beta).get(0, 0);
+            let value = if one_predictor {
+                *x.get(i, 0) * *beta.get(0, 0) + *beta.get(1, 0)
+            } else {
+                *(x.get(i..i + 1, ..) * &beta).get(0, 0)
+            };
             value.is_finite().then_some(value)
         } else {
             None

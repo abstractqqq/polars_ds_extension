@@ -28,7 +28,6 @@ polars = { version = "0.55.2", features = [
     "dtype-i128",
     "performant",
     "streaming",
-    "ewma",
 ], default-features = false }
 # Heavy math
 realfft = "*"

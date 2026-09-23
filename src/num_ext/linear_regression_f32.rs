@@ -1072,7 +1072,7 @@ fn pl_recursive_lr_f32(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<S
 #[polars_expr(output_type_func=coeff_pred_output)] // They share the same output type
 fn pl_rolling_lr_f32(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<Series> {
     if let Some(half_life) = kwargs.half_life {
-        return super::rolling_ewls::rolling_ewls::<Float32Type>(inputs, kwargs, half_life);
+        return super::rolling_ewls::rolling_ewls::<Float32Type>(inputs, kwargs, half_life, false);
     }
     let n = kwargs.n; // Gauranteed n >= 2
     let add_bias = kwargs.bias;
@@ -1152,136 +1152,16 @@ fn pl_rolling_lr_f32(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<Ser
     }
 }
 
-/// Float32 closed-form one-predictor EWLS expressed as a staged internal Polars plan.
+/// One-predictor EWLS reuses the normalized, periodically rebuilt cross-products.
 #[polars_expr(output_type_func=coeff_pred_output)]
 fn pl_rolling_lr_1d_expr_f32(inputs: &[Series], kwargs: SWWLRKwargs) -> PolarsResult<Series> {
     polars_ensure!(inputs.len() == 2, ComputeError:
         "rolling 1d EWLS requires one target and one predictor");
     polars_ensure!(kwargs.bias, ComputeError: "rolling 1d EWLS requires an intercept");
-    polars_ensure!(kwargs.lambda == 0.0, ComputeError:
-        "rolling 1d EWLS does not support regularization");
     polars_ensure!(kwargs.null_policy.eq_ignore_ascii_case("skip"), ComputeError:
         "rolling 1d EWLS supports only null_policy='skip'");
-    polars_ensure!(kwargs.n >= 2 && kwargs.min_size > 0 && kwargs.min_size <= kwargs.n,
-        ComputeError: "rolling 1d EWLS requires window_size >= 2 and a valid min_valid_rows");
     let half_life = kwargs
         .half_life
-        .filter(|value| value.is_finite() && *value > 0.0)
-        .ok_or_else(|| PolarsError::ComputeError("half_life must be positive and finite".into()))?;
-
-    let mut y = inputs[0].cast(&DataType::Float32)?;
-    let mut x = inputs[1].cast(&DataType::Float32)?;
-    y.rename("__y".into());
-    x.rename("__x".into());
-    let nrows = x.len();
-    polars_ensure!(y.len() == nrows, ShapeMismatch: "target and predictor lengths differ");
-    let x_values = x.f32()?;
-    let y_values = y.f32()?;
-    let valid_values: Vec<bool> = x_values
-        .iter()
-        .zip(y_values.iter())
-        .map(|(x, y)| matches!((x, y), (Some(x), Some(y)) if x.is_finite() && y.is_finite()))
-        .collect();
-    let mut rolling_valid = Vec::with_capacity(nrows);
-    let mut count = 0u32;
-    for (i, is_valid) in valid_values.iter().copied().enumerate() {
-        count += u32::from(is_valid);
-        if i >= kwargs.n {
-            count -= u32::from(valid_values[i - kwargs.n]);
-        }
-        rolling_valid.push(count);
-    }
-
-    let valid = BooleanChunked::from_slice("valid".into(), &valid_values).into_series();
-    let valid_count = UInt32Chunked::from_vec("n_valid".into(), rolling_valid).into_series();
-    let frame = DataFrame::new(
-        nrows,
-        vec![
-            x.clone().into(),
-            y.clone().into(),
-            valid.into(),
-            valid_count.into(),
-        ],
-    )?;
-    let decay = 2.0f64.powf(-1.0 / half_life);
-    let expired_weight = decay.powf(kwargs.n as f64) as f32;
-    let ewm_options = EWMOptions::default().and_half_life(half_life);
-    let moment_names = ["sw", "sx", "sy", "sxx", "sxy"];
-
-    let mut out = frame
-        .lazy()
-        .with_columns([
-            col("valid").cast(DataType::Float32).alias("sw"),
-            when(col("valid"))
-                .then(col("__x"))
-                .otherwise(lit(0.0f32))
-                .alias("sx"),
-            when(col("valid"))
-                .then(col("__y"))
-                .otherwise(lit(0.0f32))
-                .alias("sy"),
-        ])
-        .with_columns([
-            col("sx").pow(2).alias("sxx"),
-            (col("sx") * col("sy")).alias("sxy"),
-        ])
-        .with_columns(moment_names.map(|name| col(name).ewm_sum(ewm_options).alias(name)))
-        .with_columns(moment_names.map(|name| {
-            (col(name)
-                - lit(expired_weight)
-                    * col(name).shift(lit(kwargs.n as i64)).fill_null(lit(0.0f32)))
-            .alias(name)
-        }))
-        .with_columns([
-            (col("sxx") - col("sx").pow(2) / col("sw")).alias("var"),
-            (col("sxy") - col("sx") * col("sy") / col("sw")).alias("cov"),
-        ])
-        .with_columns([col("n_valid")
-            .cast(DataType::UInt64)
-            .gt_eq(lit(kwargs.min_size as u64))
-            .and(col("sw").gt(lit(0.0f32)))
-            .and(col("sxx").gt(lit(0.0f32)))
-            .and((col("var") / col("sxx")).gt(lit(1e-6f32)))
-            .alias("estimable")])
-        .with_columns([(col("cov") / col("var")).alias("slope")])
-        .with_columns([((col("sy") - col("slope") * col("sx")) / col("sw")).alias("intercept")])
-        .select([col("estimable"), col("slope"), col("intercept")])
-        .collect()?;
-
-    let estimable = out.drop_in_place("estimable")?.bool()?.clone();
-    let slopes = out.drop_in_place("slope")?.f32()?.clone();
-    let intercepts = out.drop_in_place("intercept")?.f32()?.clone();
-    let mut coeffs = ListPrimitiveChunkedBuilder::<Float32Type>::new(
-        "coeffs".into(),
-        nrows,
-        nrows.saturating_mul(2),
-        DataType::Float32,
-    );
-    let mut pred = PrimitiveChunkedBuilder::<Float32Type>::new("pred".into(), nrows);
-    for i in 0..nrows {
-        let fit = i >= kwargs.n - 1 && estimable.get(i).unwrap_or(false);
-        let (Some(slope), Some(intercept)) = (slopes.get(i), intercepts.get(i)) else {
-            coeffs.append_null();
-            pred.append_null();
-            continue;
-        };
-        if !fit || !slope.is_finite() || !intercept.is_finite() {
-            coeffs.append_null();
-            pred.append_null();
-            continue;
-        }
-        coeffs.append_slice(&[slope, intercept]);
-        pred.append_option(
-            x_values
-                .get(i)
-                .filter(|value| value.is_finite())
-                .map(|value| slope * value + intercept),
-        );
-    }
-    let coefficients = coeffs.finish().into_series();
-    let predictions = pred.finish().into_series();
-    Ok(
-        StructChunked::from_series("".into(), nrows, [&coefficients, &predictions].into_iter())?
-            .into_series(),
-    )
+        .ok_or_else(|| PolarsError::ComputeError("rolling 1d EWLS requires half_life".into()))?;
+    super::rolling_ewls::rolling_ewls::<Float32Type>(inputs, kwargs, half_life, true)
 }

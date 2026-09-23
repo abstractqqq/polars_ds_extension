@@ -2,7 +2,7 @@
 
 Examples (build with maturin develop --release first):
     python benchmarks/rolling_ewls.py --groups 256 --rows 4096 --windows 504 1040 \
-        --predictors 1 --patterns random --methods ewls closed_form_1d --repeats 5 --threads 4
+        --predictors 1 --patterns random --methods ewls --repeats 5 --threads 4
     python benchmarks/rolling_ewls.py --groups 5000 --rows 1500 --repeats 3
     python benchmarks/rolling_ewls.py --groups 8 --rows 1500 --methods ewls reference
     python benchmarks/rolling_ewls.py --groups 1 --rows 200000 --windows 252 1040
@@ -53,7 +53,7 @@ def run_case(args):
         )
     del x, y
     min_rows = max(p + 1, min(126, window))
-    plugin_expr = (
+    expr = (
         pds.rolling_lin_reg(
             *columns,
             target="y",
@@ -66,24 +66,10 @@ def run_case(args):
         .over("asset")
         .alias("fit")
     )
-    closed_form_expr = (
-        pds.rolling_lin_reg_1d(
-            columns[0],
-            target="y",
-            window_size=window,
-            half_life=args.half_life,
-            min_valid_rows=min_rows,
-        )
-        .over("asset")
-        .alias("fit")
-        if p == 1
-        else None
-    )
-    expr = closed_form_expr if method == "closed_form_1d" else plugin_expr
     # Initialize expression dispatch outside the measurement on a small independent fit.
     frame.head(min(rows, 2 * window)).select(expr)
     start_cpu, start_wall = time.process_time(), time.perf_counter()
-    if method in ("ewls", "closed_form_1d"):
+    if method == "ewls":
         result = frame.select(expr).unnest("fit")
     else:
         weights = pl.Series("w", np.exp2(-np.arange(window - 1, -1, -1) / args.half_life))
@@ -174,8 +160,8 @@ def main():
     parser.add_argument(
         "--methods",
         nargs="+",
-        choices=["ewls", "closed_form_1d", "reference"],
-        default=["ewls", "closed_form_1d"],
+        choices=["ewls", "reference"],
+        default=["ewls"],
     )
     parser.add_argument("--half-life", type=float, default=126.0)
     parser.add_argument("--threads", type=int, default=16)
@@ -183,8 +169,6 @@ def main():
     parser.add_argument("--case", nargs=6, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.case:
-        if args.case[5] == "closed_form_1d" and int(args.case[3]) != 1:
-            parser.error("closed_form_1d requires exactly one predictor")
         run_case(args)
         return
     env = dict(
@@ -198,8 +182,6 @@ def main():
     for window, p, pattern, method, _ in itertools.product(
         args.windows, args.predictors, args.patterns, args.methods, range(args.repeats)
     ):
-        if method == "closed_form_1d" and p != 1:
-            continue
         subprocess.run(
             [
                 sys.executable,
