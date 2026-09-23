@@ -57,8 +57,8 @@ SIZES = [64, 256, 1_024, 4_096, 16_384, 65_536, 262_144, 1_048_576]
 
 # iterations per measurement — large enough for median to converge, small
 # enough that the largest size finishes quickly.
-ITERS_LIN_REG = 200   # series_to_slice proxy
-ITERS_PREDICT = 500   # predict matmul proxy (lighter per-call)
+ITERS_LIN_REG = 200  # series_to_slice proxy
+ITERS_PREDICT = 500  # predict matmul proxy (lighter per-call)
 
 WARMUP = 10  # throw-away iterations before timing starts
 
@@ -66,6 +66,7 @@ WARMUP = 10  # throw-away iterations before timing starts
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_df(rows: int, cols: int) -> pl.DataFrame:
     """Build a Polars DataFrame with `cols` float feature columns + 1 target."""
@@ -101,6 +102,7 @@ def _median_us(times_ns: List[float]) -> float:
 # Benchmark 1 — series_to_slice proxy (flat lin_reg)
 # ---------------------------------------------------------------------------
 
+
 def bench_series_to_slice(rows: int, cols: int) -> Tuple[float, int]:
     """
     Proxy for the series_to_slice hot path.
@@ -126,6 +128,7 @@ def bench_series_to_slice(rows: int, cols: int) -> Tuple[float, int]:
 # ---------------------------------------------------------------------------
 # Benchmark 2 — predict matmul proxy
 # ---------------------------------------------------------------------------
+
 
 def bench_predict(rows: int, cols: int) -> Tuple[float, int]:
     """
@@ -157,6 +160,7 @@ def bench_predict(rows: int, cols: int) -> Tuple[float, int]:
 # ---------------------------------------------------------------------------
 # Formatting
 # ---------------------------------------------------------------------------
+
 
 def _md_table(
     header: List[str],

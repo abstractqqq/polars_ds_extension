@@ -540,11 +540,7 @@ def test_lin_reg_with_rcond_truncates_singular_value():
     evals, evecs = np.linalg.eigh(xtx)
     thr = rcond * np.sqrt(evals.max())
     assert (evals < thr).any(), "test must actually truncate a singular value"
-    pinv = sum(
-        (1.0 / ev) * np.outer(vec, vec)
-        for ev, vec in zip(evals, evecs.T)
-        if ev >= thr
-    )
+    pinv = sum((1.0 / ev) * np.outer(vec, vec) for ev, vec in zip(evals, evecs.T) if ev >= thr)
     w_ref = pinv @ (X.T @ y)
 
     assert np.all(np.isfinite(coeffs))
@@ -942,9 +938,9 @@ def test_lin_reg_many_small_groups_matches_per_group():
     expected = []
     for g in range(n_groups):
         sub = df.filter(pl.col("g") == g)
-        coef = sub.select(
-            pds.lin_reg("x1", "x2", target="y", add_bias=True).alias("coef")
-        ).row(0)[0]
+        coef = sub.select(pds.lin_reg("x1", "x2", target="y", add_bias=True).alias("coef")).row(0)[
+            0
+        ]
         expected.append(coef)
 
     got = grouped["coef"].to_list()
@@ -971,9 +967,9 @@ def test_lin_reg_with_bias_appended_column_equivalence():
         }
     )
 
-    with_flag = df.select(
-        pds.lin_reg("x1", "x2", target="y", add_bias=True).alias("coef")
-    ).row(0)[0]
+    with_flag = df.select(pds.lin_reg("x1", "x2", target="y", add_bias=True).alias("coef")).row(0)[
+        0
+    ]
     manual = df.select(
         pds.lin_reg("x1", "x2", "ones", target="y", add_bias=False).alias("coef")
     ).row(0)[0]
@@ -1023,9 +1019,7 @@ def test_lin_reg_report_already_float64_cast_guard():
     # Independent NumPy reference for the Float64 path.
     X = np.column_stack([x1, x2, np.ones(n)])
     beta_ref, *_ = np.linalg.lstsq(X, y, rcond=None)
-    np.testing.assert_allclose(
-        rep_f64["beta"].to_list(), beta_ref, rtol=1e-10, atol=1e-12
-    )
+    np.testing.assert_allclose(rep_f64["beta"].to_list(), beta_ref, rtol=1e-10, atol=1e-12)
 
 
 def test_wls_report_multichunked_weights_dont_panic():
@@ -1085,30 +1079,20 @@ def test_lin_reg_multi_target_struct_output():
         }
     )
 
-    multi = df.select(
-        pds.lin_reg(
-            "x1", "x2", target=["y1", "y2"], add_bias=True
-        ).alias("coef")
-    )
+    multi = df.select(pds.lin_reg("x1", "x2", target=["y1", "y2"], add_bias=True).alias("coef"))
     s_multi = multi["coef"].to_list()[0]
 
     # Per-target single-target fits should match the corresponding field
     # of the multi-target struct output.
-    coef_y1 = df.select(
-        pds.lin_reg("x1", "x2", target="y1", add_bias=True).alias("c")
-    ).row(0)[0]
-    coef_y2 = df.select(
-        pds.lin_reg("x1", "x2", target="y2", add_bias=True).alias("c")
-    ).row(0)[0]
+    coef_y1 = df.select(pds.lin_reg("x1", "x2", target="y1", add_bias=True).alias("c")).row(0)[0]
+    coef_y2 = df.select(pds.lin_reg("x1", "x2", target="y2", add_bias=True).alias("c")).row(0)[0]
 
     # Field order in the struct must be preserved by
     # StructChunked::from_columns (mirrors the original DataFrame::new arg
     # order). Field names follow the existing positional convention
     # `target_0`, `target_1`, ...
     keys = list(s_multi.keys())
-    assert keys == ["target_0", "target_1"], (
-        f"unexpected struct field order: {keys}"
-    )
+    assert keys == ["target_0", "target_1"], f"unexpected struct field order: {keys}"
     np.testing.assert_allclose(s_multi["target_0"], coef_y1, rtol=1e-12, atol=1e-12)
     np.testing.assert_allclose(s_multi["target_1"], coef_y2, rtol=1e-12, atol=1e-12)
 
@@ -1129,9 +1113,7 @@ def test_lin_reg_single_big_fit_no_regression_path():
     true_beta = np.array([0.4, -0.2, 0.7, 0.0, -0.1, 0.3])
     y = X @ true_beta + 0.05 * rng.standard_normal(n)
 
-    df = pl.DataFrame(
-        {f"x{i}": X[:, i] for i in range(p)} | {"y": y}
-    )
+    df = pl.DataFrame({f"x{i}": X[:, i] for i in range(p)} | {"y": y})
     pds_coef = df.select(
         pds.lin_reg(*[f"x{i}" for i in range(p)], target="y", add_bias=True).alias("c")
     ).row(0)[0]
@@ -1157,9 +1139,7 @@ def test_lin_reg_null_skip_in_small_group():
     )
     out = (
         df.group_by("g", maintain_order=True)
-        .agg(
-            pds.lin_reg("x", target="y", add_bias=True, null_policy="skip").alias("c")
-        )
+        .agg(pds.lin_reg("x", target="y", add_bias=True, null_policy="skip").alias("c"))
         .sort("g")
     )
 
@@ -1167,9 +1147,7 @@ def test_lin_reg_null_skip_in_small_group():
     expected = []
     for g in [1, 2, 3]:
         sub = df.filter(pl.col("g") == g).drop_nulls()
-        coef = sub.select(
-            pds.lin_reg("x", target="y", add_bias=True).alias("c")
-        ).row(0)[0]
+        coef = sub.select(pds.lin_reg("x", target="y", add_bias=True).alias("c")).row(0)[0]
         expected.append(coef)
 
     for got, exp in zip(out["c"].to_list(), expected):
@@ -1234,9 +1212,7 @@ def test_singular_x_tol_well_conditioned_unchanged(lin_reg_dtype):
         }
     ).with_columns(y=pl.col("x1") - 0.5 * pl.col("x2") + 2.0 * pl.col("x3"))
 
-    coeffs = df.select(
-        pds.lin_reg("x1", "x2", "x3", target="y", add_bias=False).alias("c")
-    )["c"][0]
+    coeffs = df.select(pds.lin_reg("x1", "x2", "x3", target="y", add_bias=False).alias("c"))["c"][0]
     assert coeffs is not None
 
     X = df.select("x1", "x2", "x3").to_numpy()
@@ -1281,9 +1257,9 @@ def test_singular_x_tol_return_pred_nulls(lin_reg_dtype):
 def test_singular_x_tol_multi_target_nulls(lin_reg_dtype):
     # multi-target coeffs path: all target fields null on a gated design.
     df = _collinear_df(n=64).with_columns(y2=pl.col("y") * 0.5 + 1.0)
-    s = df.select(
-        pds.lin_reg("x1", "x2", target=["y", "y2"], add_bias=False).alias("c")
-    )["c"].to_list()[0]
+    s = df.select(pds.lin_reg("x1", "x2", target=["y", "y2"], add_bias=False).alias("c"))[
+        "c"
+    ].to_list()[0]
     assert s["target_0"] is None
     assert s["target_1"] is None
 
@@ -1326,15 +1302,11 @@ def test_singular_x_tol_per_solver(lin_reg_dtype, solver):
     # Gate works regardless of which factorization the solver uses.
     sing, xs = _scaled_singular_df()
     assert (
-        sing.select(
-            pds.lin_reg(*xs, target="y", add_bias=False, solver=solver).alias("c")
-        )["c"][0]
+        sing.select(pds.lin_reg(*xs, target="y", add_bias=False, solver=solver).alias("c"))["c"][0]
         is None
     )
     full, xs2 = _scaled_full_rank_df()
     assert (
-        full.select(
-            pds.lin_reg(*xs2, target="y", add_bias=False, solver=solver).alias("c")
-        )["c"][0]
+        full.select(pds.lin_reg(*xs2, target="y", add_bias=False, solver=solver).alias("c"))["c"][0]
         is not None
     )

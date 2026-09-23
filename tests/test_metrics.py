@@ -355,6 +355,7 @@ def test_ndcg_score():
 # Both baseline_pct and actual_pct are clipped to a minimum of 0.0001 inside
 # the Rust kernel, which is why identical-distribution PSI may not be exactly 0.
 
+
 def _reference_psi(new_arr, baseline_arr, breakpoints):
     """Independent Python PSI; returns (per_bin, scalar)."""
     bp = list(breakpoints) + [float("inf")]
@@ -391,9 +392,9 @@ def test_psi_w_breakpoints():
     assert psi_scalar > 0
 
     _, ref_psi = _reference_psi(new, baseline, bps)
-    assert np.isclose(psi_scalar, ref_psi, atol=1e-10), (
-        f"PSI mismatch: got {psi_scalar}, expected {ref_psi}"
-    )
+    assert np.isclose(
+        psi_scalar, ref_psi, atol=1e-10
+    ), f"PSI mismatch: got {psi_scalar}, expected {ref_psi}"
 
 
 def test_psi_w_breakpoints_identical_distributions():

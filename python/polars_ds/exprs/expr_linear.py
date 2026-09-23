@@ -678,7 +678,9 @@ def rolling_lin_reg_1d(
     ...         window_size=504,
     ...         half_life=126.0,
     ...         min_valid_rows=126,
-    ...     ).over("asset").alias("fit")
+    ...     )
+    ...     .over("asset")
+    ...     .alias("fit")
     ... )
     """
     if window_size < 2:

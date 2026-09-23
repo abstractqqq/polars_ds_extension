@@ -191,9 +191,7 @@ def test_pds_lin_reg_gate_on(benchmark, n):
 
     @benchmark
     def func():
-        df.select(
-            pds.lin_reg(*X_VARS, target="y", add_bias=False, singular_x_tol=1e-12).alias("c")
-        )
+        df.select(pds.lin_reg(*X_VARS, target="y", add_bias=False, singular_x_tol=1e-12).alias("c"))
 
 
 @pytest.mark.parametrize("n", SIZES)
@@ -203,6 +201,4 @@ def test_pds_lin_reg_gate_off(benchmark, n):
 
     @benchmark
     def func():
-        df.select(
-            pds.lin_reg(*X_VARS, target="y", add_bias=False, singular_x_tol=0.0).alias("c")
-        )
+        df.select(pds.lin_reg(*X_VARS, target="y", add_bias=False, singular_x_tol=0.0).alias("c"))

@@ -968,8 +968,8 @@ class MixedModel:
     Degrees of freedom for each fixed effect are assigned by containment: effects that
     are constant within every group level (including the intercept) are tested against
     the group ("between") stratum, everything else against the residual ("within")
-    stratum. 
-    
+    stratum.
+
     This implementation mirrors SAS's PROC MIXED for a random-intercept model.
 
     Examples

@@ -84,10 +84,7 @@ def test_closed_form_1d_matches_plugin(precision):
     for group in range(3):
         part = data(n=90, p=1, seed=group).with_columns(asset=pl.lit(group))
         part = part.with_columns(
-            pl.when(pl.int_range(pl.len()) % 17 == 0)
-            .then(None)
-            .otherwise(pl.col("y"))
-            .alias("y"),
+            pl.when(pl.int_range(pl.len()) % 17 == 0).then(None).otherwise(pl.col("y")).alias("y"),
             pl.when(pl.int_range(pl.len()) % 29 == 0)
             .then(float("nan"))
             .otherwise(pl.col("x0"))
@@ -97,9 +94,9 @@ def test_closed_form_1d_matches_plugin(precision):
     df = pl.concat(parts)
     args = dict(window_size=31, half_life=8.5, min_valid_rows=12)
     plugin = df.select(
-        pds.rolling_lin_reg(
-            "x0", target="y", add_bias=True, null_policy="skip", **args
-        ).over("asset").alias("fit")
+        pds.rolling_lin_reg("x0", target="y", add_bias=True, null_policy="skip", **args)
+        .over("asset")
+        .alias("fit")
     ).unnest("fit")
     native = df.select(
         pds.rolling_lin_reg_1d("x0", target="y", **args).over("asset").alias("fit")
@@ -121,9 +118,9 @@ def test_one_predictor_ewls_routes_to_closed_form(precision):
     )
     args = dict(window_size=20, half_life=6, min_valid_rows=8)
     routed = df.select(
-        pds.rolling_lin_reg(
-            "x0", target="y", add_bias=True, null_policy="skip", **args
-        ).alias("fit")
+        pds.rolling_lin_reg("x0", target="y", add_bias=True, null_policy="skip", **args).alias(
+            "fit"
+        )
     )
     explicit = df.select(pds.rolling_lin_reg_1d("x0", target="y", **args).alias("fit"))
     assert_frame_equal(routed, explicit, check_exact=True)

@@ -4,7 +4,6 @@ from polars.testing import assert_frame_equal
 
 
 def test_kaplan_meier():
-
     from sksurv.datasets import load_veterans_lung_cancer
     from sksurv.nonparametric import kaplan_meier_estimator
 
