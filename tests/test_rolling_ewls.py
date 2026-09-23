@@ -79,6 +79,71 @@ def fit(df, columns, **kwargs):
     return df.select(pds.rolling_lin_reg(*columns, target="y", **kwargs).alias("fit")).unnest("fit")
 
 
+def test_closed_form_1d_matches_plugin(precision):
+    parts = []
+    for group in range(3):
+        part = data(n=90, p=1, seed=group).with_columns(asset=pl.lit(group))
+        part = part.with_columns(
+            pl.when(pl.int_range(pl.len()) % 17 == 0)
+            .then(None)
+            .otherwise(pl.col("y"))
+            .alias("y"),
+            pl.when(pl.int_range(pl.len()) % 29 == 0)
+            .then(float("nan"))
+            .otherwise(pl.col("x0"))
+            .alias("x0"),
+        )
+        parts.append(part)
+    df = pl.concat(parts)
+    args = dict(window_size=31, half_life=8.5, min_valid_rows=12)
+    plugin = df.select(
+        pds.rolling_lin_reg(
+            "x0", target="y", add_bias=True, null_policy="skip", **args
+        ).over("asset").alias("fit")
+    ).unnest("fit")
+    native = df.select(
+        pds.rolling_lin_reg_1d("x0", target="y", **args).over("asset").alias("fit")
+    ).unnest("fit")
+    assert_frame_equal(
+        native,
+        plugin,
+        check_dtypes=False,
+        rel_tol=2e-4 if not precision else 1e-8,
+        abs_tol=2e-5 if not precision else 1e-10,
+    )
+    dtype = pl.Float64 if precision else pl.Float32
+    assert native.schema == {"coeffs": pl.List(dtype), "pred": dtype}
+
+
+def test_one_predictor_ewls_routes_to_closed_form(precision):
+    df = data(n=90, p=1).with_columns(
+        pl.when(pl.int_range(pl.len()) % 13 == 0).then(None).otherwise(pl.col("y")).alias("y")
+    )
+    args = dict(window_size=20, half_life=6, min_valid_rows=8)
+    routed = df.select(
+        pds.rolling_lin_reg(
+            "x0", target="y", add_bias=True, null_policy="skip", **args
+        ).alias("fit")
+    )
+    explicit = df.select(pds.rolling_lin_reg_1d("x0", target="y", **args).alias("fit"))
+    assert_frame_equal(routed, explicit, check_exact=True)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"window_size": 1, "half_life": 2},
+        {"window_size": 4, "half_life": 0},
+        {"window_size": 4, "half_life": float("nan")},
+        {"window_size": 4, "half_life": 2, "min_valid_rows": 0},
+        {"window_size": 4, "half_life": 2, "min_valid_rows": 5},
+    ],
+)
+def test_closed_form_1d_invalid_parameters(kwargs):
+    with pytest.raises(ValueError):
+        pds.rolling_lin_reg_1d("x", target="y", **kwargs)
+
+
 @pytest.mark.parametrize("p,bias", [(1, False), (1, True), (3, False), (3, True)])
 @pytest.mark.parametrize("missing", ["none", "random", "block"])
 def test_reference(precision, p, bias, missing):

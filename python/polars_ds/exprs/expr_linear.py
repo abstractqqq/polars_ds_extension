@@ -20,6 +20,7 @@ __all__ = [
     "simple_lin_reg",
     "recursive_lin_reg",
     "rolling_lin_reg",
+    "rolling_lin_reg_1d",
     "lin_reg_report",
     "logistic_reg",
 ]
@@ -589,6 +590,15 @@ def rolling_lin_reg(
         if not x and not add_bias:
             raise ValueError("EWLS requires a predictor or an intercept.")
 
+        if len(x) == 1 and add_bias and null_policy.lower() == "skip":
+            return rolling_lin_reg_1d(
+                x[0],
+                target=target,
+                window_size=window_size,
+                half_life=half_life,
+                min_valid_rows=min_valid_rows,
+            )
+
     cols = [lr_formula(target).cast(dtype)]
     features = [lr_formula(z) for z in x]
     if len(features) > window_size:
@@ -618,6 +628,80 @@ def rolling_lin_reg(
     return pl_plugin(
         symbol=cfg._which_lin_reg("pl_rolling_lr"),
         args=cols,
+        kwargs=kwargs,
+        pass_name_to_apply=True,
+    )
+
+
+def rolling_lin_reg_1d(
+    x: str | pl.Expr,
+    *,
+    target: str | pl.Expr,
+    window_size: int,
+    half_life: float,
+    min_valid_rows: int | None = None,
+) -> pl.Expr:
+    """Exponentially weighted rolling regression for one predictor and an intercept.
+
+    This specialized implementation uses a staged Polars plan inside the plugin
+    and closed-form scalar formulas. Apply ``.over(...)`` to the returned expression
+    for grouped data, after sorting each group into the intended rolling order.
+
+    Rows where either input is null, NaN or infinite are excluded from the fit but
+    retain their position and age in the window. The first ``window_size - 1``
+    outputs are null. A missing current target does not prevent prediction, while
+    an invalid current predictor makes the prediction null.
+
+    The output is a struct with ``coeffs`` (slope followed by intercept) and
+    ``pred``, matching :func:`rolling_lin_reg`. This path deliberately supports
+    only the one-predictor, intercept, exponentially weighted ``skip`` case.
+
+    Parameters
+    ----------
+    x
+        The single predictor.
+    target
+        The target variable.
+    window_size
+        Number of original row positions in each rolling window. Must be at least 2.
+    half_life
+        Positive, finite exponential-weight half-life, measured in row positions.
+    min_valid_rows
+        Minimum valid observations required. Defaults to 2.
+
+    Examples
+    --------
+    >>> panel.sort(["asset", "date"]).with_columns(  # doctest: +SKIP
+    ...     rolling_lin_reg_1d(
+    ...         "market_return",
+    ...         target="stock_return",
+    ...         window_size=504,
+    ...         half_life=126.0,
+    ...         min_valid_rows=126,
+    ...     ).over("asset").alias("fit")
+    ... )
+    """
+    if window_size < 2:
+        raise ValueError("`window_size` must be >= 2.")
+    if not math.isfinite(half_life) or half_life <= 0:
+        raise ValueError("`half_life` must be positive and finite.")
+    if min_valid_rows is None:
+        min_valid_rows = 2
+    if not 1 <= min_valid_rows <= window_size:
+        raise ValueError("`min_valid_rows` must be between 1 and `window_size`.")
+
+    kwargs = {
+        "null_policy": "skip",
+        "n": window_size,
+        "bias": True,
+        "lambda": 0.0,
+        "min_size": min_valid_rows,
+        "half_life": float(half_life),
+    }
+    dtype = pl.Float64 if cfg.LIN_REG_EXPR_F64 else pl.Float32
+    return pl_plugin(
+        symbol=cfg._which_lin_reg("pl_rolling_lr_1d_expr"),
+        args=[lr_formula(target).cast(dtype), lr_formula(x).cast(dtype)],
         kwargs=kwargs,
         pass_name_to_apply=True,
     )
