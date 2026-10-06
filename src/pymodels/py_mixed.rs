@@ -5,9 +5,9 @@ use pyo3::prelude::*;
 
 #[pyclass(subclass)]
 pub struct PyMixedModel {
-    coeffs: Vec<f64>,
-    std_errors: Vec<f64>,
-    dfs: Vec<f64>,
+    coeffs: Box<[f64]>,
+    std_errors: Box<[f64]>,
+    dfs: Box<[f64]>,
     gamma: f64,
     resid_variance: f64,
     is_fit: bool,
@@ -18,9 +18,9 @@ impl PyMixedModel {
     #[new]
     pub fn new() -> Self {
         PyMixedModel {
-            coeffs: Vec::new(),
-            std_errors: Vec::new(),
-            dfs: Vec::new(),
+            coeffs: Box::default(),
+            std_errors: Box::default(),
+            dfs: Box::default(),
             gamma: 0.0,
             resid_variance: 0.0,
             is_fit: false,

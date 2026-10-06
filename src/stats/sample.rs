@@ -157,7 +157,7 @@ fn pl_perturb(inputs: &[Series]) -> PolarsResult<Series> {
             }
         }
         _ => Err(PolarsError::ComputeError(
-            "Input column must be floats.".into(),
+            "input column must be of float type".into(),
         )),
     }
 }
@@ -169,7 +169,7 @@ fn pl_jitter(inputs: &[Series]) -> PolarsResult<Series> {
     let std_ = std_.get(0).unwrap();
     if !std_.is_finite() {
         return Err(PolarsError::ComputeError(
-            "Input standard deviation is not finite.".into(),
+            "standard deviation must be finite".into(),
         ));
     }
 
@@ -193,7 +193,7 @@ fn pl_jitter(inputs: &[Series]) -> PolarsResult<Series> {
             Ok(out.into_series())
         }
         _ => Err(PolarsError::ComputeError(
-            "Input column must be floats.".into(),
+            "input column must be of float type".into(),
         )),
     }
 }
@@ -254,7 +254,7 @@ fn pl_rand_str(inputs: &[Series]) -> PolarsResult<Series> {
             Ok(out.into_series())
         }
         _ => Err(PolarsError::ComputeError(
-            "Input column must be floats.".into(),
+            "min_size must be less than or equal to max_size".into(),
         )),
     }
 }

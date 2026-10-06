@@ -96,7 +96,7 @@ fn pl_combinations(inputs: &[Series], kwargs: CombinationKwargs) -> PolarsResult
 
     if s.len() < k {
         return Err(PolarsError::ComputeError(
-            "Source has < k (unique) values.".into(),
+            "source has fewer than k values".into(),
         ));
     }
 
@@ -113,7 +113,7 @@ fn pl_combinations(inputs: &[Series], kwargs: CombinationKwargs) -> PolarsResult
         DataType::Float32 => Ok(get_combinations(s.f32().unwrap(), k)),
         DataType::Float64 => Ok(get_combinations(s.f64().unwrap(), k)),
         DataType::String => Ok(get_combinations_str(s.str().unwrap(), k)),
-        _ => Err(PolarsError::ComputeError("Unsupported data type.".into())),
+        _ => Err(PolarsError::ComputeError("unsupported data type".into())),
     }
 }
 
@@ -124,7 +124,7 @@ fn pl_product(inputs: &[Series]) -> PolarsResult<Series> {
 
     if s1.dtype() != s2.dtype() {
         return Err(PolarsError::ComputeError(
-            "Dtype of first input series is not the same as the second.".into(),
+            "inputs must have the same data type".into(),
         ));
     }
 
@@ -141,6 +141,6 @@ fn pl_product(inputs: &[Series]) -> PolarsResult<Series> {
         DataType::Float32 => Ok(get_product(s1.f32().unwrap(), s2.f32().unwrap())),
         DataType::Float64 => Ok(get_product(s1.f64().unwrap(), s2.f64().unwrap())),
         DataType::String => Ok(get_product_str(s1.str().unwrap(), s2.str().unwrap())),
-        _ => Err(PolarsError::ComputeError("Unsupported data type.".into())),
+        _ => Err(PolarsError::ComputeError("unsupported data type".into())),
     }
 }

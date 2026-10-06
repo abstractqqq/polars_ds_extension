@@ -35,9 +35,9 @@ pub enum KNNDist {
     LINF,
 }
 
-impl TryFrom<String> for KNNDist {
+impl TryFrom<&str> for KNNDist {
     type Error = String;
-    fn try_from(value: String) -> Result<Self, Self::Error> {
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
         if value.eq_ignore_ascii_case("l1") {
             Ok(KNNDist::L1)
         } else if value.eq_ignore_ascii_case("sql2") {
@@ -47,8 +47,22 @@ impl TryFrom<String> for KNNDist {
         } else if value.eq_ignore_ascii_case("linf") || value.eq_ignore_ascii_case("inf") {
             Ok(KNNDist::LINF)
         } else {
-            Err(format!("Unknown distance indicator: {}", value))
+            Err(format!("unknown distance metric: '{value}'"))
         }
+    }
+}
+
+impl TryFrom<String> for KNNDist {
+    type Error = String;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_str())
+    }
+}
+
+impl TryFrom<Box<str>> for KNNDist {
+    type Error = String;
+    fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
+        Self::try_from(&*value)
     }
 }
 

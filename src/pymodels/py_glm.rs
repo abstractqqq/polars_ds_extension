@@ -85,7 +85,7 @@ impl PyGLM {
     #[getter]
     pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArr>> {
         match self.glm.coeffs_as_vec() {
-            Ok(v) => Bound::new(py, PyArr(v)),
+            Ok(v) => Bound::new(py, PyArr(v.into())),
             Err(e) => Err(e.into()),
         }
     }

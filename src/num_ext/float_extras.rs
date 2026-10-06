@@ -86,7 +86,7 @@ fn pl_logit(inputs: &[Series]) -> PolarsResult<Series> {
             Ok(ca.apply_values(logit).into_series())
         }
         _ => Err(PolarsError::ComputeError(
-            "Input column must be numerical.".into(),
+            "input column must be of numeric type".into(),
         )),
     }
 }
@@ -112,7 +112,7 @@ fn pl_expit(inputs: &[Series]) -> PolarsResult<Series> {
             Ok(ca.apply_values(expit).into_series())
         }
         _ => Err(PolarsError::ComputeError(
-            "Input column must be numerical.".into(),
+            "input column must be of numeric type".into(),
         )),
     }
 }
@@ -138,7 +138,7 @@ fn pl_gamma(inputs: &[Series]) -> PolarsResult<Series> {
             Ok(ca.apply_values(f32::gamma).into_series())
         }
         _ => Err(PolarsError::ComputeError(
-            "Input column must be numerical.".into(),
+            "input column must be of numeric type".into(),
         )),
     }
 }
@@ -164,7 +164,7 @@ fn pl_exp2(inputs: &[Series]) -> PolarsResult<Series> {
             Ok(ca.apply_values(f32::exp2).into_series())
         }
         _ => Err(PolarsError::ComputeError(
-            "Input column must be numerical.".into(),
+            "input column must be of numeric type".into(),
         )),
     }
 }
@@ -190,7 +190,7 @@ fn pl_trunc(inputs: &[Series]) -> PolarsResult<Series> {
             Ok(ca.apply_values(f32::trunc).into_series())
         }
         _ => Err(PolarsError::ComputeError(
-            "Input column must be numerical.".into(),
+            "input column must be of numeric type".into(),
         )),
     }
 }
@@ -209,7 +209,7 @@ fn pl_fract(inputs: &[Series]) -> PolarsResult<Series> {
         }
         dt if dt.is_integer() => Ok(Series::from_vec(s.name().clone(), vec![0f32; s.len()])),
         _ => Err(PolarsError::ComputeError(
-            "Input column must be numerical.".into(),
+            "input column must be of numeric type".into(),
         )),
     }
 }
@@ -236,7 +236,7 @@ fn pl_next_up(inputs: &[Series]) -> PolarsResult<Series> {
             Ok(ca.apply_values(f32::next_up).into_series())
         }
         _ => Err(PolarsError::ComputeError(
-            "Input column must be numerical.".into(),
+            "input column must be of numeric type".into(),
         )),
     }
 }
@@ -263,7 +263,7 @@ fn pl_next_down(inputs: &[Series]) -> PolarsResult<Series> {
             Ok(ca.apply_values(f32::next_down).into_series())
         }
         _ => Err(PolarsError::ComputeError(
-            "Input column must be numerical.".into(),
+            "input column must be of numeric type".into(),
         )),
     }
 }
@@ -296,7 +296,7 @@ fn pl_diagamma(inputs: &[Series]) -> PolarsResult<Series> {
             Ok(ca.apply_values(digamma).into_series())
         }
         _ => Err(PolarsError::ComputeError(
-            "Input column must be numerical.".into(),
+            "input column must be of numeric type".into(),
         )),
     }
 }
@@ -317,20 +317,20 @@ fn pl_add_at(inputs: &[Series]) -> PolarsResult<Series> {
 
     if buffer_size == 0 {
         return Err(PolarsError::ComputeError(
-            "Buffer size cannot be 0 or indices is emtpy.".into(),
+            "buffer size cannot be 0 or indices is empty".into(),
         ));
     }
 
     let imax = indices.max().unwrap_or(0) as usize;
     if imax >= buffer_size {
         return Err(PolarsError::ComputeError(
-            "Max index is >= buffer size.".into(),
+            "max index must be less than buffer size".into(),
         ));
     }
 
     if indices.len() != values.len() {
-        Err(PolarsError::ComputeError(
-            "Indices and values don't have the same length.".into(),
+        Err(PolarsError::ShapeMismatch(
+            "inputs must have the same length".into(),
         ))
     } else {
         let mut output = vec![0f64; buffer_size];

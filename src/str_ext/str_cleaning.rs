@@ -10,16 +10,32 @@ enum NormalForm {
     NFKD,
 }
 
-impl TryFrom<String> for NormalForm {
+impl TryFrom<&str> for NormalForm {
     type Error = PolarsError;
-    fn try_from(value: String) -> PolarsResult<Self> {
+    fn try_from(value: &str) -> PolarsResult<Self> {
         match value.to_uppercase().as_ref() {
             "NFC" => Ok(Self::NFC),
             "NFKC" => Ok(Self::NFKC),
             "NFD" => Ok(Self::NFD),
             "NFKD" => Ok(Self::NFKD),
-            _ => Err(PolarsError::ComputeError("Unknown NormalizeForm.".into())),
+            _ => Err(PolarsError::ComputeError(
+                "unknown normalization form: expected 'NFC', 'NFKC', 'NFD', or 'NFKD'".into(),
+            )),
         }
+    }
+}
+
+impl TryFrom<String> for NormalForm {
+    type Error = PolarsError;
+    fn try_from(value: String) -> PolarsResult<Self> {
+        Self::try_from(value.as_str())
+    }
+}
+
+impl TryFrom<Box<str>> for NormalForm {
+    type Error = PolarsError;
+    fn try_from(value: Box<str>) -> PolarsResult<Self> {
+        Self::try_from(&*value)
     }
 }
 
@@ -39,9 +55,10 @@ fn remove_diacritics(inputs: &[Series]) -> PolarsResult<Series> {
     Ok(out.into_series())
 }
 
+// Deserialized plugin kwargs are read-only; Box<str> reduces size by 8 bytes per string.
 #[derive(serde::Deserialize)]
 struct NormalizeKwargs {
-    form: String,
+    form: Box<str>,
 }
 
 #[polars_expr(output_type=String)]
@@ -57,9 +74,11 @@ fn normalize_string(inputs: &[Series], kwargs: NormalizeKwargs) -> PolarsResult<
     Ok(out.into_series())
 }
 
+// In the word substitution map, keys and values are immutable.
+// Using `Box<str>` saves 16 bytes (8 bytes key + 8 bytes value) per hash map entry.
 #[derive(serde::Deserialize)]
 struct MapWordsKwargs {
-    mapping: foldhash::HashMap<String, String>,
+    mapping: foldhash::HashMap<Box<str>, Box<str>>,
 }
 
 #[polars_expr(output_type=String)]
@@ -69,7 +88,7 @@ fn map_words(inputs: &[Series], kwargs: MapWordsKwargs) -> PolarsResult<Series> 
     let out = ca.apply_into_string_amortized(|s, buf| {
         buf.push_str(
             s.split_whitespace()
-                .map(|word| mapping.get(word).map_or(word, |v| v))
+                .map(|word| mapping.get(word).map_or(word, |v| v.as_ref()))
                 .join(" ")
                 .as_ref(),
         )

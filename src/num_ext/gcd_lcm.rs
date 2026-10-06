@@ -16,7 +16,7 @@ fn pl_gcd(inputs: &[Series]) -> PolarsResult<Series> {
         Ok(out.into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length.".into(),
+            "inputs must have the same length".into(),
         ))
     }
 }
@@ -34,7 +34,7 @@ fn pl_lcm(inputs: &[Series]) -> PolarsResult<Series> {
         Ok(out.into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length.".into(),
+            "inputs must have the same length".into(),
         ))
     }
 }

@@ -20,11 +20,11 @@ pub enum LinalgErrors {
 impl LinalgErrors {
     pub fn to_string(self) -> String {
         match self {
-            Self::DimensionMismatch => "Dimension mismatch.".to_string(),
-            Self::NotContiguousArray => "Input array is not contiguous.".to_string(),
-            Self::MatNotLearnedYet => "Matrix is not learned yet.".to_string(),
-            Self::NotEnoughData => "Not enough rows / columns.".to_string(),
-            Self::NotContiguousOrEmpty => "Input is not contiguous or is empty".to_string(),
+            Self::DimensionMismatch => "inputs have mismatched dimensions".to_string(),
+            Self::NotContiguousArray => "input array is not contiguous".to_string(),
+            Self::MatNotLearnedYet => "matrix is not learned yet".to_string(),
+            Self::NotEnoughData => "number of samples must be greater than or equal to number of features".to_string(),
+            Self::NotContiguousOrEmpty => "input is not contiguous or is empty".to_string(),
             LinalgErrors::Other(s) => s,
         }
     }
@@ -40,10 +40,10 @@ pub enum NullPolicy<T: Float + FromStr> {
     FILL_WINDOW(T), // `FILL`` rolling. Doesn't drop data. A specialized algorithm will handle this.
 }
 
-impl<T: Float + FromStr> TryFrom<String> for NullPolicy<T> {
+impl<T: Float + FromStr> TryFrom<&str> for NullPolicy<T> {
     type Error = String;
 
-    fn try_from(value: String) -> Result<Self, Self::Error> {
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
         if value.eq_ignore_ascii_case("raise") {
             Ok(Self::RAISE)
         } else if value.eq_ignore_ascii_case("skip") {
@@ -59,8 +59,24 @@ impl<T: Float + FromStr> TryFrom<String> for NullPolicy<T> {
         } else {
             match value.parse::<T>() {
                 Ok(x) => Ok(Self::FILL(x)),
-                Err(_) => Err("Invalid NullPolicy.".into()),
+                Err(_) => Err("invalid null_policy: expected 'raise', 'skip', 'zero', 'one', 'ignore', 'skip_window', or a numeric fill value".into()),
             }
         }
+    }
+}
+
+impl<T: Float + FromStr> TryFrom<String> for NullPolicy<T> {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_str())
+    }
+}
+
+impl<T: Float + FromStr> TryFrom<Box<str>> for NullPolicy<T> {
+    type Error = String;
+
+    fn try_from(value: Box<str>) -> Result<Self, Self::Error> {
+        Self::try_from(&*value)
     }
 }

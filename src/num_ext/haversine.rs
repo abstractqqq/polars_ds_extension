@@ -47,7 +47,7 @@ where
         Ok(out)
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }

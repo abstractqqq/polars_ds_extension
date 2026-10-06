@@ -24,18 +24,20 @@ use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use serde::Deserialize;
 
+// Deserialized plugin kwargs are read-only; using `Box<str>` instead of `String`
+// reduces each string field from 24 bytes (ptr + cap + len) to 16 bytes (ptr + len).
 #[derive(Deserialize, Debug)]
 pub(crate) struct LRKwargs {
     pub(crate) bias: bool,
-    pub(crate) null_policy: String,
-    pub(crate) solver: String,
+    pub(crate) null_policy: Box<str>,
+    pub(crate) solver: Box<str>,
     pub(crate) l1_reg: f64,
     pub(crate) l2_reg: f64,
     pub(crate) tol: f64,
     #[serde(default)]
     pub(crate) weighted: bool,
     #[serde(default)]
-    pub(crate) std_err: String,
+    pub(crate) std_err: Box<str>,
     #[serde(default)]
     pub(crate) positive: bool,
     #[serde(default)]
@@ -47,8 +49,8 @@ pub(crate) struct LRKwargs {
 #[derive(Deserialize, Debug)]
 pub(crate) struct MultiLRKwargs {
     pub(crate) bias: bool,
-    pub(crate) null_policy: String,
-    pub(crate) solver: String,
+    pub(crate) null_policy: Box<str>,
+    pub(crate) solver: Box<str>,
     pub(crate) last_target_idx: usize,
     pub(crate) l2_reg: f64,
     #[serde(default)]
@@ -58,7 +60,7 @@ pub(crate) struct MultiLRKwargs {
 // Sherman-William-Woodbury (Update, online versions) LRKwargs
 #[derive(Deserialize, Debug)]
 pub(crate) struct SWWLRKwargs {
-    pub(crate) null_policy: String,
+    pub(crate) null_policy: Box<str>,
     pub(crate) n: usize,
     pub(crate) bias: bool,
     pub(crate) lambda: f64,
@@ -121,15 +123,27 @@ pub enum StandardError {
     HC3,
 }
 
-impl From<String> for StandardError {
-    fn from(value: String) -> Self {
-        match value.as_str() {
+impl From<&str> for StandardError {
+    fn from(value: &str) -> Self {
+        match value {
             "hc0" => Self::HC0,
             "hc1" => Self::HC1,
             "hc2" => Self::HC2,
             "hc3" => Self::HC3,
             _ => Self::SE,
         }
+    }
+}
+
+impl From<String> for StandardError {
+    fn from(value: String) -> Self {
+        Self::from(value.as_str())
+    }
+}
+
+impl From<Box<str>> for StandardError {
+    fn from(value: Box<str>) -> Self {
+        Self::from(&*value)
     }
 }
 
@@ -166,11 +180,11 @@ pub fn series_to_mat_for_lr(
     if !has_null {
         let nrows = inputs[0].len();
         if nrows == 0 {
-            return Err(PolarsError::ComputeError("Empty data".into()));
+            return Err(PolarsError::ComputeError("input data is empty".into()));
         }
         if nrows < n_features {
             return Err(PolarsError::ComputeError(
-                "#Data < #features. No conclusive result.".into(),
+                "number of samples must be greater than or equal to number of features".into(),
             ));
         }
         let extra = if add_bias { nrows } else { 0 };
@@ -188,7 +202,7 @@ pub fn series_to_mat_for_lr(
 
     let mut df = to_frame(inputs)?;
     if df.height() == 0 {
-        return Err(PolarsError::ComputeError("Empty data".into()));
+        return Err(PolarsError::ComputeError("input data is empty".into()));
     }
     // Has null
     let (df, mask) = match null_policy {
@@ -197,7 +211,7 @@ pub fn series_to_mat_for_lr(
             // false, because it has nulls
             Ok((df, BooleanChunked::from_slice("".into(), &[false])))
         }
-        NullPolicy::RAISE => Err(PolarsError::ComputeError("Nulls found in data".into())),
+        NullPolicy::RAISE => Err(PolarsError::ComputeError("null values found in data".into())),
         NullPolicy::SKIP => {
             let mask = inputs[1..]
                 .iter()
@@ -252,7 +266,7 @@ pub fn series_to_mat_for_lr(
     let nrows = df.height();
     if nrows < n_features {
         Err(PolarsError::ComputeError(
-            "#Data < #features. No conclusive result.".into(),
+            "number of samples must be greater than or equal to number of features".into(),
         ))
     } else {
         let extra = if add_bias { nrows } else { 0 };
@@ -286,7 +300,7 @@ fn series_to_mat_for_multi_lr(
     if !has_null {
         let nrows = inputs[0].len();
         if nrows == 0 {
-            return Err(PolarsError::ComputeError("Empty data".into()));
+            return Err(PolarsError::ComputeError("input data is empty".into()));
         }
         let extra = if add_bias { nrows } else { 0 };
         let mut mat_slice = series_to_slice_with_extra_cap_unchecked::<Float64Type>(
@@ -301,7 +315,7 @@ fn series_to_mat_for_multi_lr(
     }
 
     let df = match null_policy {
-        NullPolicy::RAISE => Err(PolarsError::ComputeError("Nulls found in data".into())),
+        NullPolicy::RAISE => Err(PolarsError::ComputeError("null values found in data".into())),
 
         NullPolicy::FILL(x) => {
             let df = DataFrame::new(
@@ -313,7 +327,7 @@ fn series_to_mat_for_multi_lr(
                 // There will be too many masks we need to keep track of.
                 // This can be dealt with but I won't implement it for now.
                 Err(PolarsError::ComputeError(
-                    "Filling null doesn't work for multi-target lstsq when there are nulls in any of the targets.".into(),
+                    "filling nulls is not supported for multi-target linear regression when targets contain nulls".into(),
                 ))
             } else {
                 let filled = inputs[last_target_idx..]
@@ -329,13 +343,13 @@ fn series_to_mat_for_multi_lr(
             }
         }
         _ => Err(PolarsError::ComputeError(
-            "The null policy is not supported by multi-target linear regression.".into(),
+            "null_policy is not supported for multi-target linear regression".into(),
         )),
     }?;
 
     let nrows = df.height();
     if df.height() == 0 {
-        Err(PolarsError::ComputeError("Empty data".into()))
+        Err(PolarsError::ComputeError("input data is empty".into()))
     } else {
         let extra = if add_bias { nrows } else { 0 };
         let mut mat_slice = columns_to_vec_with_extra_cap::<Float64Type>(
@@ -424,7 +438,7 @@ fn pl_lr(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
-    let solver = kwargs.solver.as_str().into();
+    let solver = kwargs.solver.as_ref().into();
     let max_iter = kwargs.max_iter;
     let weighted = kwargs.weighted;
     let data_for_matrix = if weighted { &inputs[1..] } else { inputs };
@@ -441,7 +455,7 @@ fn pl_lr(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
                 let weights = weights.cont_slice().unwrap();
                 if weights.len() != nrows {
                     return Err(PolarsError::ComputeError(
-                        "Shape of weights is not the same as the data.".into(),
+                        "weights length does not match number of samples".into(),
                     ));
                 }
                 faer_weighted_lr(x, y, weights, solver)
@@ -519,7 +533,7 @@ fn pl_lr(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
 #[polars_expr(output_type_func=coeff_output)]
 fn pl_lr_multi(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
-    let solver = kwargs.solver.as_str().into();
+    let solver = kwargs.solver.as_ref().into();
     let last_target_idx = kwargs.last_target_idx;
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
@@ -565,7 +579,7 @@ fn pl_lr_multi(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Series>
         }
         _ => {
             return Err(PolarsError::ComputeError(
-                "The method is not supported.".into(),
+                "method is not supported".into(),
             ))
         }
     };
@@ -589,7 +603,7 @@ fn pl_lr_multi(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Series>
 #[polars_expr(output_type_func=pred_residue_output)]
 fn pl_lr_multi_pred(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Series> {
     let add_bias = kwargs.bias;
-    let solver = kwargs.solver.as_str().into();
+    let solver = kwargs.solver.as_ref().into();
     let last_target_idx = kwargs.last_target_idx;
     let null_policy = NullPolicy::try_from(kwargs.null_policy)
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
@@ -629,7 +643,7 @@ fn pl_lr_multi_pred(inputs: &[Series], kwargs: MultiLRKwargs) -> PolarsResult<Se
         }
         _ => {
             return Err(PolarsError::ComputeError(
-                "The method is not supported.".into(),
+                "method is not supported".into(),
             ))
         }
     };
@@ -710,7 +724,7 @@ fn pl_lr_pred(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
     let max_iter = kwargs.max_iter;
-    let solver = kwargs.solver.as_str().into();
+    let solver = kwargs.solver.as_ref().into();
     let weighted = kwargs.weighted;
     let data_for_matrix = if weighted { &inputs[1..] } else { inputs };
 
@@ -724,7 +738,7 @@ fn pl_lr_pred(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
                 let weights = weights.cont_slice().unwrap();
                 if weights.len() != nrows {
                     return Err(PolarsError::ComputeError(
-                        "Length of weights and data in X must be the same.".into(),
+                        "weights length does not match number of samples".into(),
                     ));
                 }
                 faer_weighted_lr(x, y, weights, solver)

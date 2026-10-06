@@ -61,7 +61,7 @@ fn pl_f_test(inputs: &[Series]) -> PolarsResult<Series> {
 
     if n_classes <= 1 || n_samples <= 1 {
         return Err(PolarsError::ComputeError(
-            "F-stats: n_classes <= 1 in target or n_samples <= 1.".into(),
+            "f-stats requires more than 1 class and more than 1 sample".into(),
         ));
     }
 

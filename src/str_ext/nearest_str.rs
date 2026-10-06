@@ -3,14 +3,15 @@ use pyo3_polars::derive::polars_expr;
 use rapidfuzz::distance::{hamming, levenshtein};
 use serde::Deserialize;
 
+// Deserialized plugin kwargs are read-only; Box<str> reduces size by 8 bytes per string.
 #[derive(Deserialize, Debug)]
 pub(crate) struct NearestStrKwargs {
-    pub(crate) word: String,
-    pub(crate) metric: String,
+    pub(crate) word: Box<str>,
+    pub(crate) metric: Box<str>,
     pub(crate) threshold: usize,
 }
 
-fn levenshtein_nearest<'a>(s: &'a StringChunked, cutoff: usize, word: String) -> Option<&'a str> {
+fn levenshtein_nearest<'a>(s: &'a StringChunked, cutoff: usize, word: &str) -> Option<&'a str> {
     let batched = levenshtein::BatchComparator::new(word.chars());
     // Most similar == having smallest distance
     let mut best: usize = usize::MAX;
@@ -32,7 +33,7 @@ fn levenshtein_nearest<'a>(s: &'a StringChunked, cutoff: usize, word: String) ->
     nearest_str
 }
 
-fn hamming_nearest<'a>(s: &'a StringChunked, cutoff: usize, word: String) -> Option<&'a str> {
+fn hamming_nearest<'a>(s: &'a StringChunked, cutoff: usize, word: &str) -> Option<&'a str> {
     let batched = hamming::BatchComparator::new(word.chars());
     let mut actual_cutoff = hamming::Args::default().score_cutoff(cutoff);
     let mut best: usize = usize::MAX;
@@ -61,12 +62,12 @@ pub fn pl_nearest_str(inputs: &[Series], kwargs: NearestStrKwargs) -> PolarsResu
     let s = inputs[0].str()?;
     let word = kwargs.word;
     let cutoff = kwargs.threshold;
-    let func = match kwargs.metric.as_str() {
+    let func = match &*kwargs.metric {
         "hamming" => hamming_nearest,
         _ => levenshtein_nearest,
     };
     let mut builder = StringChunkedBuilder::new(s.name().clone(), 1);
-    builder.append_option(func(s, cutoff, word));
+    builder.append_option(func(s, cutoff, &word));
     let ca = builder.finish();
     Ok(ca.into_series())
 }

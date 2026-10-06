@@ -12,14 +12,15 @@ use std::ops::Range;
 
 struct CrossProducts<T: RealField + Float> {
     gram: Mat<T>,
-    rhs: Vec<T>,
+    // Fixed dimension `p` (number of features), Box<[T]> eliminates capacity tracking
+    rhs: Box<[T]>,
 }
 
 impl<T: RealField + Float> CrossProducts<T> {
     fn new(p: usize) -> Self {
         Self {
             gram: Mat::zeros(p, p),
-            rhs: vec![T::zero(); p],
+            rhs: vec![T::zero(); p].into_boxed_slice(),
         }
     }
 

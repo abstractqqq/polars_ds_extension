@@ -253,7 +253,7 @@ pub fn faer_solve_lr_rcond<T: RealField + Float>(
             let weights = svd.V() * z;
             Ok((weights, singular_values))
         }
-        _ => Err("SVD failed.".to_string()),
+        _ => Err("svd algorithm did not converge".to_string()),
     }
 }
 

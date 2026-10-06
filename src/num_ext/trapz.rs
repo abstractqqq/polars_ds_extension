@@ -42,8 +42,8 @@ fn pl_trapz(inputs: &[Series]) -> PolarsResult<Series> {
         let ca = Float64Chunked::from_slice("".into(), &[trapz(y, x)]);
         Ok(ca.into_series())
     } else {
-        Err(PolarsError::ComputeError(
-            "Input must have the same length or x must be a scalar.".into(),
+        Err(PolarsError::ShapeMismatch(
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }

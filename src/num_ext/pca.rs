@@ -68,7 +68,7 @@ fn pl_singular_values(inputs: &[Series]) -> PolarsResult<Series> {
         ))),
         Default::default(),
     )
-    .map_err(|_| PolarsError::ComputeError("SVD algorithm did not converge.".into()))?;
+    .map_err(|_| PolarsError::ComputeError("svd algorithm did not converge".into()))?;
 
     let mut list_builder: ListPrimitiveChunkedBuilder<Float64Type> =
         ListPrimitiveChunkedBuilder::new("singular_values".into(), 1, dim, DataType::Float64);
@@ -114,7 +114,7 @@ fn pl_principal_components(inputs: &[Series]) -> PolarsResult<Series> {
             ))),
             Default::default(),
         )
-        .map_err(|_| PolarsError::ComputeError("SVD algorithm did not converge.".into()))?;
+        .map_err(|_| PolarsError::ComputeError("svd algorithm did not converge".into()))?;
 
         let components = mat * v;
 
@@ -161,7 +161,7 @@ fn pl_pca(inputs: &[Series]) -> PolarsResult<Series> {
         ))),
         Default::default(),
     )
-    .map_err(|_| PolarsError::ComputeError("SVD algorithm did not converge.".into()))?;
+    .map_err(|_| PolarsError::ComputeError("svd algorithm did not converge".into()))?;
 
     let mut builder: PrimitiveChunkedBuilder<Float64Type> =
         PrimitiveChunkedBuilder::new("singular_value".into(), dim);

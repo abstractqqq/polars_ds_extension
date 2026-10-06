@@ -117,7 +117,7 @@ fn pl_levenshtein(
         }
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }
@@ -215,7 +215,7 @@ fn pl_levenshtein_filter(
         Ok(out.into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }
@@ -253,7 +253,7 @@ fn pl_levenshtein_sim(
         }
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }
@@ -296,7 +296,7 @@ fn pl_d_levenshtein(
         }
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }
@@ -339,7 +339,7 @@ fn pl_d_levenshtein_sim(
         }
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }

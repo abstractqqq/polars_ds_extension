@@ -11,10 +11,11 @@ use pyo3_polars::{
 use realfft::RealFftPlanner;
 use serde::Deserialize;
 
+// Deserialized plugin kwargs are read-only; Box<str> saves 8 bytes per string field.
 #[derive(Deserialize, Debug)]
 pub(crate) struct ConvolveKwargs {
-    pub(crate) mode: String,
-    pub(crate) method: String,
+    pub(crate) mode: Box<str>,
+    pub(crate) method: Box<str>,
     pub(crate) parallel: bool,
 }
 
@@ -26,19 +27,38 @@ enum ConvMode {
     VALID,
 }
 
+impl TryFrom<&str> for ConvMode {
+    type Error = PolarsError;
+    fn try_from(value: &str) -> PolarsResult<Self> {
+        if value.eq_ignore_ascii_case("full") {
+            Ok(Self::FULL)
+        } else if value.eq_ignore_ascii_case("same") {
+            Ok(Self::SAME)
+        } else if value.eq_ignore_ascii_case("left") {
+            Ok(Self::LEFT)
+        } else if value.eq_ignore_ascii_case("right") {
+            Ok(Self::RIGHT)
+        } else if value.eq_ignore_ascii_case("valid") {
+            Ok(Self::VALID)
+        } else {
+            Err(PolarsError::ComputeError(
+                "unknown convolution mode: expected 'full', 'same', 'left', 'right', or 'valid'".into(),
+            ))
+        }
+    }
+}
+
+impl TryFrom<Box<str>> for ConvMode {
+    type Error = PolarsError;
+    fn try_from(value: Box<str>) -> PolarsResult<Self> {
+        Self::try_from(value.as_ref())
+    }
+}
+
 impl TryFrom<String> for ConvMode {
     type Error = PolarsError;
     fn try_from(value: String) -> PolarsResult<Self> {
-        match value.to_lowercase().as_ref() {
-            "full" => Ok(Self::FULL),
-            "same" => Ok(Self::SAME),
-            "left" => Ok(Self::LEFT),
-            "right" => Ok(Self::RIGHT),
-            "valid" => Ok(Self::VALID),
-            _ => Err(PolarsError::ComputeError(
-                "Unknown convolution mode.".into(),
-            )),
-        }
+        Self::try_from(value.as_str())
     }
 }
 
@@ -47,16 +67,32 @@ enum ConvMethod {
     DIRECT,
 }
 
+impl TryFrom<&str> for ConvMethod {
+    type Error = PolarsError;
+    fn try_from(value: &str) -> PolarsResult<Self> {
+        if value.eq_ignore_ascii_case("fft") {
+            Ok(Self::FFT)
+        } else if value.eq_ignore_ascii_case("direct") {
+            Ok(Self::DIRECT)
+        } else {
+            Err(PolarsError::ComputeError(
+                "unknown convolution method: expected 'fft' or 'direct'".into(),
+            ))
+        }
+    }
+}
+
+impl TryFrom<Box<str>> for ConvMethod {
+    type Error = PolarsError;
+    fn try_from(value: Box<str>) -> PolarsResult<Self> {
+        Self::try_from(value.as_ref())
+    }
+}
+
 impl TryFrom<String> for ConvMethod {
     type Error = PolarsError;
     fn try_from(value: String) -> PolarsResult<Self> {
-        match value.to_lowercase().as_ref() {
-            "fft" => Ok(Self::FFT),
-            "direct" => Ok(Self::DIRECT),
-            _ => Err(PolarsError::ComputeError(
-                "Unknown convolution method.".into(),
-            )),
-        }
+        Self::try_from(value.as_str())
     }
 }
 
@@ -202,7 +238,7 @@ fn pl_convolve(
 
     if s1.len() < s2.len() || s2.len() < 2 {
         return Err(PolarsError::ComputeError(
-            "Convolution: The kernel should have smaller length than the input column, and kernel should have length >= 2.".into(),
+            "kernel length must be at least 2 and cannot be greater than input length".into(),
         ));
     }
 

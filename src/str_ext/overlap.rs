@@ -1,4 +1,4 @@
-use super::{str_set_sim_helper, str_to_hashset};
+use super::{fill_str_hashset, str_set_sim_helper, str_to_hashset};
 use crate::utils::split_offsets;
 use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
@@ -16,8 +16,13 @@ fn overlap_coeff(w1: &str, w2: &str, ngram: usize) -> f64 {
 }
 
 #[inline(always)]
-fn overlap_coeff_cached(w1: &str, cached_s2: &foldhash::HashSet<&[u8]>, ngram: usize) -> f64 {
-    let s1 = str_to_hashset(w1, ngram);
+fn overlap_coeff_cached_scratch<'a>(
+    w1: &'a str,
+    cached_s2: &foldhash::HashSet<&[u8]>,
+    ngram: usize,
+    s1: &mut foldhash::HashSet<&'a [u8]>,
+) -> f64 {
+    fill_str_hashset(w1, ngram, s1);
     let intersection = s1.intersection(cached_s2).count();
     (intersection as f64) / ((s1.len().min(cached_s2.len())) as f64)
 }
@@ -32,7 +37,7 @@ fn pl_overlap_coeff(inputs: &[Series], context: CallerContext) -> PolarsResult<S
     let ngram = ngram.get(0).unwrap() as usize;
     // parallel
     let parallel = inputs[3].bool()?;
-    let parallel = parallel.get(0).unwrap();
+    let parallel = parallel.get(0).unwrap_or(false);
     let can_parallel = parallel && !context.parallel();
 
     if ca2.len() == 1 {
@@ -42,17 +47,19 @@ fn pl_overlap_coeff(inputs: &[Series], context: CallerContext) -> PolarsResult<S
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
             let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let mut scratch = foldhash::HashSet::default();
                 let s1 = ca1.slice(offset as i64, len);
                 let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| {
-                    overlap_coeff_cached(s, &cached_r_set, ngram)
+                    overlap_coeff_cached_scratch(s, &cached_r_set, ngram, &mut scratch)
                 });
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             Float64Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
+            let mut scratch = foldhash::HashSet::default();
             ca1.apply_nonnull_values_generic(DataType::Float64, |s| {
-                overlap_coeff_cached(s, &cached_r_set, ngram)
+                overlap_coeff_cached_scratch(s, &cached_r_set, ngram, &mut scratch)
             })
         };
         Ok(out.into_series())
@@ -76,7 +83,7 @@ fn pl_overlap_coeff(inputs: &[Series], context: CallerContext) -> PolarsResult<S
         Ok(out.into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }

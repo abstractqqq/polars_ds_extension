@@ -32,7 +32,7 @@ fn pl_subseq_sim_cnt_l2(
 
     if query.len() > seq.len() {
         return Err(PolarsError::ComputeError(
-            "Not enough data points for the query.".into(),
+            "query length cannot be greater than sequence length".into(),
         ));
     }
 

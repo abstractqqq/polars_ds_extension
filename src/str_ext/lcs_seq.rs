@@ -88,7 +88,7 @@ fn pl_lcs_subseq(inputs: &[Series], context: CallerContext) -> PolarsResult<Seri
     let ca1 = inputs[0].str()?;
     let ca2 = inputs[1].str()?;
     let parallel = inputs[2].bool()?;
-    let parallel = parallel.get(0).unwrap();
+    let parallel = parallel.get(0).unwrap_or(false);
     let can_parallel = parallel && !context.parallel();
     if ca2.len() == 1 {
         let r = ca2.get(0).unwrap();
@@ -122,7 +122,7 @@ fn pl_lcs_subseq(inputs: &[Series], context: CallerContext) -> PolarsResult<Seri
         }
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }
@@ -142,7 +142,7 @@ fn pl_lcs_subseq_dist(inputs: &[Series], context: CallerContext) -> PolarsResult
         Ok(generic_binary_distance(lcs_seq, ca1, ca2, can_parallel))
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }
@@ -162,7 +162,7 @@ fn pl_lcs_subseq_sim(inputs: &[Series], context: CallerContext) -> PolarsResult<
         Ok(generic_binary_sim(lcs_seq_sim, ca1, ca2, can_parallel))
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }

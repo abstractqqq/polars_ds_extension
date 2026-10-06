@@ -64,7 +64,7 @@ fn pl_normal_test(inputs: &[Series]) -> PolarsResult<Series> {
 
     if n < 20 {
         return Err(PolarsError::ComputeError(
-            "Normal Test: Input should have non-null length >= 20.".into(),
+            "normal test requires at least 20 non-null values".into(),
         ));
     }
 

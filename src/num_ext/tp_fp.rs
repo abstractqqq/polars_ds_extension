@@ -37,7 +37,7 @@ fn tp_fp_frame(
         || predicted.has_nulls()
     {
         return Err(PolarsError::ComputeError(
-            "ROC AUC: Input columns must be the same length, non-empty, numeric, and shouldn't contain nulls."
+            "roc auc: input columns must be non-empty, equal length, numeric, and contain no null values"
             .into(),
         ));
     }

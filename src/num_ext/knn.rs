@@ -26,11 +26,12 @@ pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new("knn_dist".into(), DataType::Struct(v)))
 }
 
+// Deserialized plugin kwargs are read-only; Box<str> avoids 8 bytes of unused capacity per string.
 #[derive(Deserialize)]
 pub(crate) struct KNNAvgKwargs {
     // pub(crate) leaf_size: usize,
     pub(crate) k: usize,
-    pub(crate) metric: String,
+    pub(crate) metric: Box<str>,
     #[serde(default)]
     pub(crate) weighted: bool,
     #[serde(default)]
@@ -44,7 +45,7 @@ pub(crate) struct KNNAvgKwargs {
 pub(crate) struct KDTKwargs {
     // pub(crate) leaf_size: usize,
     pub(crate) k: usize,
-    pub(crate) metric: String,
+    pub(crate) metric: Box<str>,
     #[serde(default)]
     pub(crate) parallel: bool,
     #[serde(default)]
@@ -63,7 +64,7 @@ fn _max_bound() -> f64 {
 pub(crate) struct KDTRadiusKwargs {
     // pub(crate) leaf_size: usize,
     pub(crate) r: f64,
-    pub(crate) metric: String,
+    pub(crate) metric: Box<str>,
     pub(crate) parallel: bool,
     pub(crate) sort: bool,
 }
@@ -791,7 +792,7 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
             .into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }
