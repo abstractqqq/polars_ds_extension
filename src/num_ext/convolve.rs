@@ -229,8 +229,10 @@ fn pl_convolve(
     context: CallerContext,
     kwargs: ConvolveKwargs,
 ) -> PolarsResult<Series> {
-    let s1 = inputs[0].f64()?;
-    let s2 = inputs[1].f64()?;
+    let binding1 = inputs[0].rechunk();
+    let binding2 = inputs[1].rechunk();
+    let s1 = binding1.f64()?;
+    let s2 = binding2.f64()?;
 
     let mode: ConvMode = kwargs.mode.try_into()?;
     let method: ConvMethod = kwargs.method.try_into()?;

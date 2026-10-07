@@ -304,6 +304,7 @@ fn pl_lr_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
 
             let coeffs = if weighted {
                 let binding = inputs[0].cast(&DataType::Float32)?;
+                let binding = binding.rechunk();
                 let weights = binding.f32().unwrap();
                 let weights = weights.cont_slice().unwrap();
                 if weights.len() != nrows {
@@ -581,6 +582,7 @@ fn pl_lr_pred_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series> {
             let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
             let coeffs = if weighted {
                 let binding = inputs[0].cast(&DataType::Float32)?;
+                let binding = binding.rechunk();
                 let weights = binding.f32().unwrap();
                 let weights = weights.cont_slice().unwrap();
                 if weights.len() != nrows {
@@ -850,11 +852,8 @@ fn pl_wls_report_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
     // weights at inputs[0] needs cont_slice downstream → require single chunk.
-    let binding = if inputs[0].dtype() == &DataType::Float32 && inputs[0].n_chunks() == 1 {
-        inputs[0].clone()
-    } else {
-        inputs[0].cast(&DataType::Float32)?
-    };
+    let binding = inputs[0].cast(&DataType::Float32)?;
+    let binding = binding.rechunk();
     let weights = binding.f32().unwrap();
     let weights = weights.cont_slice().unwrap();
     let binding2 = if inputs[1].dtype() == &DataType::Float32 {

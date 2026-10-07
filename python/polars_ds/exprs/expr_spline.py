@@ -28,11 +28,11 @@ def smooth_spline(x: str | pl.Expr, y: str | pl.Expr, lambda_: float) -> pl.Expr
         the curve will have.
     """
     if lambda_ < 0.0:
-        raise ValueError("Input `lambda_` must be nonnegative.")
+        raise ValueError("'lambda_' must be non-negative")
 
     xx, yy = to_expr(x), to_expr(y)
     return pl_plugin(
         symbol="pl_smooth_spline",
-        args=[xx.cast(pl.Float64).rechunk(), yy.cast(pl.Float64).rechunk()],
+        args=[xx.cast(pl.Float64), yy.cast(pl.Float64)],
         kwargs={"lambda": lambda_},
     )

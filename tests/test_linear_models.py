@@ -33,7 +33,7 @@ def test_lr_null_policies_for_np():
 
     with pytest.raises(Exception) as exc_info:
         _handle_nans_in_np(x, y, "raise")
-        assert str(exc_info.value) == "Nulls found in X or y."
+    assert str(exc_info.value) == "null values found in data"
 
     x_skipped, _ = _handle_nans_in_np(x, y, "skip")
     assert np.all(x_skipped == x[~nulls])

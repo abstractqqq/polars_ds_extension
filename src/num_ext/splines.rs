@@ -98,13 +98,14 @@ pub fn faer_smooth_spline(x: &[f64], y: &[f64], lambda: f64) -> Result<Mat<f64>,
 
 #[polars_expr(output_type=Float64)]
 fn pl_smooth_spline(inputs: &[Series], kwargs: SplineKwargs) -> PolarsResult<Series> {
-    let x = inputs[0].f64()?;
-    let y = inputs[1].f64()?;
+    let binding_x = inputs[0].rechunk();
+    let binding_y = inputs[1].rechunk();
+    let x = binding_x.f64()?;
+    let y = binding_y.f64()?;
 
     if x.has_nulls() | y.has_nulls() {
         return Err(PolarsError::ComputeError("null values found in data".into()));
     }
-    // Make sure they are 1 chunk in Python
     let x_slice = x.cont_slice().unwrap();
     let y_slice = y.cont_slice().unwrap();
     let lambda = kwargs.lambda;

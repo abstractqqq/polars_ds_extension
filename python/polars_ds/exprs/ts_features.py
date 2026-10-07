@@ -85,7 +85,7 @@ def query_mean_n_abs_max(x: str | pl.Expr, n_maxima: int) -> pl.Expr:
     Returns the average of the top `n_maxima` of |x|.
     """
     if n_maxima <= 0:
-        raise ValueError("The number of maxima should be > 0.")
+        raise ValueError("number of maxima must be > 0")
     return to_expr(x).abs().top_k(n_maxima).mean()
 
 
@@ -271,16 +271,16 @@ def query_similar_count(
 
     q = pl.Series(name="", values=query, dtype=pl.Float64)
     if q.null_count() > 0:
-        raise ValueError("Nulls found in the query subsequence.")
+        raise ValueError("null values found in query subsequence")
     if len(q) <= 1:
-        raise ValueError("Length of the query should be > 1.")
+        raise ValueError("query length must be > 1")
 
     t = to_expr(target)
     kwargs = {"threshold": threshold, "parallel": parallel}
     if metric == "sql2":
         result = pl_plugin(
             symbol="pl_subseq_sim_cnt_l2",
-            args=[t.cast(pl.Float64).rechunk(), q],
+            args=[t.cast(pl.Float64), q],
             kwargs=kwargs,
             returns_scalar=True,
         )
@@ -292,10 +292,10 @@ def query_similar_count(
         )
         qq = pl.lit(q)
         args = [
-            t.cast(pl.Float64).rechunk(),
-            ((qq - qq.mean()) / qq.std()).rechunk(),
-            rolling_mean.rechunk(),
-            rolling_var.rechunk(),
+            t.cast(pl.Float64),
+            (qq - qq.mean()) / qq.std(),
+            rolling_mean,
+            rolling_var,
         ]
         result = pl_plugin(
             symbol="pl_subseq_sim_cnt_zl2",
@@ -304,7 +304,7 @@ def query_similar_count(
             returns_scalar=True,
         )
     else:
-        raise ValueError(f"Unsupported metric {metric}.")
+        raise ValueError(f"unsupported metric: '{metric}'")
 
     if return_ratio:
         return result / (t.len() - len(q) + 1)
@@ -444,11 +444,11 @@ def query_ar_coeffs(
                 raise
         except Exception:
             raise ValueError(
-                "`null_polocy` must be 'raise', 'one', 'zero' or any finite numeric string for AR coefficients."
+                "'null_policy' must be 'raise', 'one', 'zero', or a finite numeric string for AR coefficients"
             )
 
     if lag <= 0:
-        raise ValueError("`lag` must be > 0.")
+        raise ValueError("'lag' must be > 0")
 
     from . import lin_reg
 
@@ -544,7 +544,7 @@ def query_sample_entropy(
     https://en.wikipedia.org/wiki/Sample_entropy
     """
     if m <= 1:
-        raise ValueError("Input `m` must be > 1.")
+        raise ValueError("'m' must be > 1")
 
     t = to_expr(ts)
     r = ratio * t.std(ddof=0)
@@ -604,7 +604,7 @@ def query_approx_entropy(
     """
 
     if filtering_level <= 0 or m <= 1:
-        raise ValueError("Filter level must be positive and m must be > 1.")
+        raise ValueError("filter level must be positive and 'm' must be > 1")
 
     t = to_expr(ts)
     if scale_by_std:
@@ -660,9 +660,9 @@ def query_knn_entropy(
     https://arxiv.org/pdf/1506.06501v1.pdf
     """
     if k <= 0:
-        raise ValueError("Input `k` must be > 0.")
+        raise ValueError("'k' must be > 0")
     if dist not in ["l2", "inf"]:
-        raise ValueError("Invalid metric for KNN entropy.")
+        raise ValueError("invalid metric for knn entropy: expected 'l2' or 'inf'")
 
     return pl_plugin(
         symbol="pl_knn_entropy",
@@ -722,7 +722,7 @@ def query_transfer_entropy(
     Jian Ma. Estimating Transfer Entropy via Copula Entropy. arXiv preprint arXiv:1910.04375, 2019.
     """
     if lag < 1:
-        raise ValueError("Input `lag` must be >= 1.")
+        raise ValueError("'lag' must be >= 1")
 
     xx = to_expr(x)
     x1 = xx.slice(0, pl.len() - lag)
@@ -757,9 +757,9 @@ def query_permute_entropy(
     https://www.aptech.com/blog/permutation-entropy/
     """
     if n_dims <= 1:
-        raise ValueError("Input `n_dims` has to be > 1.")
+        raise ValueError("'n_dims' must be > 1")
     if tau < 1:
-        raise ValueError("Input `tau` has to be >= 1.")
+        raise ValueError("'tau' must be >= 1")
 
     t = to_expr(ts)
     if tau == 1:  # Fast track the most common use case

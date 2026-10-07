@@ -305,11 +305,9 @@ fn pl_diagamma(inputs: &[Series]) -> PolarsResult<Series> {
 fn pl_add_at(inputs: &[Series]) -> PolarsResult<Series> {
     // an equivalent function to numpy add at
     // but only for f64 dtype
-    // The data type + one-chunk-ness should be gauranteed in Python
-
-    let indices = inputs[0].u32().unwrap();
-    let values = inputs[1].f64().unwrap();
-    let buffer_size = inputs[2].u32().unwrap();
+    let indices = inputs[0].u32()?;
+    let values = inputs[1].f64()?;
+    let buffer_size = inputs[2].u32()?;
     let buffer_size = buffer_size
         .get(0)
         .map(|u| u as usize)
@@ -334,12 +332,16 @@ fn pl_add_at(inputs: &[Series]) -> PolarsResult<Series> {
         ))
     } else {
         let mut output = vec![0f64; buffer_size];
-        let indices_slice = indices.cont_slice().unwrap();
-        let values_slice = values.cont_slice().unwrap();
-
-        for (i, v) in indices_slice.iter().zip(values_slice.iter()) {
-            let j = *i as usize;
-            output[j] += v;
+        if indices.null_count() == 0 && values.null_count() == 0 {
+            for (i, v) in indices.into_no_null_iter().zip(values.into_no_null_iter()) {
+                output[i as usize] += v;
+            }
+        } else {
+            for (i, v) in indices.iter().zip(values.iter()) {
+                if let (Some(i), Some(v)) = (i, v) {
+                    output[i as usize] += v;
+                }
+            }
         }
 
         let ca = Float64Chunked::from_vec("".into(), output);

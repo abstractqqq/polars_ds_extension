@@ -210,10 +210,10 @@ def str_nearest(
         Which similarity metric to use. One of `lv`, `hamming`
     """
     if metric not in ("lv", "hamming"):
-        raise ValueError(f"Unknown metric for similar_words: {metric}")
+        raise ValueError(f"unknown metric for similar_words: '{metric}'")
 
     if threshold <= 0:
-        raise ValueError("Distance threshold must be > 0.")
+        raise ValueError("distance threshold must be > 0")
 
     return pl_plugin(
         symbol="pl_nearest_str",
@@ -385,7 +385,7 @@ def str_tversky_sim(
     https://yassineelkhal.medium.com/the-complete-guide-to-string-similarity-algorithms-1290ad07c6b7
     """
     if alpha < 0 or beta < 0:
-        raise ValueError("Input `alpha` and `beta` must be >= 0.")
+        raise ValueError("'alpha' and 'beta' must be >= 0")
 
     return pl_plugin(
         symbol="pl_tversky_sim",
@@ -747,7 +747,7 @@ def similar_to_vocab(
     elif metric == "jw":
         sims = [str_jw(c, pl.lit(w, dtype=pl.String), return_sim=True) for w in vocab]
     else:
-        raise ValueError(f"Unknown metric: {metric}")
+        raise ValueError(f"unknown metric: '{metric}'")
 
     if strategy == "all":
         return pl.all_horizontal(s >= threshold for s in sims)
@@ -756,7 +756,7 @@ def similar_to_vocab(
     elif strategy == "avg":
         return (pl.sum_horizontal(sims) / len(vocab)) >= threshold
     else:
-        raise ValueError(f"Unknown strategy: {strategy}")
+        raise ValueError(f"unknown strategy: '{strategy}'")
 
 
 def extract_numbers(

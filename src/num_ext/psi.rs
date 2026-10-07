@@ -16,24 +16,26 @@ fn psi_report_output(_: &[Field]) -> PolarsResult<Field> {
 /// and the count for the second series.
 /// This assumes the breakpoints (bp)'s last value is always INF
 #[inline(always)]
-fn psi_with_bps_helper(s: &[f64], bp: &[f64]) -> Vec<u32> {
+fn psi_with_bps_helper(s: &Float64Chunked, bp: &[f64]) -> Vec<u32> {
     // s: data
     // bp: breakpoints
 
     // safe, data at this stage is gauranteed to be finite
-    let s = unsafe { std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(s) };
-
     let bp = unsafe { std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(bp) };
 
     let mut c = vec![0u32; bp.len()];
-    s.iter().for_each(|x| match bp.binary_search(x) {
-        Ok(j) => {
-            c[j] += 1;
+    for arr in s.downcast_iter() {
+        let chunk_slice: &[f64] = arr.values();
+        let chunk_ordered: &[OrderedFloat<f64>] = unsafe {
+            std::mem::transmute::<&[f64], &[OrderedFloat<f64>]>(chunk_slice)
+        };
+        for x in chunk_ordered {
+            match bp.binary_search(x) {
+                Ok(j) => c[j] += 1,
+                Err(k) => c[k] += 1,
+            }
         }
-        Err(k) => {
-            c[k] += 1;
-        }
-    });
+    }
     c
 }
 
@@ -79,15 +81,11 @@ fn pl_psi_w_bps(inputs: &[Series]) -> PolarsResult<Series> {
     let data2 = inputs[1].f64().unwrap();
     let breakpoints = inputs[2].f64().unwrap();
 
-    let binding1 = data1.rechunk();
-    let s1 = binding1.cont_slice().unwrap();
-    let binding2 = data2.rechunk();
-    let s2 = binding2.cont_slice().unwrap();
     let binding_bp = breakpoints.rechunk();
     let bp = binding_bp.cont_slice().unwrap();
 
-    let c1 = psi_with_bps_helper(s1, bp);
-    let c2 = psi_with_bps_helper(s2, bp);
+    let c1 = psi_with_bps_helper(data1, bp);
+    let c2 = psi_with_bps_helper(data2, bp);
 
     let psi_report = psi_frame(bp, "<=", &c1, &c2)?.collect()?;
     Ok(psi_report.into_struct("".into()).into_series())
@@ -103,14 +101,12 @@ fn pl_psi_report(inputs: &[Series]) -> PolarsResult<Series> {
     // The cnts for the baseline/reference
     let cnt = inputs[2].u32().unwrap();
 
-    let binding_new = new.rechunk();
-    let data_new = binding_new.cont_slice().unwrap();
     let binding_brk = brk.rechunk();
     let ref_brk = binding_brk.cont_slice().unwrap();
     let binding_cnt = cnt.rechunk();
     let ref_cnt = binding_cnt.cont_slice().unwrap();
 
-    let new_cnt = psi_with_bps_helper(data_new, ref_brk);
+    let new_cnt = psi_with_bps_helper(new, ref_brk);
     let psi_report = psi_frame(ref_brk, "<=", ref_cnt, &new_cnt)?.collect()?;
 
     Ok(psi_report.into_struct("".into()).into_series())

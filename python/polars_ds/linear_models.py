@@ -63,9 +63,9 @@ def _handle_nulls_in_df(
                 return df.with_columns(pl.col(features).fill_null(fill_value)).drop_nulls(
                     subset=target
                 )
-            raise ValueError("When null_policy is a number, it cannot be nan or infinite.")
+            raise ValueError("numeric null_policy cannot be NaN or infinite")
         except Exception as e:
-            raise ValueError(f"Unknown null_policy. Error: {e}")
+            raise ValueError(f"unknown null_policy: {e}")
 
 
 def _sanitize_np(*ndarrays: str):
@@ -106,7 +106,7 @@ def _handle_nans_in_np(
         return (X, y)
     elif null_policy == "raise":
         if np.any(np.isnan(X)) | np.any(np.isnan(y)):
-            raise ValueError("Nulls found in X or y.")
+            raise ValueError("null values found in data")
         return (X, y)
     elif null_policy == "skip":
         row_has_nan = np.any(np.isnan(X), axis=1) | np.any(np.isnan(y), axis=1)
@@ -123,9 +123,9 @@ def _handle_nans_in_np(
             if np.isfinite(fill_value):
                 y_nans = np.any(np.isnan(y), axis=1)
                 return (np.nan_to_num(X, nan=fill_value)[~y_nans], y[~y_nans])
-            raise ValueError("When null_policy is a number, it cannot be nan or infinite.")
+            raise ValueError("numeric null_policy cannot be NaN or infinite")
         except Exception as e:
-            raise ValueError(f"Unknown null_policy. Error: {e}")
+            raise ValueError(f"unknown null_policy: {e}")
 
 
 # --------------------------------------------------------------------------------
@@ -298,7 +298,7 @@ class LR:
             .collect()
         )
         if null_policy == "raise" and any(df2[c].has_nulls() for c in df2.columns):
-            raise ValueError("Nulls found in Dataframe.")
+            raise ValueError("null values found in dataframe")
 
         X = df2.select(features).to_numpy()
         y = df2.select(target).to_numpy()
@@ -333,8 +333,7 @@ class LR:
         """
         if len(self.feature_names_in_) <= 0:
             raise ValueError(
-                "The linear model is not fitted on a dataframe, or no feature names have been given."
-                "Not enough info to predict on a dataframe. Hint: try .fit_df() or .set_input_features()."
+                "model is not fitted on a dataframe or feature names are missing"
             )
 
         pred = pl.sum_horizontal(
@@ -382,7 +381,7 @@ class ElasticNet:
             learned if .fit_df() is run later, or .set_input_features() is set later.
         """
         if l1_reg <= 0.0 and l2_reg <= 0.0:
-            raise ValueError("Cannot have both l1_reg and l2_reg <= 0.")
+            raise ValueError("cannot have both 'l1_reg' and 'l2_reg' <= 0")
 
         self._en = PyElasticNet(l1_reg, l2_reg, has_bias, tol, max_iter)
         self.feature_names_in_: List[str] = (
@@ -508,7 +507,7 @@ class ElasticNet:
             .collect()
         )
         if null_policy == "raise" and any(df2[c].has_nulls() for c in df2.columns):
-            raise ValueError("Nulls found in Dataframe.")
+            raise ValueError("null values found in dataframe")
 
         X = df2.select(features).to_numpy()
         y = df2.select(target).to_numpy()
@@ -543,8 +542,7 @@ class ElasticNet:
         """
         if len(self.feature_names_in_) <= 0:
             raise ValueError(
-                "The linear model is not fitted on a dataframe, or no feature names have been given."
-                "Not enough info to predict on a dataframe. Hint: try .fit_df() or .set_input_features()."
+                "model is not fitted on a dataframe or feature names are missing"
             )
 
         pred = pl.sum_horizontal(
@@ -648,7 +646,7 @@ class OnlineLR:
         """
         if np.any(np.isnan(X)) | np.any(np.isnan(y)):
             raise ValueError(
-                "Online regression currently must fit without null for the initial fit."
+                "initial fit for online regression cannot contain null values"
             )
 
         self._lr.fit(X, y)
@@ -672,7 +670,7 @@ class OnlineLR:
             data. Any other value will `scale` the impact of the data.
         """
         if not self.is_fit():
-            raise ValueError("You cannot update before the initial fit of the matrix.")
+            raise ValueError("cannot update before initial fit")
 
         x_2d = X.reshape((1, -1))
         # Sanitization will do np.asarray(y). This means y at this point is already
@@ -751,13 +749,13 @@ class GLM:
             learned if .fit_df() is run later, or .set_input_features() is set later.
         """
         if solver not in ["irls"]:
-            raise NotImplementedError
+            raise NotImplementedError("unsupported solver: expected 'irls'")
 
         if max_iter < 1:
-            raise ValueError("`max_iter` must be > 1.")
+            raise ValueError("'max_iter' must be greater than or equal to 1")
 
         if family not in ["gaussian", "normal", "poisson", "binomial", "logistic", "gamma"]:
-            raise NotImplementedError
+            raise NotImplementedError(f"unsupported family: '{family}'")
 
         self._glm = PyGLM(
             add_bias=add_bias, family=family, solver=solver, max_iter=max_iter, tol=abs(tol)
@@ -898,7 +896,7 @@ class GLM:
             .collect()
         )
         if null_policy == "raise" and any(df2[c].has_nulls() for c in df2.columns):
-            raise ValueError("Nulls found in Dataframe.")
+            raise ValueError("null values found in dataframe")
 
         X = df2.select(features).to_numpy()
         y = df2.select(target).to_numpy()
@@ -1070,7 +1068,7 @@ class MixedModel:
             .collect()
         )
         if null_policy == "raise" and any(df2[c].has_nulls() for c in df2.columns):
-            raise ValueError("Nulls found in Dataframe.")
+            raise ValueError("null values found in dataframe")
 
         y = np.ascontiguousarray(df2.get_column(target).to_numpy().astype(np.float64))
         n = len(y)
@@ -1103,7 +1101,7 @@ class MixedModel:
         t-value and two-sided p-value.
         """
         if not self.is_fit():
-            raise ValueError("Model is not fit yet.")
+            raise ValueError("model is not fitted yet")
 
         t = self.coeffs_ / self.std_errors_
         pvalues = [

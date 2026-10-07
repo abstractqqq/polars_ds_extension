@@ -39,14 +39,14 @@ class _Compat:
 
     def __getattr__(self, name: str) -> Any:
         if name in CANNOT_CALL:
-            raise ValueError(f"`{name}` exists but doesn't work in compat mode.")
+            raise ValueError(f"'{name}' exists but does not work in compat mode")
 
         func = getattr(pds, name)
 
         def compat_wrapper(*args, **kwargs) -> Callable:
             positionals = list(args)
             if len(positionals) <= 0:
-                raise ValueError("There must be at least 1 positional argument!")
+                raise ValueError("at least 1 positional argument is required")
 
             first_expr = positionals[0]
             new_args = (_Compat._try_into_series(x, name=str(i)) for i, x in enumerate(positionals))

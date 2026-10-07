@@ -52,7 +52,7 @@ def _get_streamable(len_ref: str | None) -> Tuple[pl.Expr, bool]:
     elif isinstance(len_ref, (str, pl.Expr)):
         return pl.col(len_ref), True
     else:
-        raise TypeError("Input `len_ref` must be str or None.")
+        raise TypeError("'len_ref' must be a string or None")
 
 
 def ttest_ind(
@@ -291,7 +291,7 @@ def f_test(*variables: str | pl.Expr, group: str | pl.Expr) -> pl.Expr:
     vars_ = [to_expr(group)]
     vars_.extend(to_expr(x) for x in variables)
     if len(vars_) <= 1:
-        raise ValueError("No input feature column to run F-test on.")
+        raise ValueError("no input feature column to run f-test on")
     elif len(vars_) == 2:
         return pl_plugin(symbol="pl_f_test", args=vars_, returns_scalar=True)
     else:
@@ -395,7 +395,7 @@ def winsorize(
         Method for quantile estimate. One of "nearest", "higher", "lower", "midpoint", "linear".
     """
     if q_low <= 0.0 or q_low >= 1.0 or q_high <= 0.0 or q_high >= 1.0 or q_high <= q_low:
-        raise ValueError("Lower and upper must be with in (0, 1) and upper should be > lower")
+        raise ValueError("'q_low' and 'q_high' must be between 0 and 1 and 'q_low' must be < 'q_high'")
 
     xx = to_expr(x)
     return xx.clip(
@@ -422,7 +422,7 @@ def perturb(
         A random seed
     """
     if math.isinf(epsilon) or math.isnan(epsilon):
-        raise ValueError("Input `epsilon should be a valid finite value.`")
+        raise ValueError("'epsilon' must be a finite number")
 
     ep = abs(epsilon)
     if positive:
@@ -455,7 +455,7 @@ def jitter(x: str | pl.Expr, std: float | pl.Expr = 1.0, seed: int | None = None
     """
     if isinstance(std, float):
         if std < 0:
-            raise ValueError("Standard deviation must be positive.")
+            raise ValueError("standard deviation must be positive")
         elif std == 0:
             return to_expr(x)
 
@@ -487,7 +487,7 @@ def add_noise(x: str | pl.Expr, noise_type: Noise = "gaussian", **kwargs) -> pl.
     elif noise_type == "uniform":
         return perturb(x, **kwargs)
     else:
-        raise ValueError(f"The noise_type {noise_type} is not currently supported.")
+        raise ValueError(f"noise type '{noise_type}' is not supported")
 
 
 def normal_test(var: str | pl.Expr) -> pl.Expr:
@@ -570,7 +570,7 @@ def random_null(x: str | pl.Expr, pct: float, seed: int | None = None) -> pl.Exp
         A seed to fix the random numbers. If none, use the system's entropy.
     """
     if pct <= 0.0 or pct >= 1.0:
-        raise ValueError("Input `pct` must be > 0 and < 1")
+        raise ValueError("'pct' must be between 0 and 1")
 
     return pl.when(random(0.0, 1.0, seed=seed, len_ref=x) < pct).then(None).otherwise(to_expr(x))
 
@@ -598,7 +598,7 @@ def random_int(
         name, e.g. `len_ref = 'id'` so that the random generator knows the corresponding length of each chunk.
     """
     if lower == upper:
-        raise ValueError("Input `lower` must be smaller than `higher`")
+        raise ValueError("'lower' must be less than 'upper'")
 
     lo = pl.lit(lower, pl.Int32) if isinstance(lower, int) else lower.cast(pl.Int32)
     hi = pl.lit(upper, pl.Int32) if isinstance(upper, int) else upper.cast(pl.Int32)
@@ -672,9 +672,9 @@ def random_binomial(
         name, e.g. `len_ref = 'id'` so that the random generator knows the corresponding length of each chunk.
     """
     if n < 1:
-        raise ValueError("Input `n` must be > 1.")
+        raise ValueError("'n' must be >= 1")
     if p < 0.0 or p > 1.0:
-        raise ValueError("Input `p` must be between 0 and 1.")
+        raise ValueError("'p' must be between 0 and 1")
 
     len_, is_elementwise = _get_streamable(len_ref)
     return pl_plugin(
@@ -1103,4 +1103,4 @@ def corr(x: str | pl.Expr, y: str | pl.Expr, method: CorrMethod = "pearson") -> 
     elif method == "bicor":
         return bicor(x, y)
     else:
-        raise ValueError(f"Unknown correlation method: {method}.")
+        raise ValueError(f"unknown correlation method: '{method}'")

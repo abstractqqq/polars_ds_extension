@@ -32,14 +32,16 @@ pub fn suggest_capacity(dim: usize) -> usize {
     }
 }
 
-pub fn slice_to_leaves<'a, T: Float + 'static, A: Copy>(
+pub fn slice_to_leaves<'a, T: Float + 'static, A: Copy, I>(
     slice: &'a [T],
     row_len: usize,
-    values: &'a [A],
-) -> Vec<Leaf<'a, T, A>> {
+    values: I,
+) -> Vec<Leaf<'a, T, A>>
+where
+    I: IntoIterator<Item = A>,
+{
     values
-        .iter()
-        .copied()
+        .into_iter()
         .zip(slice.chunks_exact(row_len))
         .map(|pair| pair.into())
         .collect()

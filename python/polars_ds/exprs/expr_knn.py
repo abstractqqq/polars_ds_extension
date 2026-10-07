@@ -157,12 +157,12 @@ def query_knn_ptwise(
         Max distance the neighbors must be within
     """
     if k < 1:
-        raise ValueError("Input `k` must be >= 1.")
+        raise ValueError("'k' must be >= 1")
 
     if dist in ("cosine", "h", "haversine"):
-        raise ValueError(f"Distance {dist} doesn't work with current implementation.")
+        raise ValueError(f"distance metric '{dist}' is not supported")
 
-    idx = to_expr(index).cast(pl.UInt32).rechunk()
+    idx = to_expr(index).cast(pl.UInt32)
     cols = [idx]
     feats: List[pl.Expr] = [to_expr(e) for e in features]
 
@@ -307,12 +307,12 @@ def query_knn_avg(
         Max distance the neighbors must be within (<)
     """
     if k < 1:
-        raise ValueError("Input `k` must be >= 1.")
+        raise ValueError("'k' must be >= 1")
 
     if dist in ("cosine", "h", "haversine"):
-        raise ValueError(f"Distance {dist} doesn't work with current implementation.")
+        raise ValueError(f"distance metric '{dist}' is not supported")
 
-    idx = to_expr(target).cast(pl.Float64).rechunk()
+    idx = to_expr(target).cast(pl.Float64)
     feats = [to_expr(f) for f in features]
     keep_data = ~pl.any_horizontal(f.is_null() for f in feats)
     cols = [idx, keep_data]
@@ -357,7 +357,7 @@ def within_dist_from(
     # For a single point, it is faster to just do it in native polars
     oth = [to_expr(x) for x in features]
     if not warn_len_compare(pt, oth):
-        raise ValueError("Dimension does not match.")
+        raise ValueError("dimensions do not match")
 
     if dist == "l1":
         return (
@@ -389,8 +389,7 @@ def within_dist_from(
         pt_as_list = list(pt)
         if (len(pt_as_list) != 2) or (len(oth) < 2):
             raise ValueError(
-                "For Haversine distance, input x must have dimension 2 and 2 other columns"
-                " must be provided as lat and long."
+                "for haversine distance, input x must have dimension 2 and 2 other columns must be provided as latitude and longitude"
             )
 
         y_lat = pl.lit(pt_as_list[0], dtype=pl.Float64)
@@ -398,7 +397,7 @@ def within_dist_from(
         dist_out = haversine(oth[0], oth[1], y_lat, y_long)
         return dist_out <= r
     else:
-        raise ValueError(f"Unknown distance function: {dist}")
+        raise ValueError(f"unknown distance metric: '{dist}'")
 
 
 def is_knn_from(
@@ -424,7 +423,7 @@ def is_knn_from(
     # For a single point, it is faster to just do it in native polars
     oth = [to_expr(x) for x in features]
     if not warn_len_compare(pt, oth):
-        raise ValueError("Dimension does not match.")
+        raise ValueError("dimensions do not match")
 
     if dist == "l1":
         dist_out = pl.sum_horizontal(
@@ -456,8 +455,7 @@ def is_knn_from(
         pt_as_list = list(pt)
         if (len(pt_as_list) != 2) or (len(oth) < 2):
             raise ValueError(
-                "For Haversine distance, input x must have dimension 2 and 2 other columns"
-                " must be provided as lat and long."
+                "for haversine distance, input x must have dimension 2 and 2 other columns must be provided as latitude and longitude"
             )
 
         y_lat = pl.lit(pt_as_list[0], dtype=pl.Float64)
@@ -465,7 +463,7 @@ def is_knn_from(
         dist_out = haversine(oth[0], oth[1], y_lat, y_long)
         return dist_out <= dist_out.bottom_k(k=k).max()
     else:
-        raise ValueError(f"Unknown distance function: {dist}")
+        raise ValueError(f"unknown distance metric: '{dist}'")
 
 
 def query_radius_ptwise(
@@ -507,14 +505,14 @@ def query_radius_ptwise(
     """
 
     if r <= 0.0:
-        raise ValueError("Input `r` must be > 0.")
+        raise ValueError("'r' must be positive")
     elif isinstance(r, pl.Expr):
-        raise ValueError("Input `r` must be a scalar now. Expression input is not implemented.")
+        raise ValueError("'r' must be a scalar")
 
     if dist in ("cosine", "h", "haversine"):
-        raise ValueError(f"Distance {dist} doesn't work with current implementation.")
+        raise ValueError(f"distance metric '{dist}' is not supported")
 
-    idx = to_expr(index).cast(pl.UInt32).rechunk()
+    idx = to_expr(index).cast(pl.UInt32)
     metric = str(dist).lower()
     cols = [idx]
     cols.extend(to_expr(x) for x in features)
@@ -543,14 +541,14 @@ def query_radius_ptwise_null_safe(
     Parameters mirror `query_radius_ptwise`.
     """
     if r <= 0.0:
-        raise ValueError("Input `r` must be > 0.")
+        raise ValueError("'r' must be positive")
     elif isinstance(r, pl.Expr):
-        raise ValueError("Input `r` must be a scalar now. Expression input is not implemented.")
+        raise ValueError("'r' must be a scalar")
 
     if dist in ("cosine", "h", "haversine"):
-        raise ValueError(f"Distance {dist} doesn't work with current implementation.")
+        raise ValueError(f"distance metric '{dist}' is not supported")
 
-    idx = to_expr(index).cast(pl.UInt32).rechunk()
+    idx = to_expr(index).cast(pl.UInt32)
     feats = [to_expr(e) for e in features]
     keep_mask = pl.all_horizontal(f.is_not_null() for f in feats)
 
@@ -624,7 +622,7 @@ def query_nb_cnt(
         are running only this expression, and not in group_by() or over() context.
     """
     if dist in ("cosine", "h", "haversine"):
-        raise ValueError(f"Distance `{dist}` doesn't work with current implementation.")
+        raise ValueError(f"distance metric '{dist}' is not supported")
 
     if isinstance(r, (float, int)):
         rad = pl.lit(pl.Series(values=[r], dtype=pl.Float64))

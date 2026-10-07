@@ -403,7 +403,7 @@ def random_cols(
 
     pool_size = len(all_columns) - len(out)
     if pool_size < k:
-        raise ValueError("Not enough columns to select from.")
+        raise ValueError("not enough columns to select from")
 
     n = random.randrange(0, math.comb(pool_size, k))
     rand_cols = next(islice(to_sample, n, None), None)

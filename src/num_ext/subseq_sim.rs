@@ -25,9 +25,11 @@ fn pl_subseq_sim_cnt_l2(
     context: CallerContext,
     kwargs: SubseqQueryKwargs,
 ) -> PolarsResult<Series> {
-    let seq = inputs[0].f64()?;
+    let binding_seq = inputs[0].rechunk();
+    let seq = binding_seq.f64()?;
     let seq = seq.cont_slice().unwrap();
-    let query = inputs[1].f64()?;
+    let binding_query = inputs[1].rechunk();
+    let query = binding_query.f64()?;
     let query = query.cont_slice().unwrap();
 
     if query.len() > seq.len() {
@@ -71,14 +73,18 @@ fn pl_subseq_sim_cnt_zl2(
     context: CallerContext,
     kwargs: SubseqQueryKwargs,
 ) -> PolarsResult<Series> {
-    let seq = inputs[0].f64()?;
+    let binding_seq = inputs[0].rechunk();
+    let seq = binding_seq.f64()?;
     let seq = seq.cont_slice().unwrap();
-    let query = inputs[1].f64()?; // is already z normalized
+    let binding_query = inputs[1].rechunk();
+    let query = binding_query.f64()?; // is already z normalized
     let query = query.cont_slice().unwrap();
 
-    let rolling_mean = inputs[2].f64()?;
+    let binding_mean = inputs[2].rechunk();
+    let rolling_mean = binding_mean.f64()?;
     let rolling_mean = rolling_mean.cont_slice()?;
-    let rolling_var = inputs[3].f64()?;
+    let binding_var = inputs[3].rechunk();
+    let rolling_var = binding_var.f64()?;
     let rolling_var = rolling_var.cont_slice()?;
 
     let threshold = kwargs.threshold;
