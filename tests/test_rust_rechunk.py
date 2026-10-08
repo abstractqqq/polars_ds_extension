@@ -96,8 +96,8 @@ def test_convolve_multichunk():
     assert df["x"].n_chunks() == 2
 
     k_parts = [
-        pl.DataFrame({"k": [0.5]}),
-        pl.DataFrame({"k": [0.5]}),
+        pl.DataFrame({"k": [0.3]}),
+        pl.DataFrame({"k": [0.7]}),
     ]
     df_k = pl.concat(k_parts, rechunk=False)
     assert df_k["k"].n_chunks() == 2
