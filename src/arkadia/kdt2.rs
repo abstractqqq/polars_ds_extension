@@ -3,34 +3,27 @@ use std::usize;
 
 const NULL_IDX: u32 = u32::MAX;
 
+// KD-Tree is immutable after bulk loading.
+// Bounding boxes are stored flatly in KDT.bounds (single contiguous Box<[f64]>),
+// eliminating O(nodes) individual heap allocations and reducing Node enum size.
 enum Node<'a, A> {
     Internal {
         split_axis: usize,
         split_value: f64,
         left: u32,
         right: u32,
-        bounds: Vec<f64>,
     },
     Leaf {
-        data: Vec<Leaf<'a, f64, A>>,
-        bounds: Vec<f64>,
+        data: Box<[Leaf<'a, f64, A>]>,
     },
 }
 
 impl<'a, A> Node<'a, A> {
-    #[inline(always)]
-    fn bounds(&self) -> &[f64] {
-        match self {
-            Node::Internal { bounds, .. } => bounds,
-            Node::Leaf { bounds, .. } => bounds,
-        }
-    }
-
     fn is_leaf(&self) -> bool {
         matches!(self, Node::Leaf { .. })
     }
 
-    fn data_mut(&mut self) -> Option<&mut Vec<Leaf<'a, f64, A>>> {
+    fn data_mut(&mut self) -> Option<&mut [Leaf<'a, f64, A>]> {
         if let Node::Leaf { data, .. } = self {
             Some(data)
         } else {
@@ -42,7 +35,10 @@ impl<'a, A> Node<'a, A> {
 pub struct KDT<'a, A, M: Metric = KNNDist> {
     pub dim: usize,
     pub capacity: usize,
-    nodes: Vec<Node<'a, A>>,
+    // Boxed slice ensures fixed allocation with no unused vector capacity once built
+    nodes: Box<[Node<'a, A>]>,
+    // Contiguous bounds for all nodes: node `i` bounds at [i * 2 * dim .. (i + 1) * 2 * dim]
+    bounds: Box<[f64]>,
     root: u32,
     pub d: M,
 }
@@ -53,67 +49,84 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
         self.dim
     }
 
+    #[inline(always)]
+    fn node_bounds(&self, node_idx: usize) -> &[f64] {
+        let stride = 2 * self.dim;
+        let start = node_idx * stride;
+        &self.bounds[start..start + stride]
+    }
+
     pub fn new_empty(dim: usize, capacity: usize, d: M) -> Self {
         let mut bounds = vec![f64::INFINITY; dim];
         bounds.extend(std::iter::repeat(f64::NEG_INFINITY).take(dim));
 
         let root_node = Node::Leaf {
-            data: Vec::with_capacity(capacity),
-            bounds,
+            data: Vec::with_capacity(capacity).into_boxed_slice(),
         };
 
         KDT {
             dim,
             capacity,
-            nodes: vec![root_node],
+            nodes: vec![root_node].into_boxed_slice(),
+            bounds: bounds.into_boxed_slice(),
             root: 0,
             d,
         }
     }
 
-    fn find_bounds(data: &[Leaf<'a, f64, A>], dim: usize) -> Vec<f64> {
-        let mut bounds = vec![f64::INFINITY; dim];
-        bounds.extend(std::iter::repeat(f64::NEG_INFINITY).take(dim));
+    fn write_bounds(data: &[Leaf<'a, f64, A>], dim: usize, bounds_buf: &mut Vec<f64>) {
+        let start = bounds_buf.len();
+        bounds_buf.resize(start + 2 * dim, f64::INFINITY);
+        for i in 0..dim {
+            bounds_buf[start + dim + i] = f64::NEG_INFINITY;
+        }
         for elem in data {
             for i in 0..dim {
                 let val = elem.row_vec[i];
-                if val < bounds[i] {
-                    bounds[i] = val;
+                if val < bounds_buf[start + i] {
+                    bounds_buf[start + i] = val;
                 }
-                if val > bounds[i + dim] {
-                    bounds[i + dim] = val;
+                if val > bounds_buf[start + dim + i] {
+                    bounds_buf[start + dim + i] = val;
                 }
             }
         }
-        bounds
     }
 
     pub fn from_leaves(data: &'a mut [Leaf<'a, f64, A>], d: M) -> Result<Self, String> {
         if data.is_empty() {
-            return Err("Empty data.".into());
+            return Err("input data is empty".into());
         }
         let dim = data[0].row_vec.len();
         let capacity = suggest_capacity(dim);
-        let mut tree = KDT {
+        let est_nodes = (data.len() / capacity * 2).max(1);
+        let mut nodes = Vec::with_capacity(est_nodes);
+        let mut bounds_buf = Vec::with_capacity(est_nodes * 2 * dim);
+        let root = Self::build_recursive(&mut nodes, &mut bounds_buf, dim, capacity, data, 0);
+        Ok(KDT {
             dim,
             capacity,
-            nodes: Vec::with_capacity(data.len() / capacity * 2),
-            root: 0,
+            nodes: nodes.into_boxed_slice(),
+            bounds: bounds_buf.into_boxed_slice(),
+            root,
             d,
-        };
-        tree.root = tree.build_recursive(data, 0);
-        Ok(tree)
+        })
     }
 
-    fn build_recursive(&mut self, data: &mut [Leaf<'a, f64, A>], depth: usize) -> u32 {
-        let dim = self.dim;
-        let bounds = Self::find_bounds(data, dim);
+    fn build_recursive(
+        nodes: &mut Vec<Node<'a, A>>,
+        bounds_buf: &mut Vec<f64>,
+        dim: usize,
+        capacity: usize,
+        data: &mut [Leaf<'a, f64, A>],
+        depth: usize,
+    ) -> u32 {
+        let node_idx = nodes.len() as u32;
+        Self::write_bounds(data, dim, bounds_buf);
 
-        if data.len() <= self.capacity {
-            let node_idx = self.nodes.len() as u32;
-            self.nodes.push(Node::Leaf {
-                data: data.to_vec(),
-                bounds,
+        if data.len() <= capacity {
+            nodes.push(Node::Leaf {
+                data: Box::from(&*data),
             });
             return node_idx;
         }
@@ -126,23 +139,23 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
         });
         let split_value = data[mid].row_vec[axis];
 
-        let node_idx = self.nodes.len() as u32;
         // Placeholder node to maintain index order
-        self.nodes.push(Node::Internal {
+        nodes.push(Node::Internal {
             split_axis: axis,
             split_value,
             left: NULL_IDX,
             right: NULL_IDX,
-            bounds,
         });
 
-        let left = self.build_recursive(&mut data[..mid], depth + 1);
-        let right = self.build_recursive(&mut data[mid..], depth + 1);
+        let left =
+            Self::build_recursive(nodes, bounds_buf, dim, capacity, &mut data[..mid], depth + 1);
+        let right =
+            Self::build_recursive(nodes, bounds_buf, dim, capacity, &mut data[mid..], depth + 1);
 
         // Update placeholder with actual child indices
         if let Node::Internal {
             left: l, right: r, ..
-        } = &mut self.nodes[node_idx as usize]
+        } = &mut nodes[node_idx as usize]
         {
             *l = left;
             *r = right;
@@ -265,7 +278,7 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
         let mut stack = Vec::with_capacity(32);
         let d_root = self
             .d
-            .dist_to_box(self.nodes[self.root as usize].bounds(), point);
+            .dist_to_box(self.node_bounds(self.root as usize), point);
         stack.push((d_root, self.root));
 
         while let Some((d_box, idx)) = stack.pop() {
@@ -291,7 +304,7 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
                         (*right, *left)
                     };
 
-                    let d_far = self.d.dist_to_box(self.nodes[far as usize].bounds(), point);
+                    let d_far = self.d.dist_to_box(self.node_bounds(far as usize), point);
                     if d_far + epsilon < current_max {
                         stack.push((d_far, far));
                     }
@@ -324,7 +337,7 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
         let mut stack = Vec::with_capacity(32);
         let d_root = self
             .d
-            .dist_to_box(self.nodes[self.root as usize].bounds(), point);
+            .dist_to_box(self.node_bounds(self.root as usize), point);
         stack.push((d_root, self.root));
 
         while let Some((d_box, idx)) = stack.pop() {
@@ -350,7 +363,7 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
                         (*right, *left)
                     };
 
-                    let d_far = self.d.dist_to_box(self.nodes[far as usize].bounds(), point);
+                    let d_far = self.d.dist_to_box(self.node_bounds(far as usize), point);
                     if d_far + epsilon < current_max {
                         stack.push((d_far, far));
                     }
@@ -431,7 +444,7 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
         let mut stack = Vec::with_capacity(32);
         let d_root = self
             .d
-            .dist_to_box(self.nodes[self.root as usize].bounds(), point);
+            .dist_to_box(self.node_bounds(self.root as usize), point);
         stack.push((d_root, self.root));
 
         while let Some((d_box, idx)) = stack.pop() {
@@ -453,7 +466,7 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
                         (*right, *left)
                     };
 
-                    let d_far = self.d.dist_to_box(self.nodes[far as usize].bounds(), point);
+                    let d_far = self.d.dist_to_box(self.node_bounds(far as usize), point);
                     if d_far <= radius {
                         stack.push((d_far, far));
                     }
@@ -487,7 +500,7 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
         let mut stack = Vec::with_capacity(32);
         let d_root = self
             .d
-            .dist_to_box(self.nodes[self.root as usize].bounds(), point);
+            .dist_to_box(self.node_bounds(self.root as usize), point);
         stack.push((d_root, self.root));
 
         while let Some((d_box, idx)) = stack.pop() {
@@ -508,7 +521,7 @@ impl<'a, A: Copy, M: Metric> KDT<'a, A, M> {
                     } else {
                         (*right, *left)
                     };
-                    let d_far = self.d.dist_to_box(self.nodes[far as usize].bounds(), point);
+                    let d_far = self.d.dist_to_box(self.node_bounds(far as usize), point);
                     if d_far <= radius {
                         stack.push((d_far, far));
                     }

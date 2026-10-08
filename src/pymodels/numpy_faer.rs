@@ -19,7 +19,7 @@ impl<'py> FromPyObject<'_, 'py> for PyFaerRef<'py> {
         let typestr: String = interface.get_item("typestr")?.unwrap().extract()?;
         if typestr != "<f8" {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "Only little-endian f64 dtype is expected. Found {}",
+                "only little-endian f64 dtype is expected, found {}",
                 typestr
             )));
         }
@@ -30,7 +30,7 @@ impl<'py> FromPyObject<'_, 'py> for PyFaerRef<'py> {
         let shape: Vec<usize> = interface.get_item("shape")?.unwrap().extract()?;
         if shape.len() != 2 {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "Expected a 2D array",
+                "expected a 2D array",
             ));
         }
 
@@ -78,7 +78,7 @@ impl<'py> FromPyObject<'_, 'py> for PyArrRef<'py> {
         let typestr: String = interface.get_item("typestr")?.unwrap().extract()?;
         if typestr != "<f8" {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "Only little-endian f64 dtype is expected. Found {}",
+                "only little-endian f64 dtype is expected, found {}",
                 typestr
             )));
         }
@@ -86,7 +86,7 @@ impl<'py> FromPyObject<'_, 'py> for PyArrRef<'py> {
         let shape: Vec<usize> = interface.get_item("shape")?.unwrap().extract()?;
         if shape.len() != 1 {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "Expected a 1D array",
+                "expected a 1D array",
             ));
         }
         let len = shape[0];
@@ -112,7 +112,7 @@ impl<'py> FromPyObject<'_, 'py> for PyArrRef<'py> {
         };
         if !is_contiguous {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "Array is not contiguous in memory. Please call np.ascontiguousarray() in Python before passing."
+                "array is not contiguous in memory; please call np.ascontiguousarray() before passing",
             ));
         }
 
@@ -158,8 +158,23 @@ impl PyFaerMat {
     }
 }
 
+/// A Python-visible wrapper around an owned 1D array of f64.
+/// Using `Box<[f64]>` instead of `Vec<f64>` saves 8 bytes by dropping the unused `capacity` field
+/// and ensures that arrays returned to Python do not hold onto excess buffer allocation.
 #[pyclass]
-pub struct PyArr(pub Vec<f64>);
+pub struct PyArr(pub Box<[f64]>);
+
+impl From<Vec<f64>> for PyArr {
+    fn from(v: Vec<f64>) -> Self {
+        PyArr(v.into_boxed_slice())
+    }
+}
+
+impl From<Box<[f64]>> for PyArr {
+    fn from(v: Box<[f64]>) -> Self {
+        PyArr(v)
+    }
+}
 
 #[pymethods]
 impl PyArr {

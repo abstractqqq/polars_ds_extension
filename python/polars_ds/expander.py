@@ -75,14 +75,10 @@ def E(
         columns = [cols]
     elif isinstance(cols, list):
         if any(not isinstance(c, str) for c in cols):
-            raise TypeError(
-                "Input `cols` must either be a single str/pl.Expr or a list of str/pl.expr."
-            )
+            raise TypeError("input 'cols' must be a string or a list of strings")
         columns = list(cols)
     else:
-        raise TypeError(
-            "Input `cols` must either be a single str/pl.Expr or a list of str/pl.expr."
-        )
+        raise TypeError("input 'cols' must be a string or a list of strings")
 
     in_expr = pl.col(columns)
 
@@ -104,8 +100,7 @@ def E(
     bad = [m for m in mappings_ if not (hasattr(in_expr, m) or m in SPECIAL_MAPPINGS)]
     if len(bad) > 0:
         raise ValueError(
-            f"Polars expressions does not have `{bad}` method(s) and they do not belong "
-            "in the special mappings."
+            f"polars expressions do not have methods {bad} and they do not belong in special mappings"
         )
 
     return [

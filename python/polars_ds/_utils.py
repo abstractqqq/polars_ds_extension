@@ -55,4 +55,4 @@ def to_expr(e: str | pl.Expr | int | float) -> pl.Expr:
     elif isinstance(e, pl.Expr):
         return e
     else:
-        raise ValueError("Input must either be a string or a Polars expression.")
+        raise ValueError("input must be a string or a polars expression")

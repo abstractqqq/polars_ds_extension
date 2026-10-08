@@ -16,10 +16,12 @@
 
 use faer::{linalg::solvers::Solve, mat::Mat, prelude::*, MatRef, Side};
 
+// Result arrays and group metadata are fixed-size upon creation; Box<[...]> avoids
+// the overhead of retaining unused Vec capacity fields (8 bytes per field).
 pub struct MixedModelResult {
-    pub coeffs: Vec<f64>,
-    pub std_errors: Vec<f64>,
-    pub dfs: Vec<f64>,
+    pub coeffs: Box<[f64]>,
+    pub std_errors: Box<[f64]>,
+    pub dfs: Box<[f64]>,
     pub gamma: f64,
     pub resid_variance: f64,
 }
@@ -27,8 +29,8 @@ pub struct MixedModelResult {
 /// Per-group counts and the `1 / (1 + gamma * count)` terms needed to apply `H^-1`
 /// via Woodbury without ever building `Z` or `H`.
 struct GroupInfo {
-    codes: Vec<usize>,
-    counts: Vec<f64>,
+    codes: Box<[usize]>,
+    counts: Box<[f64]>,
 }
 
 impl GroupInfo {
@@ -38,8 +40,8 @@ impl GroupInfo {
             counts[g] += 1.0;
         }
         GroupInfo {
-            codes: codes.to_vec(),
-            counts,
+            codes: Box::from(codes),
+            counts: counts.into_boxed_slice(),
         }
     }
 
@@ -62,7 +64,7 @@ impl GroupInfo {
     }
 
     fn apply_hi_mat(&self, x: MatRef<f64>, gamma: f64) -> Mat<f64> {
-        let cols: Vec<Vec<f64>> = (0..x.ncols())
+        let cols: Box<[Vec<f64>]> = (0..x.ncols())
             .map(|j| {
                 let col: Vec<f64> = x.col(j).iter().copied().collect();
                 self.apply_hi(&col, gamma)
@@ -130,7 +132,7 @@ fn profile(x: MatRef<f64>, y: &[f64], info: &GroupInfo, gamma: f64) -> Result<Pr
 
     let llt = xt_hi_x
         .llt(Side::Lower)
-        .map_err(|_| "X'HiX is not positive definite; design may be rank-deficient.".to_string())?;
+        .map_err(|_| "X'HiX is not positive definite; design may be rank-deficient".to_string())?;
     let beta = llt.solve(&xt_hi_y);
 
     let fitted = x * &beta;
@@ -143,7 +145,7 @@ fn profile(x: MatRef<f64>, y: &[f64], info: &GroupInfo, gamma: f64) -> Result<Pr
     let rhir = dot(&r, &hir);
     let resid_var = rhir / (n - p);
     if !(resid_var > 0.0) {
-        return Err("Residual variance estimate is non-positive.".to_string());
+        return Err("residual variance estimate is non-positive".to_string());
     }
 
     let slogdet_xt_hi_x: f64 = 2.0
@@ -182,11 +184,11 @@ pub fn fit_reml(
     let n = x.nrows();
     let p = x.ncols();
     if n != y.len() || n != group_codes.len() {
-        return Err("X, y, and group must have the same number of rows.".to_string());
+        return Err("inputs must have the same length".to_string());
     }
     if n <= p {
         return Err(
-            "Not enough rows to fit a mixed model with this many fixed effects.".to_string(),
+            "number of samples must be greater than number of fixed effects".to_string(),
         );
     }
 
@@ -222,11 +224,11 @@ pub fn fit_reml(
     let xt_hi_x = x.transpose() * info.apply_hi_mat(x, gamma);
     let cov = xt_hi_x
         .llt(Side::Lower)
-        .map_err(|_| "X'HiX is not positive definite at the REML optimum.".to_string())?
+        .map_err(|_| "X'HiX is not positive definite at the REML optimum".to_string())?
         .solve(Mat::<f64>::identity(p, p));
 
-    let coeffs = to_vec(fitted.beta.as_ref());
-    let std_errors: Vec<f64> = (0..p)
+    let coeffs = to_vec(fitted.beta.as_ref()).into_boxed_slice();
+    let std_errors: Box<[f64]> = (0..p)
         .map(|j| (fitted.resid_var * cov[(j, j)]).sqrt())
         .collect();
 
@@ -234,7 +236,7 @@ pub fn fit_reml(
     // (including the intercept) are tested against the group ("between") stratum,
     // everything else against the residual ("within") stratum.
     let rank_tol = 1e-9;
-    let between_cols: Vec<usize> = between_idx.to_vec();
+    let between_cols: Box<[usize]> = Box::from(between_idx);
     let x_between = Mat::from_fn(n, between_cols.len(), |i, j| x[(i, between_cols[j])]);
     let rank_between = matrix_rank(x_between.as_ref(), rank_tol);
     let ddf_between = (n_groups as f64) - (rank_between as f64);
@@ -251,8 +253,8 @@ pub fn fit_reml(
     let rank_combined = matrix_rank(x_and_z.as_ref(), rank_tol);
     let ddf_within = (n as f64) - (rank_combined as f64);
 
-    let between_set: std::collections::HashSet<usize> = between_cols.into_iter().collect();
-    let dfs: Vec<f64> = (0..p)
+    let between_set: std::collections::HashSet<usize> = between_cols.iter().copied().collect();
+    let dfs: Box<[f64]> = (0..p)
         .map(|j| {
             if between_set.contains(&j) {
                 ddf_between

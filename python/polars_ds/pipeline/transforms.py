@@ -47,7 +47,7 @@ def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean"
         temp = df.lazy().select(pl.col(cols).mode().list.first()).collect().row(0)
         return [pl.col(c).fill_null(m) for c, m in zip(cols, temp)]
     else:
-        raise ValueError(f"Unknown impute method: `{method}`")
+        raise ValueError(f"unknown impute method: '{method}'")
 
 
 def conditional_impute(
@@ -109,7 +109,7 @@ def conditional_impute(
             pl.when(rules_dict[c]).then(m).otherwise(pl.col(c)).alias(c) for c, m in zip(cols, temp)
         ]
     else:
-        raise ValueError(f"Unknown impute method: `{method}`")
+        raise ValueError(f"unknown impute method: '{method}'")
 
 
 def linear_impute(
@@ -232,7 +232,7 @@ def scale(
         )
         return [pl.col(c) / m for c, m in zip(cols, temp) if m != 0.0]
     else:
-        raise ValueError(f"Unknown input method: {method}")
+        raise ValueError(f"unknown scale method: '{method}'")
 
 
 def robust_scale(
@@ -260,7 +260,7 @@ def robust_scale(
     """
     if q_low > 1.0 or q_low < 0.0 or q_high > 1.0 or q_high < 0.0 or q_low >= q_high:
         raise ValueError(
-            "Input `q_low` and `q_high` must be between 0 and 1 and q_low must be < than q_high."
+            "'q_low' and 'q_high' must be between 0 and 1 and 'q_low' must be < 'q_high'"
         )
 
     temp = (
@@ -301,7 +301,7 @@ def winsorize(
     """
     if q_low > 1.0 or q_low < 0.0 or q_high > 1.0 or q_high < 0.0 or q_low >= q_high:
         raise ValueError(
-            "Input `q_low` and `q_high` must be between 0 and 1 and q_low must be < than q_high."
+            "'q_low' and 'q_high' must be between 0 and 1 and 'q_low' must be < 'q_high'"
         )
 
     temp = (
@@ -362,7 +362,7 @@ def one_hot_encode(
 
     if len(exprs) == 0:
         raise ValueError(
-            "Provided columns either do not exist or are not string/categorical types."
+            "provided columns either do not exist or are not string/categorical types"
         )
 
     return exprs
@@ -455,7 +455,7 @@ def rank_hot_encode(
 
     n_ranks = len(ranking)
     if n_ranks <= 1:
-        raise ValueError("Rank hot encoding does not work with single value ranking.")
+        raise ValueError("rank hot encoding does not work with single value ranking")
 
     number_rank = pl.int_range(0, n_ranks, eager=True, dtype=pl.Int32)
     ranked_expr = pl.col(col).replace_strict(
@@ -491,13 +491,13 @@ def _encoder_default_value(
             elif isinstance(target, pl.Series):
                 return target.mean()
             else:
-                raise ValueError("Target's type is not supported.")
+                raise ValueError("target data type is not supported")
         else:
             raise ValueError(
-                "When input `default` is string, it can only be `mean` or `null` or `zero`."
+                "when 'default' is string, it must be 'mean', 'null', or 'zero'"
             )
     else:
-        raise ValueError("Invalid type for `default`")
+        raise ValueError("invalid data type for 'default'")
 
 
 def target_encode(
@@ -539,7 +539,7 @@ def target_encode(
 
     if len(valid_cols) == 0:
         raise ValueError(
-            "The provided columns are either not string/categorical type, or are not in df."
+            "provided columns are either not string/categorical type or not in dataframe"
         )
 
     default_value = _encoder_default_value(temp, default=default, target=target)
@@ -594,7 +594,7 @@ def woe_encode(
 
     if len(valid_cols) == 0:
         raise ValueError(
-            "The provided columns are either not string/categorical type, or are not in df."
+            "provided columns are either not string/categorical type or not in dataframe"
         )
 
     default_value = _encoder_default_value(temp, default=default, target=target)
@@ -647,7 +647,7 @@ def iv_encode(
 
     if len(valid_cols) == 0:
         raise ValueError(
-            "The provided columns are either not string/categorical type, or are not in df."
+            "provided columns are either not string/categorical type or not in dataframe"
         )
 
     default_value = _encoder_default_value(temp, default=default, target=target)
@@ -714,7 +714,7 @@ def polynomial_features(
     from itertools import combinations_with_replacement
 
     if degree <= 1:
-        raise ValueError("Degree should be > 1.")
+        raise ValueError("'degree' must be > 1")
 
     return list(
         pl.reduce(function=lambda acc, x: acc * x, exprs=list(comb)).alias("*".join(comb))

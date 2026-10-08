@@ -17,6 +17,8 @@ pub fn trapz(y: &[f64], x: &[f64]) -> f64 {
     }
 }
 
+#[inline(always)]
+#[allow(dead_code)]
 pub fn trapz_dx(y: &[f64], dx: f64) -> f64 {
     let s = y[1..y.len() - 1].iter().sum::<f64>();
     let ss = 0.5 * (y.get(0).unwrap_or(&0.) + y.last().unwrap_or(&0.));
@@ -32,18 +34,26 @@ fn pl_trapz(inputs: &[Series]) -> PolarsResult<Series> {
         return Ok(ca.into_series());
     }
 
-    let y = y.cont_slice()?;
     if x.len() == 1 && y.len() > 1 {
         let dx = x.get(0).unwrap();
-        let ca = Float64Chunked::from_slice("".into(), &[trapz_dx(y, dx)]);
+        let first = y.first().unwrap_or(0.);
+        let last = y.last().unwrap_or(0.);
+        let total: f64 = y.sum().unwrap_or(0.);
+        let ans = dx * (total - 0.5 * (first + last));
+        let ca = Float64Chunked::from_slice("".into(), &[ans]);
         Ok(ca.into_series())
     } else if x.len() == y.len() {
+        let binding_y = inputs[0].rechunk();
+        let y = binding_y.f64()?;
+        let y = y.cont_slice()?;
+        let binding_x = inputs[1].rechunk();
+        let x = binding_x.f64()?;
         let x = x.cont_slice()?;
         let ca = Float64Chunked::from_slice("".into(), &[trapz(y, x)]);
         Ok(ca.into_series())
     } else {
-        Err(PolarsError::ComputeError(
-            "Input must have the same length or x must be a scalar.".into(),
+        Err(PolarsError::ShapeMismatch(
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }

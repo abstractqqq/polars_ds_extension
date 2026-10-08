@@ -22,15 +22,11 @@ fn pl_rfft(inputs: &[Series]) -> PolarsResult<Series> {
     let mut input_vec = match s.to_vec_null_aware() {
         Either::Left(v) => Ok(v),
         Either::Right(_) => Err(PolarsError::ComputeError(
-            "FFT: Input should not contain nulls.".into(),
+            "null values found in data".into(),
         )),
     }?;
 
-    if n > input_vec.len() {
-        input_vec.extend(vec![0.; n.abs_diff(input_vec.len())]);
-    } else {
-        input_vec.truncate(n);
-    }
+    input_vec.resize(n, 0.);
     let input_len = input_vec.len();
 
     let mut planner = RealFftPlanner::<f64>::new();

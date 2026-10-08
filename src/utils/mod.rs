@@ -59,19 +59,19 @@ where
     N: PolarsNumericType,
 {
     if series.is_empty() {
-        return Err(PolarsError::NoData("Data is empty".into()));
+        return Err(PolarsError::NoData("input data is empty".into()));
     }
     // Fuse the numeric-dtype check and the length-equality check into a single pass.
     let first_len = series[0].len();
     for s in series.iter() {
         if !s.dtype().is_numeric() {
             return Err(PolarsError::ComputeError(
-                "All columns need to be numeric.".into(),
+                "all columns must be of numeric type".into(),
             ));
         }
         if s.len() != first_len {
             return Err(PolarsError::ShapeMismatch(
-                "Seires don't have the same length.".into(),
+                "inputs must have the same length".into(),
             ));
         }
     }
@@ -92,7 +92,7 @@ where
     N: PolarsNumericType,
 {
     if series.is_empty() {
-        return Err(PolarsError::NoData("Data is empty".into()));
+        return Err(PolarsError::NoData("input data is empty".into()));
     }
     series_to_slice_inner::<N>(series, ordering, extra_cap)
 }
@@ -250,7 +250,7 @@ pub fn to_f64_vec_without_nulls(inputs: &[Series], ordering: IndexOrder) -> Pola
 pub fn to_f64_vec_fail_on_nulls(inputs: &[Series], ordering: IndexOrder) -> PolarsResult<Vec<f64>> {
     if inputs.iter().any(|s| s.has_nulls()) {
         Err(PolarsError::ComputeError(
-            "Nulls are found in data and this method doesn't allow nulls.".into(),
+            "null values found in data".into(),
         ))
     } else {
         let columns = inputs

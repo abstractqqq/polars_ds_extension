@@ -25,7 +25,7 @@ fn pl_approximate_entropy(
 
     let radius = inputs[0].f64()?;
     if radius.len() != 1 {
-        return Err(PolarsError::ComputeError("Radius must be a scalar.".into()));
+        return Err(PolarsError::ComputeError("radius must be a scalar".into()));
     }
     let r = radius.get(0).unwrap();
     let name = inputs[1].name();
@@ -109,7 +109,7 @@ fn pl_sample_entropy(
     // Set up radius. r is a scalar and set up at Python side.
     let radius = inputs[0].f64()?;
     if radius.len() != 1 {
-        return Err(PolarsError::ComputeError("Radius must be a scalar.".into()));
+        return Err(PolarsError::ComputeError("radius must be a scalar".into()));
     }
 
     let r = radius.get(0).unwrap_or(-1f64); // see return below
@@ -233,7 +233,7 @@ fn pl_knn_entropy(
         return Ok(Series::from_vec(name.clone(), vec![f64::NAN]));
     }
 
-    let metric_str = kwargs.metric.as_str();
+    let metric_str = kwargs.metric.as_ref();
     let n = nrows as f64;
     let d = ncols as f64;
 
@@ -255,7 +255,7 @@ fn pl_knn_entropy(
         (cd, _knn_entropy_helper(tree, &data, k, can_parallel))
     } else {
         return Err(PolarsError::ComputeError(
-            "KNN Entropy for distance metric is  not implemented.".into(),
+            "knn entropy for this distance metric is not implemented".into(),
         ));
     };
 

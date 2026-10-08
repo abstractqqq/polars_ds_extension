@@ -306,7 +306,7 @@ def query_mase(
     https://en.wikipedia.org/wiki/Mean_absolute_scaled_error
     """
     if freq < 1:
-        raise ValueError("Input `freq` must be >= 1.")
+        raise ValueError("'freq' must be >= 1")
 
     a: pl.Expr = to_expr(actual)
     p: pl.Expr = to_expr(pred)
@@ -563,7 +563,7 @@ def query_multi_roc_auc(
             / pl.len()
         )
     else:
-        raise NotImplementedError
+        raise NotImplementedError(f"unsupported strategy: '{strategy}'")
 
 
 def query_cat_cross_entropy(

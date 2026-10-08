@@ -17,7 +17,7 @@ fn pl_fuzz(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
     let ca1 = inputs[0].str()?;
     let ca2 = inputs[1].str()?;
     let parallel = inputs[2].bool()?;
-    let parallel = parallel.get(0).unwrap();
+    let parallel = parallel.get(0).unwrap_or(false);
     let can_parallel = parallel && !context.parallel();
     if ca2.len() == 1 {
         let r = ca2.get(0).unwrap();
@@ -57,7 +57,7 @@ fn pl_fuzz(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
         Ok(out.into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }

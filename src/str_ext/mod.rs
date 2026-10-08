@@ -30,10 +30,18 @@ pub fn str_to_hashset(s: &str, ngram: usize) -> HashSet<&[u8]> {
 }
 
 #[inline(always)]
-pub fn str_set_sim_helper(w1: &str, w2: &str, ngram: usize) -> (usize, usize, usize) {
-    // output: set 1 size, set 2 size, intersection size
+pub fn fill_str_hashset<'a>(s: &'a str, ngram: usize, set: &mut HashSet<&'a [u8]>) {
+    set.clear();
+    let s_len = s.len();
+    if s_len < ngram {
+        set.insert(s.as_bytes());
+    } else {
+        set.extend(s.as_bytes().windows(ngram));
+    }
+}
 
-    // as long as intersection size is 0, output will be correct
+#[inline(always)]
+pub fn str_set_sim_helper(w1: &str, w2: &str, ngram: usize) -> (usize, usize, usize) {
     if w1.is_empty() || w2.is_empty() {
         return (0, 0, 0);
     }

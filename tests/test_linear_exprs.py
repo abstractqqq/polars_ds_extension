@@ -1054,7 +1054,8 @@ def test_wls_report_multichunked_weights_dont_panic():
 
     # Just verify it ran, produced finite coefficients, and matches a
     # single-chunk run (which goes down the cast-skip branch).
-    df_single = df.with_columns(pl.col("w").rechunk())
+    df_single = pl.DataFrame({"x": x, "y": y, "w": w})
+    assert df_single["w"].n_chunks() == 1
     rep_single = df_single.select(
         pds.lin_reg_report("x", target="y", weights="w", add_bias=True).alias("r")
     ).unnest("r")

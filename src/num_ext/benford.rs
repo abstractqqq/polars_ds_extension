@@ -90,7 +90,7 @@ fn pl_benford_law(inputs: &[Series]) -> PolarsResult<Series> {
                 }
             }
         }
-        _ => return Err(PolarsError::ComputeError("Invalid incoming type.".into())),
+        _ => return Err(PolarsError::ComputeError("data type is not supported".into())),
     }
 
     let mut list_builder: ListPrimitiveChunkedBuilder<UInt32Type> =

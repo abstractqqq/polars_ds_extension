@@ -63,7 +63,7 @@ impl PyLR {
     #[getter]
     pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArr>> {
         match self.lr.coeffs_as_vec() {
-            Ok(v) => Bound::new(py, PyArr(v)),
+            Ok(v) => Bound::new(py, PyArr(v.into())),
             Err(e) => Err(e.into()),
         }
     }
@@ -130,7 +130,7 @@ impl PyElasticNet {
     #[getter]
     pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArr>> {
         match self.lr.coeffs_as_vec() {
-            Ok(v) => Bound::new(py, PyArr(v)),
+            Ok(v) => Bound::new(py, PyArr(v.into())),
             Err(e) => Err(e.into()),
         }
     }
@@ -199,7 +199,7 @@ impl PyOnlineLR {
     #[getter]
     pub fn coeffs<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArr>> {
         match self.lr.coeffs_as_vec() {
-            Ok(v) => Bound::new(py, PyArr(v)),
+            Ok(v) => Bound::new(py, PyArr(v.into())),
             Err(e) => Err(e.into()),
         }
     }

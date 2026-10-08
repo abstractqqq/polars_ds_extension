@@ -26,15 +26,15 @@ where
         .map_err(|e| PolarsError::ComputeError(e.into()))?;
     let skip = null_policy == NullPolicy::SKIP;
     polars_ensure!(skip || null_policy == NullPolicy::RAISE,
-        ComputeError: "EWLS supports only `null_policy='skip'` or 'raise'.");
+        ComputeError: "rolling ewls supports only null_policy='skip' or 'raise'");
     polars_ensure!(kwargs.n >= 2 && kwargs.min_size > 0 && kwargs.min_size <= kwargs.n,
-        ComputeError: "EWLS requires window_size >= 2 and 1 <= min_valid_rows <= window_size.");
+        ComputeError: "rolling ewls requires window_size >= 2 and 1 <= min_valid_rows <= window_size");
     let nrows = inputs
         .first()
-        .ok_or_else(|| PolarsError::NoData("Empty inputs".into()))?
+        .ok_or_else(|| PolarsError::NoData("input data is empty".into()))?
         .len();
     let nfeats = inputs.len() - 1 + usize::from(kwargs.bias);
-    polars_ensure!(nfeats > 0, ComputeError: "EWLS requires a predictor or an intercept.");
+    polars_ensure!(nfeats > 0, ComputeError: "rolling ewls requires a predictor or an intercept");
 
     // Cast before conversion so all-null (Null dtype) predictors are accepted.
     // The shared converter validates lengths, preserves chunks/slice offsets,
@@ -53,7 +53,7 @@ where
         .map(|i| x.get(i, ..).is_all_finite() && y.get(i, ..).is_all_finite())
         .collect();
     polars_ensure!(skip || valid.iter().all(|v| *v), ComputeError:
-        "EWLS with null_policy='raise' requires finite, non-null predictors and target.");
+        "rolling ewls with null_policy='raise' requires finite, non-null predictors and target");
     let rank_tol = if dtype == DataType::Float32 {
         1e-6
     } else {

@@ -33,10 +33,10 @@ pub(crate) struct SplineKwargs {
 pub fn faer_smooth_spline(x: &[f64], y: &[f64], lambda: f64) -> Result<Mat<f64>, String> {
     let n = x.len();
     if x.len() != y.len() {
-        return Err("Input lengths are not the same.".into());
+        return Err("inputs must have the same length".into());
     }
     if n < 3 {
-        return Err("Must have >= 3 points.".into());
+        return Err("number of points must be at least 3".into());
     }
 
     let y_ref = ColRef::from_slice(y).as_mat();
@@ -45,7 +45,7 @@ pub fn faer_smooth_spline(x: &[f64], y: &[f64], lambda: f64) -> Result<Mat<f64>,
     let h = x.windows(2).map(|w| w[1] - w[0]).collect::<Vec<_>>();
 
     if h.iter().any(|&x| x <= 0f64) {
-        return Err("Input is not increasing.".into());
+        return Err("input x must be strictly increasing".into());
     }
 
     // Matrix Q (size n x n-2)
@@ -98,13 +98,14 @@ pub fn faer_smooth_spline(x: &[f64], y: &[f64], lambda: f64) -> Result<Mat<f64>,
 
 #[polars_expr(output_type=Float64)]
 fn pl_smooth_spline(inputs: &[Series], kwargs: SplineKwargs) -> PolarsResult<Series> {
-    let x = inputs[0].f64()?;
-    let y = inputs[1].f64()?;
+    let binding_x = inputs[0].rechunk();
+    let binding_y = inputs[1].rechunk();
+    let x = binding_x.f64()?;
+    let y = binding_y.f64()?;
 
     if x.has_nulls() | y.has_nulls() {
-        return Err(PolarsError::ComputeError("Input x or y has nulls.".into()));
+        return Err(PolarsError::ComputeError("null values found in data".into()));
     }
-    // Make sure they are 1 chunk in Python
     let x_slice = x.cont_slice().unwrap();
     let y_slice = y.cont_slice().unwrap();
     let lambda = kwargs.lambda;

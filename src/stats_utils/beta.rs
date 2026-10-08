@@ -21,7 +21,8 @@ use num::Zero;
 ///
 /// Since I am only working with standard student t's distribution,
 /// location = 0 and scale = 1.
-pub fn student_t_sf(x: f64, df: f64) -> Result<f64, String> {
+// Uses &'static str for errors instead of heap-allocated String to eliminate allocations on error paths.
+pub fn student_t_sf(x: f64, df: f64) -> Result<f64, &'static str> {
     if df.is_infinite() {
         Ok(normal::sf_unchecked(x, 0., 1.))
     } else {
@@ -48,9 +49,9 @@ pub fn student_t_sf(x: f64, df: f64) -> Result<f64, String> {
 /// where `d1` is the first degree of freedom, `d2` is
 /// the second degree of freedom, and `I` is the regularized incomplete
 /// beta function
-pub fn fisher_snedecor_sf(x: f64, freedom_1: f64, freedom_2: f64) -> Result<f64, String> {
+pub fn fisher_snedecor_sf(x: f64, freedom_1: f64, freedom_2: f64) -> Result<f64, &'static str> {
     if x < 0.0 {
-        Err("F stats found to be < 0. This should be impossible.".into())
+        Err("f-statistic must be non-negative")
     } else if x.is_infinite() {
         Ok(0.)
     } else {
@@ -59,15 +60,15 @@ pub fn fisher_snedecor_sf(x: f64, freedom_1: f64, freedom_2: f64) -> Result<f64,
     }
 }
 
-fn checked_beta_reg(a: f64, b: f64, x: f64) -> Result<f64, String> {
+fn checked_beta_reg(a: f64, b: f64, x: f64) -> Result<f64, &'static str> {
     // a, degree of freedom
     // b, shape parameter
     if a <= 0.0 {
-        Err("Beta: Shape parameter alpha must be positive.".into())
+        Err("shape parameter alpha must be positive")
     } else if b <= 0.0 {
-        Err("Beta: Shape parameter beta must be positive.".into())
+        Err("shape parameter beta must be positive")
     } else if !(0.0..=1.0).contains(&x) {
-        Err("Beta: Input x must be between 0 and 1.".into())
+        Err("input x must be between 0 and 1")
     } else {
         let bt = if x.is_zero() || (x == 1.0) {
             0.0

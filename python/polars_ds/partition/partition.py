@@ -52,7 +52,7 @@ class PartitionHelper:
             all_ok = cols[0] == by if isinstance(by, str) else sorted(cols) == sorted(by)
             if not all_ok:
                 raise ValueError(
-                    "Currently this only supports partitions by str, bool or categorical columns."
+                    "partitioning currently only supports string, boolean, or categorical columns"
                 )
 
             self.parts = {

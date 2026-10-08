@@ -44,7 +44,7 @@ class PLContext(Enum):
         elif self == PLContext.SQL:
             return SQLStep.from_partial_dict(deser_dict)
         else:
-            raise ValueError(f"Unknown PLContext: {self}")
+            raise ValueError(f"unknown PLContext: '{self}'")
 
 
 class PipelineStep(Protocol):
@@ -73,9 +73,7 @@ class MakeStep:
         """
         ctx = deser_dict.get("context", None)
         if ctx is None:
-            raise ValueError(
-                "There is no 'context' key in the dictionary. Input is not conformant."
-            )
+            raise ValueError("missing 'context' key in step dictionary")
         else:
             return PLContext(ctx).build_step(deser_dict)
 
@@ -121,18 +119,18 @@ class SortStep:
         elif isinstance(by, list):
             self.by: List[pl.Expr] = [to_expr(e) for e in by]
         else:
-            raise ValueError("Input `by` can only be scalar str/pl.Expr or a list of them.")
+            raise ValueError("input 'by' must be a string, polars expression, or list of strings or expressions")
 
         if isinstance(descending, bool):
             self.descending: List[bool] = [descending]
         elif isinstance(descending, list):
             self.descending: List[bool] = [bool(b) for b in descending]
         else:
-            raise ValueError("Input `descending` must be a scalar bool or a list of bools.")
+            raise ValueError("input 'descending' must be a boolean or a list of booleans")
 
         if len(self.by) != len(self.descending):
             raise ValueError(
-                f"Input `by` (len {len(by)}) doesn't match the length of `descending` (len {len(self.descending)})."
+                f"length of 'by' ({len(self.by)}) does not match length of 'descending' ({len(self.descending)})"
             )
 
         self.context: PLContext = PLContext.SORT
@@ -175,7 +173,7 @@ class GroupByAggStep:
         elif isinstance(by, list):
             self.by: List[pl.Expr] = [to_expr(e) for e in by]
         else:
-            raise ValueError("Input `by` can only be scalar str/pl.Expr or a list of them.")
+            raise ValueError("input 'by' must be a string, polars expression, or list of strings or expressions")
 
         self.agg: List[pl.Expr] = agg
         self.context: PLContext = PLContext.GROUP_BY_AGG
@@ -242,14 +240,10 @@ class GroupByDynAggStep:
         ] = "window",
     ):
         if closed not in ["left", "right", "both", "none"]:
-            raise ValueError(
-                "Input `closed` must be one of ['left', 'right', 'both', 'none']. See polars's group_by_dynamic for more info."
-            )
+            raise ValueError("input 'closed' must be one of 'left', 'right', 'both', or 'none'")
 
         if label not in ["left", "right", "datapoint"]:
-            raise ValueError(
-                "Input `closed` must be one of ['left', 'right', 'datapoint']. See polars's group_by_dynamic for more info."
-            )
+            raise ValueError("input 'label' must be one of 'left', 'right', or 'datapoint'")
 
         if start_by not in [
             "window",
@@ -263,13 +257,13 @@ class GroupByDynAggStep:
             "sunday",
         ]:
             raise ValueError(
-                "Input `closed` must be one of ['window', 'datapoint', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']. See polars's group_by_dynamic for more info."
+                "input 'start_by' must be one of 'window', 'datapoint', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', or 'sunday'"
             )
 
         # Because of a strange bug.
         if isinstance(index_column, pl.Expr):
             raise ValueError(
-                "Input `index_column` must be a string (name of a column) and not a Polars expression."
+                "input 'index_column' must be a string and not a polars expression"
             )
 
         self.index_column: str = index_column
@@ -299,7 +293,7 @@ class GroupByDynAggStep:
             self.group_by: List[pl.Expr] | None = None
         else:
             raise ValueError(
-                "Input `by` can only be scalar str / pl.Expr or a list of them or None."
+                "input 'group_by' must be a string, polars expression, list of strings or expressions, or None"
             )
 
         self.agg: List[pl.Expr] = agg
@@ -372,7 +366,7 @@ class ExprStep:
             self.exprs = [to_expr(e) for e in exprs]
         else:
             raise ValueError(
-                "A pipeline step must be either an expression or a list of expressions."
+                "pipeline step must be an expression or a list of expressions"
             )
 
     @staticmethod
@@ -386,7 +380,7 @@ class ExprStep:
         elif step_context == PLContext.SQL:
             exprs = str(json_exprs)  # SQL context json_exprs is just a str
         else:
-            raise ValueError("Input is not a valid PDS pipeline.")
+            raise ValueError("input is not a valid pipeline step")
 
         return ExprStep(exprs=exprs, context=step_context)
 
@@ -400,7 +394,7 @@ class ExprStep:
         elif self.context == PLContext.FILTER:
             d["exprs"] = self.exprs[0].meta.serialize(format="json")
         else:  # Should never reach here
-            raise ValueError(f"Unknown context: {self.context}")
+            raise ValueError(f"unknown context: '{self.context}'")
 
         return json.dumps(d)
 

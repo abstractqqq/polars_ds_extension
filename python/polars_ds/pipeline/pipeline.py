@@ -62,16 +62,16 @@ class StepRepr:
             args: List[Any] = dictionary.get("args", [])
             kwargs: Dict[str, Any] = dictionary.get("kwargs", {})
             if not isinstance(name, str):
-                raise ValueError("Value of `name` must be a string.")
+                raise ValueError("'name' must be a string")
             if not isinstance(args, list):
-                raise ValueError("Value of `args` must be a list.")
+                raise ValueError("'args' must be a list")
             if not isinstance(kwargs, dict):
-                raise ValueError("Value of `kwargs` must be a dict.")
+                raise ValueError("'kwargs' must be a dict")
             if not all(isinstance(s, str) for s in kwargs.keys()):
-                raise ValueError("All keys in `kwargs` must be strings.")
+                raise ValueError("all keys in 'kwargs' must be strings")
             return StepRepr(name=name, args=args, kwargs=kwargs)
         except Exception as e:
-            raise ValueError(f"Keys missing or data type is not expected. Original error: \n{e}")
+            raise ValueError(f"keys missing or unexpected data type: {e}")
 
 
 @dataclass
@@ -173,7 +173,7 @@ class Pipeline:
             lowercase: bool = pipeline_dict.get("lowercase", False)
             uppercase: bool = pipeline_dict.get("uppercase", False)
         except Exception as e:
-            raise ValueError(f"Input dictionary is missing keywords. Original error: \n{e}")
+            raise ValueError(f"input dictionary is missing required keys: {e}")
 
         return Pipeline(
             name=name,
@@ -233,7 +233,7 @@ class Pipeline:
             missing = [c for c in self.feature_names_in_ if c not in columns]
             if len(extras) > 0 or len(missing) > 0:
                 raise ValueError(
-                    f"Input df doesn't have the features expected. Extra columns: {extras}. Missing columns: {missing}"
+                    f"input dataframe features do not match expected features; extra columns: {extras}, missing columns: {missing}"
                 )
 
         plan = self._generate_lazy_plan(df)
@@ -328,7 +328,7 @@ class Blueprint:
         if target is None:
             if self.target is None:
                 raise ValueError(
-                    "Target is not given and blueprint is not initialized with a target."
+                    "target is required but was not provided or set on blueprint"
                 )
             return self.target
         else:
@@ -562,7 +562,7 @@ class Blueprint:
         """
         if not all(isinstance(s, str) for s in cols):
             raise ValueError(
-                "Input columns to `polynomial_features` must all be strings represeting column names."
+                "input columns to 'polynomial_features' must all be strings"
             )
 
         self._steps.append(
@@ -901,7 +901,7 @@ class Blueprint:
             exprs = [to_expr(c) for c in columns]
         else:
             raise ValueError(
-                "Input `columns` must be a string, or a pl.Expr or a list of str or pl.Expr."
+                "input 'columns' must be a string, polars expression, or list of strings or expressions"
             )
 
         self._steps.append(ExprStep(exprs, PLContext.EXPLODE))
@@ -1000,7 +1000,7 @@ class Blueprint:
                 keywords["target"] = self._get_target()
                 if keywords["target"] is None:
                     raise ValueError(
-                        "Target is not explicitly given and is required by the custom function."
+                        "target is required by custom function but was not provided"
                     )
 
         self._steps.append(
@@ -1020,7 +1020,7 @@ class Blueprint:
         step_repr: StepRepr = StepRepr.from_dict(dictionary)
         func = getattr(self, step_repr.name, None)  # Default is None
         if func is None or step_repr.name.startswith("_"):
-            raise ValueError("Unknown or invalid method name.")
+            raise ValueError("unknown or invalid method name")
 
         return func(*step_repr.args, **step_repr.kwargs)
 
@@ -1053,7 +1053,7 @@ class Blueprint:
                 transforms.append(step)
                 df_lazy = step.apply_df(df_lazy)
             else:
-                raise ValueError(f"Not a valid step: {step.__class__}")
+                raise ValueError(f"invalid pipeline step: {step.__class__}")
 
         pipe = Pipeline(
             name=self.name,

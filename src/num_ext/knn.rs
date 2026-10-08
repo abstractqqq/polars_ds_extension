@@ -26,11 +26,12 @@ pub fn knn_full_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new("knn_dist".into(), DataType::Struct(v)))
 }
 
+// Deserialized plugin kwargs are read-only; Box<str> avoids 8 bytes of unused capacity per string.
 #[derive(Deserialize)]
 pub(crate) struct KNNAvgKwargs {
     // pub(crate) leaf_size: usize,
     pub(crate) k: usize,
-    pub(crate) metric: String,
+    pub(crate) metric: Box<str>,
     #[serde(default)]
     pub(crate) weighted: bool,
     #[serde(default)]
@@ -44,7 +45,7 @@ pub(crate) struct KNNAvgKwargs {
 pub(crate) struct KDTKwargs {
     // pub(crate) leaf_size: usize,
     pub(crate) k: usize,
-    pub(crate) metric: String,
+    pub(crate) metric: Box<str>,
     #[serde(default)]
     pub(crate) parallel: bool,
     #[serde(default)]
@@ -63,20 +64,23 @@ fn _max_bound() -> f64 {
 pub(crate) struct KDTRadiusKwargs {
     // pub(crate) leaf_size: usize,
     pub(crate) r: f64,
-    pub(crate) metric: String,
+    pub(crate) metric: Box<str>,
     pub(crate) parallel: bool,
     pub(crate) sort: bool,
 }
 
-pub fn row_major_slice_to_leaves_filtered<'a, T: Float + 'static, A: Copy>(
+pub fn row_major_slice_to_leaves_filtered<'a, T: Float + 'static, A: Copy, I>(
     slice: &'a [T],
     row_len: usize,
-    values: &'a [A],
+    values: I,
     filter: &BooleanChunked,
-) -> Vec<Leaf<'a, T, A>> {
+) -> Vec<Leaf<'a, T, A>>
+where
+    I: IntoIterator<Item = A>,
+{
     filter
         .iter()
-        .zip(values.iter().copied().zip(slice.chunks_exact(row_len)))
+        .zip(values.into_iter().zip(slice.chunks_exact(row_len)))
         .filter(|(f, _)| f.unwrap_or(false))
         .map(|(_, pair)| pair.into())
         .collect::<Vec<_>>()
@@ -100,14 +104,19 @@ fn pl_knn_avg(
     let min_bound = kwargs.min_bound;
     let method = KNNMethod::new(kwargs.weighted, min_bound);
 
-    let id = inputs[0].f64().unwrap();
-    let id = id.cont_slice()?;
+    let id = inputs[0].f64()?;
+    polars_ensure!(id.null_count() == 0, ComputeError: "KNN target column cannot contain null values");
     let null_mask = inputs[1].bool().unwrap();
     let nrows = null_mask.len();
 
     let ncols = inputs[2..].len();
     let data = series_to_slice::<Float64Type>(&inputs[2..], IndexOrder::C)?;
-    let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, &null_mask);
+    let mut leaves = row_major_slice_to_leaves_filtered(
+        &data,
+        ncols,
+        id.downcast_iter().flat_map(|arr| arr.values().iter().copied()),
+        &null_mask,
+    );
 
     let dist = KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into()))?;
     let tree =
@@ -281,8 +290,8 @@ fn pl_knn_ptwise(
     let can_parallel = kwargs.parallel && !context.parallel();
     let skip_eval = kwargs.skip_eval;
 
-    let id = inputs[0].u32().unwrap();
-    let id = id.cont_slice()?;
+    let id = inputs[0].u32()?;
+    polars_ensure!(id.null_count() == 0, ComputeError: "KNN index column cannot contain null values");
     let nrows = id.len();
 
     // True means keep
@@ -305,7 +314,12 @@ fn pl_knn_ptwise(
 
     match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
         Ok(d) => {
-            let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, keep_mask);
+            let mut leaves = row_major_slice_to_leaves_filtered(
+                &data,
+                ncols,
+                id.downcast_iter().flat_map(|arr| arr.values().iter().copied()),
+                keep_mask,
+            );
             let tree = KDT::from_leaves(&mut leaves, d)
                 .map_err(|e| PolarsError::ComputeError(e.into()))?;
             Ok(knn_ptwise(
@@ -453,8 +467,8 @@ fn pl_knn_ptwise_w_dist(
     let can_parallel = kwargs.parallel && !context.parallel();
     let skip_eval = kwargs.skip_eval;
 
-    let id = inputs[0].u32().unwrap();
-    let id = id.cont_slice()?;
+    let id = inputs[0].u32()?;
+    polars_ensure!(id.null_count() == 0, ComputeError: "KNN index column cannot contain null values");
     let nrows = id.len();
 
     let null_mask = inputs[1].bool().unwrap();
@@ -476,7 +490,12 @@ fn pl_knn_ptwise_w_dist(
     let (ca_nb, ca_dist) =
         match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
             Ok(d) => {
-                let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, null_mask);
+                let mut leaves = row_major_slice_to_leaves_filtered(
+                    &data,
+                    ncols,
+                    id.downcast_iter().flat_map(|arr| arr.values().iter().copied()),
+                    null_mask,
+                );
                 let tree = KDT::from_leaves(&mut leaves, d)
                     .map_err(|e| PolarsError::ComputeError(e.into()))?;
                 Ok(knn_ptwise_w_dist(
@@ -568,14 +587,18 @@ fn pl_query_radius_ptwise(
     let sort = kwargs.sort;
 
     let id = inputs[0].u32()?;
-    let id = id.cont_slice()?;
+    polars_ensure!(id.null_count() == 0, ComputeError: "KNN index column cannot contain null values");
 
     let ncols = inputs[1..].len();
     let data = series_to_slice::<Float64Type>(&inputs[1..], IndexOrder::C)?;
     // Building output
     match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
         Ok(d) => {
-            let mut leaves = slice_to_leaves(&data, ncols, id);
+            let mut leaves = slice_to_leaves(
+                &data,
+                ncols,
+                id.downcast_iter().flat_map(|arr| arr.values().iter().copied()),
+            );
             let tree = KDT::from_leaves(&mut leaves, d)
                 .map_err(|e| PolarsError::ComputeError(e.into()))?;
             Ok(query_radius_ptwise(&tree, &data, radius, can_parallel, sort).into_series())
@@ -660,7 +683,7 @@ fn pl_query_radius_ptwise_null_safe(
     let sort = kwargs.sort;
 
     let id = inputs[0].u32()?;
-    let id = id.cont_slice()?;
+    polars_ensure!(id.null_count() == 0, ComputeError: "KNN index column cannot contain null values");
     // True = row's features are all non-null and should be included in the kd-tree.
     let keep_mask = inputs[1].bool()?;
 
@@ -668,7 +691,12 @@ fn pl_query_radius_ptwise_null_safe(
     let data = series_to_slice::<Float64Type>(&inputs[2..], IndexOrder::C)?;
     match KNNDist::try_from(kwargs.metric).map_err(|e| PolarsError::ComputeError(e.into())) {
         Ok(d) => {
-            let mut leaves = row_major_slice_to_leaves_filtered(&data, ncols, id, keep_mask);
+            let mut leaves = row_major_slice_to_leaves_filtered(
+                &data,
+                ncols,
+                id.downcast_iter().flat_map(|arr| arr.values().iter().copied()),
+                keep_mask,
+            );
             let tree = KDT::from_leaves(&mut leaves, d)
                 .map_err(|e| PolarsError::ComputeError(e.into()))?;
             Ok(
@@ -791,7 +819,7 @@ fn pl_nb_cnt(inputs: &[Series], context: CallerContext, kwargs: KDTKwargs) -> Po
             .into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }

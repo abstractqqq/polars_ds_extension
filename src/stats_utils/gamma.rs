@@ -29,7 +29,8 @@ const GAMMA_DK: &[f64] = &[
 ///
 /// where `α` is the shape, `β` is the rate, `Γ` is the gamma function,
 /// and `γ` is the upper incomplete gamma function
-pub fn sf(x: f64, shape: f64, rate: f64) -> Result<f64, String> {
+// Uses &'static str for errors instead of heap-allocated String to eliminate allocations on error paths.
+pub fn sf(x: f64, shape: f64, rate: f64) -> Result<f64, &'static str> {
     if x <= 0.0 {
         Ok(1.0)
     } else if (x == shape) && rate.is_infinite() {
@@ -72,15 +73,15 @@ pub fn ln_gamma(x: f64) -> f64 {
     }
 }
 
-fn checked_gamma_lr(a: f64, x: f64) -> Result<f64, String> {
+fn checked_gamma_lr(a: f64, x: f64) -> Result<f64, &'static str> {
     if a.is_nan() || x.is_nan() {
         return Ok(f64::NAN);
     }
     if a <= 0.0 || a == f64::INFINITY {
-        return Err("Gamma: Shape parameter alpha must be positive and not infinity.".into());
+        return Err("shape parameter alpha must be positive and finite");
     }
     if x <= 0.0 || x == f64::INFINITY {
-        return Err("Gamma: Input x must be positive and not infinity.".into());
+        return Err("input x must be positive and finite");
     }
 
     let eps = 0.000000000000001;
@@ -162,15 +163,15 @@ fn checked_gamma_lr(a: f64, x: f64) -> Result<f64, String> {
 }
 
 /// Upper incomplete gamma function
-fn checked_gamma_ur(a: f64, x: f64) -> Result<f64, String> {
+fn checked_gamma_ur(a: f64, x: f64) -> Result<f64, &'static str> {
     if a.is_nan() || x.is_nan() {
         return Ok(f64::NAN);
     }
     if a <= 0.0 || a == f64::INFINITY {
-        return Err("Gamma: Shape parameter alpha must be positive and not infinity.".into());
+        return Err("shape parameter alpha must be positive and finite");
     }
     if x <= 0.0 || x == f64::INFINITY {
-        return Err("Gamma: Input x must be positive and not infinity.".into());
+        return Err("input x must be positive and finite");
     }
 
     let eps = 0.000000000000001;

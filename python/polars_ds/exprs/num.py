@@ -452,7 +452,7 @@ def principal_components(
     """
     feats = [to_expr(f) for f in features]
     if k > len(feats) or k <= 0:
-        raise ValueError("Input `k` should be between 1 and the number of features inclusive.")
+        raise ValueError("'k' must be between 1 and the number of features inclusive")
 
     actual_inputs = [pl.lit(k, dtype=pl.UInt32)]
     if center:
@@ -547,7 +547,7 @@ def psi(
     https://www.listendata.com/2015/05/population-stability-index.html
     """
     if n_bins <= 1:
-        raise ValueError("Input `n_bins` must be >= 2.")
+        raise ValueError("'n_bins' must be >= 2")
 
     if isinstance(new, (str, pl.Expr)):
         new_ = to_expr(new)
@@ -685,12 +685,12 @@ def psi_w_breakpoints(
         y: pl.Expr = pl.lit(temp.filter(temp.is_finite()))
 
     if len(breakpoints) == 0:
-        raise ValueError("Breakpoints is empty.")
+        raise ValueError("breakpoints cannot be empty")
 
     bp = breakpoints + [float("inf")]
     return pl_plugin(
         symbol="pl_psi_w_bps",
-        args=[x.rechunk(), y.rechunk(), pl.Series(values=bp)],
+        args=[x, y, pl.Series(values=bp)],
         changes_length=True,
     ).alias("psi_report")
 
@@ -841,7 +841,7 @@ def integrate_trapz(y: str | pl.Expr, x: float | pl.Expr) -> pl.Expr:
         distance between points. If it is an expression, it must be sorted, does not contain
         null, and have the same length as self.
     """
-    yy = to_expr(y).cast(pl.Float64).rechunk()
+    yy = to_expr(y).cast(pl.Float64)
     if isinstance(x, float):
         xx = pl.lit(abs(x), pl.Float64)
     else:
@@ -893,13 +893,13 @@ def convolve(
     https://brianmcfee.net/dstbook-site/content/ch03-convolution/Modes.html
     https://en.wikipedia.org/wiki/Convolution
     """
-    xx = to_expr(x).fill_null(fill_value).cast(pl.Float64).rechunk()  # One cont slice
+    xx = to_expr(x).fill_null(fill_value).cast(pl.Float64)
     f: pl.Expr | pl.Series
     if isinstance(kernel, pl.Expr):
-        f = kernel.filter(kernel.is_finite()).rechunk()  # One cont slice
+        f = kernel.filter(kernel.is_finite())
     else:
         f = pl.Series(values=kernel, dtype=pl.Float64)
-        f = f.filter(f.is_finite()).rechunk()  # One cont slice
+        f = f.filter(f.is_finite())
 
     if method == "direct":
         f = f.reverse()
@@ -1037,7 +1037,7 @@ def detrend(x: str | pl.Expr, method: DetrendMethod = "linear") -> pl.Expr:
     elif method == "mean":
         return ts - ts.mean()
     else:
-        raise ValueError(f"Unknown detrend method: {method}")
+        raise ValueError(f"unknown detrend method: '{method}'")
 
 
 def rfft(series: str | pl.Expr, n: int | None = None, return_full: bool = False) -> pl.Expr:
@@ -1057,7 +1057,7 @@ def rfft(series: str | pl.Expr, n: int | None = None, return_full: bool = False)
         If true, output will have the same length as determined by n.
     """
     if n is not None and n <= 1:
-        raise ValueError("Input `n` should be > 1.")
+        raise ValueError("'n' must be > 1")
 
     full = pl.lit(return_full, pl.Boolean)
     nn = pl.lit(n, pl.UInt32)
@@ -1197,8 +1197,8 @@ def add_at(
         error if indices are not checked. If this is an expression, only the first element
         in the represented column will be used.
     """
-    ind = to_expr(indices).cast(pl.UInt32).rechunk()
-    val = to_expr(values).cast(pl.Float64).rechunk()
+    ind = to_expr(indices).cast(pl.UInt32)
+    val = to_expr(values).cast(pl.Float64)
     if isinstance(buffer_size, pl.Expr):
         size = buffer_size
     else:

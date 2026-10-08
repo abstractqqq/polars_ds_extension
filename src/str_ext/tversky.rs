@@ -1,4 +1,4 @@
-use super::{str_set_sim_helper, str_to_hashset};
+use super::{fill_str_hashset, str_set_sim_helper, str_to_hashset};
 use crate::utils::split_offsets;
 use polars::prelude::{arity::binary_elementwise_values, *};
 use pyo3_polars::{
@@ -19,14 +19,15 @@ fn tversky_sim(w1: &str, w2: &str, ngram: usize, alpha: f64, beta: f64) -> f64 {
 }
 
 #[inline(always)]
-fn tversky_sim_cached(
-    w1: &str,
+fn tversky_sim_cached_scratch<'a>(
+    w1: &'a str,
     cached_s2: &foldhash::HashSet<&[u8]>,
     ngram: usize,
     alpha: f64,
     beta: f64,
+    s1: &mut foldhash::HashSet<&'a [u8]>,
 ) -> f64 {
-    let s1 = str_to_hashset(w1, ngram);
+    fill_str_hashset(w1, ngram, s1);
     let intersection = s1.intersection(cached_s2).count();
     let s1ms2 = s1.len().abs_diff(intersection) as f64;
     let s2ms1 = cached_s2.len().abs_diff(intersection) as f64;
@@ -54,13 +55,15 @@ fn pl_tversky_sim(inputs: &[Series], context: CallerContext) -> PolarsResult<Ser
 
     if ca2.len() == 1 {
         let r = ca2.get(0).unwrap();
+        let cached_r_set = str_to_hashset(r, ngram);
         let out: Float64Chunked = if can_parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
             let chunks_iter = splits.into_par_iter().map(|(offset, len)| {
+                let mut scratch = foldhash::HashSet::default();
                 let s1 = ca1.slice(offset as i64, len);
                 let out: Float64Chunked = s1.apply_nonnull_values_generic(DataType::Float64, |s| {
-                    tversky_sim(s, r, ngram, alpha, beta)
+                    tversky_sim_cached_scratch(s, &cached_r_set, ngram, alpha, beta, &mut scratch)
                 });
                 out.downcast_iter().cloned().collect::<Vec<_>>()
             });
@@ -68,8 +71,9 @@ fn pl_tversky_sim(inputs: &[Series], context: CallerContext) -> PolarsResult<Ser
             let chunks = POOL.install(|| chunks_iter.collect::<Vec<_>>());
             Float64Chunked::from_chunk_iter(ca1.name().clone(), chunks.into_iter().flatten())
         } else {
+            let mut scratch = foldhash::HashSet::default();
             ca1.apply_nonnull_values_generic(DataType::Float64, |s| {
-                tversky_sim(s, r, ngram, alpha, beta)
+                tversky_sim_cached_scratch(s, &cached_r_set, ngram, alpha, beta, &mut scratch)
             })
         };
         Ok(out.into_series())
@@ -94,7 +98,7 @@ fn pl_tversky_sim(inputs: &[Series], context: CallerContext) -> PolarsResult<Ser
         Ok(out.into_series())
     } else {
         Err(PolarsError::ShapeMismatch(
-            "Inputs must have the same length or one of them must be a scalar.".into(),
+            "inputs must have the same length or one of them must be a scalar".into(),
         ))
     }
 }
