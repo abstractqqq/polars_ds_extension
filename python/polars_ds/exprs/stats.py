@@ -783,7 +783,7 @@ def weighted_hmean(
     """
     w = to_expr(weights)
     x = to_expr(var)
-    dot = x.dot(pl.lit(1.0, dtype=pl.Float32) / x)
+    dot = w.dot(pl.lit(1.0, dtype=pl.Float32) / x)
     if is_normalized:
         return 1.0 / dot
     else:
@@ -945,7 +945,7 @@ def cosine_sim(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
     xx, yy = to_expr(x), to_expr(y)
     x2 = xx.dot(xx).sqrt()
     y2 = yy.dot(yy).sqrt()
-    return xx.dot(yy) / (x2 * y2).sqrt()
+    return xx.dot(yy) / (x2 * y2)
 
 
 def weighted_cosine_sim(x: str | pl.Expr, y: str | pl.Expr, weights: str | pl.Expr) -> pl.Expr:

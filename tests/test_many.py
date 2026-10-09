@@ -1584,6 +1584,29 @@ def test_weighted_corr():
     np.isclose(np_result, pds_result, atol=1e-8)
 
 
+def test_cosine_sim():
+    df = pl.DataFrame({"a": [1.0, 2.0, 3.0, -1.0], "b": [2.0, 0.5, 1.0, 4.0]})
+    a = df["a"].to_numpy()
+    b = df["b"].to_numpy()
+    expected = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+    result = df.select(pds.cosine_sim("a", "b")).item(0, 0)
+    assert np.isclose(result, expected)
+    # A vector is identical to itself and opposite to its negation
+    assert np.isclose(df.select(pds.cosine_sim("a", "a")).item(0, 0), 1.0)
+    assert np.isclose(df.select(pds.cosine_sim("a", -pl.col("a"))).item(0, 0), -1.0)
+
+
+@pytest.mark.parametrize("is_normalized", [False, True])
+def test_weighted_hmean(is_normalized):
+    from scipy.stats import hmean
+
+    x = np.array([1.0, 2.0, 4.0, 8.0])
+    w = np.array([0.1, 0.2, 0.3, 0.4]) if is_normalized else np.array([1.0, 3.0, 2.0, 5.0])
+    df = pl.DataFrame({"x": x, "w": w})
+    result = df.select(pds.weighted_hmean("x", "w", is_normalized=is_normalized)).item(0, 0)
+    assert np.isclose(result, hmean(x, weights=w))
+
+
 # KNNDist variants and NullPolicy parameterized tests
 
 
