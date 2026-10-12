@@ -352,7 +352,11 @@ Generally speaking, the more expressions you want to evaluate simultaneously, th
 
 **This library will only depend on python Polars (for most of its core) and will try to be as stable as possible for polars>=1.4.0. Exceptions will be made when Polars's update forces changes in the plugins. However, Polars updates quickly and older versions may not be tested. Currently, it is actively tested for Polars>=1.33.**
 
-This package is also not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. This concerns plugin expressions like `pds.lin_reg`, etc, which won't work with streaming. By the same token, Polars large index version is not supported at this point, and I welcome any 3rd packaging. However, I will try to support some expressions with the streaming engine, as they may be important.
+This package is also not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. This concerns plugin expressions like `pds.lin_reg`, etc, which won't work with streaming. By the same token, Polars large index version is not supported at this point, and I welcome any 3rd packaging. That said, expressions provided by polars_ds that can be turned into native polars should work mostly in streaming mode. Only some plugin functions where we interop with Rust / arrays may have issues with streaming, and Polars's engine will simply materialize the columns instead of streaming them and your code probably will not break.
+
+Regarding Polars v1, v2 support: 
+
+1. polars_ds <= 0.13 should work with polars v1, and may work with polars v2 but forward compatibility is not gauranteed. polars_ds >= 0.14 will try to be fully compatible with polars v2.
 
 ## Build From Source
 

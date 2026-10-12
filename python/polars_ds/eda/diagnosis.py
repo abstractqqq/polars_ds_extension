@@ -24,6 +24,7 @@ from itertools import combinations
 from great_tables import GT
 
 # Internal dependencies
+from polars_ds import IS_POLARS_V2
 from polars_ds.exprs.ts_features import query_cond_entropy
 from polars_ds.exprs.stats import corr
 from polars_ds.typing import CorrMethod, PolarsFrame
@@ -172,15 +173,27 @@ class DIA:
                     .sum()
                     .alias("outlier_cnt"),
                     pl.struct(
-                        ((pl.col(c) - pl.col(c).min()) / (pl.col(c).max() - pl.col(c).min()))
-                        .filter(pl.col(c).is_finite())
-                        .cut(breaks=cuts, left_closed=True, include_breaks=True)
-                        .struct.rename_fields(["brk", "category"])
-                        .struct.field("brk")
-                        .value_counts()
-                        .sort()
-                        .struct.field("count")
-                        .implode()
+                        (
+                            ((pl.col(c) - pl.col(c).min()) / (pl.col(c).max() - pl.col(c).min()))
+                            .filter(pl.col(c).is_finite())
+                            .bin_intervals(cuts, labels=False)
+                            .value_counts()
+                            .sort()
+                            .struct.field("count")
+                            .implode()
+                        )
+                        if IS_POLARS_V2
+                        else (
+                            ((pl.col(c) - pl.col(c).min()) / (pl.col(c).max() - pl.col(c).min()))
+                            .filter(pl.col(c).is_finite())
+                            .cut(breaks=cuts, left_closed=True, include_breaks=True)
+                            .struct.rename_fields(["brk", "category"])
+                            .struct.field("brk")
+                            .value_counts()
+                            .sort()
+                            .struct.field("count")
+                            .implode()
+                        )
                     ).alias("histogram"),
                 ]
                 for c in to_check

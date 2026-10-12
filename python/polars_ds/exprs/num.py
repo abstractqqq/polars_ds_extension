@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Iterable, List
 
 import polars as pl
 
+from polars_ds import IS_POLARS_V2
 from polars_ds._utils import pl_plugin, to_expr
 
 # Internal dependencies
@@ -563,12 +564,24 @@ def psi(
         temp = pl.lit(pl.Series(values=baseline, dtype=pl.Float64))
         valid_ref = temp.filter(temp.is_finite())
 
-    vc = (
-        valid_ref.qcut(n_bins, left_closed=False, allow_duplicates=True, include_breaks=True)
-        .struct.field("breakpoint")
-        .value_counts()
-        .sort()
-    )
+    if IS_POLARS_V2:
+        vc = (
+            valid_ref.bin_quantiles(
+                n_bins, labels=False, include_intervals=True, right_closed=True
+            )
+            .struct.field("right")
+            .fill_null(float("inf"))
+            .alias("breakpoint")
+            .value_counts()
+            .sort()
+        )
+    else:
+        vc = (
+            valid_ref.qcut(n_bins, left_closed=False, allow_duplicates=True, include_breaks=True)
+            .struct.field("breakpoint")
+            .value_counts()
+            .sort()
+        )
 
     # breakpoints learned from ref
     brk = vc.struct.field("breakpoint")  # .cast(pl.Float64)
@@ -722,7 +735,10 @@ def woe(x: str | pl.Expr, target: str | pl.expr | Iterable[float], n_bins: int =
         t = pl.Series(values=target)
     xx = to_expr(x)
     valid = xx.filter(xx.is_finite())
-    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
+    if IS_POLARS_V2:
+        brk = valid.bin_quantiles(n_bins, labels=False, right_closed=True).cast(pl.String)
+    else:
+        brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
     return pl_plugin(symbol="pl_woe_discrete", args=[brk, t], changes_length=True)
 
 
@@ -792,7 +808,10 @@ def info_value(
         t = pl.Series(values=target)
     xx = to_expr(x)
     valid = xx.filter(xx.is_finite())
-    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
+    if IS_POLARS_V2:
+        brk = valid.bin_quantiles(n_bins, labels=False, right_closed=True).cast(pl.String)
+    else:
+        brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
     out = pl_plugin(symbol="pl_iv", args=[brk, t], changes_length=True)
     return out.struct.field("iv").sum() if return_sum else out
 
