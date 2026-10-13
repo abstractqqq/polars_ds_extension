@@ -4,3 +4,4 @@ mkdocs-material==9.7.6
 mkdocs-section-index==0.3.11
 pytkdocs[numpy-style]==0.16.2
 griffe==1.6
+pymdown-extensions<11
