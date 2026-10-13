@@ -8,7 +8,7 @@ from polars._typing import IntoExpr
 
 # Internal dependencies
 import polars_ds.sample_and_split as sa
-from polars_ds import integrate_trapz, principal_components, query_r2, query_tpr_fpr
+from polars_ds import IS_POLARS_V2, integrate_trapz, principal_components, query_r2, query_tpr_fpr
 
 alt.data_transformers.enable("vegafusion")
 
@@ -409,7 +409,13 @@ def plot_prob_calibration(
     df_socres = [
         df.select(s, "__actual__")
         .with_columns(
-            pl.col(s).qcut(n_bins, labels=[str(i) for i in range(n_bins)]).alias("__qcuts__")
+            (
+                pl.col(s).bin_quantiles(
+                    n_bins, labels=[str(i) for i in range(n_bins)], right_closed=True
+                )
+                if IS_POLARS_V2
+                else pl.col(s).qcut(n_bins, labels=[str(i) for i in range(n_bins)])
+            ).alias("__qcuts__")
         )
         .group_by("__qcuts__")
         .agg(

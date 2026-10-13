@@ -4,6 +4,7 @@ import polars as pl
 import polars_ds.config as Config  # noqa: F401
 
 __version__ = importlib.metadata.version("polars_ds")
+IS_POLARS_V2: bool = int(pl.__version__.split(".")[0]) >= 2
 
 # Internal dependencies
 from polars_ds.exprs import *  # noqa F403
