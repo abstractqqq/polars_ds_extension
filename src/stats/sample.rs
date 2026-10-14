@@ -15,15 +15,24 @@ fn rng_from_seed(seed: Option<u64>) -> StdRng {
     }
 }
 
+/// Determines the number of samples to generate.
+/// `use_ref` is an explicit flag (always the last input). If true, `len_ref` is a reference
+/// column of any dtype and the sample count is its length (e.g. the length of the current
+/// batch). If false, `len_ref` is a scalar UInt32 (pl.len()) holding the sample count.
+/// We must not infer this from `len_ref.len() == 1`, because a streaming batch may have 1 row.
+fn get_sample_len(len_ref: &Series, use_ref: &Series) -> PolarsResult<usize> {
+    let use_ref = use_ref.bool()?.get(0).unwrap_or(false);
+    if use_ref {
+        Ok(len_ref.len())
+    } else {
+        let len = len_ref.cast(&DataType::UInt32)?;
+        Ok(len.u32()?.get(0).unwrap_or(0) as usize)
+    }
+}
+
 #[polars_expr(output_type=Int32)]
 fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
-    let len_ref = &inputs[0];
-    let n = if len_ref.len() == 1 {
-        let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
-        len.get(0).unwrap() as usize
-    } else {
-        inputs[0].len()
-    };
+    let n = get_sample_len(&inputs[0], &inputs[4])?;
     let low = inputs[1].i32()?;
     let low = low.get(0).unwrap();
     let high = inputs[2].i32()?;
@@ -41,13 +50,7 @@ fn pl_rand_int(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=UInt64)]
 fn pl_rand_binomial(inputs: &[Series]) -> PolarsResult<Series> {
-    let len_ref = &inputs[0];
-    let len = if len_ref.len() == 1 {
-        let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
-        len.get(0).unwrap() as usize
-    } else {
-        inputs[0].len()
-    };
+    let len = get_sample_len(&inputs[0], &inputs[4])?;
     let n = inputs[1].u32()?;
     let n = n.get(0).unwrap();
     let p = inputs[2].f64()?;
@@ -62,13 +65,7 @@ fn pl_rand_binomial(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=Float64)]
 fn pl_rand_exp(inputs: &[Series]) -> PolarsResult<Series> {
-    let len_ref = &inputs[0];
-    let len = if len_ref.len() == 1 {
-        let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
-        len.get(0).unwrap() as usize
-    } else {
-        inputs[0].len()
-    };
+    let len = get_sample_len(&inputs[0], &inputs[3])?;
     let lambda = inputs[1].f64()?;
     let lambda = lambda.get(0).unwrap();
 
@@ -88,13 +85,7 @@ fn pl_rand_exp(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=Float64)]
 fn pl_random(inputs: &[Series]) -> PolarsResult<Series> {
-    let len_ref = &inputs[0];
-    let len = if len_ref.len() == 1 {
-        let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
-        len.get(0).unwrap() as usize
-    } else {
-        inputs[0].len()
-    };
+    let len = get_sample_len(&inputs[0], &inputs[4])?;
 
     let low = inputs[1].f64()?;
     let low = low.get(0).unwrap();
@@ -200,13 +191,7 @@ fn pl_jitter(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=Float64)]
 fn pl_rand_normal(inputs: &[Series]) -> PolarsResult<Series> {
-    let len_ref = &inputs[0];
-    let len = if len_ref.len() == 1 {
-        let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
-        len.get(0).unwrap() as usize
-    } else {
-        inputs[0].len()
-    };
+    let len = get_sample_len(&inputs[0], &inputs[4])?;
     let mean = inputs[1].f64()?;
     let mean = mean.get(0).unwrap_or(0.);
     let std_ = inputs[2].f64()?;
@@ -230,13 +215,7 @@ fn pl_rand_normal(inputs: &[Series]) -> PolarsResult<Series> {
 
 #[polars_expr(output_type=Float64)]
 fn pl_rand_str(inputs: &[Series]) -> PolarsResult<Series> {
-    let len_ref = &inputs[0];
-    let len = if len_ref.len() == 1 {
-        let len: &ChunkedArray<UInt32Type> = inputs[0].u32()?;
-        len.get(0).unwrap() as usize
-    } else {
-        inputs[0].len()
-    };
+    let len = get_sample_len(&inputs[0], &inputs[4])?;
     let min_size = inputs[1].u32()?;
     let min_size = min_size.get(0).unwrap() as usize;
     let max_size = inputs[2].u32()?;
