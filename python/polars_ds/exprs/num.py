@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Iterable, List
 
 import polars as pl
 
-from polars_ds import IS_POLARS_V2
 from polars_ds._utils import pl_plugin, to_expr
 
 # Internal dependencies
@@ -377,7 +376,8 @@ def singular_values(
     Finds all principal values (singular values) for the data matrix formed by the given features
     and returns them in descending order.
 
-    Note: if a row has null values, it will be dropped.
+    Note: rows containing null values are dropped before centering. Explained
+    variance is null when fewer than two complete observations remain.
 
     Paramters
     ---------
@@ -391,19 +391,24 @@ def singular_values(
     as_ratio
         If true, normalize output to between 0 and 1.
     """
+    if not features:
+        raise ValueError("at least one feature is required")
     feats = [to_expr(f) for f in features]
+    output_name = feats[0].meta.output_name(raise_if_undetermined=False)
+    valid = pl.all_horizontal(f.is_not_null() for f in feats)
+    feats = [f.filter(valid) for f in feats]
     if center:
         actual_inputs = [f - f.mean() for f in feats]
     else:
         actual_inputs = feats
 
-    out = pl_plugin(symbol="pl_singular_values", args=actual_inputs, returns_scalar=True)
-    if as_explained_var:
-        out = out.list.eval(pl.element().pow(2) / (pl.count() - 1))
-    if as_ratio:
-        out = out.list.eval(pl.element() / pl.element().sum())
-
-    return out
+    out = pl_plugin(
+        symbol="pl_singular_values",
+        args=actual_inputs,
+        returns_scalar=True,
+        kwargs={"as_explained_var": as_explained_var, "as_ratio": as_ratio},
+    )
+    return out.alias(output_name) if output_name is not None else out
 
 
 def pca(
@@ -421,7 +426,11 @@ def pca(
         Whether to center the data or not. If you want to standard normalize, set this to False,
         and do it for input features by hand.
     """
+    if not features:
+        raise ValueError("at least one feature is required")
     feats = [to_expr(f) for f in features]
+    valid = pl.all_horizontal(f.is_not_null() for f in feats)
+    feats = [f.filter(valid) for f in feats]
     if center:
         actual_inputs = [f - f.mean() for f in feats]
     else:
@@ -455,13 +464,18 @@ def principal_components(
     if k > len(feats) or k <= 0:
         raise ValueError("'k' must be between 1 and the number of features inclusive")
 
-    actual_inputs = [pl.lit(k, dtype=pl.UInt32)]
+    actual_inputs = []
     if center:
         actual_inputs.extend(f - f.mean() for f in feats)
     else:
         actual_inputs.extend(feats)
 
-    return pl_plugin(symbol="pl_principal_components", args=actual_inputs, pass_name_to_apply=True)
+    return pl_plugin(
+        symbol="pl_principal_components",
+        args=actual_inputs,
+        kwargs={"k": k},
+        pass_name_to_apply=True,
+    )
 
 
 def jaccard_row(a: str | pl.Expr, b: str | pl.Expr) -> pl.Expr:
@@ -564,24 +578,14 @@ def psi(
         temp = pl.lit(pl.Series(values=baseline, dtype=pl.Float64))
         valid_ref = temp.filter(temp.is_finite())
 
-    if IS_POLARS_V2:
-        vc = (
-            valid_ref.bin_quantiles(
-                n_bins, labels=False, include_intervals=True, right_closed=True
-            )
-            .struct.field("right")
-            .fill_null(float("inf"))
-            .alias("breakpoint")
-            .value_counts()
-            .sort()
-        )
-    else:
-        vc = (
-            valid_ref.qcut(n_bins, left_closed=False, allow_duplicates=True, include_breaks=True)
-            .struct.field("breakpoint")
-            .value_counts()
-            .sort()
-        )
+    # Keep linear quantiles and interval labels: bin_quantiles uses different
+    # breakpoints in Polars 2. qcut remains available in both major versions.
+    vc = (
+        valid_ref.qcut(n_bins, left_closed=False, allow_duplicates=True, include_breaks=True)
+        .struct.field("breakpoint")
+        .value_counts()
+        .sort()
+    )
 
     # breakpoints learned from ref
     brk = vc.struct.field("breakpoint")  # .cast(pl.Float64)
@@ -735,10 +739,10 @@ def woe(x: str | pl.Expr, target: str | pl.expr | Iterable[float], n_bins: int =
         t = pl.Series(values=target)
     xx = to_expr(x)
     valid = xx.filter(xx.is_finite())
-    if IS_POLARS_V2:
-        brk = valid.bin_quantiles(n_bins, labels=False, right_closed=True).cast(pl.String)
-    else:
-        brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
+    # Preserve linear quantiles and the historical interval labels.
+    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
+    t = to_expr(t) if isinstance(t, (str, pl.Expr)) else pl.lit(t)
+    t = t.filter(xx.is_finite())
     return pl_plugin(symbol="pl_woe_discrete", args=[brk, t], changes_length=True)
 
 
@@ -808,10 +812,10 @@ def info_value(
         t = pl.Series(values=target)
     xx = to_expr(x)
     valid = xx.filter(xx.is_finite())
-    if IS_POLARS_V2:
-        brk = valid.bin_quantiles(n_bins, labels=False, right_closed=True).cast(pl.String)
-    else:
-        brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
+    # Preserve linear quantiles and the historical interval labels.
+    brk = valid.qcut(n_bins, left_closed=False, allow_duplicates=True).cast(pl.String)
+    t = to_expr(t) if isinstance(t, (str, pl.Expr)) else pl.lit(t)
+    t = t.filter(xx.is_finite())
     out = pl_plugin(symbol="pl_iv", args=[brk, t], changes_length=True)
     return out.struct.field("iv").sum() if return_sum else out
 
