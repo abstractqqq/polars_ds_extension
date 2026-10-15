@@ -363,8 +363,8 @@ the complete input or group so batch boundaries do not restart the sequence.
 Polars large-index builds are not supported.
 
 The Pipeline `explode` transform retains empty-list and null input rows by default
-on both versions. Set `empty_as_null=False` or `keep_nulls=False` to opt out; these
-options are saved in the pipeline JSON. Statistical binning preserves the linear
+on both versions, including previously serialized pipelines. Statistical binning
+preserves the linear
 quantiles and interval labels of Polars 1 via the still-available `qcut` API;
 `bin_quantiles` uses different breakpoints and is not a numerical replacement.
 

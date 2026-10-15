@@ -1,7 +1,5 @@
 """Dtype, schema and row-preservation contracts across Polars versions."""
 
-import json
-
 import numpy as np
 import polars as pl
 import pytest
@@ -133,37 +131,28 @@ def test_survival_time_schema(dtype, engine):
     np.testing.assert_allclose(result.unnest("out")["prob"].to_numpy(), [2 / 3, 0])
 
 
-@pytest.mark.parametrize("empty_as_null", [True, False])
-@pytest.mark.parametrize("keep_nulls", [True, False])
 @pytest.mark.parametrize("two_columns", [True, False])
-def test_pipeline_explode_semantics_and_serialization(
-    empty_as_null, keep_nulls, two_columns, engine
-):
+def test_pipeline_explode_preserves_rows_and_serialization(two_columns, engine):
     df = pl.DataFrame({"id": range(5), "x": [[], [1], None, [None], [2, 3]]})
     cols = ["x"]
     if two_columns:
         df = df.with_columns(pl.col("x").alias("y"))
         cols.append("y")
-    pipe = (
-        Blueprint(df)
-        .explode(cols, empty_as_null=empty_as_null, keep_nulls=keep_nulls)
-        .materialize()
-    )
+    pipe = Blueprint(df).explode(cols).materialize()
     restored = Pipeline.from_json(pipe.to_json())
-    expected_ids = ([0] if empty_as_null else []) + [1] + ([2] if keep_nulls else []) + [3, 4, 4]
     for candidate in [pipe, restored]:
         result = candidate.transform(df, return_lazy=True).collect(engine=engine)
-        assert result["id"].to_list() == expected_ids
+        assert result["id"].to_list() == [0, 1, 2, 3, 4, 4]
 
 
-def test_old_explode_json_keeps_legacy_defaults():
-    df = pl.DataFrame({"x": [[], [1], None]})
-    pipe = Blueprint(df).explode("x").materialize()
-    serialized = json.loads(pipe.to_json())
-    for index, step in enumerate(serialized["transforms"]):
-        step = json.loads(step)
-        step.pop("empty_as_null", None)
-        step.pop("keep_nulls", None)
-        serialized["transforms"][index] = json.dumps(step)
-    restored = Pipeline.from_json(json.dumps(serialized))
-    assert restored.transform(df).height == 3
+@pytest.mark.parametrize("x,y", [([], [1]), (None, [1]), ([1, 2], [3])])
+def test_pipeline_explode_rejects_mismatched_lengths(x, y, engine):
+    df = pl.DataFrame(
+        {
+            "x": pl.Series([x], dtype=pl.List(pl.Int64)),
+            "y": pl.Series([y], dtype=pl.List(pl.Int64)),
+        }
+    )
+    pipe = Blueprint(df).explode(["x", "y"]).materialize()
+    with pytest.raises(pl.exceptions.ShapeError):
+        pipe.transform(df, return_lazy=True).collect(engine=engine)

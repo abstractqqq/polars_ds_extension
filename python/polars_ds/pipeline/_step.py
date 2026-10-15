@@ -10,6 +10,7 @@ from polars_ds.typing import FitTransformFunc, ExprTransform
 from typing import List, Sequence, Dict, Protocol, Literal
 from polars._typing import IntoExprColumn
 
+
 _EXPLODE_HAS_OPTIONS = "empty_as_null" in inspect.signature(pl.LazyFrame.explode).parameters
 
 
@@ -357,19 +358,10 @@ class ExprStep:
     3. df.filter(...)
     """
 
-    __slots__ = ("exprs", "context", "empty_as_null", "keep_nulls")
+    __slots__ = ("exprs", "context")
 
-    def __init__(
-        self,
-        exprs: pl.Expr | Sequence[pl.Expr],
-        context: str | PLContext,
-        *,
-        empty_as_null: bool = True,
-        keep_nulls: bool = True,
-    ):
+    def __init__(self, exprs: pl.Expr | Sequence[pl.Expr], context: str | PLContext):
         self.context: PLContext = context if isinstance(context, PLContext) else PLContext(context)
-        self.empty_as_null = empty_as_null
-        self.keep_nulls = keep_nulls
         if isinstance(exprs, pl.Expr):
             self.exprs = [exprs]
         elif isinstance(exprs, str):
@@ -394,20 +386,13 @@ class ExprStep:
         else:
             raise ValueError("input is not a valid pipeline step")
 
-        return ExprStep(
-            exprs=exprs,
-            context=step_context,
-            empty_as_null=d.get("empty_as_null", True),
-            keep_nulls=d.get("keep_nulls", True),
-        )
+        return ExprStep(exprs=exprs, context=step_context)
 
     def to_json(self) -> str:
         ctx = self.context
         d = ctx.get_context_dict()
         if ctx in (PLContext.SELECT, PLContext.WITH_COLUMNS, PLContext.EXPLODE):
             d["exprs"] = [e.meta.serialize(format="json") for e in self.exprs]
-            if ctx == PLContext.EXPLODE:
-                d.update(empty_as_null=self.empty_as_null, keep_nulls=self.keep_nulls)
         elif self.context == PLContext.SQL:
             d["exprs"] = self.exprs[0]
         elif self.context == PLContext.FILTER:
@@ -428,19 +413,7 @@ class ExprStep:
             return df.filter(self.exprs[0])
         elif self.context == PLContext.EXPLODE:
             if _EXPLODE_HAS_OPTIONS:
-                return df.explode(
-                    self.exprs, empty_as_null=self.empty_as_null, keep_nulls=self.keep_nulls
-                )
-            # Older Polars retains empty lists and nulls by default. Emulate
-            # opt-out behavior using row filters before its legacy explode API.
-            if not self.empty_as_null:
-                df = df.filter(
-                    pl.all_horizontal(
-                        (e.is_null() | (e.list.len() > 0)).fill_null(True) for e in self.exprs
-                    )
-                )
-            if not self.keep_nulls:
-                df = df.filter(pl.all_horizontal(e.is_not_null() for e in self.exprs))
+                return df.explode(self.exprs, empty_as_null=True, keep_nulls=True)
             return df.explode(self.exprs)
 
 

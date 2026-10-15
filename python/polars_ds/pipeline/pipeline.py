@@ -893,18 +893,8 @@ class Blueprint:
         self._steps.append(SortStep(by=by, descending=descending, maintain_order=maintain_order))
         return self
 
-    def explode(
-        self,
-        columns: str | pl.Expr | List[str] | List[pl.Expr],
-        *,
-        empty_as_null: bool = True,
-        keep_nulls: bool = True,
-    ) -> Self:
-        """Explode list columns, preserving empty and null rows by default.
-
-        These defaults preserve the Polars 1 behavior on both major versions.
-        Set either option to False to drop the corresponding input rows.
-        """
+    def explode(self, columns: str | pl.Expr | List[str] | List[pl.Expr]) -> Self:
+        """Transform that represents `df.explode(columns)`"""
         if isinstance(columns, (str, pl.Expr)):
             exprs = [to_expr(columns)]
         elif isinstance(columns, list):
@@ -914,9 +904,7 @@ class Blueprint:
                 "input 'columns' must be a string, polars expression, or list of strings or expressions"
             )
 
-        self._steps.append(
-            ExprStep(exprs, PLContext.EXPLODE, empty_as_null=empty_as_null, keep_nulls=keep_nulls)
-        )
+        self._steps.append(ExprStep(exprs, PLContext.EXPLODE))
         return self
 
     def group_by_agg(
