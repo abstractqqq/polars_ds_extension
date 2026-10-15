@@ -1,8 +1,8 @@
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
 
-fn kaplan_meier_prob(_: &[Field]) -> PolarsResult<Field> {
-    let t = Field::new("t".into(), DataType::Float64);
+fn kaplan_meier_prob(fields: &[Field]) -> PolarsResult<Field> {
+    let t = Field::new("t".into(), fields[1].dtype().clone());
     let p = Field::new("prob".into(), DataType::Float64);
     let v: Vec<Field> = vec![t, p];
     Ok(Field::new("kaplan_meier".into(), DataType::Struct(v)))

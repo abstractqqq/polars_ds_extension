@@ -14,8 +14,13 @@ where
     T::Native: Float,
 {
     if (y_lat.len() == y_long.len()) && (y_lat.len() == 1) {
-        let e_lat = y_lat.get(0).unwrap();
-        let e_long = y_long.get(0).unwrap();
+        polars_ensure!(x_lat.len() == x_long.len(), ShapeMismatch: "inputs must have the same length");
+        let (Some(e_lat), Some(e_long)) = (y_lat.get(0), y_long.get(0)) else {
+            return Ok(ChunkedArray::<T>::full_null(
+                x_lat.name().clone(),
+                x_lat.len(),
+            ));
+        };
         let out: ChunkedArray<T> = x_lat
             .iter()
             .zip(x_long.iter())
