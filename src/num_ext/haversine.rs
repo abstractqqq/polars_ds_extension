@@ -59,6 +59,18 @@ where
 
 #[polars_expr(output_type_func=float_output)]
 fn pl_haversine(inputs: &[Series]) -> PolarsResult<Series> {
+    // Mixed signed integers/UInt64 promote to Int128 in Polars 2. The old
+    // Float64 promotion was accepted here; keep the same floating computation.
+    let casted: Vec<Series>;
+    let inputs = if inputs[0].dtype() == &DataType::Int128 {
+        casted = inputs
+            .iter()
+            .map(|s| s.cast(&DataType::Float64))
+            .collect::<PolarsResult<_>>()?;
+        casted.as_slice()
+    } else {
+        inputs
+    };
     let out = match inputs[0].dtype() {
         DataType::Float32 => {
             let x_lat = inputs[0].f32().unwrap();

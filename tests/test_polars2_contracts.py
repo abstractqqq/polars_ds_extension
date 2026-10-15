@@ -1,5 +1,7 @@
 """Dtype, schema and row-preservation contracts across Polars versions."""
 
+from itertools import product
+
 import numpy as np
 import polars as pl
 import pytest
@@ -156,3 +158,161 @@ def test_pipeline_explode_rejects_mismatched_lengths(x, y, engine):
     pipe = Blueprint(df).explode(["x", "y"]).materialize()
     with pytest.raises(pl.exceptions.ShapeError):
         pipe.transform(df, return_lazy=True).collect(engine=engine)
+
+
+# Polars 2 promotes mixed signed integers/UInt64 to Int128 instead of Float64.
+SIGNED_UNSIGNED_COORDS = [
+    types
+    for types in product([pl.Int32, pl.Int64, pl.UInt64], repeat=4)
+    if pl.UInt64 in types and any(t in (pl.Int32, pl.Int64) for t in types)
+]
+
+
+@pytest.mark.parametrize("dtypes", SIGNED_UNSIGNED_COORDS)
+def test_haversine_mixed_integer_coordinates(dtypes, engine):
+    columns = ["lat", "lon", "end_lat", "end_lon"]
+    values = [[0, 30, None], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
+    df = pl.DataFrame({c: pl.Series(v, dtype=t) for c, v, t in zip(columns, values, dtypes)})
+    query = df.lazy().select(pds.haversine(*columns).alias("km"))
+    result = query.collect(engine=engine)
+    assert query.collect_schema() == result.schema == {"km": pl.Float64}
+    assert result["km"][2] is None
+    np.testing.assert_allclose(result["km"][:2].to_numpy(), [0, 6371 * np.pi / 6])
+
+
+@pytest.mark.parametrize("context", ["group", "over"])
+@pytest.mark.parametrize("broadcast_end", [False, True])
+def test_haversine_promoted_coordinates_in_groups(context, broadcast_end, engine):
+    df = pl.DataFrame(
+        {
+            "g": [0, 1, 0],
+            "lat": pl.Series([0, 30, None], dtype=pl.Int64),
+            "lon": pl.Series([0, 0, 0], dtype=pl.UInt64),
+        }
+    )
+    end_lat = pl.lit(0, dtype=pl.Int64) if broadcast_end else pl.col("lon")
+    end_lon = pl.lit(0, dtype=pl.UInt64) if broadcast_end else pl.col("lon")
+    expr = pds.haversine("lat", "lon", end_lat, end_lon).alias("km")
+    query = (
+        df.lazy().group_by("g").agg(expr).sort("g")
+        if context == "group"
+        else df.lazy().select(expr.over("g"))
+    )
+    result = query.collect(engine=engine)
+    if context == "group" and broadcast_end and pl.__version__.startswith("1.4."):
+        # Polars 1.4 infers a scalar for grouped elementwise plugins with
+        # scalar arguments, even though their runtime result is a list.
+        assert query.collect_schema()["km"] == pl.Float64
+        assert result.schema["km"] == pl.List(pl.Float64)
+    else:
+        assert query.collect_schema() == result.schema
+    if context == "group":
+        assert result["km"][0].to_list() == [0.0, None]
+        assert result["km"][1][0] == pytest.approx(6371 * np.pi / 6)
+    else:
+        assert result["km"][2] is None
+        np.testing.assert_allclose(result["km"][:2].to_numpy(), [0, 6371 * np.pi / 6])
+
+
+CATEGORY_DTYPES = [pl.String, pl.Int64, pl.Boolean, pl.Categorical, pl.Enum(["a", "b"])]
+
+
+@pytest.mark.parametrize("dtype", CATEGORY_DTYPES)
+@pytest.mark.parametrize("grouped", [False, True])
+def test_discrete_psi_report_schema_and_values(dtype, grouped, engine):
+    actual = [0, 0, 1, 1] * 2
+    baseline = [0, 1, 1, 1] * 2
+    if dtype not in (pl.Int64, pl.Boolean):
+        actual = ["ab"[i] for i in actual]
+        baseline = ["ab"[i] for i in baseline]
+    elif dtype == pl.Boolean:
+        actual = list(map(bool, actual))
+        baseline = list(map(bool, baseline))
+    df = pl.DataFrame(
+        {
+            "actual": pl.Series(actual, dtype=dtype),
+            "baseline": pl.Series(baseline, dtype=dtype),
+            "g": [0] * 4 + [1] * 4,
+        }
+    )
+    report = pds.psi_discrete("actual", "baseline", return_report=True).alias("report")
+    scalar = pds.psi_discrete("actual", "baseline").alias("psi")
+    queries = [
+        df.lazy().group_by("g").agg(expr).sort("g") if grouped else df.lazy().select(expr)
+        for expr in [report, scalar]
+    ]
+    result, summary = [query.collect(engine=engine) for query in queries]
+    assert queries[0].collect_schema() == result.schema
+    assert queries[1].collect_schema() == summary.schema
+    expected = (0.5 - 0.25) * np.log(0.5 / 0.25) + (0.5 - 0.75) * np.log(0.5 / 0.75)
+    np.testing.assert_allclose(summary["psi"].to_numpy(), expected)
+    flat = result.explode("report").unnest("report") if grouped else result.unnest("report")
+    # Polars 1.4's FFI exports Enum as Categorical; preserve that legacy output.
+    category_dtype = (
+        pl.Categorical
+        if isinstance(dtype, pl.Enum) and pl.__version__.startswith("1.4.")
+        else dtype
+    )
+    assert flat.schema["baseline_category"] == category_dtype
+    assert flat.schema["actual_category"] == category_dtype
+    assert flat.height == (4 if grouped else 2)
+    if not grouped:
+        # Field projection must also resolve using the plugin's planned schema.
+        categories = queries[0].select(pl.col("report").struct.field("baseline_category"))
+        assert categories.collect(engine=engine).height == 2
+
+
+@pytest.mark.parametrize("use_literals", [False, True])
+def test_discrete_psi_empty_report_schema(use_literals, engine):
+    df = pl.DataFrame({"a": pl.Series([], dtype=pl.String)})
+    operand = pl.lit(pl.Series([], dtype=pl.String)) if use_literals else pl.col("a")
+    query = df.lazy().select(pds.psi_discrete(operand, operand, return_report=True).alias("report"))
+    result = query.collect(engine=engine)
+    assert query.collect_schema() == result.schema
+    assert result.height == 0
+    assert result.unnest("report").columns == [
+        "baseline_category",
+        "actual_category",
+        "baseline_pct",
+        "actual_pct",
+        "psi_bin",
+    ]
+
+
+@pytest.mark.parametrize("context", ["select", "group", "over"])
+@pytest.mark.parametrize("use_aliases", [False, True])
+def test_chi2_full_report_preserves_names_in_groups(context, use_aliases, engine):
+    from scipy.stats import chi2_contingency
+
+    df = pl.DataFrame(
+        {
+            "a": ["a", "a", "a", "b", "b", "b"] * 2,
+            "b": ["x", "x", "y", "x", "y", "y"] * 2,
+            "g": [0] * 6 + [1] * 6,
+        }
+    )
+    names = ["left", "right"] if use_aliases else ["a", "b"]
+    args = [pl.col(c).alias(n) for c, n in zip(["a", "b"], names)]
+    expr = pds.chi2(*args, return_full=True).alias("report")
+    if context == "group":
+        query = df.lazy().group_by("g").agg(expr).sort("g")
+    elif context == "over":
+        query = df.lazy().select(expr.over("g", mapping_strategy="join"))
+    else:
+        query = df.lazy().select(expr)
+    result = query.collect(engine=engine)
+    if context == "over" and pl.__version__.startswith("1.4."):
+        # Polars 1.4's planner reports the inner dtype for window joins,
+        # including pure Polars expressions. Its runtime correctly returns List.
+        assert query.collect_schema()["report"] == result.schema["report"].inner
+    else:
+        assert query.collect_schema() == result.schema
+    flat = result if context == "select" else result.explode("report")
+    flat = flat.unnest("report")
+    table = np.array([[2, 1], [1, 2]]) * (2 if context == "select" else 1)
+    expected = chi2_contingency(table, correction=False)
+    np.testing.assert_allclose(flat["statistic"].to_numpy(), expected.statistic)
+    np.testing.assert_allclose(flat["pvalue"].to_numpy(), expected.pvalue)
+    np.testing.assert_allclose(flat["E[freq]"].to_numpy(), 3 if context == "select" else 1.5)
+    assert flat["dof"].to_list() == [1] * flat.height
+    assert flat.select(names).unique().height == 4
