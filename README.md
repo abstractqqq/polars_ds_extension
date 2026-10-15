@@ -350,13 +350,23 @@ Generally speaking, the more expressions you want to evaluate simultaneously, th
 
 # Minimum Polars Support + Streaming Compatibility
 
-**This library will only depend on python Polars (for most of its core) and will try to be as stable as possible for polars>=1.4.0. Exceptions will be made when Polars's update forces changes in the plugins. However, Polars updates quickly and older versions may not be tested. Currently, it is actively tested for Polars>=1.33.**
+The core package depends on Python Polars >=1.4.0, with the exclusions listed in
+`pyproject.toml`. The source compatibility matrix pins Polars 1.44.2 and 2.0.0,
+and runs the changed compatibility contracts on the minimum version, 1.4.0.
+Python 3.9 uses Polars 1.x; Polars 2 requires Python >=3.10.
 
-This package is also not tested with Polars streaming mode and is not designed to work with data so big that has to be streamed. This concerns plugin expressions like `pds.lin_reg`, etc, which won't work with streaming. By the same token, Polars large index version is not supported at this point, and I welcome any 3rd packaging. That said, expressions provided by polars_ds that can be turned into native polars should work mostly in streaming mode. Only some plugin functions where we interop with Rust / arrays may have issues with streaming, and Polars's engine will simply materialize the columns instead of streaming them and your code probably will not break.
+Compatibility regressions exercise lazy auto, streaming and in-memory execution,
+including nulls, single-row batches, multiple chunks and grouped expressions.
+Whole-column plugins may materialize their input inside a streaming query; this
+does not make them bounded-memory algorithms. Fixed-seed random expressions use
+the complete input or group so batch boundaries do not restart the sequence.
+Polars large-index builds are not supported.
 
-Regarding Polars v1, v2 support: 
-
-1. polars_ds <= 0.13 should work with polars v1, and may work with polars v2 but forward compatibility is not gauranteed. polars_ds >= 0.14 will try to be fully compatible with polars v2.
+The Pipeline `explode` transform retains empty-list and null input rows by default
+on both versions. Set `empty_as_null=False` or `keep_nulls=False` to opt out; these
+options are saved in the pipeline JSON. Statistical binning preserves the linear
+quantiles and interval labels of Polars 1 via the still-available `qcut` API;
+`bin_quantiles` uses different breakpoints and is not a numerical replacement.
 
 ## Build From Source
 
