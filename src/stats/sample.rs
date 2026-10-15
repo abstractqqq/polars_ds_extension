@@ -213,7 +213,7 @@ fn pl_rand_normal(inputs: &[Series]) -> PolarsResult<Series> {
     }
 }
 
-#[polars_expr(output_type=Float64)]
+#[polars_expr(output_type=String)]
 fn pl_rand_str(inputs: &[Series]) -> PolarsResult<Series> {
     let len = get_sample_len(&inputs[0], &inputs[4])?;
     let min_size = inputs[1].u32()?;
