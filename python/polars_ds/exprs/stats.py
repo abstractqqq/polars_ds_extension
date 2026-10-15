@@ -46,13 +46,39 @@ __all__ = [
 ]
 
 
-def _get_streamable(len_ref: str | None) -> Tuple[pl.Expr, bool]:
+def _is_seeded_elementwise(seed: int | None) -> bool:
+    """
+    Whether a seeded random plugin may be marked as elementwise.
+    """
+    # The streaming engine (default in Polars v2, opt-in via engine="streaming" in v1) runs
+    # elementwise expressions batch by batch, and every batch would restart the RNG from the
+    # same seed, producing repeated random numbers across batches (e.g. a 50 row frame may be
+    # split into 50 batches and get the same noise value 50 times). When a seed is given, we
+    # therefore mark the expression as non-elementwise so that it sees the whole column. This
+    # applies to both Polars v1 and v2. Unseeded calls draw from OS entropy in each batch, so
+    # they are not affected.
+    return seed is None
+
+
+def _get_streamable(
+    len_ref: str | pl.Expr | None, seed: int | None = None
+) -> Tuple[pl.Expr, pl.Expr, bool]:
+    """
+    Returns (length expression, use_ref flag expression, is_elementwise).
+
+    The use_ref flag is passed explicitly to the plugin. The plugin must not infer whether
+    the first input is a scalar or a reference column from its length, because a streaming
+    batch may contain a single row.
+    """
     if len_ref is None:
-        return pl.len(), False
-    elif isinstance(len_ref, (str, pl.Expr)):
-        return pl.col(len_ref), True
+        # Scalar total length. Not elementwise.
+        return pl.len().cast(pl.UInt32), pl.lit(False, pl.Boolean), False
+    elif isinstance(len_ref, str):
+        return pl.col(len_ref), pl.lit(True, pl.Boolean), _is_seeded_elementwise(seed)
+    elif isinstance(len_ref, pl.Expr):
+        return len_ref, pl.lit(True, pl.Boolean), _is_seeded_elementwise(seed)
     else:
-        raise TypeError("'len_ref' must be a string or None")
+        raise TypeError("'len_ref' must be a string, a Polars expression or None")
 
 
 def ttest_ind(
@@ -436,7 +462,8 @@ def perturb(
     return pl_plugin(
         symbol="pl_perturb",
         args=[to_expr(x), lo, hi, pl.lit(seed, dtype=pl.UInt64)],
-        is_elementwise=True,
+        # Seeded calls must not be streamed (Polars v1 and v2): see _is_seeded_elementwise.
+        is_elementwise=_is_seeded_elementwise(seed),
     )
 
 
@@ -464,7 +491,11 @@ def jitter(x: str | pl.Expr, std: float | pl.Expr = 1.0, seed: int | None = None
         s = std.cast(pl.Float64)
 
     return pl_plugin(
-        symbol="pl_jitter", args=[to_expr(x), s, pl.lit(seed, dtype=pl.UInt64)], is_elementwise=True
+        symbol="pl_jitter",
+        args=[to_expr(x), s, pl.lit(seed, dtype=pl.UInt64)],
+        # With a seed, every streaming batch would restart from the same seed and repeat the
+        # same noise (Polars v1 and v2). See _is_seeded_elementwise.
+        is_elementwise=_is_seeded_elementwise(seed),
     )
 
 
@@ -544,11 +575,11 @@ def random(
     """
     lo = pl.lit(lower, pl.Float64) if isinstance(lower, float) else lower
     up = pl.lit(upper, pl.Float64) if isinstance(upper, float) else upper
-    len_, is_elementwise = _get_streamable(len_ref)
+    len_, use_ref, is_elementwise = _get_streamable(len_ref, seed)
 
     return pl_plugin(
         symbol="pl_random",
-        args=[len_, lo, up, pl.lit(seed, pl.UInt64)],
+        args=[len_, lo, up, pl.lit(seed, pl.UInt64), use_ref],
         is_elementwise=is_elementwise,
     )
 
@@ -602,7 +633,7 @@ def random_int(
 
     lo = pl.lit(lower, pl.Int32) if isinstance(lower, int) else lower.cast(pl.Int32)
     hi = pl.lit(upper, pl.Int32) if isinstance(upper, int) else upper.cast(pl.Int32)
-    len_, is_elementwise = _get_streamable(len_ref)
+    len_, use_ref, is_elementwise = _get_streamable(len_ref, seed)
     return pl_plugin(
         symbol="pl_rand_int",
         args=[
@@ -610,6 +641,7 @@ def random_int(
             lo,
             hi,
             pl.lit(seed, pl.UInt64),
+            use_ref,
         ],
         is_elementwise=is_elementwise,
     )
@@ -639,7 +671,7 @@ def random_str(
     if min_size > max_size:
         mi, ma = max_size, min_size
 
-    len_, is_elementwise = _get_streamable(len_ref)
+    len_, use_ref, is_elementwise = _get_streamable(len_ref, seed)
     return pl_plugin(
         symbol="pl_rand_str",
         args=[
@@ -647,6 +679,7 @@ def random_str(
             pl.lit(mi, pl.UInt32),
             pl.lit(ma, pl.UInt32),
             pl.lit(seed, pl.UInt64),
+            use_ref,
         ],
         is_elementwise=is_elementwise,
     )
@@ -676,7 +709,7 @@ def random_binomial(
     if p < 0.0 or p > 1.0:
         raise ValueError("'p' must be between 0 and 1")
 
-    len_, is_elementwise = _get_streamable(len_ref)
+    len_, use_ref, is_elementwise = _get_streamable(len_ref, seed)
     return pl_plugin(
         symbol="pl_rand_binomial",
         args=[
@@ -684,6 +717,7 @@ def random_binomial(
             pl.lit(n, pl.UInt32),
             pl.lit(p, pl.Float64),
             pl.lit(seed, pl.UInt64),
+            use_ref,
         ],
         is_elementwise=is_elementwise,
     )
@@ -706,13 +740,14 @@ def random_exp(
         use pl.len() as the total length of the data you wish to generate. In streaming mode, you may pass any column
         name, e.g. `len_ref = 'id'` so that the random generator knows the corresponding length of each chunk.
     """
-    len_, is_elementwise = _get_streamable(len_ref)
+    len_, use_ref, is_elementwise = _get_streamable(len_ref, seed)
     return pl_plugin(
         symbol="pl_rand_exp",
         args=[
             len_,
             pl.lit(lambda_, pl.Float64),
             pl.lit(seed, pl.UInt64),
+            use_ref,
         ],
         is_elementwise=is_elementwise,
     )
@@ -740,7 +775,7 @@ def random_normal(
         use pl.len() as the total length of the data you wish to generate. In streaming mode, you may pass any column
         name, e.g. `len_ref = 'id'` so that the random generator knows the corresponding length of each chunk.
     """
-    len_, is_elementwise = _get_streamable(len_ref)
+    len_, use_ref, is_elementwise = _get_streamable(len_ref, seed)
     return pl_plugin(
         symbol="pl_rand_normal",
         args=[
@@ -748,6 +783,7 @@ def random_normal(
             pl.lit(mean, pl.Float64) if isinstance(mean, float) else mean,
             pl.lit(std, pl.Float64) if isinstance(std, float) else std,
             pl.lit(seed, pl.UInt64),
+            use_ref,
         ],
         is_elementwise=is_elementwise,
     )
