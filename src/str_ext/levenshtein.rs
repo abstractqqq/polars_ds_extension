@@ -96,7 +96,13 @@ fn pl_levenshtein(
     let parallel = kwargs.parallel;
     let can_parallel = parallel && !context.parallel();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let Some(r) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::UInt32,
+            ));
+        };
         if as_bytes {
             let batched = levenshtein::BatchComparator::new(r.bytes());
             Ok(generic_batched_distance(batched, ca1, can_parallel))
@@ -136,7 +142,13 @@ fn pl_levenshtein_filter(
     let as_bytes = kwargs.as_bytes;
     let can_parallel = parallel && !context.parallel();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let Some(r) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::Boolean,
+            ));
+        };
         let out: BooleanChunked = if can_parallel {
             let n_threads = POOL.current_num_threads();
             let splits = split_offsets(ca1.len(), n_threads);
@@ -232,7 +244,13 @@ fn pl_levenshtein_sim(
     let as_bytes = kwargs.as_bytes;
     let can_parallel = parallel && !context.parallel();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let Some(r) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::Float64,
+            ));
+        };
         if as_bytes {
             let batched = levenshtein::BatchComparator::new(r.bytes());
             Ok(generic_batched_sim(batched, ca1, can_parallel))
@@ -270,7 +288,13 @@ fn pl_d_levenshtein(
     let as_bytes = kwargs.as_bytes;
     let can_parallel = parallel && !context.parallel();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let Some(r) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::UInt32,
+            ));
+        };
         if as_bytes {
             let batched = damerau_levenshtein::BatchComparator::new(r.bytes());
             Ok(generic_batched_distance(batched, ca1, can_parallel))
@@ -313,7 +337,13 @@ fn pl_d_levenshtein_sim(
     let as_bytes = kwargs.as_bytes;
     let can_parallel = parallel && !context.parallel();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let Some(r) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::Float64,
+            ));
+        };
         if as_bytes {
             let batched = damerau_levenshtein::BatchComparator::new(r.bytes());
             Ok(generic_batched_sim(batched, ca1, can_parallel))

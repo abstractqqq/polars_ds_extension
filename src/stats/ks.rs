@@ -51,16 +51,19 @@ fn ks_2samp(v1: &[f64], v2: &[f64], alpha: f64) -> (f64, f64) {
 
 #[polars_expr(output_type_func=simple_stats_output)]
 fn pl_ks_2samp(inputs: &[Series]) -> PolarsResult<Series> {
-    let s1 = inputs[0].f64()?; // input is sorted, one chunk, gauranteed by Python side code
-    let s2 = inputs[1].f64()?; // input is sorted, one chunk, gauranteed by Python side code
+    // Sorting in the streaming engine does not guarantee a single chunk.
+    let input1 = inputs[0].rechunk();
+    let input2 = inputs[1].rechunk();
+    let s1 = input1.f64()?;
+    let s2 = input2.f64()?;
     let alpha = inputs[2].f64()?;
     let alpha = alpha.get(0).unwrap();
 
     if (s1.len() <= 30) || (s2.len() <= 30) {
         generic_stats_output(0f64, f64::NAN)
     } else {
-        let v1 = s1.cont_slice().unwrap();
-        let v2 = s2.cont_slice().unwrap();
+        let v1 = s1.cont_slice()?;
+        let v2 = s2.cont_slice()?;
         let (s, p) = ks_2samp(v1, v2, alpha);
         generic_stats_output(s, p)
     }

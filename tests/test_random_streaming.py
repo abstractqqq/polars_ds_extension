@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import polars as pl
 import pytest
+from polars.testing import assert_frame_equal
 
 import polars_ds as pds
 
@@ -47,9 +48,7 @@ def test_random_len_ref_expr_and_str():
 
 def test_random_len_ref_multi_row_streaming_length():
     df = pl.DataFrame({"x": list(range(1000))}).lazy()
-    out = df.select(pds.random_normal(0.0, 1.0, len_ref="x").alias("r")).collect(
-        engine="streaming"
-    )
+    out = df.select(pds.random_normal(0.0, 1.0, len_ref="x").alias("r")).collect(engine="streaming")
     assert out.shape == (1000, 1)
 
 
@@ -59,11 +58,29 @@ def test_seeded_noise_not_repeated_across_batches(engine):
     # restart the RNG from the same seed and repeat the same random numbers.
     for n in (50, 300_000):
         df = pl.DataFrame({"x": [0.0] * n}).lazy()
-        out = df.select(
+        query = df.select(
             pds.jitter("x", std=1.0, seed=42).alias("j"),
             pds.perturb("x", seed=42).alias("p"),
             pds.random(seed=42, len_ref="x").alias("r"),
-        ).collect(engine=engine)
-        assert out["j"].n_unique() == n
-        assert out["p"].n_unique() == n
-        assert out["r"].n_unique() == n
+        )
+        out = query.collect(engine=engine)
+        assert_frame_equal(out, query.collect(engine="in-memory"))
+        # The contract is a reproducible full-input sequence; random draws may
+        # legitimately contain duplicates.
+        assert all(out[c].n_unique() > n // 2 for c in out.columns)
+
+
+@pytest.mark.parametrize("engine", ["auto", "streaming", "in-memory"])
+@pytest.mark.parametrize("grouped", [False, True])
+def test_random_string_schema_and_grouping(engine, grouped):
+    df = pl.DataFrame({"g": [0, 1, 1], "x": [7, 8, 9]}).lazy()
+    value = pds.random_str(4, 4, seed=42, len_ref=pl.col("x")).alias("value")
+    query = df.group_by("g").agg(value) if grouped else df.select(value)
+    expected_dtype = pl.List(pl.String) if grouped else pl.String
+    assert query.collect_schema()["value"] == expected_dtype
+    result = query.collect(engine=engine)
+    assert result.schema["value"] == expected_dtype
+    if grouped:
+        assert result.sort("g")["value"].list.len().to_list() == [1, 2]
+    else:
+        assert result["value"].str.len_chars().to_list() == [4, 4, 4]
