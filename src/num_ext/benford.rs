@@ -68,6 +68,10 @@ fn pl_benford_law(inputs: &[Series]) -> PolarsResult<Series> {
             let ss = s.i64().unwrap();
             impl_benford_int!(ss, out, signed);
         }
+        DataType::Int128 => {
+            let ss = s.i128()?;
+            impl_benford_int!(ss, out, signed);
+        }
         DataType::Float32 => {
             let ss = s.f32().unwrap();
             for x in ss.into_no_null_iter() {
@@ -90,7 +94,11 @@ fn pl_benford_law(inputs: &[Series]) -> PolarsResult<Series> {
                 }
             }
         }
-        _ => return Err(PolarsError::ComputeError("data type is not supported".into())),
+        _ => {
+            return Err(PolarsError::ComputeError(
+                "data type is not supported".into(),
+            ))
+        }
     }
 
     let mut list_builder: ListPrimitiveChunkedBuilder<UInt32Type> =

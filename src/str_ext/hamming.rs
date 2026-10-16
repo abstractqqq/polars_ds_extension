@@ -29,7 +29,13 @@ fn pl_hamming(inputs: &[Series], context: CallerContext) -> PolarsResult<Series>
     let parallel = parallel.get(0).unwrap_or(false);
     let can_parallel = parallel && !context.parallel();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let Some(r) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::UInt32,
+            ));
+        };
         let batched = hamming::BatchComparator::new(r.chars());
         let out: UInt32Chunked = if can_parallel {
             let n_threads = POOL.current_num_threads();
@@ -119,7 +125,13 @@ fn pl_hamming_padded(inputs: &[Series], context: CallerContext) -> PolarsResult<
     let can_parallel = parallel && !context.parallel();
     let padding = hamming::Args::default().pad(true);
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let Some(r) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::UInt32,
+            ));
+        };
         let batched = hamming::BatchComparator::new(r.chars());
         let out: UInt32Chunked = if can_parallel {
             let n_threads = POOL.current_num_threads();
@@ -176,7 +188,13 @@ fn pl_hamming_filter(inputs: &[Series], context: CallerContext) -> PolarsResult<
     let parallel = parallel.get(0).unwrap();
     let can_parallel = parallel && !context.parallel();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let Some(r) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::Boolean,
+            ));
+        };
         let batched = hamming::BatchComparator::new(r.chars());
         let out: BooleanChunked = if can_parallel {
             POOL.install(|| {

@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import polars as pl
 import json
+import inspect
 from io import StringIO
 from enum import Enum
 from polars_ds._utils import to_expr
 from polars_ds.typing import FitTransformFunc, ExprTransform
 from typing import List, Sequence, Dict, Protocol, Literal
 from polars._typing import IntoExprColumn
+
+
+_EXPLODE_HAS_OPTIONS = "empty_as_null" in inspect.signature(pl.LazyFrame.explode).parameters
 
 
 class PLContext(Enum):
@@ -408,6 +412,8 @@ class ExprStep:
         elif self.context == PLContext.FILTER:
             return df.filter(self.exprs[0])
         elif self.context == PLContext.EXPLODE:
+            if _EXPLODE_HAS_OPTIONS:
+                return df.explode(self.exprs, empty_as_null=True, keep_nulls=True)
             return df.explode(self.exprs)
 
 

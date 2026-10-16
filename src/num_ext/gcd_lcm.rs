@@ -8,7 +8,13 @@ fn pl_gcd(inputs: &[Series]) -> PolarsResult<Series> {
     let ca1 = inputs[0].i32()?;
     let ca2 = inputs[1].i32()?;
     if ca2.len() == 1 {
-        let b = ca2.get(0).unwrap();
+        let Some(b) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::Int32,
+            ));
+        };
         let out: Int32Chunked = ca1.apply_values(|a| num::integer::gcd(a, b));
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {
@@ -26,7 +32,13 @@ fn pl_lcm(inputs: &[Series]) -> PolarsResult<Series> {
     let ca1 = inputs[0].i32()?;
     let ca2 = inputs[1].i32()?;
     if ca2.len() == 1 {
-        let b = ca2.get(0).unwrap();
+        let Some(b) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::Int32,
+            ));
+        };
         let out: Int32Chunked = ca1.apply_values(|a| num::integer::lcm(a, b));
         Ok(out.into_series())
     } else if ca1.len() == ca2.len() {

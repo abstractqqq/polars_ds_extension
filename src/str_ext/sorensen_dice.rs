@@ -41,7 +41,13 @@ fn pl_sorensen_dice(inputs: &[Series], context: CallerContext) -> PolarsResult<S
     let can_parallel = parallel && !context.parallel();
 
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let Some(r) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::Float64,
+            ));
+        };
         let cached_r_set = str_to_hashset(r, ngram); // Cache the set for r
         let out: Float64Chunked = if can_parallel {
             let n_threads = POOL.current_num_threads();

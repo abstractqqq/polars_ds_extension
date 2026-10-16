@@ -98,7 +98,9 @@ fn pl_combo_b(inputs: &[Series]) -> PolarsResult<Series> {
 
     let positive_count = actual.sum::<u32>().unwrap_or(0);
     if positive_count == 0 {
-        return Ok(Series::from_iter([f64::NAN]));
+        let fields = ["precision", "recall", "f", "avg_precision", "roc_auc"]
+            .map(|name| Series::new(name.into(), [f64::NAN]));
+        return Ok(StructChunked::from_series("metrics".into(), 1, fields.iter())?.into_series());
     }
 
     let mut frame = tp_fp_frame(predicted, actual, positive_count, true)?.collect()?;
@@ -166,7 +168,11 @@ fn pl_tpr_fpr(inputs: &[Series]) -> PolarsResult<Series> {
         let ca = StructChunked::from_columns(
             "tpr_fpr".into(),
             1,
-            &[tpr.into_column(), fpr.into_column()],
+            &[
+                Series::new("threshold".into(), [f64::NAN]).into_column(),
+                tpr.into_column(),
+                fpr.into_column(),
+            ],
         )?;
         Ok(ca.into_series())
     } else {
@@ -243,10 +249,10 @@ fn pl_roc_auc(inputs: &[Series]) -> PolarsResult<Series> {
 
 // bcm = binary confusion matrix
 fn bcm_output(_: &[Field]) -> PolarsResult<Field> {
-    let tp = Field::new("tp".into(), DataType::UInt32);
-    let fp = Field::new("fp".into(), DataType::UInt32);
-    let tn = Field::new("tn".into(), DataType::UInt32);
-    let fn_ = Field::new("fn".into(), DataType::UInt32);
+    let tp = Field::new("tp".into(), DataType::Float64);
+    let fp = Field::new("fp".into(), DataType::Float64);
+    let tn = Field::new("tn".into(), DataType::Float64);
+    let fn_ = Field::new("fn".into(), DataType::Float64);
 
     let fpr = Field::new("fpr".into(), DataType::Float64);
     let fnr = Field::new("fnr".into(), DataType::Float64);
