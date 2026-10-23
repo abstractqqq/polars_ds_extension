@@ -11,6 +11,20 @@ fn psi_report_output(_: &[Field]) -> PolarsResult<Field> {
     Ok(Field::new("psi_report".into(), DataType::Struct(v)))
 }
 
+fn psi_discrete_report_output(fields: &[Field]) -> PolarsResult<Field> {
+    let categories = vec![
+        Field::new("baseline_category".into(), fields[2].dtype().clone()),
+        Field::new("actual_category".into(), fields[0].dtype().clone()),
+        Field::new("baseline_pct".into(), DataType::Float64),
+        Field::new("actual_pct".into(), DataType::Float64),
+        Field::new("psi_bin".into(), DataType::Float64),
+    ];
+    Ok(Field::new(
+        "psi_report".into(),
+        DataType::Struct(categories),
+    ))
+}
+
 /// Computes counts in each bucket given by the breakpoints in
 /// a PSI computation. This returns the count for the first series
 /// and the count for the second series.
@@ -113,7 +127,7 @@ fn pl_psi_report(inputs: &[Series]) -> PolarsResult<Series> {
 }
 
 /// Discrete PSI report
-#[polars_expr(output_type_func=psi_report_output)]
+#[polars_expr(output_type_func=psi_discrete_report_output)]
 fn pl_psi_discrete_report(inputs: &[Series]) -> PolarsResult<Series> {
     let df1 = df!(
         "actual_cat" => &inputs[0], // data cats

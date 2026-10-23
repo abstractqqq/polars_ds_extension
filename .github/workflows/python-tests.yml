@@ -8,8 +8,10 @@ on:
       - Cargo.lock
       - pyproject.toml
       - rust-toolchain.toml
+      - uv.lock
       - python/**
       - src/**
+      - tests/**
       - .github/workflows/python-tests.yml
 
 concurrency:
@@ -31,14 +33,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        python-version: ["3.9", "3.12", "3.13", "3.14"]
+        include:
+          - {os: ubuntu-latest, python-version: "3.9", polars-version: "1.36.1"}
+          - {os: ubuntu-latest, python-version: "3.12", polars-version: "1.44.2"}
+          - {os: ubuntu-latest, python-version: "3.12", polars-version: "2.0.0"}
+          - {os: ubuntu-latest, python-version: "3.13", polars-version: "2.0.0"}
+          - {os: ubuntu-latest, python-version: "3.14", polars-version: "2.0.0"}
         # include:
         #   - os: windows-latest
         #     python-version: '3.13'
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Pin Polars throughout dependency installation
+        run: |
+          echo 'polars==${{ matrix.polars-version }}' > "$RUNNER_TEMP/polars-constraints.txt"
+          echo "PIP_CONSTRAINT=$RUNNER_TEMP/polars-constraints.txt" >> "$GITHUB_ENV"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -62,7 +73,7 @@ jobs:
       - name: Install package
         run: |
           pip install -r requirements.txt
-          maturin develop --release
+          maturin develop --release --locked
 
       - name: Install Python dependencies
         run: |
@@ -89,3 +100,25 @@ jobs:
 
       - name: Test Pytests
         run: pytest tests/test_*
+
+      - name: Exercise eager callers through lazy auto
+        if: matrix.python-version == '3.12' && matrix.polars-version == '2.0.0'
+        run: PYTHONPATH=tests pytest -p lazy_execution_plugin tests/test_*
+
+  test-minimum-polars:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install minimum-version environment
+        run: |
+          python -m venv .venv
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+          echo "VIRTUAL_ENV=$GITHUB_WORKSPACE/.venv" >> "$GITHUB_ENV"
+      - name: Build and test changed contracts on the minimum Polars
+        run: |
+          pip install maturin numpy pytest scipy==1.17.0 polars==1.4.0
+          maturin develop --release --locked
+          python tests/run_legacy_compat.py

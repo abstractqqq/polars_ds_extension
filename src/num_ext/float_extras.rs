@@ -2,11 +2,22 @@
 /// trunc, fract, exp2, logit, expit, gamma,
 /// The logit, expit and gamma functions are as defined in SciPy
 use crate::stats_utils::gamma::digamma;
-use crate::utils::{first_field_output, float_output};
+use crate::utils::first_field_output;
 use arity::binary_elementwise_values;
 use num::traits::Float;
 use polars::prelude::*;
 use pyo3_polars::derive::polars_expr;
+
+// Existing integer inputs use f32; Int128 follows the f64 promotion used by
+// mixed signed/unsigned expressions before Polars 2. Preserve both contracts.
+fn float_output(fields: &[Field]) -> PolarsResult<Field> {
+    let dtype = match fields[0].dtype() {
+        DataType::Float64 | DataType::Int128 => DataType::Float64,
+        dtype if dtype.is_primitive_numeric() => DataType::Float32,
+        _ => polars_bail!(ComputeError: "input column must be of numeric type"),
+    };
+    Ok(Field::new(fields[0].name().clone(), dtype))
+}
 
 fn logit<T: Float>(x: T) -> T {
     if x.is_zero() {
@@ -77,6 +88,11 @@ fn pl_logit(inputs: &[Series]) -> PolarsResult<Series> {
         DataType::Int16 => Ok(cast_and_apply_logit(s.i16().unwrap()).into_series()),
         DataType::Int32 => Ok(cast_and_apply_logit(s.i32().unwrap()).into_series()),
         DataType::Int64 => Ok(cast_and_apply_logit(s.i64().unwrap()).into_series()),
+        DataType::Int128 => {
+            let ca = s.i128()?;
+            let out: Float64Chunked = ca.cast_and_apply_in_place(logit::<f64>);
+            Ok(out.into_series())
+        }
         DataType::Float64 => {
             let ca = s.f64().unwrap();
             Ok(ca.apply_values(logit).into_series())
@@ -103,6 +119,11 @@ fn pl_expit(inputs: &[Series]) -> PolarsResult<Series> {
         DataType::Int16 => Ok(cast_and_apply_expit(s.i16().unwrap()).into_series()),
         DataType::Int32 => Ok(cast_and_apply_expit(s.i32().unwrap()).into_series()),
         DataType::Int64 => Ok(cast_and_apply_expit(s.i64().unwrap()).into_series()),
+        DataType::Int128 => {
+            let ca = s.i128()?;
+            let out: Float64Chunked = ca.cast_and_apply_in_place(expit::<f64>);
+            Ok(out.into_series())
+        }
         DataType::Float64 => {
             let ca = s.f64().unwrap();
             Ok(ca.apply_values(expit).into_series())
@@ -129,6 +150,11 @@ fn pl_gamma(inputs: &[Series]) -> PolarsResult<Series> {
         DataType::Int16 => Ok(cast_and_apply_gamma(s.i16().unwrap()).into_series()),
         DataType::Int32 => Ok(cast_and_apply_gamma(s.i32().unwrap()).into_series()),
         DataType::Int64 => Ok(cast_and_apply_gamma(s.i64().unwrap()).into_series()),
+        DataType::Int128 => {
+            let ca = s.i128()?;
+            let out: Float64Chunked = ca.cast_and_apply_in_place(f64::gamma);
+            Ok(out.into_series())
+        }
         DataType::Float64 => {
             let ca = s.f64().unwrap();
             Ok(ca.apply_values(f64::gamma).into_series())
@@ -155,6 +181,11 @@ fn pl_exp2(inputs: &[Series]) -> PolarsResult<Series> {
         DataType::Int16 => Ok(cast_and_apply_exp2(s.i16().unwrap()).into_series()),
         DataType::Int32 => Ok(cast_and_apply_exp2(s.i32().unwrap()).into_series()),
         DataType::Int64 => Ok(cast_and_apply_exp2(s.i64().unwrap()).into_series()),
+        DataType::Int128 => {
+            let ca = s.i128()?;
+            let out: Float64Chunked = ca.cast_and_apply_in_place(f64::exp2);
+            Ok(out.into_series())
+        }
         DataType::Float64 => {
             let ca = s.f64().unwrap();
             Ok(ca.apply_values(f64::exp2).into_series())
@@ -180,7 +211,7 @@ fn pl_trunc(inputs: &[Series]) -> PolarsResult<Series> {
         DataType::Int8 => Ok(s.clone()),
         DataType::Int16 => Ok(s.clone()),
         DataType::Int32 => Ok(s.clone()),
-        DataType::Int64 => Ok(s.clone()),
+        DataType::Int64 | DataType::Int128 => Ok(s.clone()),
         DataType::Float64 => {
             let ca = s.f64().unwrap();
             Ok(ca.apply_values(f64::trunc).into_series())
@@ -207,7 +238,14 @@ fn pl_fract(inputs: &[Series]) -> PolarsResult<Series> {
             let ca = s.f32().unwrap();
             Ok(ca.apply_values(f32::fract).into_series())
         }
-        dt if dt.is_integer() => Ok(Series::from_vec(s.name().clone(), vec![0f32; s.len()])),
+        DataType::Int128 => {
+            let ca = s.cast(&DataType::Float64)?;
+            Ok(ca.f64()?.apply_values(|_| 0.0).into_series())
+        }
+        dt if dt.is_integer() => {
+            let ca = s.cast(&DataType::Float32)?;
+            Ok(ca.f32()?.apply_values(|_| 0.0).into_series())
+        }
         _ => Err(PolarsError::ComputeError(
             "input column must be of numeric type".into(),
         )),
@@ -227,6 +265,11 @@ fn pl_next_up(inputs: &[Series]) -> PolarsResult<Series> {
         DataType::Int16 => Ok(cast_and_apply_next_up(s.i16().unwrap()).into_series()),
         DataType::Int32 => Ok(cast_and_apply_next_up(s.i32().unwrap()).into_series()),
         DataType::Int64 => Ok(cast_and_apply_next_up(s.i64().unwrap()).into_series()),
+        DataType::Int128 => {
+            let ca = s.i128()?;
+            let out: Float64Chunked = ca.cast_and_apply_in_place(f64::next_up);
+            Ok(out.into_series())
+        }
         DataType::Float64 => {
             let ca = s.f64().unwrap();
             Ok(ca.apply_values(f64::next_up).into_series())
@@ -254,6 +297,11 @@ fn pl_next_down(inputs: &[Series]) -> PolarsResult<Series> {
         DataType::Int16 => Ok(cast_and_apply_next_down(s.i16().unwrap()).into_series()),
         DataType::Int32 => Ok(cast_and_apply_next_down(s.i32().unwrap()).into_series()),
         DataType::Int64 => Ok(cast_and_apply_next_down(s.i64().unwrap()).into_series()),
+        DataType::Int128 => {
+            let ca = s.i128()?;
+            let out: Float64Chunked = ca.cast_and_apply_in_place(f64::next_down);
+            Ok(out.into_series())
+        }
         DataType::Float64 => {
             let ca = s.f64().unwrap();
             Ok(ca.apply_values(f64::next_down).into_series())
@@ -290,6 +338,11 @@ fn pl_diagamma(inputs: &[Series]) -> PolarsResult<Series> {
         DataType::Int16 => Ok(cast_and_apply_diagamma(s.i16().unwrap()).into_series()),
         DataType::Int32 => Ok(cast_and_apply_diagamma(s.i32().unwrap()).into_series()),
         DataType::Int64 => Ok(cast_and_apply_diagamma(s.i64().unwrap()).into_series()),
+        DataType::Int128 => {
+            let ca = s.i128()?;
+            let out: Float64Chunked = ca.cast_and_apply_in_place(digamma);
+            Ok(out.into_series())
+        }
         DataType::Float32 => Ok(cast_and_apply_diagamma(s.f32().unwrap()).into_series()),
         DataType::Float64 => {
             let ca = s.f64().unwrap();

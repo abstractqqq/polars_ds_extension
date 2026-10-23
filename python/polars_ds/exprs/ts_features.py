@@ -137,9 +137,7 @@ def query_longest_streak(where: str | pl.Expr) -> pl.Expr:
     else:
         condition = where
 
-    y = condition.rle().struct.rename_fields(
-        ["len", "value"]
-    )  # POLARS V1 rename fields can be removed when polars hit v1.0
+    y = condition.rle()
     return (
         y.filter(y.struct.field("value"))
         .struct.field("len")
@@ -169,9 +167,7 @@ def query_avg_streak(where: str | pl.Expr) -> pl.Expr:
     else:
         condition = where
 
-    y = condition.rle().struct.rename_fields(
-        ["len", "value"]
-    )  # POLARS V1 rename fields can be removed when polars hit v1.0
+    y = condition.rle()
     return (
         y.filter(y.struct.field("value"))
         .struct.field("len")
@@ -200,9 +196,7 @@ def query_streak(where: str | pl.Expr) -> pl.Expr:
     else:
         condition = where
 
-    y = condition.rle().struct.rename_fields(
-        ["len", "value"]
-    )  # POLARS V1 rename fields can be removed when polars hit v1.0
+    y = condition.rle()
     return y.struct.field("len").alias("streak_len")
 
 

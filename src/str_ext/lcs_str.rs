@@ -98,7 +98,13 @@ fn pl_lcs_substr(inputs: &[Series], context: CallerContext) -> PolarsResult<Seri
     let parallel = parallel.get(0).unwrap_or(false);
     let can_parallel = parallel && !context.parallel();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let Some(r) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::String,
+            ));
+        };
         if can_parallel {
             let ca = ca1
                 .par_iter()

@@ -23,7 +23,13 @@ fn pl_osa(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
     let parallel = parallel.get(0).unwrap_or(false);
     let can_parallel = parallel && !context.parallel();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let Some(r) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::UInt32,
+            ));
+        };
         let batched = osa::BatchComparator::new(r.chars());
         Ok(generic_batched_distance(batched, ca1, can_parallel))
     } else if ca1.len() == ca2.len() {
@@ -43,7 +49,13 @@ fn pl_osa_sim(inputs: &[Series], context: CallerContext) -> PolarsResult<Series>
     let parallel = parallel.get(0).unwrap();
     let can_parallel = parallel && !context.parallel();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let Some(r) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::Float64,
+            ));
+        };
         let batched = osa::BatchComparator::new(r.chars());
         Ok(generic_batched_sim(batched, ca1, can_parallel))
     } else if ca1.len() == ca2.len() {

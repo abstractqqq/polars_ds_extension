@@ -12,7 +12,7 @@ use pyo3_polars::{
 };
 use rapidfuzz::fuzz::{ratio, RatioBatchComparator};
 
-#[polars_expr(output_type=UInt32)]
+#[polars_expr(output_type=Float64)]
 fn pl_fuzz(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
     let ca1 = inputs[0].str()?;
     let ca2 = inputs[1].str()?;
@@ -20,7 +20,13 @@ fn pl_fuzz(inputs: &[Series], context: CallerContext) -> PolarsResult<Series> {
     let parallel = parallel.get(0).unwrap_or(false);
     let can_parallel = parallel && !context.parallel();
     if ca2.len() == 1 {
-        let r = ca2.get(0).unwrap();
+        let Some(r) = ca2.get(0) else {
+            return Ok(Series::full_null(
+                ca1.name().clone(),
+                ca1.len(),
+                &DataType::Float64,
+            ));
+        };
         let batched = RatioBatchComparator::new(r.chars());
         let out: Float64Chunked = if can_parallel {
             let n_threads = POOL.current_num_threads();

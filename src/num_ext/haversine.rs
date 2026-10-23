@@ -14,8 +14,13 @@ where
     T::Native: Float,
 {
     if (y_lat.len() == y_long.len()) && (y_lat.len() == 1) {
-        let e_lat = y_lat.get(0).unwrap();
-        let e_long = y_long.get(0).unwrap();
+        polars_ensure!(x_lat.len() == x_long.len(), ShapeMismatch: "inputs must have the same length");
+        let (Some(e_lat), Some(e_long)) = (y_lat.get(0), y_long.get(0)) else {
+            return Ok(ChunkedArray::<T>::full_null(
+                x_lat.name().clone(),
+                x_lat.len(),
+            ));
+        };
         let out: ChunkedArray<T> = x_lat
             .iter()
             .zip(x_long.iter())
@@ -54,6 +59,18 @@ where
 
 #[polars_expr(output_type_func=float_output)]
 fn pl_haversine(inputs: &[Series]) -> PolarsResult<Series> {
+    // Mixed signed integers/UInt64 promote to Int128 in Polars 2. The old
+    // Float64 promotion was accepted here; keep the same floating computation.
+    let casted: Vec<Series>;
+    let inputs = if inputs[0].dtype() == &DataType::Int128 {
+        casted = inputs
+            .iter()
+            .map(|s| s.cast(&DataType::Float64))
+            .collect::<PolarsResult<_>>()?;
+        casted.as_slice()
+    } else {
+        inputs
+    };
     let out = match inputs[0].dtype() {
         DataType::Float32 => {
             let x_lat = inputs[0].f32().unwrap();

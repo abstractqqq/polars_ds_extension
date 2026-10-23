@@ -344,7 +344,10 @@ def chi2(var1: str | pl.Expr, var2: str | pl.Expr, return_full: bool = False) ->
     """
     if return_full:
         return pl_plugin(
-            symbol="pl_chi2_full", args=[to_expr(var1), to_expr(var2)], changes_length=True
+            symbol="pl_chi2_full",
+            args=[to_expr(var1), to_expr(var2)],
+            changes_length=True,
+            pass_name_to_apply=True,
         )
     else:
         return pl_plugin(
