@@ -2,16 +2,13 @@ from __future__ import annotations
 
 import polars as pl
 import json
-import inspect
 from io import StringIO
 from enum import Enum
+from polars_ds import IS_POLARS_V2
 from polars_ds._utils import to_expr
 from polars_ds.typing import FitTransformFunc, ExprTransform
 from typing import List, Sequence, Dict, Protocol, Literal
 from polars._typing import IntoExprColumn
-
-
-_EXPLODE_HAS_OPTIONS = "empty_as_null" in inspect.signature(pl.LazyFrame.explode).parameters
 
 
 class PLContext(Enum):
@@ -37,8 +34,10 @@ class PLContext(Enum):
         Build a step from an already deserialized dict. The dict may contain values of type list[str],
         which requires further deserialization by polars from str to pl.Expr.
         """
-        if self in (PLContext.SELECT, PLContext.WITH_COLUMNS, PLContext.FILTER, PLContext.EXPLODE):
+        if self in (PLContext.SELECT, PLContext.WITH_COLUMNS, PLContext.FILTER):
             return ExprStep.from_partial_dict(deser_dict)
+        elif self == PLContext.EXPLODE:
+            return ExplodeStep.from_partial_dict(deser_dict)
         elif self == PLContext.SORT:
             return SortStep.from_partial_dict(deser_dict)
         elif self == PLContext.GROUP_BY_AGG:
@@ -326,6 +325,7 @@ class GroupByDynAggStep:
             period=self.period,
             offset=self.offset,
             include_boundaries=self.include_boundaries,
+            closed=self.closed,
             label=self.label,
             group_by=self.group_by,
             start_by=self.start_by,
@@ -349,6 +349,73 @@ class GroupByDynAggStep:
         return json.dumps(d)
 
 
+class ExplodeStep:
+    """
+    Container for a polars df.explode(...) transform.
+    """
+
+    __slots__ = ("columns", "empty_as_null", "keep_nulls", "context")
+
+    def __init__(
+        self,
+        columns: str | pl.Expr | Sequence[str] | Sequence[pl.Expr],
+        empty_as_null: bool | None = None,
+        keep_nulls: bool | None = None,
+    ):
+        if empty_as_null is None:
+            self.empty_as_null: bool = True
+        else:
+            self.empty_as_null: bool = bool(empty_as_null)
+
+        if keep_nulls is None:
+            self.keep_nulls: bool = True
+        else:
+            self.keep_nulls: bool = bool(keep_nulls)
+
+        if isinstance(columns, (str, pl.Expr)):
+            self.columns: List[pl.Expr] = [to_expr(columns)]
+        elif isinstance(columns, (list, tuple)):
+            self.columns: List[pl.Expr] = [to_expr(e) for e in columns]
+        else:
+            raise ValueError(
+                "input 'columns' must be a string, polars expression, or list of strings or expressions"
+            )
+
+        self.context: PLContext = PLContext.EXPLODE
+
+    @staticmethod
+    def from_partial_dict(d: Dict) -> "ExplodeStep":
+        raw_cols = d.get("columns", d.get("exprs", []))
+        columns = [pl.Expr.deserialize(StringIO(e), format="json") for e in raw_cols]
+        empty_as_null = bool(d.get("empty_as_null", True))
+        keep_nulls = bool(d.get("keep_nulls", True))
+        return ExplodeStep(columns=columns, empty_as_null=empty_as_null, keep_nulls=keep_nulls)
+
+    def apply_df(self, df: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame | pl.DataFrame:
+        if IS_POLARS_V2:
+            return df.explode(
+                self.columns, empty_as_null=self.empty_as_null, keep_nulls=self.keep_nulls
+            )
+        else:
+            try:
+                return df.explode(
+                    self.columns, empty_as_null=self.empty_as_null, keep_nulls=self.keep_nulls
+                )
+            except TypeError:
+                try:
+                    return df.explode(self.columns, empty_as_null=self.empty_as_null)
+                except TypeError:
+                    return df.explode(self.columns)
+
+    def to_json(self) -> str:
+        d = self.context.get_context_dict() | {
+            "columns": [e.meta.serialize(format="json") for e in self.columns],
+            "empty_as_null": self.empty_as_null,
+            "keep_nulls": self.keep_nulls,
+        }
+        return json.dumps(d)
+
+
 class ExprStep:
     """
     Container for either one of these polars transforms:
@@ -360,7 +427,11 @@ class ExprStep:
 
     __slots__ = ("exprs", "context")
 
-    def __init__(self, exprs: pl.Expr | Sequence[pl.Expr], context: str | PLContext):
+    def __init__(
+        self,
+        exprs: pl.Expr | Sequence[pl.Expr],
+        context: str | PLContext,
+    ):
         self.context: PLContext = context if isinstance(context, PLContext) else PLContext(context)
         if isinstance(exprs, pl.Expr):
             self.exprs = [exprs]
@@ -377,7 +448,7 @@ class ExprStep:
     def from_partial_dict(d: dict) -> "ExprStep":
         context, json_exprs = d["context"], d["exprs"]
         step_context = PLContext(context)
-        if step_context in (PLContext.SELECT, PLContext.WITH_COLUMNS, PLContext.EXPLODE):
+        if step_context in (PLContext.SELECT, PLContext.WITH_COLUMNS):
             exprs = [pl.Expr.deserialize(StringIO(e), format="json") for e in json_exprs]
         elif step_context == PLContext.FILTER:
             exprs = [pl.Expr.deserialize(StringIO(json_exprs), format="json")]
@@ -391,7 +462,7 @@ class ExprStep:
     def to_json(self) -> str:
         ctx = self.context
         d = ctx.get_context_dict()
-        if ctx in (PLContext.SELECT, PLContext.WITH_COLUMNS, PLContext.EXPLODE):
+        if ctx in (PLContext.SELECT, PLContext.WITH_COLUMNS):
             d["exprs"] = [e.meta.serialize(format="json") for e in self.exprs]
         elif self.context == PLContext.SQL:
             d["exprs"] = self.exprs[0]
@@ -411,10 +482,6 @@ class ExprStep:
             return pl.SQLContext(df=df, eager=False).execute(self.exprs[0])
         elif self.context == PLContext.FILTER:
             return df.filter(self.exprs[0])
-        elif self.context == PLContext.EXPLODE:
-            if _EXPLODE_HAS_OPTIONS:
-                return df.explode(self.exprs, empty_as_null=True, keep_nulls=True)
-            return df.explode(self.exprs)
 
 
 class FitStep:
@@ -453,4 +520,4 @@ class FitStep:
 # ---------------------------------------------------------------------------------------
 # Steps that don't need fitting, can be directly serialized.
 # FitStep becomes ExprStep after fitting
-_SERIALIZABLE_STEPS = [ExprStep, SortStep, SQLStep, GroupByAggStep, GroupByDynAggStep]
+_SERIALIZABLE_STEPS = [ExprStep, SortStep, SQLStep, GroupByAggStep, GroupByDynAggStep, ExplodeStep]

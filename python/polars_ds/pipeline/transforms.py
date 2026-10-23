@@ -11,6 +11,7 @@ import polars.selectors as cs
 from typing import List, Dict
 
 # Internal dependencies
+from polars_ds import IS_POLARS_V2
 from polars_ds.typing import (
     PolarsFrame,
     SimpleImputeMethod,
@@ -44,7 +45,13 @@ def impute(df: PolarsFrame, cols: List[str], method: SimpleImputeMethod = "mean"
         temp = df.lazy().select(pl.col(cols).median()).collect().row(0)
         return [pl.col(c).fill_null(m) for c, m in zip(cols, temp)]
     elif method == "mode":
-        temp = df.lazy().select(pl.col(cols).mode().list.first()).collect().row(0)
+        if IS_POLARS_V2:
+            temp = df.lazy().select(pl.col(cols).mode().first()).collect().row(0)
+        else:
+            try:
+                temp = df.lazy().select(pl.col(cols).mode().first()).collect().row(0)
+            except Exception:
+                temp = df.lazy().select(pl.col(cols).mode().list.first()).collect().row(0)
         return [pl.col(c).fill_null(m) for c, m in zip(cols, temp)]
     else:
         raise ValueError(f"unknown impute method: '{method}'")
@@ -94,17 +101,28 @@ def conditional_impute(
             pl.when(rules_dict[c]).then(m).otherwise(pl.col(c)).alias(c) for c, m in zip(cols, temp)
         ]
     elif method == "mode":
-        temp = (
-            df.lazy()
-            .select(
-                *(
-                    pl.col(c).filter(rules_dict[c].not_()).mode().list.first()
-                    for c in rules_dict.keys()
-                )
+        if IS_POLARS_V2:
+            temp = (
+                df.lazy()
+                .select(*(pl.col(c).filter(rules_dict[c].not_()).mode().first() for c in cols))
+                .collect()
+                .row(0)
             )
-            .collect()
-            .row(0)
-        )
+        else:
+            try:
+                temp = (
+                    df.lazy()
+                    .select(*(pl.col(c).filter(rules_dict[c].not_()).mode().first() for c in cols))
+                    .collect()
+                    .row(0)
+                )
+            except Exception:
+                temp = (
+                    df.lazy()
+                    .select(*(pl.col(c).filter(rules_dict[c].not_()).mode().list.first() for c in cols))
+                    .collect()
+                    .row(0)
+                )
         return [
             pl.when(rules_dict[c]).then(m).otherwise(pl.col(c)).alias(c) for c, m in zip(cols, temp)
         ]
@@ -342,7 +360,7 @@ def one_hot_encode(
         df.lazy()
         .select(cols)
         .select(
-            (cs.string() | cs.categorical())
+            (cs.string() | cs.categorical() | cs.by_dtype(pl.Enum))
             .unique()
             .drop_nulls()
             .cast(pl.String)
@@ -397,7 +415,7 @@ def ordinal_encode(
         df.lazy()
         .select(cols)
         .select(
-            (cs.string() | cs.categorical() | cs.numeric() | cs.boolean())
+            (cs.string() | cs.categorical() | cs.by_dtype(pl.Enum) | cs.numeric() | cs.boolean())
             .unique()
             .drop_nulls()
             .sort()
@@ -535,7 +553,12 @@ def target_encode(
     https://contrib.scikit-learn.org/category_encoders/targetencoder.html
     """
     temp = df.lazy()
-    valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
+    valid_cols = (
+        temp.select(cols)
+        .select(cs.string() | cs.categorical() | cs.by_dtype(pl.Enum))
+        .collect_schema()
+        .names()
+    )
 
     if len(valid_cols) == 0:
         raise ValueError(
@@ -590,7 +613,12 @@ def woe_encode(
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
     temp = df.lazy()
-    valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
+    valid_cols = (
+        temp.select(cols)
+        .select(cs.string() | cs.categorical() | cs.by_dtype(pl.Enum))
+        .collect_schema()
+        .names()
+    )
 
     if len(valid_cols) == 0:
         raise ValueError(
@@ -643,7 +671,12 @@ def iv_encode(
     https://www.listendata.com/2015/03/weight-of-evidence-woe-and-information.html
     """
     temp = df.lazy()
-    valid_cols = temp.select(cols).select(cs.string() | cs.categorical()).collect_schema().names()
+    valid_cols = (
+        temp.select(cols)
+        .select(cs.string() | cs.categorical() | cs.by_dtype(pl.Enum))
+        .collect_schema()
+        .names()
+    )
 
     if len(valid_cols) == 0:
         raise ValueError(
@@ -688,6 +721,8 @@ def select_by_std(
         Max standard deviation to select, exclusive
     """
     numeric = df.lazy().select(cs.by_name(cols) & cs.numeric()).collect_schema().names()
+    if len(numeric) == 0:
+        return pl.all()
     std_vals = df.lazy().select(pl.col(numeric).std()).collect().row(0)
     # Do an exclusion instead
     return pl.exclude([c for c, v in zip(numeric, std_vals) if (v < min_ or v > max_)])

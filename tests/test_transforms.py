@@ -341,3 +341,173 @@ def test_rank_hot_encode(df, ranking):
 
     df_to_test = df.select(t.rank_hot_encode(col="col", ranking=ranking))
     assert_frame_equal(df_to_test, df_naive)
+
+
+def test_impute_mode():
+    df = pl.DataFrame({
+        "a": [1, 2, 2, 3, None],
+        "b": ["x", "y", "y", None, "z"],
+    })
+    res = df.with_columns(t.impute(df, cols=["a", "b"], method="mode"))
+    assert res["a"].to_list() == [1, 2, 2, 3, 2]
+    assert res["b"].to_list() == ["x", "y", "y", "y", "z"]
+
+
+def test_conditional_impute_mode():
+    df = pl.DataFrame({
+        "a": [100, 200, 200, None, 999],
+    })
+    rule = {"a": pl.col("a").is_null() | (pl.col("a") > 500)}
+    res = df.with_columns(t.conditional_impute(df, rules_dict=rule, method="mode"))
+    assert res["a"].to_list() == [100, 200, 200, 200, 200]
+
+
+def test_select_by_std_no_numeric():
+    df = pl.DataFrame({"a": ["x", "y", "z"], "b": ["foo", "bar", "baz"]})
+    res = t.select_by_std(df, ["a", "b"], min_=0.0, max_=10.0)
+    # When no numeric columns exist, all columns should remain
+    assert_frame_equal(df.select(res), df)
+
+
+def test_enum_support():
+    from polars_ds.pipeline import Blueprint
+
+    df = pl.DataFrame({
+        "color": pl.Series(["red", "blue", "red", None], dtype=pl.Enum(["red", "blue", "green"])),
+        "target": [1.0, 0.0, 1.0, 0.0],
+    })
+
+    # One hot encode with Enum
+    bp = Blueprint(df, name="enum_test").one_hot_encode(cols=["color"])
+    pipe = bp.materialize()
+    res = pipe.transform(df)
+    assert "color_red" in res.columns
+    assert "color_blue" in res.columns
+    assert "color" not in res.columns
+
+    # Ordinal encode with Enum (Enum sorts by enum definition order: red=0.0, blue=1.0)
+    bp_ord = Blueprint(df, name="enum_ord").ordinal_encode(cols=["color"], null_value=-1)
+    pipe_ord = bp_ord.materialize()
+    res_ord = pipe_ord.transform(df)
+    assert res_ord["color"].to_list() == [0.0, 1.0, 0.0, -1.0]
+
+
+def test_explode_empty_as_null():
+    from polars_ds.pipeline import Blueprint
+
+    df = pl.DataFrame({
+        "id": [1, 2, 3],
+        "vals": [[10, 20], [], [30]],
+    })
+
+    # Default empty_as_null=False (drops empty list row)
+    bp1 = Blueprint(df, name="explode_false").explode("vals", empty_as_null=False)
+    pipe1 = bp1.materialize()
+    res1 = pipe1.transform(df)
+    assert len(res1) == 3
+    assert res1["vals"].to_list() == [10, 20, 30]
+
+    # empty_as_null=True (preserves row with null)
+    bp2 = Blueprint(df, name="explode_true").explode("vals", empty_as_null=True)
+    pipe2 = bp2.materialize()
+    res2 = pipe2.transform(df)
+    assert len(res2) == 4
+    assert res2["vals"].to_list() == [10, 20, None, 30]
+
+    # Serialization round-trip
+    from polars_ds.pipeline import Pipeline
+    pipe1_reloaded = Pipeline.from_json(pipe1.to_json())
+    assert len(pipe1_reloaded.transform(df)) == 3
+
+    pipe2_reloaded = Pipeline.from_json(pipe2.to_json())
+    assert len(pipe2_reloaded.transform(df)) == 4
+
+    # keep_nulls tests
+    df_nulls = pl.DataFrame({
+        "id": [1, 2],
+        "vals": [[10, 20], None],
+    })
+    bp_keep = Blueprint(df_nulls, name="explode_keep").explode("vals", keep_nulls=True)
+    assert len(bp_keep.materialize().transform(df_nulls)) == 3
+
+    bp_drop = Blueprint(df_nulls, name="explode_drop").explode("vals", keep_nulls=False)
+    assert len(bp_drop.materialize().transform(df_nulls)) == 2
+
+
+def test_streaming_kwarg_normalization():
+    from polars_ds.pipeline import Blueprint
+
+    df = pl.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
+    bp = Blueprint(df, name="streaming_test").scale(["a"], method="standard")
+    pipe = bp.materialize(streaming=True)
+    res = pipe.transform(df, streaming=True)
+    assert len(res) == 3
+
+    pipe2 = bp.materialize(streaming=False)
+    res2 = pipe2.transform(df, streaming=False)
+    assert len(res2) == 3
+
+
+def test_streaming_kwarg_normalization_v2(monkeypatch):
+    import polars_ds.pipeline.pipeline as pipe_module
+    from polars_ds.pipeline import Blueprint
+
+    monkeypatch.setattr(pipe_module, "IS_POLARS_V2", True)
+    df = pl.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
+    bp = Blueprint(df, name="streaming_test_v2").scale(["a"], method="standard")
+    # In v2, streaming=True normalizes to engine='streaming'
+    pipe = bp.materialize(streaming=True)
+    res = pipe.transform(df, streaming=True)
+    assert len(res) == 3
+
+    pipe2 = bp.materialize(streaming=False)
+    res2 = pipe2.transform(df, streaming=False)
+    assert len(res2) == 3
+
+
+def test_explode_explicit_empty_as_null():
+    from polars_ds.pipeline import Blueprint
+
+    df = pl.DataFrame({
+        "id": [1, 2, 3],
+        "vals": [[10, 20], [], [30]],
+    })
+
+    # Default preserves row count (empty_as_null=True)
+    bp_default = Blueprint(df, name="exp_default").explode("vals")
+    pipe_default = bp_default.materialize()
+    res_default = pipe_default.transform(df)
+    assert len(res_default) == 4
+    assert res_default["vals"].to_list() == [10, 20, None, 30]
+
+    # Explicit empty_as_null=False drops empty list row
+    bp_drop = Blueprint(df, name="exp_drop").explode("vals", empty_as_null=False)
+    pipe_drop = bp_drop.materialize()
+    res_drop = pipe_drop.transform(df)
+    assert len(res_drop) == 3
+    assert res_drop["vals"].to_list() == [10, 20, 30]
+
+
+
+def test_mode_impute_gated_by_is_polars_v2(monkeypatch):
+    import polars_ds.pipeline.transforms as t_module
+
+    df = pl.DataFrame({
+        "a": [1, 2, 2, 3, None],
+        "b": ["x", "y", "y", None, "z"],
+    })
+
+    # With IS_POLARS_V2 = True
+    monkeypatch.setattr(t_module, "IS_POLARS_V2", True)
+    res_v2 = df.with_columns(t_module.impute(df, cols=["a", "b"], method="mode"))
+    assert res_v2["a"].to_list() == [1, 2, 2, 3, 2]
+    assert res_v2["b"].to_list() == ["x", "y", "y", "y", "z"]
+
+    # With IS_POLARS_V2 = False
+    monkeypatch.setattr(t_module, "IS_POLARS_V2", False)
+    res_v1 = df.with_columns(t_module.impute(df, cols=["a", "b"], method="mode"))
+    assert res_v1["a"].to_list() == [1, 2, 2, 3, 2]
+    assert res_v1["b"].to_list() == ["x", "y", "y", "y", "z"]
+
+
+
