@@ -20,6 +20,7 @@ else:  # 3.10, 3.9, 3.8
     from typing_extensions import Self
 
 # Internal Depenedncies
+from polars_ds import IS_POLARS_V2
 from polars_ds.typing import (
     EncoderDefaultStrategy,
     PolarsFrame,
@@ -31,6 +32,7 @@ from polars_ds.typing import (
 from . import transforms as t
 from ._step import (
     _SERIALIZABLE_STEPS,
+    ExplodeStep,
     ExprStep,
     FitStep,
     GroupByAggStep,
@@ -42,7 +44,7 @@ from ._step import (
     SQLStep,
 )
 
-__all__ = ["Pipeline", "Blueprint", "PLContext", "ExprStep"]
+__all__ = ["Pipeline", "Blueprint", "PLContext", "ExprStep", "ExplodeStep"]
 
 
 @dataclass
@@ -205,13 +207,24 @@ class Pipeline:
         return self
 
     def transform(
-        self, df: PolarsFrame, return_lazy: bool = False, set_features_out: bool = False, **kwargs
+        self,
+        df: PolarsFrame,
+        return_lazy: bool = False,
+        set_features_out: bool = False,
+        streaming: bool | None = None,
+        **kwargs,
     ) -> PolarsFrame:
         """
         Transforms the df using the learned expressions.
 
-        Paramters
-        ---------
+        Note on Row Order (Polars 2.0+):
+        In Polars 2.0, lazy query evaluation defaults to the streaming engine, which
+        does not guarantee row order for operations that do not require it (such as joins
+        and group-bys without maintain_order=True). If strict row order stability is required,
+        pass engine="in-memory" or maintain_order=True where applicable.
+
+        Parameters
+        ----------
         df
             If none, transform the df that the pipe is initialized with. Otherwise, perform
             the learned transformations on the incoming df.
@@ -219,8 +232,12 @@ class Pipeline:
             If true, return the lazy plan for the transformations
         set_features_out
             If true, set `self.feature_names_out_` to the output features from this transform run.
+        streaming
+            Optional flag for backward compatibility. In Polars 2.0, streaming is already the default
+            engine. Setting streaming=True maps to engine="streaming", and streaming=False maps to
+            engine="in-memory".
         **kwargs
-            When return_lazy is True, kwargs will be passed to polars.LazyFrame.collect()
+            When return_lazy is False, kwargs will be passed to polars.LazyFrame.collect()
         """
         if self.ensure_features_in:
             if self.lowercase:
@@ -243,7 +260,18 @@ class Pipeline:
         if set_features_out:
             self.feature_names_out_ = plan.collect_schema().names()
 
-        # Add config here if streaming is needed
+        if IS_POLARS_V2:
+            if streaming is not None:
+                if "engine" not in kwargs:
+                    kwargs["engine"] = "streaming" if streaming else "in-memory"
+            elif "streaming" in kwargs:
+                st = kwargs.pop("streaming")
+                if "engine" not in kwargs and st is not None:
+                    kwargs["engine"] = "streaming" if st else "in-memory"
+        else:
+            if streaming is not None and "streaming" not in kwargs:
+                kwargs["streaming"] = streaming
+
         return plan if return_lazy else plan.collect(**kwargs)
 
 
@@ -354,6 +382,12 @@ class Blueprint:
         the SQL is valid Polars SQL and all columns referred in the SQL exist at this point.
         The name "df" should be used to refer to the current state of the dataframe in the SQL.
         E.g. select * from df where A is True.
+
+        Note on Polars 2.0+:
+        In Polars 2.0+, exact numeric literals in SQL queries without an exponent (e.g. 1.5, 0.5)
+        are typed as Decimal rather than Float64. If subsequent steps require float columns,
+        either cast explicitly in the SQL (e.g. CAST(1.5 AS DOUBLE)) or use scientific notation
+        (e.g. 1.5e0).
 
         Parameters
         ----------
@@ -664,14 +698,14 @@ class Blueprint:
         self._steps.append(
             FitStep(
                 partial(t.one_hot_encode, separator=separator, drop_first=drop_first),
-                cols if cols is not None else cs.string() | cs.categorical(),
+                cols if cols is not None else cs.string() | cs.categorical() | cs.by_dtype(pl.Enum),
                 self.exclude,
             )
         )
         # Whether to drop the og str columns
         if drop_cols:
             if cols is None:
-                return self.drop([pl.String, pl.Categorical])
+                return self.drop([pl.String, pl.Categorical, pl.Enum])
             return self.drop(cols)
         return self
 
@@ -700,7 +734,7 @@ class Blueprint:
         self._steps.append(
             FitStep(
                 partial(t.ordinal_encode, unknown_value=unknown_value, null_value=null_value),
-                cols if cols is not None else cs.string() | cs.categorical(),
+                cols if cols is not None else cs.string() | cs.categorical() | cs.by_dtype(pl.Enum),
                 self.exclude,
             )
         )
@@ -781,7 +815,7 @@ class Blueprint:
                     smoothing=smoothing,
                     default=default,
                 ),
-                cols if cols is not None else cs.string() | cs.categorical(),
+                cols if cols is not None else cs.string() | cs.categorical() | cs.by_dtype(pl.Enum),
                 self.exclude,
             )
         )
@@ -822,7 +856,7 @@ class Blueprint:
                     target=self._get_target(target),
                     default=default,
                 ),
-                cols if cols is not None else cs.string() | cs.categorical(),
+                cols if cols is not None else cs.string() | cs.categorical() | cs.by_dtype(pl.Enum),
                 self.exclude,
             )
         )
@@ -863,7 +897,7 @@ class Blueprint:
                     target=self._get_target(target),
                     default=default,
                 ),
-                cols if cols is not None else cs.string() | cs.categorical(),
+                cols if cols is not None else cs.string() | cs.categorical() | cs.by_dtype(pl.Enum),
                 self.exclude,
             )
         )
@@ -893,18 +927,29 @@ class Blueprint:
         self._steps.append(SortStep(by=by, descending=descending, maintain_order=maintain_order))
         return self
 
-    def explode(self, columns: str | pl.Expr | List[str] | List[pl.Expr]) -> Self:
-        """Transform that represents `df.explode(columns)`"""
-        if isinstance(columns, (str, pl.Expr)):
-            exprs = [to_expr(columns)]
-        elif isinstance(columns, list):
-            exprs = [to_expr(c) for c in columns]
-        else:
-            raise ValueError(
-                "input 'columns' must be a string, polars expression, or list of strings or expressions"
-            )
+    def explode(
+        self,
+        columns: str | pl.Expr | List[str] | List[pl.Expr],
+        empty_as_null: bool | None = None,
+        keep_nulls: bool | None = None,
+    ) -> Self:
+        """Transform that represents `df.explode(columns)`
 
-        self._steps.append(ExprStep(exprs, PLContext.EXPLODE))
+        Parameters
+        ----------
+        columns
+            The column(s) to explode.
+        empty_as_null
+            Whether empty lists should explode into a null row (True) or zero rows (False).
+            Defaults to True in pipelines to preserve row count alignment. Pass empty_as_null=False
+            if you want empty lists to result in 0 rows.
+        keep_nulls
+            Whether null values should produce null outputs (True) or be dropped (False).
+            Defaults to True (matching Polars 2.0+ default).
+        """
+        self._steps.append(
+            ExplodeStep(columns=columns, empty_as_null=empty_as_null, keep_nulls=keep_nulls)
+        )
         return self
 
     def group_by_agg(
@@ -912,6 +957,10 @@ class Blueprint:
     ) -> Self:
         """
         Performs a group by and agg on the data.
+
+        Note on Row Order (Polars 2.0+):
+        Under Polars 2.0 streaming engine, group-by aggregations do not guarantee
+        deterministic row order across runs unless maintain_order=True or engine="in-memory" is used.
 
         Parameters
         ----------
@@ -1025,18 +1074,38 @@ class Blueprint:
         return func(*step_repr.args, **step_repr.kwargs)
 
     def materialize(
-        self, return_df: bool = False, **kwargs
+        self, return_df: bool = False, streaming: bool | None = None, **kwargs
     ) -> Pipeline | Tuple[pl.LazyFrame, Pipeline]:
         """
         Materialize the blueprint, which means that it will fit and learn all the paramters needed.
+
+        Note on Polars 2.0+:
+        In Polars 2.0+, collect() defaults to the streaming engine. Pass engine="in-memory" if
+        deterministic in-memory execution is desired.
 
         Parameters
         ----------
         return_df
             If true, return the entire query plan, a lazy df, together with the Pipeline object
+        streaming
+            Optional flag for backward compatibility. In Polars 2.0, streaming is already the default
+            engine. Setting streaming=True maps to engine="streaming", and streaming=False maps to
+            engine="in-memory".
         **kwargs
             All kwargs here will be passed to polars.LazyFrame.collect()
         """
+        if IS_POLARS_V2:
+            if streaming is not None:
+                if "engine" not in kwargs:
+                    kwargs["engine"] = "streaming" if streaming else "in-memory"
+            elif "streaming" in kwargs:
+                st = kwargs.pop("streaming")
+                if "engine" not in kwargs and st is not None:
+                    kwargs["engine"] = "streaming" if st else "in-memory"
+        else:
+            if streaming is not None and "streaming" not in kwargs:
+                kwargs["streaming"] = streaming
+
         transforms: List[PipelineStep] = []
         df: pl.DataFrame = self._df.collect(**kwargs)
         # Let this lazy plan go through the fit process. The frame will be collected temporarily but
