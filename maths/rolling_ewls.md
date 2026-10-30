@@ -45,7 +45,11 @@ rank. Failed/nonfinite factorizations or coefficients produce null fields.
 As in `lin_reg`'s `singular_x_tol` gate, the relative determinant
 $\det(A_t)/\prod_i(A_t)_{ii}$ must exceed a tolerance: $10^{-12}$ for Float64
 output and $10^{-6}$ for Float32 output. The calculation uses the Cholesky
-diagonal in log space and reuses the solve's factorization. This is a numerical
+diagonal in log space and reuses the solve's factorization. The specialized
+one-predictor/intercept/skip path maintains five scalar moments and evaluates
+the normalized 2x2 determinant directly, with the same threshold. It avoids
+prefix EWM subtraction, which cannot recover small contributions lost to an
+extreme observation after that observation expires. This is a numerical
 degeneracy policy, not an exact symbolic rank test or NumPy's SVD `rcond` rule.
 All predictors, including the optional intercept, count toward the minimum
 number of observations needed for an identifiable fit.
@@ -109,3 +113,8 @@ hardware and thread count. Use smaller matched cases for the per-window baseline
 and long groups to separate steady-state scaling from warm-up effects.
 Measured results and reproduction commands are in the
 [benchmark report](../benchmarks/rolling_ewls.md).
+
+The specialized one-predictor path emits fits directly into Arrow builders,
+without retaining a per-row matrix history. Its change scope, numerical
+regressions, three-way comparison with original PR #481, and reproduction
+commands are in the [1d stability report](../benchmarks/rolling_ewls_1d_stability.md).
