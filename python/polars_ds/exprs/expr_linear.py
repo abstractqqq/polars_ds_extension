@@ -641,14 +641,20 @@ def rolling_lin_reg_1d(
 ) -> pl.Expr:
     """Exponentially weighted rolling regression for one predictor and an intercept.
 
-    This specialized implementation uses a staged Polars plan inside the plugin
-    and closed-form scalar formulas. Apply ``.over(...)`` to the returned expression
-    for grouped data, after sorting each group into the intended rolling order.
+    This specialized implementation maintains finite-window weighted statistics
+    and solves the two coefficients with scalar Cholesky steps. Statistics are
+    rebuilt periodically and after unstable removals, so expired extreme values
+    do not contaminate later windows. Apply ``.over(...)`` to the returned
+    expression after sorting each group into the intended rolling order.
 
     Rows where either input is null, NaN or infinite are excluded from the fit but
     retain their position and age in the window. The first ``window_size - 1``
     outputs are null. A missing current target does not prevent prediction, while
     an invalid current predictor makes the prediction null.
+
+    Computation follows ``LIN_REG_EXPR_F64``. Weights are normalized to the newest
+    valid observation to preserve identifiable fits through long missing tails.
+    A nonfinite prediction is returned as null even when the coefficients are finite.
 
     The output is a struct with ``coeffs`` (slope followed by intercept) and
     ``pred``, matching :func:`rolling_lin_reg`. This path deliberately supports

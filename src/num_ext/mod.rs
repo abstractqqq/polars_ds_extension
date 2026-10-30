@@ -17,6 +17,7 @@ mod mutual_info;
 mod pca;
 mod psi;
 mod rolling_ewls;
+mod rolling_ewls_1d;
 mod splines;
 mod subseq_sim;
 mod target_encode;

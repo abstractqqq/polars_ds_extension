@@ -129,6 +129,158 @@ def test_one_predictor_ewls_routes_to_closed_form(precision):
     assert_frame_equal(routed, explicit, check_exact=True)
 
 
+def fit_1d(df, direct, **kwargs):
+    expr = (
+        pds.rolling_lin_reg_1d("x0", target="y", **kwargs)
+        if direct
+        else pds.rolling_lin_reg("x0", target="y", add_bias=True, null_policy="skip", **kwargs)
+    )
+    return df.lazy().select(expr.alias("fit")).unnest("fit").collect()
+
+
+@pytest.mark.parametrize("direct", [False, True], ids=["routed", "explicit"])
+@pytest.mark.parametrize("above_gate", [False, True])
+def test_1d_rank_gate(precision, direct, above_gate):
+    tolerance = 1e-12 if precision else 1e-6
+    delta = np.sqrt(tolerance * (20 if above_gate else 0.05))
+    x = 1.0 + delta * np.tile([-1.0, 1.0], 40)
+    df = pl.DataFrame({"x0": x, "y": 2.0 * x - 0.5})
+    result = fit_1d(df, direct, window_size=32, half_life=1e30)
+    assert result["coeffs"][31:].null_count() == (0 if above_gate else 49)
+
+
+@pytest.mark.parametrize("direct", [False, True], ids=["routed", "explicit"])
+@pytest.mark.parametrize("column", ["x0", "y"])
+def test_1d_all_null_inputs(precision, direct, column):
+    df = data(n=80, p=1).with_columns(pl.lit(None).alias(column))
+    result = fit_1d(df, direct, window_size=20, half_life=6)
+    assert result["coeffs"].null_count() == 80
+    assert result["pred"].null_count() == 80
+
+
+@pytest.mark.parametrize("direct", [False, True], ids=["routed", "explicit"])
+@pytest.mark.parametrize("column", ["x0", "y"])
+@pytest.mark.parametrize("magnitude", [1e4, 1e8, 1e12])
+def test_1d_expired_outlier_matches_current_window(precision, direct, column, magnitude):
+    df = data(n=180, p=1).with_columns(
+        pl.when(pl.int_range(pl.len()) == 25)
+        .then(magnitude)
+        .otherwise(pl.col(column))
+        .alias(column)
+    )
+    args = dict(window_size=23, half_life=6, min_valid_rows=2)
+    result = fit_1d(df, direct, **args)
+    # Every checked window excludes the outlier and is well conditioned. A
+    # prefix-EWM subtraction can still retain its lost small contributions.
+    assert_reference(df, result, ["x0"], 23, 6, True, 2, indices=range(48, 180))
+    for t in [48, 80, 179]:
+        fresh = fit_1d(df.slice(t - 22, 23), direct, **args).tail(1)
+        assert_frame_equal(
+            result.slice(t, 1),
+            fresh,
+            rel_tol=1e-8 if precision else 1e-4,
+            abs_tol=1e-10 if precision else 1e-5,
+        )
+    future = df.with_columns(
+        pl.when(pl.int_range(pl.len()) > 100).then(1e6).otherwise(pl.col("y")).alias("y")
+    )
+    assert_frame_equal(fit_1d(future, direct, **args).head(101), result.head(101))
+
+
+@pytest.mark.parametrize("direct", [False, True], ids=["routed", "explicit"])
+def test_1d_recovers_after_overflowing_outlier_expires(precision, direct):
+    large = 1e200 if precision else 1e30
+    df = data(n=180, p=1).with_columns(
+        pl.when(pl.int_range(pl.len()) == 25).then(large).otherwise(pl.col("x0")).alias("x0")
+    )
+    result = fit_1d(df, direct, window_size=23, half_life=6)
+    assert_reference(df, result, ["x0"], 23, 6, True, 2, indices=range(48, 180))
+
+
+@pytest.mark.parametrize("direct", [False, True], ids=["routed", "explicit"])
+def test_1d_missing_tail_retains_identifiable_fit(precision, direct):
+    x = np.tile([-1.0, 1.0], 1550)
+    y = (2 * x + 3).tolist()
+    y[1500:3000] = [None] * 1500
+    df = pl.DataFrame({"x0": x, "y": y})
+    result = fit_1d(df, direct, window_size=1500, half_life=1.1, min_valid_rows=2)
+    coefficients = result["coeffs"][1499:2998]
+    assert coefficients.null_count() == 0
+    np.testing.assert_allclose(
+        coefficients.list.to_array(2).to_numpy(),
+        np.tile([2.0, 3.0], (1499, 1)),
+        rtol=1e-8 if precision else 1e-4,
+        atol=1e-10 if precision else 1e-5,
+    )
+    assert result["coeffs"][2998:3001].null_count() == 3
+    assert_reference(
+        df,
+        result,
+        ["x0"],
+        1500,
+        1.1,
+        True,
+        2,
+        indices=[1499, 1700, 2500, 2800, 2997, 2998, 2999, 3000, 3001, 3099],
+    )
+
+
+@pytest.mark.parametrize("direct", [False, True], ids=["routed", "explicit"])
+def test_1d_nonfinite_prediction_is_null(precision, direct):
+    large = 1e200 if precision else 1e30
+    df = pl.DataFrame({"x0": [0.0, 1.0, 0.0, large], "y": [0.0, large, 0.0, None]})
+    result = fit_1d(df, direct, window_size=4, half_life=2, min_valid_rows=2)
+    assert result["coeffs"][-1] is not None
+    assert result["coeffs"][-1].is_finite().all()
+    assert result["pred"][-1] is None
+
+
+@pytest.mark.parametrize("direct", [False, True], ids=["routed", "explicit"])
+@pytest.mark.parametrize("engine", ["auto", "streaming", "in-memory"])
+def test_1d_group_chunks_slice_and_null_prediction(precision, direct, engine):
+    parts = [
+        data(n=n, p=1, seed=i).with_columns(asset=pl.lit(i)) for i, n in enumerate([90, 7, 110])
+    ]
+    panel = (
+        pl.concat(parts, rechunk=False)
+        .slice(3)
+        .with_columns(
+            pl.when(pl.int_range(pl.len()) % 17 == 0).then(None).otherwise(pl.col("y")).alias("y"),
+            pl.when(pl.int_range(pl.len()) % 29 == 0)
+            .then(float("nan"))
+            .otherwise(pl.col("x0"))
+            .alias("x0"),
+        )
+    )
+    args = dict(window_size=15, half_life=5, min_valid_rows=2)
+    expr = (
+        pds.rolling_lin_reg_1d("x0", target="y", **args)
+        if direct
+        else pds.rolling_lin_reg("x0", target="y", add_bias=True, null_policy="skip", **args)
+    )
+    got = panel.lazy().with_columns(expr.over("asset").alias("fit")).collect(engine=engine)
+    assert_frame_equal(
+        got,
+        panel.rechunk().lazy().with_columns(expr.over("asset").alias("fit")).collect(engine=engine),
+    )
+    for sub in panel.partition_by("asset", maintain_order=True):
+        expected = fit_1d(sub, direct, **args)
+        actual = got.filter(pl.col("asset") == sub["asset"][0]).select("fit").unnest("fit")
+        assert_frame_equal(actual, expected)
+        assert_reference(sub, actual, ["x0"], 15, 5, True, 2)
+
+
+@pytest.mark.parametrize("direct", [False, True], ids=["routed", "explicit"])
+@pytest.mark.parametrize("n", [0, 1, 7, 8, 20])
+def test_1d_empty_short_and_schema(precision, direct, n):
+    df = data(n=n, p=1)
+    result = fit_1d(df, direct, window_size=8, half_life=3, min_valid_rows=1)
+    dtype = pl.Float64 if precision else pl.Float32
+    assert result.schema == {"coeffs": pl.List(dtype), "pred": dtype}
+    assert result.height == n
+    assert_reference(df, result, ["x0"], 8, 3, True, 1)
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
