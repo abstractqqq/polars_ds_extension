@@ -14,7 +14,7 @@ use crate::linear::{
     lr::{
         lr_solvers::{
             faer_coordinate_descent, faer_nn_lr, faer_solve_lr, faer_solve_lr_gated,
-            faer_solve_lr_rcond, faer_weighted_lr,
+            faer_solve_lr_rcond, faer_solve_lr_rcond_stable, faer_weighted_lr,
         },
         LRMethods,
     },
@@ -528,10 +528,13 @@ fn pl_lr_w_rcond_f32(inputs: &[Series], kwargs: LRKwargs) -> PolarsResult<Series
             let y = MatRef::from_column_major_slice(&mat_slice[..nrows], nrows, 1);
             let x = MatRef::from_column_major_slice(&mat_slice[nrows..], nrows, nfeats);
 
-            // faer_solve_lr_rcond
-            let (coeffs, singular_values) =
-                faer_solve_lr_rcond(x, y, kwargs.l2_reg as f32, add_bias, rcond)
-                    .map_err(|e| PolarsError::ComputeError(e.into()))?;
+            let solve = if kwargs.stable {
+                faer_solve_lr_rcond_stable
+            } else {
+                faer_solve_lr_rcond
+            };
+            let (coeffs, singular_values) = solve(x, y, kwargs.l2_reg as f32, add_bias, rcond)
+                .map_err(|e| PolarsError::ComputeError(e.into()))?;
 
             let mut builder: ListPrimitiveChunkedBuilder<Float32Type> =
                 ListPrimitiveChunkedBuilder::new(

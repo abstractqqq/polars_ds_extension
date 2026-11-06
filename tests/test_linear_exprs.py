@@ -532,26 +532,13 @@ def test_lin_reg_with_rcond_truncates_singular_value():
     coeffs = res["coeffs"][0].to_numpy()
     svs = res["singular_values"][0].to_numpy()
 
-    # Reference: pds rcond uses XtX eigenvalues; threshold = rcond * sqrt(max eig);
-    # pseudo-inverse zeroing eigenvalues below threshold.
+    # Independent LAPACK reference: rcond acts on the original design spectrum.
     X = df.select("x1", "x2", "x3").to_numpy()
     y = df["y"].to_numpy()
-    xtx = X.T @ X
-    evals, evecs = np.linalg.eigh(xtx)
-    thr = rcond * np.sqrt(evals.max())
-    assert (evals < thr).any(), "test must actually truncate a singular value"
-    pinv = sum(
-        (1.0 / ev) * np.outer(vec, vec)
-        for ev, vec in zip(evals, evecs.T)
-        if ev >= thr
-    )
-    w_ref = pinv @ (X.T @ y)
-
-    assert np.all(np.isfinite(coeffs))
-    np.testing.assert_allclose(coeffs, w_ref, rtol=1e-5, atol=1e-5)
-    np.testing.assert_allclose(
-        np.sort(svs)[::-1], np.sqrt(np.sort(evals))[::-1], rtol=1e-6, atol=1e-6
-    )
+    w_ref, _, rank, spectrum = np.linalg.lstsq(X, y, rcond=rcond)
+    assert rank == 2, "test must truncate the near-collinear direction"
+    np.testing.assert_allclose(coeffs, w_ref, rtol=1e-8, atol=1e-10)
+    np.testing.assert_allclose(svs, spectrum, rtol=1e-6, atol=1e-6)
 
 
 def test_lasso_regression():

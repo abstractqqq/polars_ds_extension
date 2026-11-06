@@ -360,13 +360,22 @@ def lin_reg_w_rcond(
     rcond: float = 0.0,
     l2_reg: float = 0.0,
     null_policy: NullPolicy = "raise",
+    stable: bool = False,
 ) -> pl.Expr:
     """
-    Uses SVD to compute linear regression. During the process, singular values will be set to 0
-    if it is smaller than rcond * max singular value (of X). This will return the coefficients as well
-    as singular values of X as the output. The number of nonzero singular values is the rank of X.
+    Compute truncated-SVD least squares, returning coefficients and singular values.
 
-    Note: the singular values return will be the values before applying the rcond cut off.
+    By default, SVD is applied to X.T @ X for speed. With ``stable=True``,
+    Householder QR followed by SVD avoids forming X.T @ X, improving numerical
+    stability for ill-conditioned predictors at a higher runtime cost. The stable
+    path uses Float64 workspaces, retains the configured output precision, and
+    requires finite inputs after null handling.
+
+    Singular values at or below ``rcond * max(singular_values)`` are discarded.
+    The returned ``singular_values`` are before truncation; the default path
+    estimates them from X.T @ X. Coefficients follow predictor order, with the
+    optional intercept last. For Ridge, the spectrum corresponds to the augmented
+    design [X; sqrt(l2_reg) D], where D excludes the intercept from the penalty.
 
     Parameters
     ----------
@@ -377,8 +386,10 @@ def lin_reg_w_rcond(
     add_bias
         Whether to add a bias term
     rcond
-        Cut-off ratio for small singular values. If rcond < machine precision * MAX(M,N),
-        it will be set to machine precision * MAX(M,N).
+        Cut-off ratio for small singular values, with a minimum of machine
+        precision times MAX(M,N). M and N are the original design dimensions
+        after null handling, including the intercept. QR reduction and Ridge
+        augmentation do not change this minimum.
     l2_reg
         The L2 regularization factor. If this is > 0, then a Ridge regression will be performed.
     null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
@@ -386,6 +397,9 @@ def lin_reg_w_rcond(
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
         the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
         columns.
+    stable
+        Use QR followed by SVD instead of the faster normal-equations solver.
+        Defaults to False.
     """
     if cfg.LIN_REG_EXPR_F64:
         dtype = pl.Float64
@@ -401,6 +415,7 @@ def lin_reg_w_rcond(
         "l2_reg": l2_reg,
         "solver": "",
         "tol": abs(rcond),
+        "stable": stable,
     }
     return pl_plugin(
         symbol=cfg._which_lin_reg("pl_lr_w_rcond"),

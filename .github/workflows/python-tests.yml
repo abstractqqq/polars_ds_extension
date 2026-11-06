@@ -34,7 +34,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {os: ubuntu-latest, python-version: "3.9", polars-version: "1.36.1"}
+          - {os: ubuntu-24.04, python-version: "3.9", polars-version: "1.36.1"}
           - {os: ubuntu-latest, python-version: "3.12", polars-version: "1.44.2"}
           - {os: ubuntu-latest, python-version: "3.12", polars-version: "2.0.0"}
           - {os: ubuntu-latest, python-version: "3.13", polars-version: "2.0.0"}
@@ -100,6 +100,10 @@ jobs:
 
       - name: Test Pytests
         run: pytest tests/test_*
+
+      - name: Validate rcond block sizes and scaling strategies
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && matrix.polars-version == '2.0.0'
+        run: cargo test --release --locked --example rcond_validation
 
       - name: Exercise eager callers through lazy auto
         if: matrix.python-version == '3.12' && matrix.polars-version == '2.0.0'

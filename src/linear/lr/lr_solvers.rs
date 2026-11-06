@@ -210,6 +210,8 @@ fn get_xtx_with_lambda<T: RealField + Float>(x: MatRef<T>, lambda: T, add_bias: 
     xtx
 }
 
+pub use super::rcond::faer_solve_lr_rcond_stable;
+
 /// Least square that sets all singular values below threshold to 0.
 /// Returns the coefficients and the singular values
 #[inline(always)]
@@ -236,7 +238,15 @@ pub fn faer_solve_lr_rcond<T: RealField + Float>(
             let sinv: Vec<T> = s
                 .iter()
                 .copied()
-                .map(|v| if v >= threshold { v.recip() } else { T::zero() })
+                .map(|v| {
+                    // rcond is defined in design singular-value units. Strict
+                    // comparison also discards zero values when threshold is zero.
+                    if v.sqrt() > threshold {
+                        v.recip()
+                    } else {
+                        T::zero()
+                    }
+                })
                 .collect();
             let mut z = svd.U().transpose() * build_xty(x, y); // n x yc
             let yc = z.ncols();
