@@ -236,7 +236,15 @@ pub fn faer_solve_lr_rcond<T: RealField + Float>(
             let sinv: Vec<T> = s
                 .iter()
                 .copied()
-                .map(|v| if v >= threshold { v.recip() } else { T::zero() })
+                .map(|v| {
+                    // rcond is defined in design singular-value units. Strict
+                    // comparison also discards zero values when threshold is zero.
+                    if v.sqrt() > threshold {
+                        v.recip()
+                    } else {
+                        T::zero()
+                    }
+                })
                 .collect();
             let mut z = svd.U().transpose() * build_xty(x, y); // n x yc
             let yc = z.ncols();
