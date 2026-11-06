@@ -1,5 +1,4 @@
 use super::*;
-use std::time::{Duration, Instant};
 
 fn options() -> Vec<RcondOptions> {
     [128, 512, 1024, 2048, 4096]
@@ -208,88 +207,4 @@ fn qr_scaling_does_not_underflow_a_representable_coefficient() {
             );
         }
     }
-}
-
-#[test]
-#[ignore = "manual release benchmark; run without concurrent builds or tests"]
-fn benchmark_rcond() {
-    // Keep the first JSON record separate from the test harness's status text.
-    println!();
-    fn run<T: RealField + Float>(precision: &str) {
-        for (rows, features, batch) in [
-            (64, 3, 200),
-            (1000, 20, 10),
-            (100000, 3, 1),
-            (100000, 20, 1),
-            (1000000, 3, 1),
-        ] {
-            let (x, y) = problem::<T>(rows, features, 1.0);
-            let configurations: Vec<_> = options()
-                .into_iter()
-                .filter(|c| {
-                    c.block_rows >= 512 && (c.qr_target_exponent.is_some() || c.block_rows == 512)
-                })
-                .collect();
-            let mut timings = vec![Vec::new(); configurations.len()];
-            let cutoff = T::epsilon() * T::from(rows).unwrap();
-            let (reference, spectrum) =
-                faer_solve_lr_rcond_stable(x.as_ref(), y.as_ref(), T::zero(), false, cutoff)
-                    .unwrap();
-            let tolerance = if precision == "f64" { 1e-8 } else { 2e-5 };
-            for config in &configurations {
-                let (beta, actual_spectrum) =
-                    solve_with_options(x.as_ref(), y.as_ref(), T::zero(), false, cutoff, *config)
-                        .unwrap();
-                for i in 0..features {
-                    assert!(
-                        (beta[(i, 0)].to_f64().unwrap() - reference[(i, 0)].to_f64().unwrap())
-                            .abs()
-                            < tolerance
-                    );
-                    assert!(
-                        (actual_spectrum[i].to_f64().unwrap() - spectrum[i].to_f64().unwrap())
-                            .abs()
-                            / spectrum[0].to_f64().unwrap()
-                            < tolerance
-                    );
-                    assert!(
-                        actual_spectrum[i] > cutoff * actual_spectrum[0],
-                        "benchmark must retain full rank"
-                    );
-                }
-            }
-            for repeat in 0..5 {
-                let mut order: Vec<_> = (0..configurations.len()).collect();
-                if repeat % 2 == 1 {
-                    order.reverse();
-                }
-                for index in order {
-                    let start = Instant::now();
-                    for _ in 0..batch {
-                        std::hint::black_box(
-                            solve_with_options(
-                                x.as_ref(),
-                                y.as_ref(),
-                                T::zero(),
-                                false,
-                                T::epsilon() * T::from(rows).unwrap(),
-                                configurations[index],
-                            )
-                            .unwrap(),
-                        );
-                    }
-                    timings[index].push(start.elapsed() / batch);
-                }
-            }
-            for (config, mut times) in configurations.into_iter().zip(timings) {
-                times.sort();
-                let median: Duration = times[2];
-                println!("{{\"precision\":\"{precision}\",\"rows\":{rows},\"features\":{features},\"block_rows\":{},\"qr_exponent\":{:?},\"per_block\":{},\"median_ms\":{},\"samples_ms\":{:?}}}",
-                    config.block_rows, config.qr_target_exponent.unwrap_or(0), config.rescale_each_block, median.as_secs_f64() * 1000.0,
-                    times.iter().map(|d| d.as_secs_f64() * 1000.0).collect::<Vec<_>>());
-            }
-        }
-    }
-    run::<f64>("f64");
-    run::<f32>("f32");
 }

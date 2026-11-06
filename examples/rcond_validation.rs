@@ -1,7 +1,5 @@
 //! Run numerical checks with:
 //! cargo test --release --example rcond_validation
-//! Run the independent kernel benchmark with:
-//! cargo test --release --example rcond_validation benchmark_rcond -- --ignored --nocapture --test-threads=1
 
 #[path = "../src/linear/lr/rcond.rs"]
 mod rcond;

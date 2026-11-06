@@ -363,28 +363,19 @@ def lin_reg_w_rcond(
     stable: bool = False,
 ) -> pl.Expr:
     """
-    Compute truncated least squares with an optional numerically stable solver.
+    Compute truncated-SVD least squares, returning coefficients and singular values.
 
-    By default, SVD of the normal equations is used for speed. Forming X.T @ X
-    squares the condition number and can lose small singular-value directions.
-    With ``stable=True``, bounded Householder QR followed by SVD avoids forming
-    X.T @ X. This is preferable for ill-conditioned or widely scaled predictors,
-    at a runtime cost (about 1.5-2.4x in the measured long-fit benchmarks).
-    The stable path uses Float64 workspaces even for Float32 inputs; both paths
-    retain the configured output precision and machine-precision cutoff floor.
-    Stable inputs must be finite after null handling.
+    By default, SVD is applied to X.T @ X for speed. With ``stable=True``,
+    Householder QR followed by SVD avoids forming X.T @ X, improving numerical
+    stability for ill-conditioned predictors at a higher runtime cost. The stable
+    path uses Float64 workspaces, retains the configured output precision, and
+    requires finite inputs after null handling.
 
-    Singular values at or below the effective ``rcond`` times the largest
-    singular value are discarded when solving. The returned struct contains
-    ``coeffs`` (predictors followed by the optional intercept) and the original,
-    untruncated ``singular_values`` in descending order (estimated from X.T @ X
-    on the default path). Apply the same cutoff to those values to determine
-    the effective rank used by the solve.
-
-    With ``l2_reg > 0``, both paths solve Ridge regression without penalizing
-    the intercept. The stable path augments the design with ``sqrt(l2_reg) * D``,
-    where D penalizes predictors but not the intercept. The cutoff and returned
-    singular values then refer to this augmented design, rather than X alone.
+    Singular values at or below ``rcond * max(singular_values)`` are discarded.
+    The returned ``singular_values`` are before truncation; the default path
+    estimates them from X.T @ X. Coefficients follow predictor order, with the
+    optional intercept last. For Ridge, the spectrum corresponds to the augmented
+    design [X; sqrt(l2_reg) D], where D excludes the intercept from the penalty.
 
     Parameters
     ----------
