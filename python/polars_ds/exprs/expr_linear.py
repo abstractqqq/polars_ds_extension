@@ -360,13 +360,31 @@ def lin_reg_w_rcond(
     rcond: float = 0.0,
     l2_reg: float = 0.0,
     null_policy: NullPolicy = "raise",
+    stable: bool = False,
 ) -> pl.Expr:
     """
-    Uses SVD to compute linear regression. During the process, singular values will be set to 0
-    if it is smaller than rcond * max singular value (of X). This will return the coefficients as well
-    as singular values of X as the output. The number of nonzero singular values is the rank of X.
+    Compute truncated least squares with an optional numerically stable solver.
 
-    Note: the singular values return will be the values before applying the rcond cut off.
+    By default, SVD of the normal equations is used for speed. Forming X.T @ X
+    squares the condition number and can lose small singular-value directions.
+    With ``stable=True``, bounded Householder QR followed by SVD avoids forming
+    X.T @ X. This is preferable for ill-conditioned or widely scaled predictors,
+    at a runtime cost (about 1.5-2.4x in the measured long-fit benchmarks).
+    The stable path uses Float64 workspaces even for Float32 inputs; both paths
+    retain the configured output precision and machine-precision cutoff floor.
+    Stable inputs must be finite after null handling.
+
+    Singular values at or below the effective ``rcond`` times the largest
+    singular value are discarded when solving. The returned struct contains
+    ``coeffs`` (predictors followed by the optional intercept) and the original,
+    untruncated ``singular_values`` in descending order (estimated from X.T @ X
+    on the default path). Apply the same cutoff to those values to determine
+    the effective rank used by the solve.
+
+    With ``l2_reg > 0``, both paths solve Ridge regression without penalizing
+    the intercept. The stable path augments the design with ``sqrt(l2_reg) * D``,
+    where D penalizes predictors but not the intercept. The cutoff and returned
+    singular values then refer to this augmented design, rather than X alone.
 
     Parameters
     ----------
@@ -377,8 +395,10 @@ def lin_reg_w_rcond(
     add_bias
         Whether to add a bias term
     rcond
-        Cut-off ratio for small singular values. If rcond < machine precision * MAX(M,N),
-        it will be set to machine precision * MAX(M,N).
+        Cut-off ratio for small singular values, with a minimum of machine
+        precision times MAX(M,N). M and N are the original design dimensions
+        after null handling, including the intercept. QR reduction and Ridge
+        augmentation do not change this minimum.
     l2_reg
         The L2 regularization factor. If this is > 0, then a Ridge regression will be performed.
     null_policy: Literal['raise', 'skip', 'zero', 'one', 'ignore']
@@ -386,6 +406,9 @@ def lin_reg_w_rcond(
         fill nulls with 1.25. If the string cannot be converted to a float, an error will be thrown. Note: if
         the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
         columns.
+    stable
+        Use QR followed by SVD instead of the faster normal-equations solver.
+        Defaults to False.
     """
     if cfg.LIN_REG_EXPR_F64:
         dtype = pl.Float64
@@ -401,6 +424,7 @@ def lin_reg_w_rcond(
         "l2_reg": l2_reg,
         "solver": "",
         "tol": abs(rcond),
+        "stable": stable,
     }
     return pl_plugin(
         symbol=cfg._which_lin_reg("pl_lr_w_rcond"),
