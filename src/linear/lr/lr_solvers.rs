@@ -210,6 +210,8 @@ fn get_xtx_with_lambda<T: RealField + Float>(x: MatRef<T>, lambda: T, add_bias: 
     xtx
 }
 
+pub use super::rcond::faer_solve_lr_rcond_stable;
+
 /// Least square that sets all singular values below threshold to 0.
 /// Returns the coefficients and the singular values
 #[inline(always)]

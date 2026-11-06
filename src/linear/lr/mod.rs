@@ -1,4 +1,5 @@
 pub mod lr_solvers;
+mod rcond;
 
 use super::LinalgErrors;
 use crate::utils::parallelism::PARALLEL_MATMUL_THRESHOLD;
