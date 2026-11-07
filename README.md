@@ -320,7 +320,7 @@ df_pd["linear_regression_result"] = pds2.lin_reg(
 df_pd
 ```
 
-The magic here is the compat module and the fact that most eager dataframes implement the array protocal. 
+The magic here is the compat module and the fact that most eager dataframes implement the array protocol. 
 
 ### Other
 
