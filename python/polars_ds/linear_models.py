@@ -157,6 +157,7 @@ class LR:
             learned if .fit_df() is run later, or .set_input_features() is set later.
         """
         self._lr = PyLR(solver, lambda_, has_bias)
+        self._has_bias: bool = has_bias
         self.feature_names_in_: List[str] = (
             [] if feature_names_in_ is None else list(feature_names_in_)
         )
@@ -278,14 +279,16 @@ class LR:
             regression. E.g. Nothing will be printed if lambda_ > 0.
         """
         if show_report and self._lr.lambda_ == 0.0:
-            from . import query_lstsq_report
+            from .exprs.expr_linear import lin_reg_report
 
             print(
                 df.lazy()
                 .select(
-                    query_lstsq_report(
+                    lin_reg_report(
                         *features,
                         target=target,
+                        add_bias=self._has_bias,
+                        null_policy=null_policy,
                     ).alias("report")
                 )
                 .unnest("report")
@@ -740,6 +743,8 @@ class GLM:
             "normal" represent the same family.
         add_bias
             Whether to add a bias term. Also known as intercept in other packages.
+        solver
+            The solver to use. Currently only "irls" is supported.
         max_iter
             Max number of iterations for the algorithm
         tol
@@ -888,7 +893,7 @@ class GLM:
             the target column has null, the rows with nulls will always be dropped. Null-fill only applies to non-target
             columns. If target has null, then the row will still be dropped.
         show_report
-            Whether to print out a regression report.
+            Currently not implemented for GLM. This argument is ignored.
         """
         df2 = (
             _handle_nulls_in_df(df.lazy(), features, target, null_policy)

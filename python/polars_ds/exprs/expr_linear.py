@@ -26,7 +26,7 @@ __all__ = [
 ]
 
 
-# Despite the typing requirments in the function signatures, we allow some slack
+# Despite the typing requirements in the function signatures, we allow some slack
 # by accepting the most common Series/Array types.
 def lr_formula(s: Any) -> pl.Expr:
     if isinstance(s, str):
@@ -66,7 +66,7 @@ def simple_lin_reg(
         for coefficients, it reduces to one output (like max/min), but for predictions and
         residue, it will return the same number of rows as in input.
     """
-    # No test. All forumla here are mathematically correct.
+    # No test. All formula here are mathematically correct.
     xx = lr_formula(x)
     yy = lr_formula(target)
     if add_bias:
@@ -296,7 +296,7 @@ def logistic_reg(
     and output will have len(variables) + 1.
 
     Note: This is meant to be a quick logistic regression check and will not persist the model. You have to
-    manually save the coefficents elsewhere.
+    manually save the coefficients elsewhere.
 
     Parameters
     ----------

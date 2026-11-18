@@ -88,7 +88,7 @@ def ttest_ind(
     equal_var: bool = False,
 ) -> pl.Expr:
     """
-    Performs 2 sample student's t test or Welch's t test. Functionality-wise this is desgined
+    Performs 2 sample student's t test or Welch's t test. Functionality-wise this is designed
     to be equivalent to SciPy's ttest_ind, with fewer options. The result is not exact but
     within 1e-10 precision from SciPy's.
 
@@ -266,9 +266,9 @@ def ks_2samp(
     sanitize data (only non-null finite values are used) before doing the computation. If
     is_binary is true, it will compare the statistics by comparing var2(var1=0) and var2(var1=1).
 
-    Note, this returns a stastics and a threshold value. The threshold is not the p-value, but
+    Note, this returns a statistic and a threshold value. The threshold is not the p-value, but
     rather it is used in the following way: if the statistic is > the threshold value, then the null
-    hypothesis should be rejected. This is suitable only for large sameple sizes. See more details
+    hypothesis should be rejected. This is suitable only for large sample sizes. See more details
     in the reference.
 
     If either var1 or var2 has less than 30 values, a ks stats of 0 with threshold NaN will be returned.
@@ -576,8 +576,8 @@ def random(
         use pl.len() as the total length of the data you wish to generate. In streaming mode, you may pass any column
         name, e.g. `len_ref = 'id'` so that the random generator knows the corresponding length of each chunk.
     """
-    lo = pl.lit(lower, pl.Float64) if isinstance(lower, float) else lower
-    up = pl.lit(upper, pl.Float64) if isinstance(upper, float) else upper
+    lo = pl.lit(lower, pl.Float64) if isinstance(lower, (int, float)) else lower
+    up = pl.lit(upper, pl.Float64) if isinstance(upper, (int, float)) else upper
     len_, use_ref, is_elementwise = _get_streamable(len_ref, seed)
 
     return pl_plugin(
@@ -631,7 +631,7 @@ def random_int(
         use pl.len() as the total length of the data you wish to generate. In streaming mode, you may pass any column
         name, e.g. `len_ref = 'id'` so that the random generator knows the corresponding length of each chunk.
     """
-    if lower == upper:
+    if isinstance(lower, int) and isinstance(upper, int) and lower >= upper:
         raise ValueError("'lower' must be less than 'upper'")
 
     lo = pl.lit(lower, pl.Int32) if isinstance(lower, int) else lower.cast(pl.Int32)
@@ -838,7 +838,7 @@ def gmean(var: str | pl.Expr) -> pl.Expr:
     var
         The variable
     """
-    return to_expr(var).ln().mean().exp()
+    return to_expr(var).log().mean().exp()
 
 
 def weighted_gmean(
@@ -858,16 +858,16 @@ def weighted_gmean(
     """
     x, w = to_expr(var), to_expr(weights)
     if is_normalized:
-        return (x.ln().dot(w)).exp()
+        return (x.log().dot(w)).exp()
     else:
-        return (x.ln().dot(w) / (w.sum())).exp()
+        return (x.log().dot(w) / (w.sum())).exp()
 
 
 def weighted_mean(
     var: str | pl.Expr, weights: str | pl.Expr, is_normalized: bool = False
 ) -> pl.Expr:
     """
-    Computes the weighted mean, where weights is an expr represeting
+    Computes the weighted mean, where weights is an expr representing
     a weight column. The weights column must have the same length as var.
 
     All weights are assumed to be > 0. This will not check if weights are valid.
@@ -1018,7 +1018,7 @@ def kendall_tau(x: str | pl.Expr, y: str | pl.Expr) -> pl.Expr:
     """
     Computes Kendall's Tau (b) correlation between x and y. This automatically drops rows with null.
 
-    Note: this will map NaN to null and drop all rows with null. Inf will be kept and cosidered as
+    Note: this will map NaN to null and drop all rows with null. Inf will be kept and considered as
     the largest value and multiple Infs will be equal. -Inf will be the smallest if it exists in the
     data. A value of NaN will be returned if the data has < 2 rows after nulls are dropped.
 
@@ -1124,8 +1124,8 @@ def corr(x: str | pl.Expr, y: str | pl.Expr, method: CorrMethod = "pearson") -> 
     A convenience function for calling different types of correlations. Pearson and Spearman correlation
     runs on Polar's native expression, while Kendall and Xi correlation runs on code in this package.
 
-    Paramters
-    ---------
+    Parameters
+    ----------
     x
         The first variable
     y

@@ -46,7 +46,7 @@ def to_expr(e: str | pl.Expr | int | float) -> pl.Expr:
     Parameters
     ----------
     e
-        Either a str represeting a column name or an expression
+        Either a str representing a column name or an expression
     """
     if isinstance(e, str):
         return pl.col(e)

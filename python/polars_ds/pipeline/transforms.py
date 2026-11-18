@@ -349,7 +349,7 @@ def one_hot_encode(
     cols
         A list of strings representing column names. Columns of type != string/categorical will not produce any expression.
     separator
-        E.g. if column name is `col` and `a` is an elemenet in it, then the one-hot encoded column will be called
+        E.g. if column name is `col` and `a` is an element in it, then the one-hot encoded column will be called
         `col_a` where the separator `_` is used.
     drop_first
         Whether to drop the first distinct value (in terms of str/categorical order). This helps with reducing

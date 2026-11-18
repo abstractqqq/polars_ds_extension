@@ -242,7 +242,7 @@ def query_similar_count(
     Given a query subsequence, find the number of same-sized subsequences (windows) in target
     series that have distance < threshold from it.
 
-    Note: If target is largely null, errors may occur. If metric is sqzl2, a mininum variance
+    Note: If target is largely null, errors may occur. If metric is sqzl2, a minimum variance
     of 1e-10 is applied to all variance calculations to avoid division by 0.
 
     Parameters
@@ -689,7 +689,7 @@ def query_cond_indep(
     x: str | pl.Expr, y: str | pl.Expr, z: str | pl.Expr, k: int = 3, parallel: bool = False
 ) -> pl.Expr:
     """
-    Computes the conditional independance of `x`  and `y`, conditioned on `z`
+    Computes the conditional independence of `x`  and `y`, conditioned on `z`
 
     Reference
     ---------

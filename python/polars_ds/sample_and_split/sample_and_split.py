@@ -316,6 +316,9 @@ def downsample(
     └──────────┴─────┘
     """
     # Engine
+    if isinstance(conditions, tuple):
+        conditions = [conditions]
+
     ## Create samples for each pl.Expr
     results = []
     for expr, value in conditions:

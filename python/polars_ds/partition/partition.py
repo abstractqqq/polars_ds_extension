@@ -63,7 +63,7 @@ class PartitionHelper:
     def __repr__(self) -> str:
         output = ""
         for part, df in self.parts.items():
-            output += f"Paritition: {part}\n"
+            output += f"Partition: {part}\n"
             output += df.__repr__() + "\n"
         return output
 
@@ -93,7 +93,7 @@ class PartitionHelper:
                 output[part] = func(part, df)
             except Exception as e:
                 warnings.warn(
-                    f"An error occured while processing for the part: {part}. This partition is omitted.\nOriginal Error Message: {e}",
+                    f"An error occurred while processing for the part: {part}. This partition is omitted.\nOriginal Error Message: {e}",
                     stacklevel=2,
                 )
 
