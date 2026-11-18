@@ -57,7 +57,7 @@ class PipelineStep(Protocol):
     def to_json(self) -> str: ...
 
     @staticmethod
-    def from_partial_dict(data: Dict) -> "PipelineStep":
+    def from_partial_dict(d: Dict) -> "PipelineStep":
         """
         See MakeStep.make's docstrings.
         """

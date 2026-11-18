@@ -4,7 +4,7 @@ Compatibility with other Dataframes.
 This module provides compatibility with other dataframe libraries that:
 
 1. Have a notion of Series
-2. The Series implements the array protocal, which means it can be translated to NumPy array via
+2. The Series implements the array protocol, which means it can be translated to NumPy array via
 .__array__() method.
 
 Since most dataframe libraries can turn their Series into NumPy (or vice versa) with 0 copy,

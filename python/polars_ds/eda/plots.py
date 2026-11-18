@@ -208,8 +208,8 @@ def plot_lin_reg(
     """
     Plots the linear regression line between x and target.
 
-    Paramters
-    ---------
+    Parameters
+    ----------
     df
         Either an eager or lazy Polars Dataframe
     x
@@ -309,8 +309,8 @@ def plot_pca(
     """
     Creates a scatter plot based on the reduced dimensions via PCA, and color it by `by`.
 
-    Paramters
-    ---------
+    Parameters
+    ----------
     df
         Either an eager or lazy Polars Dataframe
     features
@@ -361,7 +361,7 @@ def plot_prob_calibration(
     Parameters
     ----------
     target
-        The target binary varialbe
+        The target binary variable
     score
         The probability score values
     name
@@ -406,7 +406,7 @@ def plot_prob_calibration(
         {"mean_predicted_prob": perfect_line, "fraction_of_positives": perfect_line}
     ).with_columns(score=pl.lit(" y=x", dtype=pl.String), __point__=pl.lit(False, dtype=pl.Boolean))
 
-    df_socres = [
+    df_scores = [
         df.select(s, "__actual__")
         .with_columns(
             (
@@ -445,7 +445,7 @@ def plot_prob_calibration(
     )
     selection = alt.selection_multi(fields=["score"], bind="legend")
     chart2 = (
-        alt.Chart(pl.concat(df_socres))
+        alt.Chart(pl.concat(df_scores))
         .mark_line(point=True)
         .encode(
             x="mean_predicted_prob:Q",

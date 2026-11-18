@@ -745,7 +745,7 @@ def similar_to_vocab(
     elif metric == "osa":
         sims = [str_osa(c, pl.lit(w, dtype=pl.String), return_sim=True) for w in vocab]
     elif metric == "jw":
-        sims = [str_jw(c, pl.lit(w, dtype=pl.String), return_sim=True) for w in vocab]
+        sims = [str_jw(c, pl.lit(w, dtype=pl.String)) for w in vocab]
     else:
         raise ValueError(f"unknown metric: '{metric}'")
 

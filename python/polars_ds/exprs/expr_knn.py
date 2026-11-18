@@ -63,7 +63,7 @@ def query_dist_from_kth_nb(
     indicate that the point might be far away from neighboring points, or that it occupies a sparse region in which
     sample points typically do not appear.
 
-    This can be 10% faster and more direct than getting the result from `query_knn_ptwise` with return_distance = True.
+    This can be 10% faster and more direct than getting the result from `query_knn_ptwise` with return_dist = True.
 
     Parameters
     ----------
@@ -145,7 +145,7 @@ def query_knn_ptwise(
     eval_mask
         Either None or a boolean expression or the name of a boolean column. If not none, this will
         only evaluate KNN for rows where this is true. This can speed up computation when only results on a
-        subset are nedded.
+        subset are needed.
     data_mask
         Either None or a boolean expression or the name of a boolean column. If none, all rows can be
         neighbors. If not None, the pool of possible neighbors will be rows where this is true.
@@ -230,12 +230,10 @@ def query_knn_freq_cnt(
     parallel : bool
         Whether to run the k-nearest neighbor query in parallel. This is recommended when you
         are running only this expression, and not in group_by() or over() context.
-    return_dist
-        If true, return a struct with indices and distances.
     eval_mask
         Either None or a boolean expression or the name of a boolean column. If not none, this will
         only evaluate KNN for rows where this is true. This can speed up computation when only results on a
-        subset are nedded.
+        subset are needed.
     data_mask
         Either None or a boolean expression or the name of a boolean column. If none, all rows can be
         neighbors. If not None, the pool of possible neighbors will be rows where this is true.

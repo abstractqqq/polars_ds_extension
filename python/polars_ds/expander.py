@@ -4,7 +4,7 @@ import polars as pl
 
 
 def E(
-    cols: str | pl.Expr | list[str] | list[pl.Expr],
+    cols: str | list[str],
     mappings: str | list[str],
     *,
     separator: str = "_",
@@ -18,12 +18,12 @@ def E(
     Parameters
     ----------
     cols
-        Either the column name list of column names. Due to limitations in Polars,
+        Either a column name or a list of column names. Due to limitations in Polars,
         this does not support expression inputs.
     mappings
         String names for any polars expression methods. E.g. ['max'] will map to `pl.col(..).max()`.
         There are some special strings that would represent some more complicated composite expressions,
-        and here is a the list of such special mappings as of now:
+        and here is the list of such special mappings as of now:
         'null_rate' -> pl.col('').null_count() / pl.len()
     separator
         The separator between the name of the mapping and the original column name.

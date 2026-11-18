@@ -720,7 +720,7 @@ class DIA:
         potential qualifying columns. Potential qualifying columns are columns of type:
         int, str, categorical, or booleans.
 
-        If returned conditional entropy is very low, that means knowning the column in
+        If returned conditional entropy is very low, that means knowing the column in
         `by` is enough to to infer the column in `column`, or the column in `column` can
         be determined by the column in `by`.
 
@@ -832,7 +832,7 @@ class DIA:
     def plot_feature_distr(
         self,
         feature: str,
-        n_bins: int | None = None,
+        n_bins: int = 10,
         density: bool = False,
         show_bad_values: bool = True,
         min_: float | pl.Expr | None = None,

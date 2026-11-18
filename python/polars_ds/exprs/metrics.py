@@ -50,7 +50,7 @@ def query_mad(x: str | pl.Expr, use_mean: bool = True) -> pl.Expr:
     Parameters
     ----------
     x
-        An expression represeting the actual
+        An expression representing the actual
     use_mean
         If true, computes mean absolute deviation. If false, use median instead of mean.
     """
@@ -68,7 +68,7 @@ def query_r2(actual: str | pl.Expr, pred: str | pl.Expr) -> pl.Expr:
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression representing the actual
     pred
         A Polars expression representing predictions
     """
@@ -88,7 +88,7 @@ def query_adj_r2(actual: str | pl.Expr, pred: str | pl.Expr, p: int) -> pl.Expr:
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression representing the actual
     pred
         A Polars expression representing predictions
     p
@@ -145,7 +145,7 @@ def query_l2(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = True)
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression representing the actual
     pred
         A Polars expression representing predictions
     normalize
@@ -166,7 +166,7 @@ def query_l1(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = True)
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression representing the actual
     pred
         A Polars expression representing predictions
     normalize
@@ -186,7 +186,7 @@ def query_l_inf(actual: str | pl.Expr, pred: str | pl.Expr) -> pl.Expr:
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression representing the actual
     pred
         A Polars expression representing predictions
     """
@@ -202,9 +202,9 @@ def query_log_loss(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool =
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression representing the actual
     pred
-        An expression represeting the column with predicted probability.
+        An expression representing the column with predicted probability.
     normalize
         Whether to divide by N.
     """
@@ -236,9 +236,9 @@ def query_mape(actual: str | pl.Expr, pred: str | pl.Expr, weighted: bool = Fals
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression representing the actual
     pred
-        An expression represeting the column with predicted probability.
+        An expression representing the column with predicted probability.
     weighted
         If true, computes wMAPE in the wikipedia article
     """
@@ -261,7 +261,7 @@ def query_smape(actual: str | pl.Expr, pred: str | pl.Expr) -> pl.Expr:
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression representing the actual
     pred
         A Polars expression representing predictions
     """
@@ -288,11 +288,11 @@ def query_mase(
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression representing the actual
     pred
         A Polars expression representing predictions
     train
-        A polars exression representing training data values. If train is a float, it is treated
+        A polars expression representing training data values. If train is a float, it is treated
         as the precomputed naive one-step forecast loss on training as in the definition.
     freq
         Defaults to 1 which applies to non-seasonal data, and you may set it to m (>0)
@@ -337,8 +337,10 @@ def query_msle(actual: str | pl.Expr, pred: str | pl.Expr, normalize: bool = Tru
 
     Parameters
     ----------
+    actual
+        An expression representing the actual values
     pred
-        An expression represeting the column with predicted probability.
+        An expression representing the column with predicted values.
     normalize
         If true, divide the result by length of the series
     """
@@ -365,9 +367,9 @@ def query_roc_auc(
     Parameters
     ----------
     actual
-        An expression represeting the actual. Must be castable to UInt32.
+        An expression representing the actual. Must be castable to UInt32.
     pred
-        An expression represeting the column with predicted probability.
+        An expression representing the column with predicted probability.
     """
     return pl_plugin(
         symbol="pl_roc_auc",
@@ -387,9 +389,9 @@ def query_tpr_fpr(
     Parameters
     ----------
     actual
-        An expression represeting the actual. Must be castable to UInt32.
+        An expression representing the actual. Must be castable to UInt32.
     pred
-        An expression represeting the column with predicted probability.
+        An expression representing the column with predicted probability.
     """
     return pl_plugin(
         symbol="pl_tpr_fpr",
@@ -408,9 +410,9 @@ def query_gini(actual: str | pl.Expr, pred: str | pl.Expr) -> pl.Expr:
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression representing the actual
     pred
-        An expression represeting the column with predicted probability.
+        An expression representing the column with predicted probability.
     """
     return query_roc_auc(actual, pred) * 2.0 - 1.0
 
@@ -511,9 +513,9 @@ def query_binary_metrics(
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression representing the actual
     pred
-        An expression represeting the column with predicted probability.
+        An expression representing the column with predicted probability.
     threshold
         The threshold used to compute precision, recall and f (f score).
     """
@@ -541,7 +543,7 @@ def query_multi_roc_auc(
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression representing the actual
     pred
         The multilabel prediction column
     n_classes
@@ -576,9 +578,9 @@ def query_cat_cross_entropy(
     Parameters
     ----------
     actual
-        An expression represeting the actual
+        An expression representing the actual
     pred
-        An expression represeting the predicted probabilities for the classes. Must of be List/arr[f64] type.
+        An expression representing the predicted probabilities for the classes. Must of be List/arr[f64] type.
     normalize
         Whether to divide by N.
     dense

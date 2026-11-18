@@ -6,7 +6,7 @@ import json
 import sys
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Dict, List, Literal, Tuple
+from typing import Any, Dict, List, Literal, Tuple, overload
 
 import polars as pl
 import polars.selectors as cs
@@ -113,8 +113,8 @@ class Pipeline:
         """
         Generates a lazy plan for the incoming df
 
-        Paramters
-        ---------
+        Parameters
+        ----------
         df
             If none, create the plan for the df that the pipe is initialized with. Otherwise,
             create the plan for the incoming df.
@@ -127,6 +127,7 @@ class Pipeline:
     def with_features_out(self, features: List[str], ensure_features_out: bool = True) -> Self:
         self.feature_names_out_ = list(features)
         self.ensure_features_out = ensure_features_out
+        return self
 
     def to_json(self, path: str | None = None, **kwargs) -> str | None:
         """
@@ -309,7 +310,7 @@ class Blueprint:
             from changing the target column. (To be implemented: this should also automatically fill any transformation
             that requires a target name)
         exclude
-            Any other column to exclude from global transformation. Note: this is only needed if you are not specifiying
+            Any other column to exclude from global transformation. Note: this is only needed if you are not specifying
             the exact columns to transform. E.g. when you are using a selector like cs.numeric() for all numeric columns.
             If this is the case and target is not set nor excluded, then the transformation may be applied to the target
             as well, which is not desired in most cases. Therefore, it is highly recommended you initialize with target name.
@@ -332,7 +333,7 @@ class Blueprint:
         self.target = target
         self.feature_names_in_: list[str] = self._df.collect_schema().names()
 
-        self._steps: List[ExprStep | FitStep] = []
+        self._steps: List[PipelineStep | FitStep] = []
         self.exclude: List[str] = [] if target is None else [target]
         if exclude is not None:  # dedup in case user accidentally puts the same column name twice
             self.exclude = list(set(self.exclude + exclude))
@@ -517,8 +518,8 @@ class Blueprint:
         """
         Performs robust scaling on the given columns
 
-        Paramters
-        ---------
+        Parameters
+        ----------
         cols
             Any Polars expression that can be understood as columns.
         q_low
@@ -535,8 +536,8 @@ class Blueprint:
         """
         Centers the columns by subtracting each with its mean.
 
-        Paramters
-        ---------
+        Parameters
+        ----------
         cols
             Any Polars expression that can be understood as columns.
         """
@@ -547,8 +548,8 @@ class Blueprint:
         """
         Selects the columns from the dataset.
 
-        Paramters
-        ---------
+        Parameters
+        ----------
         cols
             Any Polars expression that can be understood as columns.
         """
@@ -643,8 +644,8 @@ class Blueprint:
         """
         Drops the columns from the dataset.
 
-        Paramters
-        ---------
+        Parameters
+        ----------
         cols
             Any Polars expression that can be understood as columns.
         """
@@ -655,8 +656,8 @@ class Blueprint:
         """
         Renames the columns by the mapping.
 
-        Paramters
-        ---------
+        Parameters
+        ----------
         rename_dict
             The name mapping
         """
@@ -686,7 +687,7 @@ class Blueprint:
         cols
             Any Polars expression that can be understood as columns. If None, all string/categorical columns will be encoded.
         separator
-            E.g. if column name is `col` and `a` is an elemenet in it, then the one-hot encoded column will be called
+            E.g. if column name is `col` and `a` is an element in it, then the one-hot encoded column will be called
             `col_a` where the separator `_` is used.
         drop_first
             Whether to drop the first distinct value (in terms of str/categorical order). This helps with reducing
@@ -1025,7 +1026,7 @@ class Blueprint:
         """
         Adds a custom transform that requires a fit step in the blueprint.
 
-        Any custom function must satistfy the following function signature:
+        Any custom function must satisfy the following function signature:
         my_func(df:Union[pl.DataFrame, pl.LazyFrame], cols: List[str], ...) -> List[pl.Expr]
         where ... means kwargs. The fit step "learns" the parameters needed to translate
         the transform into concrete expressions.
@@ -1073,11 +1074,26 @@ class Blueprint:
 
         return func(*step_repr.args, **step_repr.kwargs)
 
+    @overload
+    def materialize(
+        self, return_df: Literal[False] = False, streaming: bool | None = None, **kwargs
+    ) -> Pipeline: ...
+
+    @overload
+    def materialize(
+        self, return_df: Literal[True], streaming: bool | None = None, **kwargs
+    ) -> Tuple[pl.LazyFrame, Pipeline]: ...
+
+    @overload
+    def materialize(
+        self, return_df: bool = False, streaming: bool | None = None, **kwargs
+    ) -> Pipeline | Tuple[pl.LazyFrame, Pipeline]: ...
+
     def materialize(
         self, return_df: bool = False, streaming: bool | None = None, **kwargs
     ) -> Pipeline | Tuple[pl.LazyFrame, Pipeline]:
         """
-        Materialize the blueprint, which means that it will fit and learn all the paramters needed.
+        Materialize the blueprint, which means that it will fit and learn all the parameters needed.
 
         Note on Polars 2.0+:
         In Polars 2.0+, collect() defaults to the streaming engine. Pass engine="in-memory" if

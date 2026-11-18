@@ -279,10 +279,10 @@ def softmax(x: str | pl.Expr) -> pl.Expr:
     Applies the softmax function to the column, which turns any real valued column into valid probability
     values. This is simply a shorthand for x.exp() / x.exp().sum() for expressions x.
 
-    Paramters
-    ---------
+    Parameters
+    ----------
     x
-        Either a str represeting a column name or a Polars expression
+        Either a str representing a column name or a Polars expression
     """
     xx = to_expr(x)
     return xx.exp() / (xx.exp().sum())
@@ -379,8 +379,8 @@ def singular_values(
     Note: rows containing null values are dropped before centering. Explained
     variance is null when fewer than two complete observations remain.
 
-    Paramters
-    ---------
+    Parameters
+    ----------
     features
         Feature columns
     center
@@ -666,8 +666,8 @@ def psi_discrete(
 
 
 def psi_w_breakpoints(
-    new: str | pl.expr | Iterable[float],
-    baseline: str | pl.expr | Iterable[float],
+    new: str | pl.Expr | Iterable[float],
+    baseline: str | pl.Expr | Iterable[float],
     breakpoints: List[float],
 ) -> pl.Expr:
     """
@@ -712,7 +712,7 @@ def psi_w_breakpoints(
     ).alias("psi_report")
 
 
-def woe(x: str | pl.Expr, target: str | pl.expr | Iterable[float], n_bins: int = 10) -> pl.Expr:
+def woe(x: str | pl.Expr, target: str | pl.Expr | Iterable[float], n_bins: int = 10) -> pl.Expr:
     """
     Compute the Weight of Evidence for x with respect to target. This assumes x
     is continuous. A value of 1 is added to all events/non-events
@@ -779,7 +779,7 @@ def woe_discrete(
 
 def info_value(
     x: str | pl.Expr,
-    target: str | pl.expr | Iterable[float],
+    target: str | pl.Expr | Iterable[float],
     n_bins: int = 10,
     return_sum: bool = True,
 ) -> pl.Expr:
@@ -1047,6 +1047,8 @@ def detrend(x: str | pl.Expr, method: DetrendMethod = "linear") -> pl.Expr:
 
     Parameters
     ----------
+    x
+        Either the name of the column or a Polars expression
     method
         Either `linear` or `mean`
     """
@@ -1162,7 +1164,7 @@ def isotonic_regression(
 def next_up(x: str | pl.Expr) -> pl.Expr:
     """
     For any float, return the least number greater than itself (within the precision).
-    Intergers will be treated as f32. E.g. The next value up for 0.1 is 0.10000000000000002
+    Integers will be treated as f32. E.g. The next value up for 0.1 is 0.10000000000000002
     because of precision issues. This is useful when you need to make extremely small changes
     to certain values and you don't want to add random noise.
     """
@@ -1176,7 +1178,7 @@ def next_up(x: str | pl.Expr) -> pl.Expr:
 def next_down(x: str | pl.Expr) -> pl.Expr:
     """
     For any float, return the greatest number smaller than itself (within the precision).
-    Intergers will be treated as f32. E.g. The next value down for 0.1 is 0.09999999999999999.
+    Integers will be treated as f32. E.g. The next value down for 0.1 is 0.09999999999999999.
     This is useful when you need to make extremely small changes to certain values and you don't
     want to add random noise.
     """
@@ -1242,8 +1244,8 @@ def add_at(
 #     seed: int | None = None,
 # ) -> float:
 #     """
-#     Computes the mutual infomation between a continuous variable x and a discrete
-#     target varaible. Note: (1) This always assume `x` is continuous. (2) Unlike Scikit-learn,
+#     Computes the mutual information between a continuous variable x and a discrete
+#     target variable. Note: (1) This always assume `x` is continuous. (2) Unlike Scikit-learn,
 #     if a target category has <= `n_neighbors` records, then the result here may not make any sense.
 #     This is because (a) `n_neighbors` is typically a small number and if your target category has so
 #     few records, then maybe you need to rethink the target definition, and (b) if we assume target category
