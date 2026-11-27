@@ -7,6 +7,7 @@ pub mod logistic;
 pub mod lr;
 pub mod mixed;
 pub mod online_lr;
+pub mod quantile;
 
 pub enum LinalgErrors {
     DimensionMismatch,
@@ -23,7 +24,9 @@ impl LinalgErrors {
             Self::DimensionMismatch => "inputs have mismatched dimensions".to_string(),
             Self::NotContiguousArray => "input array is not contiguous".to_string(),
             Self::MatNotLearnedYet => "matrix is not learned yet".to_string(),
-            Self::NotEnoughData => "number of samples must be greater than or equal to number of features".to_string(),
+            Self::NotEnoughData => {
+                "number of samples must be greater than or equal to number of features".to_string()
+            }
             Self::NotContiguousOrEmpty => "input is not contiguous or is empty".to_string(),
             LinalgErrors::Other(s) => s,
         }

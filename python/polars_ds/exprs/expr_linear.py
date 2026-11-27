@@ -16,6 +16,7 @@ from polars_ds.typing import LRSolverMethods, NullPolicy
 
 __all__ = [
     "lin_reg",
+    "quantile_reg",
     "lin_reg_w_rcond",
     "simple_lin_reg",
     "recursive_lin_reg",
@@ -39,6 +40,95 @@ def lr_formula(s: Any) -> pl.Expr:
         return pl.lit(pl.Series(values=s.__array__()))
     else:
         raise ValueError("input can only be str or polars expression")
+
+
+def quantile_reg(
+    *x: str | pl.Expr,
+    target: str | pl.Expr,
+    quantile: float = 0.5,
+    add_bias: bool = False,
+    return_pred: bool = False,
+    tol: float = 1e-6,
+    max_iter: int = 10_000,
+    null_policy: NullPolicy = "skip",
+) -> pl.Expr:
+    """
+    Fit a single-target, non-rolling linear quantile regression in Float64.
+
+    Minimizes the mean pinball loss of ``target - prediction``. At quantile 0.5
+    this is median (least absolute deviation) regression. Uses iteratively
+    reweighted least squares with QR solves; no regularization or weights.
+
+    Parameters
+    ----------
+    x
+        Predictors, in coefficient order. May be empty for an intercept-only fit
+        when ``add_bias=True``. The design must have full column rank.
+    target
+        One target column or expression.
+    quantile
+        Desired conditional quantile, strictly between zero and one.
+    add_bias
+        Append an intercept as the last coefficient.
+    return_pred
+        If false, return a scalar List(Float64) named ``coeffs``. If true, return
+        a row-aligned struct named ``quantile_pred`` with Float64 fields ``pred``
+        and ``resid``. Rows removed by the null policy have null outputs.
+    tol
+        Positive numerical primal-dual gap tolerance. The mean loss gap is at
+        most ``tol * (max(abs(target)) + mean_pinball_loss)`` (use 1 for an
+        all-zero target), up to floating-point error. This is an objective
+        tolerance, not a guarantee on coefficient accuracy in non-unique fits.
+    max_iter
+        Maximum IRLS updates. Raises ComputeError if the gap has not converged;
+        extreme quantiles or poorly conditioned data may need more iterations.
+    null_policy
+        ``"skip"`` drops rows with any null. ``"raise"`` rejects nulls.
+        ``"zero"``, ``"one"`` or a numeric string fills null predictors and drops
+        null targets. ``"ignore"`` requires no nulls. NaN and infinity remaining
+        after null handling are rejected. Empty or rank-deficient fits raise
+        ComputeError, including within groups.
+
+    Examples
+    --------
+    >>> df = pl.DataFrame({"x": [0.0, 1.0, 2.0, 3.0], "y": [1.0, 3.0, 5.0, 7.0]})
+    >>> df.select(pds.quantile_reg("x", target="y", add_bias=True))  # doctest: +SKIP
+    >>> df.group_by("group").agg(  # doctest: +SKIP
+    ...     pds.quantile_reg("x", target="y", quantile=0.9, add_bias=True)
+    ... )
+
+    Notes
+    -----
+    See the Linear Regression as Polars Expr documentation for the smoothed
+    majorization-minimization surrogate and numerical dual-gap stopping rule.
+    Different solvers may return different coefficients when the optimum is
+    non-unique; compare their pinball losses instead.
+    """
+    if not isinstance(target, (str, pl.Expr)):
+        raise ValueError("target must be a single column name or expression")
+    if not x and not add_bias:
+        raise ValueError("at least one predictor or add_bias=True is required")
+    if not math.isfinite(quantile) or not 0 < quantile < 1:
+        raise ValueError("quantile must be finite and strictly between 0 and 1")
+    if not math.isfinite(tol) or tol <= 0:
+        raise ValueError("tol must be finite and positive")
+    if isinstance(max_iter, bool) or not isinstance(max_iter, int) or max_iter <= 0:
+        raise ValueError("max_iter must be a positive integer")
+    inputs = [lr_formula(target).cast(pl.Float64)]
+    inputs.extend(lr_formula(value).cast(pl.Float64) for value in x)
+    return pl_plugin(
+        symbol="pl_quantile_pred" if return_pred else "pl_quantile_coeffs",
+        args=inputs,
+        kwargs={
+            "quantile": quantile,
+            "bias": add_bias,
+            "null_policy": null_policy,
+            "tol": tol,
+            "max_iter": max_iter,
+        },
+        returns_scalar=not return_pred,
+        pass_name_to_apply=True,
+    ).alias("quantile_pred" if return_pred else "coeffs")
 
 
 def simple_lin_reg(
@@ -697,7 +787,9 @@ def rolling_lin_reg_1d(
     ...         window_size=504,
     ...         half_life=126.0,
     ...         min_valid_rows=126,
-    ...     ).over("asset").alias("fit")
+    ...     )
+    ...     .over("asset")
+    ...     .alias("fit")
     ... )
     """
     if window_size < 2:

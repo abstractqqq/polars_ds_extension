@@ -16,6 +16,7 @@ mod logistic_regression;
 mod mutual_info;
 mod pca;
 mod psi;
+mod quantile_regression;
 mod rolling_ewls;
 mod rolling_ewls_1d;
 mod splines;
